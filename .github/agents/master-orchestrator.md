@@ -75,9 +75,8 @@ UI)
 - **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
 - **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
-storage quota monitoring, code health 9.0+, render queue priority, dead code
-removal
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
+quota monitoring, code health 9.0+, render queue priority, dead code removal
 
 **Storage Format:**
 
@@ -223,11 +222,11 @@ Verify APIs → Lint → Test AFTER → Store decisions → Commit memory
 
 ## Complex Task Examples
 
-**Container-Specific Settings:** Domain (entity) → Storage (methods) →
-Quick Tabs (apply) → UI/UX (selector) → Testing (all layers)
+**Container-Specific Settings:** Domain (entity) → Storage (methods) → Quick
+Tabs (apply) → UI/UX (selector) → Testing (all layers)
 
-**Quick Tab Templates:** Domain (template) → Manager (selection UI) →
-Single Tab (apply) → Cross-Tab (sync) → UI/UX (management)
+**Quick Tab Templates:** Domain (template) → Manager (selection UI) → Single Tab
+(apply) → Cross-Tab (sync) → UI/UX (management)
 
 ---
 

@@ -69,9 +69,8 @@ const relevantMemories = await searchMemories({
 - **Sidebar Lifecycle** - `[SIDEBAR_LIFECYCLE]` logging prefix
 - **Render Performance** - `[RENDER_PERF]` logging prefix
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
-storage quota monitoring, code health 9.0+, render queue priority, simplified
-init
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
+quota monitoring, code health 9.0+, render queue priority, simplified init
 
 **Settings Sidebar Structure (Two-Layer System):**
 
@@ -138,8 +137,12 @@ dark mode, colors, debug mode, and storage management.
 // Load with defaults, populate form, apply dark mode
 async function loadSettings() {
   const settings = await browser.storage.sync.get({
-    copyUrlKey: 'y', quickTabKey: 'q', maxTabs: 5,
-    defaultWidth: 600, darkMode: false, borderColor: '#3498db'
+    copyUrlKey: 'y',
+    quickTabKey: 'q',
+    maxTabs: 5,
+    defaultWidth: 600,
+    darkMode: false,
+    borderColor: '#3498db'
   });
   // Apply to form and UI...
 }
@@ -157,9 +160,18 @@ input.addEventListener('change', async () => {
 **Use CSS variables for theming:**
 
 ```css
-:root { --bg-color: #ffffff; --text-color: #333333; }
-body.dark-mode { --bg-color: #1e1e1e; --text-color: #e0e0e0; }
-body { background-color: var(--bg-color); color: var(--text-color); }
+:root {
+  --bg-color: #ffffff;
+  --text-color: #333333;
+}
+body.dark-mode {
+  --bg-color: #1e1e1e;
+  --text-color: #e0e0e0;
+}
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+}
 ```
 
 ```javascript
@@ -173,14 +185,15 @@ async function toggleDarkMode(enabled) {
 
 ## Notification System
 
-**Two styles:** Tooltip (near cursor) and Notification (top-right banner).
-Use `NotificationManager` class with configurable style and duration.
+**Two styles:** Tooltip (near cursor) and Notification (top-right banner). Use
+`NotificationManager` class with configurable style and duration.
 
 ---
 
 ## Form Validation
 
-Validate before save: max tabs 1-10, dimensions 200-2000, shortcuts single letter.
+Validate before save: max tabs 1-10, dimensions 200-2000, shortcuts single
+letter.
 
 ---
 

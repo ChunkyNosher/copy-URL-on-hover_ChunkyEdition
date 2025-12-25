@@ -1,12 +1,34 @@
 /**
  * Event Bus
  * Pub/sub event system for inter-module communication
+ *
+ * v1.6.3.11-v10 - FIX Issue #12: Added singleton instance tracking with unique IDs
+ *   Each EventBus instance gets a unique instanceId to detect instance mismatches
+ *   Use getSharedEventBus() to get the singleton instance
  */
+
+// v1.6.3.11-v10 - FIX Issue #12: Global instance counter for unique IDs
+let _instanceCounter = 0;
+
+// v1.6.3.11-v10 - FIX Issue #12: Singleton instance storage
+let _sharedEventBus = null;
 
 export class EventBus {
   constructor() {
     this.events = new Map();
     this.debugMode = false;
+    // v1.6.3.11-v10 - FIX Issue #12: Assign unique instance ID for debugging
+    this.instanceId = `eventbus-${++_instanceCounter}-${Date.now()}`;
+    console.log(`[EventBus] Instance created: ${this.instanceId}`);
+  }
+
+  /**
+   * Get the instance ID for debugging
+   * v1.6.3.11-v10 - FIX Issue #12: Instance identity tracking
+   * @returns {string} Unique instance identifier
+   */
+  getInstanceId() {
+    return this.instanceId;
   }
 
   /**
@@ -129,6 +151,50 @@ export class EventBus {
   listenerCount(eventName) {
     return this.events.has(eventName) ? this.events.get(eventName).length : 0;
   }
+
+  /**
+   * Validate that another EventBus is the same instance
+   * v1.6.3.11-v10 - FIX Issue #12: Instance validation for debugging
+   * @param {EventBus} otherEventBus - EventBus to compare
+   * @returns {boolean} True if same instance
+   */
+  isSameInstance(otherEventBus) {
+    if (!otherEventBus || typeof otherEventBus.getInstanceId !== 'function') {
+      return false;
+    }
+    const isSame = this.instanceId === otherEventBus.getInstanceId();
+    if (!isSame) {
+      console.error('[EVENTBUS_MISMATCH] Different instances detected!', {
+        thisInstance: this.instanceId,
+        otherInstance: otherEventBus.getInstanceId()
+      });
+    }
+    return isSame;
+  }
+
+  /**
+   * Remove all listeners for all events
+   * v1.6.3.11-v10 - Added for compatibility with eventemitter3 API
+   */
+  removeAllListeners() {
+    this.events.clear();
+    if (this.debugMode) {
+      console.log('[EventBus] All listeners removed');
+    }
+  }
+}
+
+/**
+ * Get or create the shared EventBus singleton instance
+ * v1.6.3.11-v10 - FIX Issue #12: Provides a guaranteed singleton
+ * @returns {EventBus} The shared EventBus instance
+ */
+export function getSharedEventBus() {
+  if (!_sharedEventBus) {
+    _sharedEventBus = new EventBus();
+    console.log('[EventBus] Created shared singleton: ' + _sharedEventBus.instanceId);
+  }
+  return _sharedEventBus;
 }
 
 /**

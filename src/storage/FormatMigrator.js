@@ -9,7 +9,7 @@
  * - V1_5_8_14_Format: Unwrapped container format
  * - LegacyFormat: Flat tabs array
  * - EmptyFormat: Fallback for unrecognized/empty data
- * 
+ *
  * v1.6.4.16 - FIX Issue #26: FormatMigrator Schema Evolution Bugs
  * - Added migration logging with [MIGRATION] prefix
  * - Validate migrated data structure
@@ -190,7 +190,7 @@ export class EmptyFormat extends FormatStrategy {
  * const migrator = new FormatMigrator();
  * const format = migrator.detect(rawData);
  * const containers = format.parse(rawData);
- * 
+ *
  * v1.6.4.16 - FIX Issue #26: Enhanced migration logging and validation
  */
 export class FormatMigrator {
@@ -217,7 +217,7 @@ export class FormatMigrator {
       dataType: typeof data,
       keys: data ? Object.keys(data).slice(0, 5) : []
     });
-    
+
     for (const format of this.formats) {
       if (format.matches(data)) {
         console.log(`[MIGRATION] Detected format: ${format.getVersion()}`);
@@ -241,12 +241,12 @@ export class FormatMigrator {
     const migrationStartTime = Date.now();
     const format = this.detect(data);
     const sourceVersion = format.getVersion();
-    
+
     console.log('[MIGRATION] Starting migration:', {
       sourceVersion,
       timestamp: new Date().toISOString()
     });
-    
+
     let containers;
     try {
       containers = format.parse(data);
@@ -259,10 +259,10 @@ export class FormatMigrator {
       // Return empty containers on failure to prevent data loss
       return {};
     }
-    
+
     // Validate migrated data structure
     const validationResult = this._validateMigratedData(containers);
-    
+
     const migrationDurationMs = Date.now() - migrationStartTime;
     console.log('[MIGRATION] Migration completed:', {
       sourceVersion,
@@ -272,14 +272,14 @@ export class FormatMigrator {
       isValid: validationResult.isValid,
       durationMs: migrationDurationMs
     });
-    
+
     if (!validationResult.isValid) {
       console.warn('[MIGRATION] Validation warnings:', validationResult.warnings);
     }
 
     return containers;
   }
-  
+
   /**
    * Validate migrated data structure
    * v1.6.4.16 - FIX Issue #26: Validate migrated data
@@ -290,27 +290,27 @@ export class FormatMigrator {
   _validateMigratedData(containers) {
     const warnings = [];
     let totalTabs = 0;
-    
+
     if (!containers || typeof containers !== 'object') {
       warnings.push('Containers is not an object');
       return { isValid: false, warnings, totalTabs: 0 };
     }
-    
+
     for (const [key, value] of Object.entries(containers)) {
       // Check container structure
       if (!value || typeof value !== 'object') {
         warnings.push(`Container "${key}" is not an object`);
         continue;
       }
-      
+
       // Check tabs array
       if (!Array.isArray(value.tabs)) {
         warnings.push(`Container "${key}" missing tabs array`);
         continue;
       }
-      
+
       totalTabs += value.tabs.length;
-      
+
       // Check each tab has required fields
       value.tabs.forEach((tab, index) => {
         if (!tab.id) {
@@ -321,7 +321,7 @@ export class FormatMigrator {
         }
       });
     }
-    
+
     return {
       isValid: warnings.length === 0,
       warnings,
@@ -339,12 +339,12 @@ export class FormatMigrator {
   needsMigration(data) {
     const format = this.detect(data);
     const needsMigration = !(format instanceof V1_5_8_15_Format);
-    
+
     console.log('[MIGRATION] Migration check:', {
       currentFormat: format.getVersion(),
       needsMigration
     });
-    
+
     return needsMigration;
   }
 

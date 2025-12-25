@@ -305,7 +305,8 @@ export class QuickTabHandler {
       return {
         success: false,
         error: 'ORIGIN_TAB_ID_NULL',
-        message: 'Cannot create Quick Tab without valid originTabId. Content script must provide originTabId.',
+        message:
+          'Cannot create Quick Tab without valid originTabId. Content script must provide originTabId.',
         retryable: true
       };
     }
@@ -362,7 +363,14 @@ export class QuickTabHandler {
     const originTabId = resolution.originTabId;
     const cookieStoreId = message.cookieStoreId || 'firefox-default';
 
-    console.log('[QuickTabHandler] Create:', message.url, 'ID:', message.id, 'OriginTabId:', originTabId);
+    console.log(
+      '[QuickTabHandler] Create:',
+      message.url,
+      'ID:',
+      message.id,
+      'OriginTabId:',
+      originTabId
+    );
 
     // Wait for initialization if needed
     if (!this.isInitialized) {
@@ -439,10 +447,13 @@ export class QuickTabHandler {
     // v1.6.3.11-v8 - FIX Issue #21: Check for "unknown" placeholder in quickTabId
     const hasUnknown = this._hasUnknownPlaceholder(message.id);
     if (hasUnknown) {
-      console.warn('[QuickTabHandler] v1.6.3.11-v8 IDENTITY_NOT_READY: quickTabId contains "unknown":', {
-        quickTabId: message.id,
-        recommendation: 'Content script should wait for tab ID before creating Quick Tab'
-      });
+      console.warn(
+        '[QuickTabHandler] v1.6.3.11-v8 IDENTITY_NOT_READY: quickTabId contains "unknown":',
+        {
+          quickTabId: message.id,
+          recommendation: 'Content script should wait for tab ID before creating Quick Tab'
+        }
+      );
       // Return special marker indicating identity was not ready
       return { originTabId: null, hasUnknownPlaceholder: true };
     }
@@ -709,8 +720,8 @@ export class QuickTabHandler {
    * @private
    */
   _buildTabIdSuccessResponse(tabId) {
-    return { 
-      success: true, 
+    return {
+      success: true,
       data: { currentTabId: tabId },
       tabId // Keep for backward compatibility
     };
@@ -760,7 +771,7 @@ export class QuickTabHandler {
           initResult.retryable ?? true
         );
         console.log('[Handler][EXIT] handleGetCurrentTabId:', {
-          duration: (Date.now() - startTime) + 'ms',
+          duration: Date.now() - startTime + 'ms',
           success: false,
           result: { error: initResult.error }
         });
@@ -769,10 +780,12 @@ export class QuickTabHandler {
 
       // v1.6.3.6-v4 - FIX Issue #1: ALWAYS use sender.tab.id
       if (this._hasValidSenderTabId(sender)) {
-        console.log(`[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`);
+        console.log(
+          `[QuickTabHandler] GET_CURRENT_TAB_ID: returning sender.tab.id=${sender.tab.id}`
+        );
         const response = this._buildTabIdSuccessResponse(sender.tab.id);
         console.log('[Handler][EXIT] handleGetCurrentTabId:', {
-          duration: (Date.now() - startTime) + 'ms',
+          duration: Date.now() - startTime + 'ms',
           success: true,
           result: { tabId: sender.tab.id }
         });
@@ -786,16 +799,19 @@ export class QuickTabHandler {
         'SENDER_TAB_UNAVAILABLE'
       );
       console.log('[Handler][EXIT] handleGetCurrentTabId:', {
-        duration: (Date.now() - startTime) + 'ms',
+        duration: Date.now() - startTime + 'ms',
         success: false,
         result: { error: 'SENDER_TAB_UNAVAILABLE' }
       });
       return response;
     } catch (err) {
       console.error('[QuickTabHandler] GET_CURRENT_TAB_ID error:', err?.message);
-      const response = this._buildTabIdErrorResponse(err?.message || 'Unknown error', 'HANDLER_ERROR');
+      const response = this._buildTabIdErrorResponse(
+        err?.message || 'Unknown error',
+        'HANDLER_ERROR'
+      );
       console.log('[Handler][EXIT] handleGetCurrentTabId:', {
-        duration: (Date.now() - startTime) + 'ms',
+        duration: Date.now() - startTime + 'ms',
         success: false,
         result: { error: err?.message }
       });
@@ -855,7 +871,7 @@ export class QuickTabHandler {
           retryable: initResult.retryable
         });
         console.log('[Handler][EXIT] handleGetQuickTabsState:', {
-          duration: (Date.now() - startTime) + 'ms',
+          duration: Date.now() - startTime + 'ms',
           success: false,
           result: { error: initResult.error }
         });
@@ -878,7 +894,7 @@ export class QuickTabHandler {
       };
 
       console.log('[Handler][EXIT] handleGetQuickTabsState:', {
-        duration: (Date.now() - startTime) + 'ms',
+        duration: Date.now() - startTime + 'ms',
         success: true,
         result: { tabCount: allTabs.length }
       });
@@ -900,7 +916,7 @@ export class QuickTabHandler {
         retryable: true // Most errors are transient and can be retried
       };
       console.log('[Handler][EXIT] handleGetQuickTabsState:', {
-        duration: (Date.now() - startTime) + 'ms',
+        duration: Date.now() - startTime + 'ms',
         success: false,
         result: { error: err.message }
       });
@@ -1111,7 +1127,10 @@ export class QuickTabHandler {
   _enqueueStorageWrite() {
     return new Promise((resolve, reject) => {
       this._writeQueue.push({ resolve, reject, enqueuedAt: Date.now() });
-      console.debug('[QuickTabHandler] 🔒 WRITE_QUEUE: Enqueued write, queue size:', this._writeQueue.length);
+      console.debug(
+        '[QuickTabHandler] 🔒 WRITE_QUEUE: Enqueued write, queue size:',
+        this._writeQueue.length
+      );
       this._processWriteQueue();
     });
   }

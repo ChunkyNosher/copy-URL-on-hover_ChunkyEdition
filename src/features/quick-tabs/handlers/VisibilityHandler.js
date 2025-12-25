@@ -51,6 +51,7 @@
  *   - Issue 3.2: Z-index recycling threshold lowered from 100000 to 10000
  *   - Issue 5: Container isolation validation added to all visibility operations
  *   - Issue I: Debounce timer captures currentTabId at schedule time, not fire time
+ * v1.6.4 - Removed Solo/Mute visibility control (Quick Tabs always visible on all tabs)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -61,18 +62,15 @@
  * - v1.6.3.11-v9: Container isolation enforced in runtime operations
  *
  * Responsibilities:
- * - Handle solo toggle (show only on specific tabs)
- * - Handle mute toggle (hide on specific tabs)
  * - Handle minimize operation with DOM cleanup
  * - Handle restore operation (trusts UICoordinator for rendering)
  * - Handle focus operation (bring to front)
- * - Update button appearances
  * - Emit events for coordinators
  * - Persist state to storage after visibility changes
  * - Cross-tab ownership validation for all operations
  * - Container isolation validation for all operations
  *
- * @version 1.6.3.11-v9
+ * @version 1.6.4
  */
 
 import {
@@ -81,7 +79,9 @@ import {
   validateStateForPersist,
   STATE_KEY,
   getBrowserStorageAPI,
-  getWritingContainerId // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
+  getWritingContainerId, // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
+  getStorageCoordinator, // v1.6.3.12 - FIX Issue #14: Centralized write coordination
+  saveZIndexCounter // v1.6.3.12 - FIX Issue #17: Z-index counter persistence
 } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
@@ -208,10 +208,13 @@ export class VisibilityHandler {
     }
     // If current container ID is not known, fail-closed (block operation)
     if (this.currentContainerId === null) {
-      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId
-      });
+      console.warn(
+        `${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId
+        }
+      );
       return false;
     }
     // Check if originContainerId matches current container
@@ -242,20 +245,26 @@ export class VisibilityHandler {
 
     // If current container unknown, fail-closed
     if (!this.currentContainerId) {
-      console.warn(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId
-      });
+      console.warn(
+        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId
+        }
+      );
       return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
     }
 
     // Compare container IDs
     if (tabWindow.originContainerId !== this.currentContainerId) {
-      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId,
-        currentContainerId: this.currentContainerId
-      });
+      console.log(
+        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`,
+        {
+          quickTabId: tabWindow.id,
+          originContainerId: tabWindow.originContainerId,
+          currentContainerId: this.currentContainerId
+        }
+      );
       return { valid: false, reason: 'CONTAINER_MISMATCH' };
     }
 
@@ -296,108 +305,6 @@ export class VisibilityHandler {
     }
 
     return { valid: true, tabWindow };
-  }
-
-  /**
-   * Handle solo toggle from Quick Tab window or panel
-   * v1.6.3 - Local only (no cross-tab sync)
-   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {number[]} newSoloedTabs - Array of tab IDs where Quick Tab should be visible
-   * @param {string} source - Source of action
-   * @returns {{ success: boolean, error?: string }}
-   */
-  handleSoloToggle(quickTabId, newSoloedTabs, source = 'unknown') {
-    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-    const validation = this._validateCrossTabOwnership(quickTabId, 'solo toggle', source);
-    if (!validation.valid) {
-      return validation.result;
-    }
-
-    this._handleVisibilityToggle(quickTabId, {
-      mode: 'SOLO',
-      newTabs: newSoloedTabs,
-      tabsProperty: 'soloedOnTabs',
-      clearProperty: 'mutedOnTabs',
-      updateButton: this._updateSoloButton.bind(this)
-    });
-    return { success: true };
-  }
-
-  /**
-   * Handle mute toggle from Quick Tab window or panel
-   * v1.6.3 - Local only (no cross-tab sync)
-   * v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-   *
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {number[]} newMutedTabs - Array of tab IDs where Quick Tab should be hidden
-   * @param {string} source - Source of action
-   * @returns {{ success: boolean, error?: string }}
-   */
-  handleMuteToggle(quickTabId, newMutedTabs, source = 'unknown') {
-    // v1.6.3.10-v4 - FIX Issue #9: Cross-tab ownership validation
-    const validation = this._validateCrossTabOwnership(quickTabId, 'mute toggle', source);
-    if (!validation.valid) {
-      return validation.result;
-    }
-
-    this._handleVisibilityToggle(quickTabId, {
-      mode: 'MUTE',
-      newTabs: newMutedTabs,
-      tabsProperty: 'mutedOnTabs',
-      clearProperty: 'soloedOnTabs',
-      updateButton: this._updateMuteButton.bind(this)
-    });
-    return { success: true };
-  }
-
-  /**
-   * Common handler for solo/mute visibility toggles
-   * v1.6.3 - Local only (no storage writes)
-   * v1.6.3.10-v10 - FIX Issue 5.1: Add ownership validation and lock for atomicity
-   * @private
-   * @param {string} quickTabId - Quick Tab ID
-   * @param {Object} config - Configuration for toggle operation
-   */
-  _handleVisibilityToggle(quickTabId, config) {
-    const { mode, newTabs, tabsProperty, clearProperty, updateButton } = config;
-
-    console.log(`[VisibilityHandler] Toggling ${mode.toLowerCase()} for ${quickTabId}:`, newTabs);
-
-    const tab = this.quickTabsMap.get(quickTabId);
-    if (!tab) return;
-
-    // v1.6.3.10-v10 - FIX Issue 5.1: Validate ownership before mutation
-    if (!this._isOwnedByCurrentTab(tab)) {
-      console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Not owned by current tab:`, {
-        quickTabId,
-        mode,
-        originTabId: tab.originTabId,
-        currentTabId: this.currentTabId
-      });
-      return;
-    }
-
-    // v1.6.3.10-v10 - FIX Issue 5.1: Use lock to prevent concurrent modifications
-    if (!this._tryAcquireLock('visibility', quickTabId)) {
-      console.warn(`${this._logPrefix} VISIBILITY_TOGGLE_BLOCKED: Lock held for:`, {
-        quickTabId,
-        mode
-      });
-      return;
-    }
-
-    try {
-      // Update visibility state (mutually exclusive)
-      tab[tabsProperty] = newTabs;
-      tab[clearProperty] = [];
-
-      // Update button states if tab has them
-      updateButton(tab, newTabs);
-    } finally {
-      this._releaseLock('visibility', quickTabId);
-    }
   }
 
   /**
@@ -1002,6 +909,7 @@ export class VisibilityHandler {
   /**
    * Re-wire callbacks on tabWindow after restore
    * v1.6.3.5-v11 - FIX Issue #2: Missing callback re-wiring after restore
+   * v1.6.4 - Removed Solo/Mute callbacks
    * Creates fresh callback functions that capture CURRENT handler context
    * @private
    * @param {Object} tabWindow - QuickTabWindow instance
@@ -1019,14 +927,10 @@ export class VisibilityHandler {
 
     // v1.6.3.10-v10 - FIX Issue 2.1: Build fresh callbacks that capture current handler context
     // These replace any stale closures from initial construction
-    // Previously only onMinimize and onFocus were re-wired, but position/size/solo/mute
-    // callbacks also need to be re-wired to ensure proper state persistence
+    // v1.6.4 - Removed Solo/Mute callbacks
     const freshCallbacks = {
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
-      onFocus: tabId => this.handleFocus(tabId),
-      // v1.6.3.10-v10 - FIX Issue 2.1: Add missing position/size/solo/mute callbacks
-      onSolo: (tabId, soloedTabs) => this.handleSoloToggle(tabId, soloedTabs, 'UI'),
-      onMute: (tabId, mutedTabs) => this.handleMuteToggle(tabId, mutedTabs, 'UI')
+      onFocus: tabId => this.handleFocus(tabId)
     };
 
     // Note: Position/size callbacks (onPositionChange, onPositionChangeEnd, onSizeChange, onSizeChangeEnd)
@@ -1036,7 +940,12 @@ export class VisibilityHandler {
       this.eventBus.emit('tab:needs-callback-rewire', {
         id,
         source,
-        callbacksNeeded: ['onPositionChange', 'onPositionChangeEnd', 'onSizeChange', 'onSizeChangeEnd']
+        callbacksNeeded: [
+          'onPositionChange',
+          'onPositionChangeEnd',
+          'onSizeChange',
+          'onSizeChangeEnd'
+        ]
       });
     }
 
@@ -1694,6 +1603,12 @@ export class VisibilityHandler {
 
     tabWindow.zIndex = newZIndex;
 
+    // v1.6.3.12 - FIX Issue #17: Persist z-index counter after increment
+    // Use fire-and-forget pattern to avoid blocking focus operation
+    saveZIndexCounter(newZIndex).catch(err => {
+      console.warn(`${this._logPrefix}[handleFocus] Z-index persist failed:`, err.message);
+    });
+
     // Apply z-index via helper
     this._applyZIndexUpdate(id, { tabWindow, newZIndex, hasContainer, isAttachedToDOM });
 
@@ -1715,6 +1630,7 @@ export class VisibilityHandler {
    * Recycle z-indices to prevent unbounded growth
    * v1.6.3.10-v10 - FIX Issue 3.2: Reset z-index counter and reassign to all Quick Tabs
    * v1.6.3.11-v9 - FIX: Add defensive check for container.style
+   * v1.6.3.12 - FIX Issue #17: Persist z-index counter after recycle
    * @private
    */
   _recycleZIndices() {
@@ -1724,8 +1640,9 @@ export class VisibilityHandler {
     });
 
     // Sort tabs by current z-index to maintain stacking order
-    const sortedTabs = Array.from(this.quickTabsMap.entries())
-      .sort(([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0));
+    const sortedTabs = Array.from(this.quickTabsMap.entries()).sort(
+      ([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0)
+    );
 
     // Reset counter to base value
     this.currentZIndex.value = 1000;
@@ -1747,40 +1664,15 @@ export class VisibilityHandler {
       });
     }
 
+    // v1.6.3.12 - FIX Issue #17: Persist z-index counter after recycle
+    saveZIndexCounter(this.currentZIndex.value).catch(err => {
+      console.warn(`${this._logPrefix} Z-INDEX_RECYCLE: Counter persist failed:`, err.message);
+    });
+
     console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Complete`, {
       newCounterValue: this.currentZIndex.value,
       tabsRecycled: sortedTabs.length
     });
-  }
-
-  /**
-   * Update solo button appearance
-   * @private
-   * @param {Object} tab - Quick Tab instance
-   * @param {number[]} soloedOnTabs - Array of tab IDs
-   */
-  _updateSoloButton(tab, soloedOnTabs) {
-    if (!tab.soloButton) return;
-
-    const isSoloed = soloedOnTabs.length > 0;
-    tab.soloButton.textContent = isSoloed ? '🎯' : '⭕';
-    tab.soloButton.title = isSoloed ? 'Un-solo (show on all tabs)' : 'Solo (show only on this tab)';
-    tab.soloButton.style.background = isSoloed ? '#444' : 'transparent';
-  }
-
-  /**
-   * Update mute button appearance
-   * @private
-   * @param {Object} tab - Quick Tab instance
-   * @param {number[]} mutedOnTabs - Array of tab IDs
-   */
-  _updateMuteButton(tab, mutedOnTabs) {
-    if (!tab.muteButton) return;
-
-    const isMuted = mutedOnTabs.includes(this.currentTabId);
-    tab.muteButton.textContent = isMuted ? '🔇' : '🔊';
-    tab.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
-    tab.muteButton.style.background = isMuted ? '#c44' : 'transparent';
   }
 
   /**
@@ -1993,10 +1885,7 @@ export class VisibilityHandler {
     });
 
     try {
-      await Promise.race([
-        this._persistToStorage(),
-        timeoutPromise
-      ]);
+      await Promise.race([this._persistToStorage(), timeoutPromise]);
       // Reset timeout count on success
       this._storageTimeoutCount = 0;
     } catch (err) {
@@ -2066,6 +1955,7 @@ export class VisibilityHandler {
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v6 - FIX Issue #6: Validate counts and state before persist
    * v1.6.3.10-v4 - FIX Issue #15: Only persist Quick Tabs owned by this tab
+   * v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -2122,13 +2012,21 @@ export class VisibilityHandler {
       `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`
     );
 
-    // v1.6.3.4-v2 - FIX Bug #1: Await the async persist and log result
-    const success = await persistStateToStorage(state, '[VisibilityHandler]');
-    if (!success) {
-      // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes
-      console.error(
-        '[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded'
-      );
+    // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
+    const coordinator = getStorageCoordinator();
+    try {
+      const success = await coordinator.queueWrite('VisibilityHandler', () => {
+        return persistStateToStorage(state, '[VisibilityHandler]');
+      });
+
+      if (!success) {
+        // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes
+        console.error(
+          '[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded'
+        );
+      }
+    } catch (err) {
+      console.error('[VisibilityHandler] Storage coordinator error:', err.message);
     }
   }
 

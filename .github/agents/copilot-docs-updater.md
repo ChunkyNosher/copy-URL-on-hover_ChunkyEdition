@@ -73,17 +73,22 @@ nothing.
 
 ### v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+
 
-- **Issue A Fix** - Content script tab identity initialization before state changes
-  - `[IDENTITY_INIT]` logging markers (SCRIPT_LOAD, TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
-- **Issue C Fix** - Identity initialization comprehensive logging with timestamps
+- **Issue A Fix** - Content script tab identity initialization before state
+  changes
+  - `[IDENTITY_INIT]` logging markers (SCRIPT_LOAD, TAB_ID_REQUEST,
+    TAB_ID_RESPONSE, IDENTITY_READY)
+- **Issue C Fix** - Identity initialization comprehensive logging with
+  timestamps
 - **Issue D Fix** - Storage write queue enforces identity-ready precondition
   - `waitForIdentityInit()` called before processing writes
-  - `[WRITE_PHASE]` logging (FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE)
+  - `[WRITE_PHASE]` logging (FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE,
+    WRITE_API_PHASE)
 - **Issue E Fix** - State validation pre/post comparison logging
   - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows delta
 - **Issue I Fix** - Debounce timer captures tab context at schedule time
   - `capturedTabId` stored when timer is scheduled, not when it fires
-- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000 → 10000)
+- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000
+  → 10000)
 - **Issue 5 Fix** - Container isolation validated in all visibility operations
   - `_validateContainerIsolation()` helper added
 - **Code Health 9.0+** - All core files now at Code Health 9.0 or higher

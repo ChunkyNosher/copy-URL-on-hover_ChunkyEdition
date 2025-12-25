@@ -8,6 +8,7 @@
  * Lines 903-992 from original index.js
  */
 
+import { validateOriginTabIdForSerialization } from '@utils/storage-utils.js'; // v1.6.3.12 - FIX Issue #16
 import browser from 'webextension-polyfill';
 
 import { createQuickTabWindow } from '../window.js';
@@ -32,10 +33,11 @@ export class CreateHandler {
    * @param {Map} quickTabsMap - Map of id -> QuickTabWindow
    * @param {Object} currentZIndex - Ref object { value: number }
    * @param {string} cookieStoreId - Current container ID
-   * @param {Object} eventBus - EventEmitter for DOM events
+   * @param {Object} eventBus - EventEmitter for DOM events (external, from content.js)
    * @param {Object} Events - Event constants
    * @param {Function} generateId - ID generation function
    * @param {Function} windowFactory - Optional factory function for creating windows (for testing)
+   * @param {Object} internalEventBus - v1.6.3.11-v10 FIX Issue #12: Internal event bus for UICoordinator communication
    */
   constructor(
     quickTabsMap,
@@ -44,7 +46,8 @@ export class CreateHandler {
     eventBus,
     Events,
     generateId,
-    windowFactory = null
+    windowFactory = null,
+    internalEventBus = null
   ) {
     this.quickTabsMap = quickTabsMap;
     this.currentZIndex = currentZIndex;
@@ -58,6 +61,18 @@ export class CreateHandler {
     this.showDebugIdSetting = false;
     // v1.6.3.4-v9 - Store listener reference for cleanup
     this._storageListener = null;
+    // v1.6.3.11-v10 - FIX Issue #12: Store internal event bus for window:created events
+    // UICoordinator listens on internalEventBus, so window:created must be emitted there
+    this.internalEventBus = internalEventBus;
+
+    // v1.6.3.11-v10 - FIX Issue #12: Log event bus instances for debugging
+    const externalId = eventBus?.getInstanceId?.() ?? eventBus?.constructor?.name ?? 'unknown';
+    const internalId = internalEventBus?.constructor?.name ?? 'null';
+    console.log('[CreateHandler] Received eventBus instances:', {
+      externalEventBus: externalId,
+      internalEventBus: internalId,
+      hasInternalBus: !!internalEventBus
+    });
   }
 
   /**
@@ -217,6 +232,7 @@ export class CreateHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Capture originTabId for cross-tab filtering
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
+   * v1.6.3.12 - FIX Issue #16: Validate originTabId is set on tab data before storing
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -225,10 +241,36 @@ export class CreateHandler {
     const defaults = this._getDefaults();
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
 
+    // v1.6.3.12 - FIX Issue #16: Validate originTabId before creating window
+    const originValidation = validateOriginTabIdForSerialization(
+      tabOptions,
+      'CreateHandler._createNewTab'
+    );
+    if (!originValidation.valid) {
+      console.warn('[CreateHandler] originTabId validation failed:', {
+        id,
+        warning: originValidation.warning,
+        tabOptions: {
+          originTabId: tabOptions.originTabId,
+          originContainerId: tabOptions.originContainerId
+        }
+      });
+      // Continue anyway - the logging will help debug serialization issues
+    }
+
     console.log('[CreateHandler] Creating window with factory:', typeof this.createWindow);
     console.log('[CreateHandler] Tab options:', tabOptions);
 
     const tabWindow = this.createWindow(tabOptions);
+
+    // v1.6.3.12 - FIX Issue #16: Ensure originTabId is assigned directly on tabWindow
+    // This ensures serialization reads from the same location where it's assigned
+    if (tabOptions.originTabId !== null && tabOptions.originTabId !== undefined) {
+      tabWindow.originTabId = tabOptions.originTabId;
+    }
+    if (tabOptions.originContainerId !== null && tabOptions.originContainerId !== undefined) {
+      tabWindow.originContainerId = tabOptions.originContainerId;
+    }
 
     console.log('[CreateHandler] Window created:', tabWindow);
 
@@ -252,6 +294,7 @@ export class CreateHandler {
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
    * v1.6.3.10-v4 - FIX Issue #13: Add originContainerId default for container isolation
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    */
   _getDefaults() {
@@ -262,8 +305,6 @@ export class CreateHandler {
       height: 600,
       title: 'Quick Tab',
       minimized: false,
-      soloedOnTabs: [],
-      mutedOnTabs: [],
       showDebugId: false, // v1.6.3.2 - Default for Debug ID display
       originTabId: null, // v1.6.3.5-v2 - Track originating tab for cross-tab filtering
       originContainerId: null // v1.6.3.10-v4 - FIX Issue #13: Track originating container for Firefox Multi-Account Containers
@@ -468,10 +509,9 @@ export class CreateHandler {
     // v1.6.3.10-v4 - FIX Issue #13: Capture origin container ID for Firefox Multi-Account Container isolation
     const originContainerId = this._getOriginContainerId(options, defaults, quickTabId);
 
+    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
     return {
       minimized: options.minimized ?? defaults.minimized,
-      soloedOnTabs: options.soloedOnTabs ?? defaults.soloedOnTabs,
-      mutedOnTabs: options.mutedOnTabs ?? defaults.mutedOnTabs,
       showDebugId: options.showDebugId ?? this.showDebugIdSetting,
       originTabId,
       originContainerId, // v1.6.3.10-v4 - FIX Issue #13: Include container ID
@@ -483,6 +523,7 @@ export class CreateHandler {
   /**
    * Extract callback options
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
+   * v1.6.4 - Removed Solo/Mute callbacks
    * @private
    */
   _extractCallbacks(options) {
@@ -493,9 +534,7 @@ export class CreateHandler {
       onPositionChange: options.onPositionChange,
       onPositionChangeEnd: options.onPositionChangeEnd,
       onSizeChange: options.onSizeChange,
-      onSizeChangeEnd: options.onSizeChangeEnd,
-      onSolo: options.onSolo,
-      onMute: options.onMute
+      onSizeChangeEnd: options.onSizeChangeEnd
     };
   }
 
@@ -512,14 +551,31 @@ export class CreateHandler {
   /**
    * Emit window:created event for UICoordinator registration
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: UICoordinator Map never populated
+   * v1.6.3.11-v10 - FIX Issue #12: Use internalEventBus to reach UICoordinator
+   *   UICoordinator listens on internalEventBus (EventEmitter3), not external eventBus (EventBus)
+   *   This was the root cause of window:created events never reaching UICoordinator
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Created tab window instance
    */
   _emitWindowCreatedEvent(id, tabWindow) {
-    if (!this.eventBus) return;
+    // v1.6.3.11-v10 - FIX Issue #12: Prefer internalEventBus for UICoordinator communication
+    // UICoordinator listens on internalEventBus, not the external eventBus from content.js
+    const targetBus = this.internalEventBus || this.eventBus;
 
-    this.eventBus.emit('window:created', { id, tabWindow });
-    console.log('[CreateHandler] Emitted window:created for UICoordinator:', id);
+    if (!targetBus) {
+      console.warn('[CreateHandler] No event bus available for window:created');
+      return;
+    }
+
+    targetBus.emit('window:created', { id, tabWindow });
+
+    // v1.6.3.11-v10 - FIX Issue #12: Log which bus was used for debugging
+    const busType = this.internalEventBus ? 'internalEventBus' : 'eventBus (fallback)';
+    console.log('[CreateHandler] Emitted window:created for UICoordinator:', {
+      id,
+      busType,
+      busConstructor: targetBus?.constructor?.name ?? 'unknown'
+    });
   }
 }

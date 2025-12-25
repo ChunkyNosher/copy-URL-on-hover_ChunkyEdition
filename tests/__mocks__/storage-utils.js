@@ -5,6 +5,9 @@
 
 export const STATE_KEY = 'quick_tabs_state_v2';
 
+// v1.6.3.12 - Mock for z-index counter key
+export const ZINDEX_COUNTER_KEY = 'quickTabsZIndexCounter';
+
 // v1.6.3.4-v6 - Mock transaction tracking
 export const IN_PROGRESS_TRANSACTIONS = new Set();
 
@@ -66,6 +69,14 @@ export async function waitForIdentityInit(_timeoutMs = 3000) {
   return { isReady: true, tabId: 123, containerId: 'firefox-default' };
 }
 
+// v1.6.3.10-v6 - Mock for normalizeOriginTabId
+export function normalizeOriginTabId(tabId, _context) {
+  if (tabId === null || tabId === undefined) return null;
+  const normalized = Number(tabId);
+  if (!Number.isInteger(normalized) || normalized < 0) return null;
+  return normalized;
+}
+
 export function buildStateForStorage(quickTabsMap, minimizedManager) {
   const tabs = [];
   for (const tab of quickTabsMap.values()) {
@@ -92,4 +103,83 @@ export function buildStateForStorage(quickTabsMap, minimizedManager) {
 
 export function persistStateToStorage(_state, _logPrefix) {
   // No-op in tests
+  return Promise.resolve(true);
+}
+
+// v1.6.3.12 - FIX Issue #14: Mock StorageCoordinator
+class MockStorageCoordinator {
+  constructor() {
+    this._writeQueue = [];
+    this._isWriting = false;
+    this._writeCount = 0;
+    this._currentHandler = null;
+  }
+
+  async queueWrite(handlerName, writeOperation) {
+    this._writeCount++;
+    this._currentHandler = handlerName;
+    try {
+      return await writeOperation();
+    } finally {
+      this._currentHandler = null;
+    }
+  }
+
+  getStatus() {
+    return {
+      queueSize: this._writeQueue.length,
+      isWriting: this._isWriting,
+      currentHandler: this._currentHandler,
+      totalWrites: this._writeCount,
+      pendingHandlers: []
+    };
+  }
+
+  clearQueue() {
+    this._writeQueue = [];
+  }
+}
+
+const mockStorageCoordinator = new MockStorageCoordinator();
+
+export function getStorageCoordinator() {
+  return mockStorageCoordinator;
+}
+
+// v1.6.3.12 - FIX Issue #15: Mock storage listener health monitoring
+export function startStorageListenerHealthMonitor() {
+  return true;
+}
+
+export function stopStorageListenerHealthMonitor() {
+  // No-op
+}
+
+export function getStorageListenerHealthStatus() {
+  return {
+    isRegistered: true,
+    listenerAddress: 'test-listener',
+    lastHeartbeatSent: Date.now(),
+    lastHeartbeatReceived: Date.now(),
+    missedHeartbeats: 0,
+    reregistrationCount: 0
+  };
+}
+
+// v1.6.3.12 - FIX Issue #17: Mock z-index counter persistence
+export async function loadZIndexCounter(defaultValue = 1000) {
+  return defaultValue;
+}
+
+export async function saveZIndexCounter(_value) {
+  return true;
+}
+
+// v1.6.3.12 - FIX Issue #16: Mock originTabId validation
+export function validateOriginTabIdForSerialization(quickTab, _context = 'unknown') {
+  const originTabId = quickTab?.originTabId;
+  if (originTabId === null || originTabId === undefined) {
+    return { valid: false, originTabId: null, warning: 'originTabId is null or undefined' };
+  }
+  return { valid: true, originTabId };
 }

@@ -9,7 +9,7 @@
  *
  * v1.6.4.15 - FIX Issue #19: Container context updated during tab adoption
  * v1.6.4.15 - FIX Issue #20: triggerPostAdoptionPersistence() hook called after adoption
- * 
+ *
  * v1.6.4.16 - FIX Issue #23: Tab cleanup handler with storage cleanup callback
  * - Added onTabRemovedCallback for external cleanup notifications
  * - Enhanced cleanup with [TAB_CLEANUP] logging prefix
@@ -58,7 +58,7 @@ export class TabLifecycleHandler {
     browser.tabs.onUpdated.addListener(this._boundHandlers.onUpdated);
     browser.tabs.onActivated.addListener(this._boundHandlers.onActivated);
     browser.tabs.onRemoved.addListener(this._boundHandlers.onRemoved);
-    
+
     // v1.6.4.16 - FIX Issue C: Track registered listeners
     this._registeredListenerCount = 4;
     console.log('[LISTENER_CLEANUP] Registered 4 tab event listeners');
@@ -72,7 +72,7 @@ export class TabLifecycleHandler {
    */
   stop() {
     console.log('[TAB_LIFECYCLE] Handler stopping...');
-    
+
     let removedCount = 0;
 
     // Remove listeners if they were registered
@@ -92,9 +92,15 @@ export class TabLifecycleHandler {
       browser.tabs.onRemoved.removeListener(this._boundHandlers.onRemoved);
       removedCount++;
     }
-    
+
     // v1.6.4.16 - FIX Issue C: Log listener cleanup
-    console.log('[LISTENER_CLEANUP] Removed', removedCount, 'of', this._registeredListenerCount, 'tab event listeners');
+    console.log(
+      '[LISTENER_CLEANUP] Removed',
+      removedCount,
+      'of',
+      this._registeredListenerCount,
+      'tab event listeners'
+    );
 
     // Clear bound handlers
     this._boundHandlers = {
@@ -251,7 +257,7 @@ export class TabLifecycleHandler {
     if (this.activeTabId === tabId) {
       this.activeTabId = null;
     }
-    
+
     // v1.6.4.16 - FIX Issue #23: Invoke cleanup callback if registered
     if (typeof this._onTabRemovedCallback === 'function') {
       console.log('[TAB_CLEANUP] Invoking tab removal cleanup callback:', {
@@ -259,7 +265,7 @@ export class TabLifecycleHandler {
         isWindowClosing: removeInfo?.isWindowClosing,
         hasTabInfo: !!closedTabInfo
       });
-      
+
       try {
         this._onTabRemovedCallback(tabId, removeInfo, closedTabInfo);
         console.log('[TAB_CLEANUP] Cleanup callback completed for tab:', tabId);
@@ -271,7 +277,7 @@ export class TabLifecycleHandler {
       }
     }
   }
-  
+
   /**
    * Set callback for tab removal cleanup
    * v1.6.4.16 - FIX Issue #23: Allow external cleanup logic registration
@@ -319,7 +325,7 @@ export class TabLifecycleHandler {
 
     // v1.6.4.15 - FIX Issue #19: Include container context for adoption
     const targetTab = this.openTabs.get(targetTabId);
-    return { 
+    return {
       valid: true,
       containerContext: {
         cookieStoreId: targetTab.cookieStoreId || 'firefox-default',
@@ -365,11 +371,12 @@ export class TabLifecycleHandler {
    * @returns {{containerChanged: boolean, oldContainer: string, newContainer: string}}
    */
   updateContainerContextForAdoption(quickTabId, oldOriginTabId, newOriginTabId, snapshotMetadata) {
-    const oldContainer = this.getTabContainerId(oldOriginTabId) || snapshotMetadata?.originContainerId || 'unknown';
+    const oldContainer =
+      this.getTabContainerId(oldOriginTabId) || snapshotMetadata?.originContainerId || 'unknown';
     const newContainer = this.getTabContainerId(newOriginTabId) || 'firefox-default';
-    
+
     const containerChanged = oldContainer !== newContainer;
-    
+
     console.log('[ADOPTION_CONTAINER] Metadata update:', {
       quickTabId,
       oldOriginTabId,
@@ -379,12 +386,12 @@ export class TabLifecycleHandler {
       containerChanged,
       timestamp: new Date().toISOString()
     });
-    
+
     // Update snapshot metadata if provided
     if (snapshotMetadata) {
       snapshotMetadata.originContainerId = newContainer;
     }
-    
+
     return { containerChanged, oldContainer, newContainer };
   }
 

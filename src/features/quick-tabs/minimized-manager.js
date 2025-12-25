@@ -137,26 +137,26 @@ function _logSnapshotValidationResult(valid, errors, snapshot, context) {
  */
 export function validateSnapshotIntegrity(snapshot, context = 'unknown') {
   const errors = [];
-  
+
   // Check if snapshot exists
   if (!snapshot) {
     errors.push('Snapshot is null or undefined');
     console.warn('[SNAPSHOT_VALIDATE] Validation failed:', { context, errors });
     return { valid: false, errors };
   }
-  
+
   // Validate position and size using helpers
   _validateSnapshotPosition(snapshot.savedPosition, errors);
   _validateSnapshotSize(snapshot.savedSize, errors);
-  
+
   // Check window reference (optional but logged)
   if (!snapshot.window) {
     console.log('[SNAPSHOT_VALIDATE] Warning: Snapshot has no window reference:', { context });
   }
-  
+
   const valid = errors.length === 0;
   _logSnapshotValidationResult(valid, errors, snapshot, context);
-  
+
   return { valid, errors };
 }
 
@@ -172,7 +172,7 @@ export function validateSnapshotIntegrity(snapshot, context = 'unknown') {
 
 // v1.6.3.10-v10 - FIX Issue #11: Adoption lock timeout constants
 const ADOPTION_LOCK_TIMEOUT_MS = 10000; // 10 seconds max lock duration
-const ADOPTION_LOCK_WARNING_MS = 5000;  // Warn after 5 seconds
+const ADOPTION_LOCK_WARNING_MS = 5000; // Warn after 5 seconds
 
 export class MinimizedManager {
   /**
@@ -205,10 +205,10 @@ export class MinimizedManager {
   /**
    * Acquire adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
-   * 
+   *
    * The lock prevents restore operations from proceeding while adoption is in flight.
    * Includes timeout and escalation mechanism to prevent indefinite waits.
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    * @param {string} reason - Reason for acquiring lock (for logging)
    * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
@@ -226,7 +226,7 @@ export class MinimizedManager {
       timeout: ADOPTION_LOCK_TIMEOUT_MS,
       timestamp: new Date().toISOString()
     });
-    
+
     let timeoutId = null;
     try {
       await Promise.race([
@@ -258,7 +258,7 @@ export class MinimizedManager {
    */
   async _handleExistingLock(existingLock, quickTabId) {
     const lockAge = Date.now() - existingLock.timestamp;
-    
+
     // Force-release stale locks
     if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
       console.warn('[ADOPTION][MinimizedManager] LOCK_FORCE_RELEASE:', {
@@ -271,9 +271,13 @@ export class MinimizedManager {
       this._forcedLockReleaseCount++;
       return;
     }
-    
+
     // Wait for existing lock
-    await this._waitForExistingLockWithTimeout(existingLock, quickTabId, ADOPTION_LOCK_TIMEOUT_MS - lockAge);
+    await this._waitForExistingLockWithTimeout(
+      existingLock,
+      quickTabId,
+      ADOPTION_LOCK_TIMEOUT_MS - lockAge
+    );
   }
 
   /**
@@ -283,8 +287,10 @@ export class MinimizedManager {
    */
   _createNewAdoptionLock(quickTabId, reason) {
     let resolver;
-    const promise = new Promise(resolve => { resolver = resolve; });
-    
+    const promise = new Promise(resolve => {
+      resolver = resolve;
+    });
+
     const warningTimeoutId = setTimeout(() => {
       console.warn('[ADOPTION][MinimizedManager] LOCK_WARNING:', {
         quickTabId,
@@ -293,7 +299,7 @@ export class MinimizedManager {
         timestamp: new Date().toISOString()
       });
     }, ADOPTION_LOCK_WARNING_MS);
-    
+
     const timeoutId = setTimeout(() => {
       console.error('[ADOPTION][MinimizedManager] LOCK_TIMEOUT_ESCALATION:', {
         quickTabId,
@@ -305,7 +311,7 @@ export class MinimizedManager {
       this._forceReleaseAdoptionLock(quickTabId);
       this._forcedLockReleaseCount++;
     }, ADOPTION_LOCK_TIMEOUT_MS);
-    
+
     this._adoptionLocks.set(quickTabId, {
       timestamp: Date.now(),
       promise,
@@ -319,10 +325,10 @@ export class MinimizedManager {
   /**
    * Acquire adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Coordinate adoption with restore operations
-   * 
+   *
    * The lock prevents restore operations from proceeding while adoption is in flight.
    * Includes timeout and escalation mechanism to prevent indefinite waits.
-   * 
+   *
    * @param {string} quickTabId - Quick Tab ID
    * @param {string} reason - Reason for acquiring lock (for logging)
    * @returns {Promise<{acquired: boolean, wasForced: boolean}>}
@@ -334,25 +340,25 @@ export class MinimizedManager {
       existingLock: this._adoptionLocks.has(quickTabId),
       timestamp: new Date().toISOString()
     });
-    
+
     // Check for existing lock
     const existingLock = this._adoptionLocks.get(quickTabId);
     if (existingLock) {
       await this._handleExistingLock(existingLock, quickTabId);
     }
-    
+
     // Create new lock
     this._createNewAdoptionLock(quickTabId, reason);
-    
+
     console.log('[ADOPTION][MinimizedManager] LOCK_ACQUIRED:', {
       quickTabId,
       reason,
       timestamp: new Date().toISOString()
     });
-    
+
     return { acquired: true, wasForced: false };
   }
-  
+
   /**
    * Release adoption lock for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #9/#11: Release lock after adoption completes
@@ -368,17 +374,17 @@ export class MinimizedManager {
       });
       return;
     }
-    
+
     // Clear timeouts
     if (lock.timeoutId) clearTimeout(lock.timeoutId);
     if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
-    
+
     // Resolve the promise
     if (lock.resolver) lock.resolver();
-    
+
     // Remove the lock
     this._adoptionLocks.delete(quickTabId);
-    
+
     const holdDuration = Date.now() - lock.timestamp;
     console.log('[ADOPTION][MinimizedManager] LOCK_RELEASED:', {
       quickTabId,
@@ -386,7 +392,7 @@ export class MinimizedManager {
       timestamp: new Date().toISOString()
     });
   }
-  
+
   /**
    * Force-release adoption lock (for timeout escalation)
    * v1.6.3.10-v10 - FIX Issue #11: Force-release stale locks
@@ -395,18 +401,18 @@ export class MinimizedManager {
   _forceReleaseAdoptionLock(quickTabId) {
     const lock = this._adoptionLocks.get(quickTabId);
     if (!lock) return;
-    
+
     // Clear timeouts
     if (lock.timeoutId) clearTimeout(lock.timeoutId);
     if (lock.warningTimeoutId) clearTimeout(lock.warningTimeoutId);
-    
+
     // Resolve the promise
     if (lock.resolver) lock.resolver();
-    
+
     // Remove the lock
     this._adoptionLocks.delete(quickTabId);
   }
-  
+
   /**
    * Check if adoption lock is held for a Quick Tab
    * v1.6.3.10-v10 - FIX Issue #12: Check adoption state before ownership check
@@ -424,7 +430,7 @@ export class MinimizedManager {
       reason: lock.reason
     };
   }
-  
+
   /**
    * Update snapshot's originTabId during adoption
    * v1.6.3.10-v10 - FIX Issue #10: Update snapshot when adoption occurs
@@ -433,7 +439,8 @@ export class MinimizedManager {
    * @returns {boolean} True if updated, false if snapshot not found
    */
   updateSnapshotOriginTabId(quickTabId, newOriginTabId) {
-    const snapshot = this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId);
+    const snapshot =
+      this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId);
     if (!snapshot) {
       console.warn('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID_FAILED:', {
         quickTabId,
@@ -443,20 +450,20 @@ export class MinimizedManager {
       });
       return false;
     }
-    
+
     const oldOriginTabId = snapshot.savedOriginTabId;
     snapshot.savedOriginTabId = newOriginTabId;
-    
+
     console.log('[ADOPTION][MinimizedManager] UPDATE_ORIGIN_TAB_ID:', {
       quickTabId,
       oldOriginTabId,
       newOriginTabId,
       timestamp: new Date().toISOString()
     });
-    
+
     return true;
   }
-  
+
   /**
    * Cleanup stale adoption locks on startup
    * v1.6.3.10-v10 - FIX Issue #11: Clear any leftover locks from crashes/restarts
@@ -464,7 +471,7 @@ export class MinimizedManager {
   cleanupStaleAdoptionLocks() {
     const now = Date.now();
     let cleanedCount = 0;
-    
+
     for (const [quickTabId, lock] of this._adoptionLocks.entries()) {
       const lockAge = now - lock.timestamp;
       if (lockAge >= ADOPTION_LOCK_TIMEOUT_MS) {
@@ -472,7 +479,7 @@ export class MinimizedManager {
         cleanedCount++;
       }
     }
-    
+
     if (cleanedCount > 0) {
       console.log('[ADOPTION][MinimizedManager] STARTUP_CLEANUP:', {
         cleanedLocks: cleanedCount,
@@ -625,7 +632,7 @@ export class MinimizedManager {
   restore(id) {
     const restoreStartTime = Date.now();
     const restoreAttemptId = `restore-${id}-${restoreStartTime}`;
-    
+
     // v1.6.4.15 - FIX Issue #17: Log restore attempt timing
     console.log('[RESTORE] Attempt started:', {
       quickTabId: id,
@@ -816,10 +823,13 @@ export class MinimizedManager {
 
     // v1.6.3.10-v7 - FIX Issue #12: Lifecycle guard - defer if restore in progress
     if (snapshot.isRestoring) {
-      console.debug('[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration deferred (isRestoring=true):', {
-        id,
-        deferMs: DEFERRED_EXPIRATION_WAIT_MS
-      });
+      console.debug(
+        '[MinimizedManager] 🔒 SNAPSHOT_LIFECYCLE: Expiration deferred (isRestoring=true):',
+        {
+          id,
+          deferMs: DEFERRED_EXPIRATION_WAIT_MS
+        }
+      );
       // Reschedule expiration check after deferred wait
       this._snapshotExpirationTimeouts.delete(id);
       const deferredTimeoutId = setTimeout(() => {
@@ -830,10 +840,13 @@ export class MinimizedManager {
     }
 
     // Snapshot is not being restored - safe to expire
-    console.warn('[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):', {
-      id,
-      timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
-    });
+    console.warn(
+      '[MinimizedManager] Snapshot expired (UICoordinator never called clearSnapshot):',
+      {
+        id,
+        timeoutMs: PENDING_SNAPSHOT_EXPIRATION_MS
+      }
+    );
     this.pendingClearSnapshots.delete(id);
     this._snapshotExpirationTimeouts.delete(id);
   }
@@ -1357,9 +1370,7 @@ export class MinimizedManager {
    * @returns {Object|null} Snapshot object or null
    */
   _findSnapshotInAllMaps(quickTabId) {
-    return this.minimizedTabs.get(quickTabId) || 
-           this.pendingClearSnapshots.get(quickTabId) || 
-           null;
+    return this.minimizedTabs.get(quickTabId) || this.pendingClearSnapshots.get(quickTabId) || null;
   }
 
   /**
@@ -1370,7 +1381,7 @@ export class MinimizedManager {
    */
   getSnapshotOriginTabId(quickTabId) {
     const snapshot = this._findSnapshotInAllMaps(quickTabId);
-    
+
     if (!snapshot) {
       return null;
     }

@@ -77,9 +77,8 @@ const relevantMemories = await searchMemories({
   - `src/content.js` - Score 9.09
   - `background.js` - Score 8.40
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating,
-storage quota monitoring, code health 9.0+, render queue priority, dead code
-removal
+**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
+quota monitoring, code health 9.0+, render queue priority, dead code removal
 
 **v1.6.3.6 Fixes:**
 
@@ -183,8 +182,8 @@ removal
 
 ### Phase 3: Implementation
 
-**Key Patterns:** Memoization/Caching (Map), Debouncing/Throttling,
-Lazy Loading (dynamic import), Batch Operations, Algorithm Improvement (Set vs Array)
+**Key Patterns:** Memoization/Caching (Map), Debouncing/Throttling, Lazy Loading
+(dynamic import), Batch Operations, Algorithm Improvement (Set vs Array)
 
 ### Phase 4: Verification
 
@@ -199,8 +198,8 @@ Lazy Loading (dynamic import), Batch Operations, Algorithm Improvement (Set vs A
 **MANDATORY:** Context7 (API docs), Perplexity (optimization patterns), ESLint,
 CodeScene, Agentic-Tools (memories), Jest (tests), Codecov (coverage)
 
-**Workflow:** Search memories → Profile BEFORE → Research → Implement → Measure →
-Lint → Test AFTER → Store insights → Commit memory
+**Workflow:** Search memories → Profile BEFORE → Research → Implement → Measure
+→ Lint → Test AFTER → Store insights → Commit memory
 
 ---
 
@@ -224,10 +223,9 @@ Lint → Test AFTER → Store insights → Commit memory
 
 ## Optimization Anti-Patterns
 
-❌ **Premature Optimization** → Profile first
-❌ **Micro-optimizations** → Focus on >5% improvements
-❌ **Sacrificing Readability** → Maintainability > minor gains
-❌ **Breaking Behavior** → Optimization shouldn't change functionality
+❌ **Premature Optimization** → Profile first ❌ **Micro-optimizations** → Focus
+on >5% improvements ❌ **Sacrificing Readability** → Maintainability > minor
+gains ❌ **Breaking Behavior** → Optimization shouldn't change functionality
 
 ---
 

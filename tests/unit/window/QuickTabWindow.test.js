@@ -3,6 +3,7 @@
  *
  * Comprehensive tests for QuickTabWindow component
  * Target: 70%+ coverage (render method is complex, focus on critical paths)
+ * v1.6.4 - Removed Solo/Mute tests (functionality removed)
  *
  * @created 2025-11-19
  * @refactoring Phase 4.5 - Feature Layer Test Coverage
@@ -33,7 +34,7 @@ describe('QuickTabWindow', () => {
     // Clear all mocks
     jest.clearAllMocks();
 
-    // Setup default options
+    // Setup default options (v1.6.4 - Removed soloedOnTabs/mutedOnTabs and onSolo/onMute)
     options = {
       id: 'test-tab-1',
       url: 'https://example.com',
@@ -44,20 +45,16 @@ describe('QuickTabWindow', () => {
       width: 800,
       height: 600,
       minimized: false,
-      soloedOnTabs: [],
-      mutedOnTabs: [],
       onDestroy: jest.fn(),
       onMinimize: jest.fn(),
       onFocus: jest.fn(),
       onPositionChange: jest.fn(),
       onPositionChangeEnd: jest.fn(),
       onSizeChange: jest.fn(),
-      onSizeChangeEnd: jest.fn(),
-      onSolo: jest.fn(),
-      onMute: jest.fn()
+      onSizeChangeEnd: jest.fn()
     };
 
-    // Mock TitlebarBuilder
+    // Mock TitlebarBuilder (v1.6.4 - Removed soloButton/muteButton)
     mockTitlebarBuilder = {
       config: {},
       build: jest.fn(() => {
@@ -66,8 +63,6 @@ describe('QuickTabWindow', () => {
         return titlebar;
       }),
       updateTitle: jest.fn(),
-      soloButton: document.createElement('button'),
-      muteButton: document.createElement('button'),
       titleElement: document.createElement('div')
     };
     TitlebarBuilder.mockImplementation(() => mockTitlebarBuilder);
@@ -160,26 +155,12 @@ describe('QuickTabWindow', () => {
       });
     });
 
+    // v1.6.4 - Solo/Mute Visibility Properties tests removed
     describe('Visibility Properties', () => {
       test('should initialize visibility properties', () => {
         const window = new QuickTabWindow(options);
 
         expect(window.minimized).toBe(false);
-        expect(window.soloedOnTabs).toEqual([]);
-        expect(window.mutedOnTabs).toEqual([]);
-      });
-
-      test('should preserve solo/mute arrays from options', () => {
-        const visibilityOptions = {
-          ...options,
-          soloedOnTabs: [123, 456],
-          mutedOnTabs: [789]
-        };
-
-        const window = new QuickTabWindow(visibilityOptions);
-
-        expect(window.soloedOnTabs).toEqual([123, 456]);
-        expect(window.mutedOnTabs).toEqual([789]);
       });
 
       test('should initialize minimized state', () => {
@@ -194,6 +175,7 @@ describe('QuickTabWindow', () => {
       });
     });
 
+    // v1.6.4 - Removed onSolo/onMute callbacks tests
     describe('Callbacks', () => {
       test('should assign all callbacks from options', () => {
         const window = new QuickTabWindow(options);
@@ -205,8 +187,6 @@ describe('QuickTabWindow', () => {
         expect(window.onPositionChangeEnd).toBe(options.onPositionChangeEnd);
         expect(window.onSizeChange).toBe(options.onSizeChange);
         expect(window.onSizeChangeEnd).toBe(options.onSizeChangeEnd);
-        expect(window.onSolo).toBe(options.onSolo);
-        expect(window.onMute).toBe(options.onMute);
       });
 
       test('should use noop for missing callbacks', () => {
@@ -225,11 +205,10 @@ describe('QuickTabWindow', () => {
         expect(() => window.onPositionChangeEnd()).not.toThrow();
         expect(() => window.onSizeChange()).not.toThrow();
         expect(() => window.onSizeChangeEnd()).not.toThrow();
-        expect(() => window.onSolo()).not.toThrow();
-        expect(() => window.onMute()).not.toThrow();
       });
     });
 
+    // v1.6.4 - Removed soloButton/muteButton from internal state
     describe('Internal State', () => {
       test('should initialize internal state properties', () => {
         const window = new QuickTabWindow(options);
@@ -241,8 +220,6 @@ describe('QuickTabWindow', () => {
         expect(window.isResizing).toBe(false);
         expect(window.resizeStartWidth).toBe(0);
         expect(window.resizeStartHeight).toBe(0);
-        expect(window.soloButton).toBeNull();
-        expect(window.muteButton).toBeNull();
         expect(window.dragController).toBeNull();
         expect(window.resizeController).toBeNull();
       });
@@ -312,13 +289,13 @@ describe('QuickTabWindow', () => {
       const window = new QuickTabWindow(options);
       window.render();
 
+      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from builderConfig
       const builderConfig = TitlebarBuilder.mock.calls[0][0];
       expect(builderConfig.title).toBe('Test Page');
       expect(builderConfig.url).toBe('https://example.com');
-      expect(builderConfig.soloedOnTabs).toEqual([]);
-      expect(builderConfig.mutedOnTabs).toEqual([]);
     });
 
+    // v1.6.4 - Removed onSolo/onMute callbacks test
     test('should pass correct callbacks to TitlebarBuilder', () => {
       const window = new QuickTabWindow(options);
       window.render();
@@ -326,18 +303,10 @@ describe('QuickTabWindow', () => {
       const builderCallbacks = TitlebarBuilder.mock.calls[0][1];
       expect(builderCallbacks.onClose).toBeDefined();
       expect(builderCallbacks.onMinimize).toBeDefined();
-      expect(builderCallbacks.onSolo).toBeDefined();
-      expect(builderCallbacks.onMute).toBeDefined();
       expect(builderCallbacks.onOpenInTab).toBeDefined();
     });
 
-    test('should store button references', () => {
-      const window = new QuickTabWindow(options);
-      window.render();
-
-      expect(window.soloButton).toBe(mockTitlebarBuilder.soloButton);
-      expect(window.muteButton).toBe(mockTitlebarBuilder.muteButton);
-    });
+    // v1.6.4 - Removed soloButton/muteButton test
 
     test('should create iframe element', () => {
       const window = new QuickTabWindow(options);
@@ -831,6 +800,7 @@ describe('QuickTabWindow', () => {
 
       const state = window.getState();
 
+      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from state
       expect(state).toEqual({
         id: 'test-tab-1',
         url: 'https://example.com',
@@ -841,9 +811,7 @@ describe('QuickTabWindow', () => {
         title: 'Test Page',
         cookieStoreId: 'firefox-default',
         minimized: false,
-        zIndex: 1000000,
-        soloedOnTabs: [],
-        mutedOnTabs: []
+        zIndex: 1000000
       });
     });
 
@@ -862,21 +830,7 @@ describe('QuickTabWindow', () => {
       expect(state.height).toBe(800);
     });
 
-    test('should include solo/mute arrays', () => {
-      const visibilityOptions = {
-        ...options,
-        soloedOnTabs: [123, 456],
-        mutedOnTabs: [789]
-      };
-
-      const window = new QuickTabWindow(visibilityOptions);
-      window.render();
-
-      const state = window.getState();
-
-      expect(state.soloedOnTabs).toEqual([123, 456]);
-      expect(state.mutedOnTabs).toEqual([789]);
-    });
+    // v1.6.4 - Removed solo/mute arrays test
 
     test('should include minimized state', () => {
       const window = new QuickTabWindow(options);
@@ -889,250 +843,7 @@ describe('QuickTabWindow', () => {
     });
   });
 
-  describe('Solo/Mute Functionality', () => {
-    beforeEach(() => {
-      // Setup global quickTabsManager mock
-      global.window = {
-        quickTabsManager: {
-          currentTabId: 123
-        }
-      };
-    });
-
-    afterEach(() => {
-      delete global.window;
-    });
-
-    describe('isCurrentTabSoloed()', () => {
-      test('should return false when soloedOnTabs is empty', () => {
-        const window = new QuickTabWindow(options);
-
-        expect(window.isCurrentTabSoloed()).toBe(false);
-      });
-
-      test('should return true when current tab is in solo list', () => {
-        const soloOptions = {
-          ...options,
-          soloedOnTabs: [123]
-        };
-
-        const window = new QuickTabWindow(soloOptions);
-
-        expect(window.isCurrentTabSoloed()).toBe(true);
-      });
-
-      test('should return false when current tab is not in solo list', () => {
-        const soloOptions = {
-          ...options,
-          soloedOnTabs: [456, 789]
-        };
-
-        const window = new QuickTabWindow(soloOptions);
-
-        expect(window.isCurrentTabSoloed()).toBe(false);
-      });
-
-      test('should return false when quickTabsManager is not available', () => {
-        delete global.window.quickTabsManager;
-
-        const soloOptions = {
-          ...options,
-          soloedOnTabs: [123]
-        };
-
-        const window = new QuickTabWindow(soloOptions);
-
-        // Returns undefined when quickTabsManager is missing, but condition treats as falsy
-        expect(window.isCurrentTabSoloed()).toBeFalsy();
-      });
-    });
-
-    describe('isCurrentTabMuted()', () => {
-      test('should return false when mutedOnTabs is empty', () => {
-        const window = new QuickTabWindow(options);
-
-        expect(window.isCurrentTabMuted()).toBe(false);
-      });
-
-      test('should return true when current tab is in mute list', () => {
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [123]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-
-        expect(window.isCurrentTabMuted()).toBe(true);
-      });
-
-      test('should return false when current tab is not in mute list', () => {
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [456, 789]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-
-        expect(window.isCurrentTabMuted()).toBe(false);
-      });
-
-      test('should return false when quickTabsManager is not available', () => {
-        delete global.window.quickTabsManager;
-
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [123]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-
-        // Returns undefined when quickTabsManager is missing, but condition treats as falsy
-        expect(window.isCurrentTabMuted()).toBeFalsy();
-      });
-    });
-
-    describe('toggleSolo()', () => {
-      test('should add current tab to solo list when not soloed', () => {
-        const window = new QuickTabWindow(options);
-        window.render();
-
-        const soloBtn = window.soloButton;
-        window.toggleSolo(soloBtn);
-
-        expect(window.soloedOnTabs).toEqual([123]);
-        expect(options.onSolo).toHaveBeenCalledWith('test-tab-1', [123]);
-      });
-
-      test('should clear mute list when soloing', () => {
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [456]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-        window.render();
-
-        const soloBtn = window.soloButton;
-        window.toggleSolo(soloBtn);
-
-        expect(window.soloedOnTabs).toEqual([123]);
-        expect(window.mutedOnTabs).toEqual([]);
-      });
-
-      test('should remove current tab from solo list when already soloed', () => {
-        const soloOptions = {
-          ...options,
-          soloedOnTabs: [123, 456]
-        };
-
-        const window = new QuickTabWindow(soloOptions);
-        window.render();
-
-        const soloBtn = window.soloButton;
-        window.toggleSolo(soloBtn);
-
-        expect(window.soloedOnTabs).toEqual([456]);
-        expect(options.onSolo).toHaveBeenCalledWith('test-tab-1', [456]);
-      });
-
-      test('should not toggle when quickTabsManager is not available', () => {
-        delete global.window.quickTabsManager;
-
-        const window = new QuickTabWindow(options);
-        window.render();
-
-        const soloBtn = window.soloButton;
-        window.toggleSolo(soloBtn);
-
-        expect(window.soloedOnTabs).toEqual([]);
-        expect(options.onSolo).not.toHaveBeenCalled();
-      });
-    });
-
-    describe('toggleMute()', () => {
-      test('should add current tab to mute list when not muted', () => {
-        const window = new QuickTabWindow(options);
-        window.render();
-
-        const muteBtn = window.muteButton;
-        window.toggleMute(muteBtn);
-
-        expect(window.mutedOnTabs).toEqual([123]);
-        expect(options.onMute).toHaveBeenCalledWith('test-tab-1', [123]);
-      });
-
-      test('should clear solo list when muting', () => {
-        const soloOptions = {
-          ...options,
-          soloedOnTabs: [456]
-        };
-
-        const window = new QuickTabWindow(soloOptions);
-        window.render();
-
-        const muteBtn = window.muteButton;
-        window.toggleMute(muteBtn);
-
-        expect(window.mutedOnTabs).toEqual([123]);
-        expect(window.soloedOnTabs).toEqual([]);
-      });
-
-      test('should remove current tab from mute list when already muted', () => {
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [123, 456]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-        window.render();
-
-        const muteBtn = window.muteButton;
-        window.toggleMute(muteBtn);
-
-        expect(window.mutedOnTabs).toEqual([456]);
-        expect(options.onMute).toHaveBeenCalledWith('test-tab-1', [456]);
-      });
-
-      test('should not add duplicate tab IDs to mute list', () => {
-        const muteOptions = {
-          ...options,
-          mutedOnTabs: [456]
-        };
-
-        const window = new QuickTabWindow(muteOptions);
-        window.render();
-
-        const muteBtn = window.muteButton;
-        // Toggle on
-        window.toggleMute(muteBtn);
-        // Toggle off
-        window.mutedOnTabs = [456]; // Reset
-        window.toggleMute(muteBtn);
-
-        expect(window.mutedOnTabs).toEqual([456, 123]);
-        // Second toggle should only add once
-        window.mutedOnTabs = [456, 123];
-        window.toggleMute(muteBtn); // Toggle off
-        window.mutedOnTabs = [456];
-        window.toggleMute(muteBtn); // Toggle on again
-
-        expect(window.mutedOnTabs).toEqual([456, 123]);
-      });
-
-      test('should not toggle when quickTabsManager is not available', () => {
-        delete global.window.quickTabsManager;
-
-        const window = new QuickTabWindow(options);
-        window.render();
-
-        const muteBtn = window.muteButton;
-        window.toggleMute(muteBtn);
-
-        expect(window.mutedOnTabs).toEqual([]);
-        expect(options.onMute).not.toHaveBeenCalled();
-      });
-    });
-  });
+  // v1.6.4 - Removed entire Solo/Mute Functionality describe block
 
   describe('createQuickTabWindow() factory', () => {
     test('should create and render window', () => {

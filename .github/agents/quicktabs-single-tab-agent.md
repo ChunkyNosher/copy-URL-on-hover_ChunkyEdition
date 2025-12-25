@@ -48,7 +48,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in `handleCreate()`
+- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in
+  `handleCreate()`
 - **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`
 - **Code Health 9.09** - `src/content.js` improved from 8.71
 
@@ -86,4 +87,5 @@ snapshot TTL race fix
 ---
 
 **Your strength: Individual Quick Tab isolation with v1.6.3.11-v8 identity state
-logging, retryable errors, content script lifecycle, storage.onChanged PRIMARY.**
+logging, retryable errors, content script lifecycle, storage.onChanged
+PRIMARY.**

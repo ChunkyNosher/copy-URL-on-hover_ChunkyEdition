@@ -94,14 +94,12 @@ export class QuickTabWindow {
   }
 
   /**
-   * Initialize visibility-related properties (minimized, solo, mute)
+   * Initialize visibility-related properties (minimized state)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
+   * v1.6.4 - Removed Solo/Mute functionality
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
-    // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
-    this.soloedOnTabs = options.soloedOnTabs || [];
-    this.mutedOnTabs = options.mutedOnTabs || [];
     // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
     // This removes tight coupling to window.quickTabsManager.currentTabId
     this.currentTabId = options.currentTabId ?? null;
@@ -110,6 +108,7 @@ export class QuickTabWindow {
   /**
    * Initialize lifecycle and event callbacks
    * v1.6.0 Phase 2.4 - Table-driven to reduce complexity
+   * v1.6.4 - Removed Solo/Mute callbacks
    */
   _initializeCallbacks(options) {
     const noop = () => {};
@@ -120,9 +119,7 @@ export class QuickTabWindow {
       'onPositionChange',
       'onPositionChangeEnd',
       'onSizeChange',
-      'onSizeChangeEnd',
-      'onSolo', // v1.5.9.13
-      'onMute' // v1.5.9.13
+      'onSizeChangeEnd'
     ];
 
     callbacks.forEach(name => {
@@ -133,6 +130,7 @@ export class QuickTabWindow {
   /**
    * Re-wire callbacks after restore to capture fresh execution context
    * v1.6.3.5-v11 - FIX Issue #1: Stale closure references after restore
+   * v1.6.4 - Removed Solo/Mute callbacks
    *
    * After browser restart with hydration OR minimize/restore cycle, the original
    * callbacks may reference stale closure variables from construction time.
@@ -150,9 +148,7 @@ export class QuickTabWindow {
       'onPositionChange',
       'onPositionChangeEnd',
       'onSizeChange',
-      'onSizeChangeEnd',
-      'onSolo',
-      'onMute'
+      'onSizeChangeEnd'
     ];
     const rewired = [];
 
@@ -178,6 +174,7 @@ export class QuickTabWindow {
    * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
    * v1.6.3.5-v11 - FIX Issue #4: Add isMinimizing, isRestoring operation-specific flags
    * v1.6.4.16 - FIX Issue #24/#28: Add state sync and sidebar lifecycle tracking
+   * v1.6.4 - Removed Solo/Mute button references
    */
   _initializeState() {
     this.container = null;
@@ -190,8 +187,6 @@ export class QuickTabWindow {
     // v1.6.0 Phase 2.9 - dragStartX/Y removed, managed internally by DragController
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
-    this.soloButton = null; // v1.5.9.13 - Reference to solo button
-    this.muteButton = null; // v1.5.9.13 - Reference to mute button
     // v1.6.0 Phase 2.9 - Controllers for drag and resize
     this.dragController = null;
     this.resizeController = null;
@@ -204,12 +199,12 @@ export class QuickTabWindow {
     // instead of using a broad time-based window that suppresses ALL callbacks
     this.isMinimizing = false;
     this.isRestoring = false;
-    
+
     // v1.6.4.16 - FIX Issue #24: State synchronization tracking
     // Track last confirmed state for bidirectional sync
     this._lastSyncedState = null;
     this._pendingStateSync = false;
-    
+
     // v1.6.4.16 - FIX Issue #28: Sidebar lifecycle tracking
     // Track origin tab ID for lifecycle monitoring
     this.originTabId = null;
@@ -228,7 +223,7 @@ export class QuickTabWindow {
       originTabId: tabId
     });
   }
-  
+
   /**
    * Acknowledge state sync from content script
    * v1.6.4.16 - FIX Issue #24: State synchronization acknowledgment
@@ -237,7 +232,7 @@ export class QuickTabWindow {
   acknowledgeStateSync(state) {
     this._lastSyncedState = state;
     this._pendingStateSync = false;
-    
+
     console.log('[STATE_SYNC] State acknowledged:', {
       quickTabId: this.id,
       minimized: state?.minimized,
@@ -245,7 +240,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-  
+
   /**
    * Mark state sync as pending
    * v1.6.4.16 - FIX Issue #24: Track pending state sync
@@ -257,7 +252,7 @@ export class QuickTabWindow {
       timestamp: Date.now()
     });
   }
-  
+
   /**
    * Check if state sync is pending
    * v1.6.4.16 - FIX Issue #24: Check pending state
@@ -502,8 +497,6 @@ export class QuickTabWindow {
         id: this.id,
         title: this.title,
         url: this.url,
-        soloedOnTabs: this.soloedOnTabs,
-        mutedOnTabs: this.mutedOnTabs,
         currentTabId: this.currentTabId,
         iframe: null,
         showDebugId: this.showDebugId
@@ -511,8 +504,6 @@ export class QuickTabWindow {
       {
         onClose: () => this.destroy(),
         onMinimize: () => this.minimize(),
-        onSolo: btn => this.toggleSolo(btn),
-        onMute: btn => this.toggleMute(btn),
         onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
           await browser.runtime.sendMessage({
@@ -529,8 +520,6 @@ export class QuickTabWindow {
     );
 
     const titlebar = this.titlebarBuilder.build();
-    this.soloButton = this.titlebarBuilder.soloButton;
-    this.muteButton = this.titlebarBuilder.muteButton;
     return titlebar;
   }
 
@@ -907,21 +896,23 @@ export class QuickTabWindow {
       console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback:', this.id);
       element.remove();
     } else {
-      console.log('[QuickTabWindow][minimize] No container or fallback DOM element found:', this.id);
+      console.log(
+        '[QuickTabWindow][minimize] No container or fallback DOM element found:',
+        this.id
+      );
     }
   }
 
   /**
    * Clear all DOM references after minimize
    * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * v1.6.4 - Removed Solo/Mute button references
    * @private
    */
   _clearDOMReferences() {
     this.container = null;
     this.iframe = null;
     this.titlebarBuilder = null;
-    this.soloButton = null;
-    this.muteButton = null;
     this.rendered = false;
   }
 
@@ -944,7 +935,9 @@ export class QuickTabWindow {
     this.minimized = true;
 
     console.log('[QuickTabWindow][minimize] ENTRY:', {
-      id: this.id, url: this.url, title: this.title,
+      id: this.id,
+      url: this.url,
+      title: this.title,
       position: { left: this.left, top: this.top },
       size: { width: this.width, height: this.height }
     });
@@ -965,14 +958,17 @@ export class QuickTabWindow {
     this._clearDOMReferences();
 
     console.log('[QuickTabWindow][minimize] Container cleared:', {
-      id: this.id, hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+      id: this.id,
+      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
     });
 
     // Clear operation flag
     this.isMinimizing = false;
 
     console.log('[QuickTabWindow][minimize] EXIT:', {
-      id: this.id, minimized: this.minimized, rendered: this.rendered
+      id: this.id,
+      minimized: this.minimized,
+      rendered: this.rendered
     });
 
     this.onMinimize(this.id);
@@ -1199,72 +1195,6 @@ export class QuickTabWindow {
   }
 
   /**
-   * v1.5.9.13 - Check if current tab is in solo list
-   * v1.6.3.5-v5 - FIX Issue #2: Use instance currentTabId instead of global access
-   */
-  isCurrentTabSoloed() {
-    const tabId = this._getCurrentTabId();
-    return (
-      this.soloedOnTabs &&
-      this.soloedOnTabs.length > 0 &&
-      tabId !== null &&
-      this.soloedOnTabs.includes(tabId)
-    );
-  }
-
-  /**
-   * v1.5.9.13 - Check if current tab is in mute list
-   * v1.6.3.5-v5 - FIX Issue #2: Use instance currentTabId instead of global access
-   */
-  isCurrentTabMuted() {
-    const tabId = this._getCurrentTabId();
-    return (
-      this.mutedOnTabs &&
-      this.mutedOnTabs.length > 0 &&
-      tabId !== null &&
-      this.mutedOnTabs.includes(tabId)
-    );
-  }
-
-  /**
-   * v1.5.9.13 - Toggle solo state for current tab
-   */
-  toggleSolo(soloBtn) {
-    const currentTabId = this._validateCurrentTabId('solo');
-    if (!currentTabId) return;
-
-    if (this.isCurrentTabSoloed()) {
-      this._unsoloCurrentTab(soloBtn, currentTabId);
-    } else {
-      this._soloCurrentTab(soloBtn, currentTabId);
-    }
-
-    // Notify parent manager
-    if (this.onSolo) {
-      this.onSolo(this.id, this.soloedOnTabs);
-    }
-  }
-
-  /**
-   * v1.5.9.13 - Toggle mute state for current tab
-   */
-  toggleMute(muteBtn) {
-    const currentTabId = this._validateCurrentTabId('mute');
-    if (!currentTabId) return;
-
-    if (this.isCurrentTabMuted()) {
-      this._unmuteCurrentTab(muteBtn, currentTabId);
-    } else {
-      this._muteCurrentTab(muteBtn, currentTabId);
-    }
-
-    // Notify parent manager
-    if (this.onMute) {
-      this.onMute(this.id, this.mutedOnTabs);
-    }
-  }
-
-  /**
    * Get the current tab ID, preferring instance property over global fallback
    * v1.6.3.5-v5 - FIX Issue #2: Helper for decoupled currentTabId access
    * @private
@@ -1292,101 +1222,6 @@ export class QuickTabWindow {
    */
   setCurrentTabId(tabId) {
     this.currentTabId = tabId;
-  }
-
-  /**
-   * Validate current tab ID availability
-   * v1.6.3.5-v5 - FIX Issue #2: Use instance method instead of global access
-   * @private
-   * @param {string} action - Action name for logging ('solo' or 'mute')
-   * @returns {number|null} Current tab ID or null if unavailable
-   */
-  _validateCurrentTabId(action) {
-    console.log(
-      `[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`,
-      this.id
-    );
-
-    const tabId = this._getCurrentTabId();
-    if (tabId === null) {
-      console.warn(
-        `[QuickTabWindow] Cannot toggle ${action} - no current tab ID available. Pass currentTabId in constructor or call setCurrentTabId().`
-      );
-      return null;
-    }
-
-    return tabId;
-  }
-
-  /**
-   * Un-solo current tab
-   * @private
-   */
-  _unsoloCurrentTab(soloBtn, currentTabId) {
-    this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
-    soloBtn.textContent = '⭕';
-    soloBtn.title = 'Solo (show only on this tab)';
-    soloBtn.style.background = 'transparent';
-
-    if (this.soloedOnTabs.length === 0) {
-      console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
-    }
-  }
-
-  /**
-   * Solo current tab
-   * @private
-   */
-  _soloCurrentTab(soloBtn, currentTabId) {
-    this.soloedOnTabs = [currentTabId];
-    this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-    soloBtn.textContent = '🎯';
-    soloBtn.title = 'Un-solo (show on all tabs)';
-    soloBtn.style.background = '#444';
-
-    // Update mute button if it exists
-    if (this.muteButton) {
-      this.muteButton.textContent = '🔊';
-      this.muteButton.title = 'Mute (hide on this tab)';
-      this.muteButton.style.background = 'transparent';
-    }
-
-    console.log('[QuickTabWindow] Soloed - only visible on this tab');
-  }
-
-  /**
-   * Unmute current tab
-   * @private
-   */
-  _unmuteCurrentTab(muteBtn, currentTabId) {
-    this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
-    muteBtn.textContent = '🔊';
-    muteBtn.title = 'Mute (hide on this tab)';
-    muteBtn.style.background = 'transparent';
-    console.log('[QuickTabWindow] Unmuted on this tab');
-  }
-
-  /**
-   * Mute current tab
-   * @private
-   */
-  _muteCurrentTab(muteBtn, currentTabId) {
-    if (!this.mutedOnTabs.includes(currentTabId)) {
-      this.mutedOnTabs.push(currentTabId);
-    }
-    this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
-    muteBtn.textContent = '🔇';
-    muteBtn.title = 'Unmute (show on this tab)';
-    muteBtn.style.background = '#c44';
-
-    // Update solo button if it exists
-    if (this.soloButton) {
-      this.soloButton.textContent = '⭕';
-      this.soloButton.title = 'Solo (show only on this tab)';
-      this.soloButton.style.background = 'transparent';
-    }
-
-    console.log('[QuickTabWindow] Muted on this tab');
   }
 
   /**
@@ -1551,7 +1386,7 @@ export class QuickTabWindow {
 
     // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
     this.destroyed = true;
-    
+
     // v1.6.4.16 - FIX Area C: Track cleaned up listeners
     let cleanedListenerCount = 0;
 
@@ -1580,10 +1415,6 @@ export class QuickTabWindow {
       this.titlebarBuilder = null;
     }
 
-    // v1.6.3.2 - FIX Issue #5: Clear button references
-    this.soloButton = null;
-    this.muteButton = null;
-    
     // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
     this._lastSyncedState = null;
     this._pendingStateSync = false;
@@ -1597,7 +1428,7 @@ export class QuickTabWindow {
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
-    
+
     // v1.6.4.16 - FIX Area C: Log listener cleanup summary
     console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
       quickTabId: this.id,
@@ -1629,6 +1460,7 @@ export class QuickTabWindow {
   /**
    * Get current state for persistence
    * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
+   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    */
   getState() {
     return {
@@ -1641,9 +1473,7 @@ export class QuickTabWindow {
       title: this.title,
       cookieStoreId: this.cookieStoreId,
       minimized: this.minimized,
-      zIndex: this.zIndex,
-      soloedOnTabs: this.soloedOnTabs, // v1.5.9.13
-      mutedOnTabs: this.mutedOnTabs // v1.5.9.13
+      zIndex: this.zIndex
     };
   }
 }

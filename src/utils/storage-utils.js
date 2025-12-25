@@ -102,6 +102,14 @@ export const NORMALIZATION_REJECTION_REASON = {
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
 const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
+// v1.6.3.12 - FIX Issue #14: Storage keys for z-index counter persistence
+export const ZINDEX_COUNTER_KEY = 'quickTabsZIndexCounter';
+
+// v1.6.3.12 - FIX Issue #15: Storage listener health monitoring constants
+const STORAGE_LISTENER_HEARTBEAT_INTERVAL_MS = 30000; // 30s heartbeat interval
+const STORAGE_LISTENER_HEARTBEAT_KEY = '_storage_heartbeat_';
+const STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS = 5000; // 5s for heartbeat response
+
 // v1.6.3.4-v6 - FIX Issue #1: Transaction tracking for atomic storage writes
 // Set of in-progress transaction IDs to prevent storage.onChanged race conditions
 export const IN_PROGRESS_TRANSACTIONS = new Set();
@@ -244,7 +252,7 @@ export const OWNERSHIP_FILTER_REASON = {
   TABID_MISMATCH: 'TABID_MISMATCH',
   CONTAINER_MISMATCH: 'CONTAINER_MISMATCH',
   ORPHAN_POLICY: 'ORPHAN_POLICY', // Tab owner may have closed
-  STRICT_MATCH: 'STRICT_MATCH',   // Both tabId and containerId match exactly
+  STRICT_MATCH: 'STRICT_MATCH', // Both tabId and containerId match exactly
   LEGACY_FALLBACK: 'LEGACY_FALLBACK', // originContainerId is null (pre-v4 Quick Tab)
   NO_OWNERSHIP_DATA: 'NO_OWNERSHIP_DATA' // originTabId is null - can't determine ownership
 };
@@ -315,7 +323,7 @@ function _extractTimestampFromTransactionId(transactionId) {
   const txnParts = transactionId.split('-');
   if (txnParts.length < 2) return 0;
   const parsedTs = parseInt(txnParts[1], 10);
-  return (!isNaN(parsedTs) && parsedTs > 0) ? parsedTs : 0;
+  return !isNaN(parsedTs) && parsedTs > 0 ? parsedTs : 0;
 }
 
 /**
@@ -327,32 +335,34 @@ function _extractTimestampFromTransactionId(transactionId) {
  * @returns {boolean} True if out-of-order
  */
 function _isStorageEventOutOfOrder(eventTimestamp, lastTimestamp) {
-  return eventTimestamp > 0 && 
-         lastTimestamp > 0 && 
-         eventTimestamp < (lastTimestamp - STORAGE_EVENT_ORDER_TOLERANCE_MS);
+  return (
+    eventTimestamp > 0 &&
+    lastTimestamp > 0 &&
+    eventTimestamp < lastTimestamp - STORAGE_EVENT_ORDER_TOLERANCE_MS
+  );
 }
 
 /**
  * Validate storage event ordering and log if out-of-order
  * v1.6.3.10-v10 - FIX Issue N: Detect when storage.onChanged events arrive out-of-order
- * 
+ *
  * Per MDN documentation, storage.onChanged events have no ordering guarantee.
  * This function tracks event timestamps and logs warnings when events appear to arrive
  * out of their original write order.
- * 
+ *
  * @param {Object} newValue - New storage value containing transactionId/timestamp
  * @returns {{inOrder: boolean, sequenceNumber: number, details: Object}} Ordering validation result
  */
 export function validateStorageEventOrdering(newValue) {
   lastObservedStorageEventSequence++;
   const currentSequence = lastObservedStorageEventSequence;
-  
+
   // Extract timestamp from transaction ID or explicit field
   let eventTimestamp = newValue?.timestamp ?? 0;
   if (!eventTimestamp) {
     eventTimestamp = _extractTimestampFromTransactionId(newValue?.transactionId);
   }
-  
+
   const details = {
     currentSequence,
     eventTimestamp,
@@ -361,9 +371,9 @@ export function validateStorageEventOrdering(newValue) {
     writingTabId: newValue?.writingTabId,
     timestampDelta: eventTimestamp - lastObservedStorageEventTimestamp
   };
-  
+
   const isOutOfOrder = _isStorageEventOutOfOrder(eventTimestamp, lastObservedStorageEventTimestamp);
-  
+
   if (isOutOfOrder) {
     storageEventOutOfOrderCount++;
     console.warn('[StorageUtils] v1.6.3.10-v10 STORAGE_EVENT_OUT_OF_ORDER:', {
@@ -373,12 +383,12 @@ export function validateStorageEventOrdering(newValue) {
       recommendation: 'Check for concurrent writes from multiple tabs'
     });
   }
-  
+
   // Update tracking state (always use latest timestamp regardless of order)
   if (eventTimestamp > lastObservedStorageEventTimestamp) {
     lastObservedStorageEventTimestamp = eventTimestamp;
   }
-  
+
   return { inOrder: !isOutOfOrder, sequenceNumber: currentSequence, details };
 }
 
@@ -432,7 +442,7 @@ let containerIdInitPromise = null;
  */
 export const IDENTITY_STATE_MODE = {
   INITIALIZING: 'INITIALIZING', // Identity not yet known - fail-closed
-  READY: 'READY',               // Both tabId and containerId are known
+  READY: 'READY', // Both tabId and containerId are known
   LEGACY_FALLBACK: 'LEGACY_FALLBACK' // Legacy Quick Tab without containerId
 };
 
@@ -483,7 +493,13 @@ function _ensureContainerIdInitPromise() {
  * @param {string} options.logPrefix - Log prefix for messages
  * @returns {Promise<*>} Resolved value or null on timeout
  */
-async function _waitForInitWithTimeout({ cachedValue, getPromise, timeoutMs, initType, logPrefix }) {
+async function _waitForInitWithTimeout({
+  cachedValue,
+  getPromise,
+  timeoutMs,
+  initType,
+  logPrefix
+}) {
   // Fast path: already initialized
   if (cachedValue !== null) {
     console.log(`${logPrefix} Already initialized`, {
@@ -505,7 +521,10 @@ async function _waitForInitWithTimeout({ cachedValue, getPromise, timeoutMs, ini
         return r;
       }),
       new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error(`${initType} initialization timeout`)), timeoutMs);
+        timeoutId = setTimeout(
+          () => reject(new Error(`${initType} initialization timeout`)),
+          timeoutMs
+        );
       })
     ]);
 
@@ -532,7 +551,7 @@ async function _waitForInitWithTimeout({ cachedValue, getPromise, timeoutMs, ini
  */
 function _updateIdentityStateMode() {
   const previousMode = identityStateMode;
-  
+
   if (currentWritingTabId !== null && currentWritingContainerId !== null) {
     identityStateMode = IDENTITY_STATE_MODE.READY;
   } else if (currentWritingTabId !== null && currentWritingContainerId === null) {
@@ -542,14 +561,15 @@ function _updateIdentityStateMode() {
   } else {
     identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
   }
-  
+
   // v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
   if (previousMode !== identityStateMode) {
     console.log('[Storage-Identity] STATE_TRANSITION:', {
       from: previousMode,
       to: identityStateMode,
       tabId: currentWritingTabId !== null ? `KNOWN(${currentWritingTabId})` : 'UNKNOWN',
-      containerId: currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
+      containerId:
+        currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
       isFullyReady: identityStateMode === IDENTITY_STATE_MODE.READY,
       timestamp: new Date().toISOString()
     });
@@ -674,7 +694,7 @@ function _resolveTabIdInitPromise(tabId, source) {
 
   tabIdInitResolver(tabId);
   console.log('[StorageUtils] v1.6.3.10-v6 Tab ID init promise resolved via', source);
-  
+
   // v1.6.3.10-v9 - FIX Issue G: Update identity state mode
   _updateIdentityStateMode();
 }
@@ -691,7 +711,7 @@ function _resolveContainerIdInitPromise(containerId, source) {
 
   containerIdInitResolver(containerId);
   console.log('[StorageUtils] v1.6.3.10-v9 Container ID init promise resolved via', source);
-  
+
   // Update identity state mode
   _updateIdentityStateMode();
 }
@@ -724,7 +744,7 @@ async function initWritingTabId() {
 
     // v1.6.3.10-v6 - FIX Issue #4/11: Resolve the waiting promise
     _resolveTabIdInitPromise(currentWritingTabId, 'getCurrent()');
-    
+
     // v1.6.3.10-v9 - FIX Issue S: Resolve container ID promise too
     if (currentWritingContainerId !== null) {
       _resolveContainerIdInitPromise(currentWritingContainerId, 'getCurrent()');
@@ -774,12 +794,12 @@ function _isValidPositiveInteger(tabId) {
  * @enum {string}
  */
 export const TAB_ID_CALLER_CONTEXT = {
-  CONTENT_SCRIPT: 'content-script',      // Valid: content scripts get tabId from background
-  SIDEBAR: 'sidebar',                     // Valid: sidebar gets tabId from background
-  BACKGROUND: 'background',               // WARNING: Background scripts shouldn't write Quick Tabs
-  OPTIONS_PAGE: 'options-page',           // WARNING: Options page shouldn't write Quick Tabs
-  POPUP: 'popup',                         // WARNING: Popup shouldn't write Quick Tabs
-  UNKNOWN: 'unknown'                      // WARNING: Caller didn't identify themselves
+  CONTENT_SCRIPT: 'content-script', // Valid: content scripts get tabId from background
+  SIDEBAR: 'sidebar', // Valid: sidebar gets tabId from background
+  BACKGROUND: 'background', // WARNING: Background scripts shouldn't write Quick Tabs
+  OPTIONS_PAGE: 'options-page', // WARNING: Options page shouldn't write Quick Tabs
+  POPUP: 'popup', // WARNING: Popup shouldn't write Quick Tabs
+  UNKNOWN: 'unknown' // WARNING: Caller didn't identify themselves
 };
 
 /**
@@ -803,11 +823,11 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
     previousIdentityMode: identityStateMode,
     timestamp: new Date().toISOString()
   });
-  
+
   // v1.6.3.10-v10 - FIX Issue Q: Log caller context for diagnostics
   const validContexts = [TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT, TAB_ID_CALLER_CONTEXT.SIDEBAR];
   const isValidContext = validContexts.includes(callerContext);
-  
+
   // Warn if called from non-tab context (background, options, popup shouldn't write Quick Tabs)
   if (!isValidContext) {
     console.warn('[Storage-Init] setWritingTabId: Called from non-tab context', {
@@ -815,10 +835,11 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
       tabId,
       warning: 'Only content scripts and sidebar should set writing tab ID',
       validContexts,
-      recommendation: 'Background scripts, options pages, and popups should not write Quick Tab state'
+      recommendation:
+        'Background scripts, options pages, and popups should not write Quick Tab state'
     });
   }
-  
+
   // Validate that tabId is a positive integer (browser tab IDs are always positive)
   if (!_isValidPositiveInteger(tabId)) {
     console.warn('[Storage-Init] setWritingTabId REJECTED: Invalid tabId', {
@@ -834,7 +855,7 @@ export function setWritingTabId(tabId, callerContext = TAB_ID_CALLER_CONTEXT.UNK
 
   const oldTabId = currentWritingTabId;
   currentWritingTabId = tabId;
-  
+
   // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization completion
   console.log('[Storage-Init] setWritingTabId COMPLETE:', {
     oldTabId: oldTabId !== null ? oldTabId : 'NONE',
@@ -875,7 +896,7 @@ export function setWritingContainerId(containerId) {
 
   const oldContainerId = currentWritingContainerId;
   currentWritingContainerId = normalizedContainerId;
-  
+
   // v1.6.3.10-v10 - FIX Gap 1.1: Log identity initialization completion
   console.log('[Storage-Init] setWritingContainerId COMPLETE:', {
     oldContainerId: oldContainerId !== null ? oldContainerId : 'NONE',
@@ -884,7 +905,7 @@ export function setWritingContainerId(containerId) {
     durationMs: Date.now() - setStartTime,
     timestamp: new Date().toISOString()
   });
-  
+
   // v1.6.3.10-v9 - FIX Issue S: Resolve waiting promise for waitForContainerIdInit()
   if (normalizedContainerId !== null) {
     _resolveContainerIdInitPromise(normalizedContainerId, 'setWritingContainerId()');
@@ -932,7 +953,9 @@ function _logTabIdRejection(context, originalValue, reason, extra = {}) {
 function _validateStringTabId(value, context) {
   const trimmed = value.trim();
   if (trimmed !== value) {
-    _logTabIdRejection(context, value, NORMALIZATION_REJECTION_REASON.MALFORMED_STRING, { trimmedValue: trimmed });
+    _logTabIdRejection(context, value, NORMALIZATION_REJECTION_REASON.MALFORMED_STRING, {
+      trimmedValue: trimmed
+    });
     return NORMALIZATION_REJECTION_REASON.MALFORMED_STRING;
   }
   // Only accept positive integers (no leading zeros except for "0", no negative)
@@ -951,15 +974,23 @@ function _validateStringTabId(value, context) {
  */
 function _validateNumericTabId(numericValue, context, originalValue, originalType) {
   if (Number.isNaN(numericValue)) {
-    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NAN, { originalType });
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NAN, {
+      originalType
+    });
     return NORMALIZATION_REJECTION_REASON.NAN;
   }
   if (!Number.isInteger(numericValue)) {
-    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NON_INTEGER, { originalType, numericValue });
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.NON_INTEGER, {
+      originalType,
+      numericValue
+    });
     return NORMALIZATION_REJECTION_REASON.NON_INTEGER;
   }
   if (numericValue <= 0) {
-    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.OUT_OF_RANGE, { originalType, numericValue });
+    _logTabIdRejection(context, originalValue, NORMALIZATION_REJECTION_REASON.OUT_OF_RANGE, {
+      originalType,
+      numericValue
+    });
     return NORMALIZATION_REJECTION_REASON.OUT_OF_RANGE;
   }
   return null;
@@ -1005,7 +1036,9 @@ export function normalizeOriginTabId(value, context = 'unknown') {
   // Log type conversion if one occurred (string → number)
   if (originalType === 'string') {
     console.log('[StorageUtils] normalizeOriginTabId: Type conversion (string→number)', {
-      context, originalValue: value, normalizedValue: numericValue
+      context,
+      originalValue: value,
+      normalizedValue: numericValue
     });
   }
 
@@ -1084,7 +1117,7 @@ function _isContainerMatch(normalizedOriginContainerId, currentContainerId) {
     });
     return true;
   }
-  
+
   // v1.6.3.10-v9 - FIX Issue G: Current container unknown - FAIL-CLOSED in INITIALIZING mode
   if (currentContainerId === null) {
     // v1.6.3.10-v10 - FIX Gap 5.2: Log fail-closed with warning
@@ -1099,7 +1132,7 @@ function _isContainerMatch(normalizedOriginContainerId, currentContainerId) {
     });
     return false;
   }
-  
+
   // Both have values - compare them
   const result = normalizedOriginContainerId === currentContainerId;
   // v1.6.3.10-v10 - FIX Gap 5.2: Log strict comparison result
@@ -1148,9 +1181,13 @@ function _isMatchingTabId(writingTabId, currentTabId) {
  * @private
  */
 function _logHeuristicConflict(newValue, currentTabId, heuristicsMatched) {
-  const matched = Object.entries(heuristicsMatched).filter(([, v]) => v).map(([k]) => k);
-  const unmatched = Object.entries(heuristicsMatched).filter(([, v]) => !v).map(([k]) => k);
-  
+  const matched = Object.entries(heuristicsMatched)
+    .filter(([, v]) => v)
+    .map(([k]) => k);
+  const unmatched = Object.entries(heuristicsMatched)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+
   // Only warn if we have both matches and non-matches (actual conflict)
   if (matched.length > 0 && unmatched.length > 0) {
     // v1.6.3.10-v10 - FIX Gap 8.1: Detailed heuristic conflict logging
@@ -1182,9 +1219,9 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
     instanceId: _isMatchingInstanceId(newValue.writingInstanceId),
     tabId: _isMatchingTabId(newValue.writingTabId, currentTabId)
   };
-  
+
   const matchCount = Object.values(heuristicsMatched).filter(Boolean).length;
-  
+
   // v1.6.3.10-v10 - FIX Gap 8.1: Log all heuristic evaluations
   console.log('[SelfWrite] HEURISTICS_EVALUATED:', {
     incoming: {
@@ -1201,12 +1238,12 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
     matchCount,
     isSelfWrite: matchCount > 0
   });
-  
+
   // Check for conflicts (some match, some don't)
   if (matchCount > 0 && matchCount < 3) {
     _logHeuristicConflict(newValue, currentTabId, heuristicsMatched);
   }
-  
+
   return heuristicsMatched;
 }
 
@@ -1217,12 +1254,12 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
  * v1.6.3.6-v2 - Refactored: Extracted helpers to reduce complexity
  * v1.6.3.10-v10 - FIX Issue T: Document priority order and log which heuristics matched
  * v1.6.3.10-v10 - FIX Gap 8.1: Heuristic match attribution logging
- * 
+ *
  * HEURISTIC PRIORITY ORDER (Issue T):
  * 1. transactionId - HIGHEST: Most deterministic, matches specific write operation
  * 2. instanceId - MEDIUM: Unique per tab load, survives across tab navigations
  * 3. tabId - LOWEST: Can match after page reload with different instance
- * 
+ *
  * @param {Object} newValue - New storage value with writingTabId/writingInstanceId
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
  * @returns {boolean} True if this is a self-write that should be skipped
@@ -1279,7 +1316,11 @@ export function isSelfWrite(newValue, currentTabId = null) {
  * @param {string|null} currentContainerId - Current tab's container ID (optional, uses cached if null)
  * @returns {boolean} True if this tab is the owner (can modify), false otherwise
  */
-export function canCurrentTabModifyQuickTab(tabData, currentTabId = null, currentContainerId = null) {
+export function canCurrentTabModifyQuickTab(
+  tabData,
+  currentTabId = null,
+  currentContainerId = null
+) {
   // Get current tab ID and container ID
   const tabId = currentTabId ?? currentWritingTabId;
   const containerId = currentContainerId ?? currentWritingContainerId;
@@ -1389,27 +1430,27 @@ function _determineOwnershipFilterReason({
   if (normalizedOriginTabId === null) {
     return OWNERSHIP_FILTER_REASON.NO_OWNERSHIP_DATA;
   }
-  
+
   // Legacy Quick Tab (no container info) - use legacy fallback
   if (normalizedOriginContainerId === null && isTabIdMatch) {
     return OWNERSHIP_FILTER_REASON.LEGACY_FALLBACK;
   }
-  
+
   // Both match - strict match
   if (isTabIdMatch && isContainerMatch) {
     return OWNERSHIP_FILTER_REASON.STRICT_MATCH;
   }
-  
+
   // Tab ID doesn't match
   if (!isTabIdMatch) {
     return OWNERSHIP_FILTER_REASON.TABID_MISMATCH;
   }
-  
+
   // Container doesn't match
   if (!isContainerMatch) {
     return OWNERSHIP_FILTER_REASON.CONTAINER_MISMATCH;
   }
-  
+
   // Default (should not reach here)
   return OWNERSHIP_FILTER_REASON.ORPHAN_POLICY;
 }
@@ -1438,7 +1479,10 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
     const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_filterOwnedTabs');
 
     // v1.6.3.10-v6 - FIX Issue #13: Normalize originContainerId for type safety
-    const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_filterOwnedTabs');
+    const normalizedOriginContainerId = normalizeOriginContainerId(
+      tab.originContainerId,
+      '_filterOwnedTabs'
+    );
 
     // No originTabId means we can't determine ownership - include it
     if (normalizedOriginTabId === null) {
@@ -1464,11 +1508,14 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
 
     // v1.6.3.10-v6 - FIX Issue #13: Check container ID match using helper
     // v1.6.3.10-v6 - FIX Code Review: Use _isContainerMatch helper to reduce duplication
-    const isContainerMatchResult = _isContainerMatch(normalizedOriginContainerId, normalizedCurrentContainerId);
+    const isContainerMatchResult = _isContainerMatch(
+      normalizedOriginContainerId,
+      normalizedCurrentContainerId
+    );
 
     // v1.6.3.10-v6 - FIX Issue #13: Both must match for ownership
     const isOwned = isTabIdMatch && isContainerMatchResult;
-    
+
     // v1.6.3.10-v10 - FIX Issue K: Determine filter reason for diagnostics
     // v1.6.3.12 - FIX CodeScene: Use options object pattern
     const filterReason = _determineOwnershipFilterReason({
@@ -1518,7 +1565,10 @@ function _filterOwnedTabs(tabs, tabId, containerId = null) {
  */
 function _isTabOwnedByContext(tab, tabId, normalizedCurrentContainerId) {
   const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_isTabOwnedByContext');
-  const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_isTabOwnedByContext');
+  const normalizedOriginContainerId = normalizeOriginContainerId(
+    tab.originContainerId,
+    '_isTabOwnedByContext'
+  );
 
   // Legacy tabs with null originTabId are always included
   if (normalizedOriginTabId === null) return true;
@@ -1551,7 +1601,10 @@ function _buildFilteredTabDetails(filteredTabs) {
     originTabIdType: typeof t.originTabId,
     originTabIdNormalized: normalizeOriginTabId(t.originTabId, '_buildFilteredTabDetails'),
     originContainerId: t.originContainerId,
-    originContainerIdNormalized: normalizeOriginContainerId(t.originContainerId, '_buildFilteredTabDetails'),
+    originContainerIdNormalized: normalizeOriginContainerId(
+      t.originContainerId,
+      '_buildFilteredTabDetails'
+    ),
     url: t.url?.substring(0, 50) + (t.url?.length > 50 ? '...' : '')
   }));
 }
@@ -1570,8 +1623,13 @@ function _buildFilteredTabDetails(filteredTabs) {
  * @param {string|null} containerId - Current container ID
  */
 function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
-  const normalizedCurrentContainerId = normalizeOriginContainerId(containerId, '_logOwnershipFiltering');
-  const filteredTabs = tabs.filter(t => !_isTabOwnedByContext(t, tabId, normalizedCurrentContainerId));
+  const normalizedCurrentContainerId = normalizeOriginContainerId(
+    containerId,
+    '_logOwnershipFiltering'
+  );
+  const filteredTabs = tabs.filter(
+    t => !_isTabOwnedByContext(t, tabId, normalizedCurrentContainerId)
+  );
 
   console.log('[StorageUtils] v1.6.3.10-v6 Ownership filtering:', {
     currentTabId: tabId,
@@ -1711,16 +1769,21 @@ function _applyReacquiredTabId(tab) {
  */
 async function _attemptEmergencyTabIdReacquisition() {
   if (emergencyReacquisitionInProgress) {
-    console.log('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Skipped (already in progress)');
+    console.log(
+      '[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Skipped (already in progress)'
+    );
     return null;
   }
 
   emergencyReacquisitionInProgress = true;
-  console.warn('[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Attempting re-acquisition', {
-    tabIdNullSinceTimestamp,
-    nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
-    currentWritingTabId
-  });
+  console.warn(
+    '[StorageUtils] v1.6.3.10-v10 EMERGENCY_TABID_REACQUISITION: Attempting re-acquisition',
+    {
+      tabIdNullSinceTimestamp,
+      nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+      currentWritingTabId
+    }
+  );
 
   try {
     const browserAPI = _getBrowserAPIForReacquisition();
@@ -1753,15 +1816,15 @@ function _shouldAttemptEmergencyReacquisition() {
     tabIdNullSinceTimestamp = null;
     return false;
   }
-  
+
   const now = Date.now();
-  
+
   // First time seeing null - start tracking
   if (tabIdNullSinceTimestamp === null) {
     tabIdNullSinceTimestamp = now;
     return false; // Don't attempt on first check
   }
-  
+
   // Check if timeout has elapsed
   const nullDuration = now - tabIdNullSinceTimestamp;
   return nullDuration >= EMERGENCY_TABID_TIMEOUT_MS;
@@ -1770,40 +1833,48 @@ function _shouldAttemptEmergencyReacquisition() {
 /**
  * Validate ownership for write with async fallback for tab ID acquisition
  * v1.6.3.10-v10 - FIX Issue #2: Async version that can attempt emergency re-acquisition
- * 
+ *
  * This function wraps validateOwnershipForWrite with timeout-based fallback:
  * If currentWritingTabId is null for 5+ seconds, attempt emergency re-acquisition
  * before rejecting the write.
- * 
+ *
  * @param {Array} tabs - Array of tabs to validate
  * @param {number|null} currentTabId - Current tab ID (optional)
  * @param {boolean} forceEmpty - Allow empty writes
  * @param {string|null} currentContainerId - Current container ID (optional)
  * @returns {Promise<{ shouldWrite: boolean, ownedTabs: Array, reason: string }>}
  */
-export async function validateOwnershipForWriteAsync(tabs, currentTabId = null, forceEmpty = false, currentContainerId = null) {
+export async function validateOwnershipForWriteAsync(
+  tabs,
+  currentTabId = null,
+  forceEmpty = false,
+  currentContainerId = null
+) {
   const resolvedTabId = currentTabId ?? currentWritingTabId;
-  
+
   // Fast path: tab ID is known
   if (resolvedTabId !== null) {
     return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
   }
-  
+
   // Tab ID is null - check if we should attempt emergency re-acquisition
   if (_shouldAttemptEmergencyReacquisition()) {
-    console.warn('[StorageUtils] v1.6.3.10-v10 OWNERSHIP_VALIDATION: Attempting emergency tab ID re-acquisition', {
-      nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
-      tabCount: tabs?.length ?? 0
-    });
-    
+    console.warn(
+      '[StorageUtils] v1.6.3.10-v10 OWNERSHIP_VALIDATION: Attempting emergency tab ID re-acquisition',
+      {
+        nullDurationMs: tabIdNullSinceTimestamp ? Date.now() - tabIdNullSinceTimestamp : 0,
+        tabCount: tabs?.length ?? 0
+      }
+    );
+
     const reacquiredTabId = await _attemptEmergencyTabIdReacquisition();
-    
+
     if (reacquiredTabId !== null) {
       // Re-try validation with re-acquired tab ID
       return validateOwnershipForWrite(tabs, reacquiredTabId, forceEmpty, currentContainerId);
     }
   }
-  
+
   // Fall back to sync version (which will block the write)
   return validateOwnershipForWrite(tabs, currentTabId, forceEmpty, currentContainerId);
 }
@@ -1820,7 +1891,12 @@ export async function validateOwnershipForWriteAsync(tabs, currentTabId = null, 
  * @param {string|null} currentContainerId - Current tab's container ID (optional, uses cached if null)
  * @returns {{ shouldWrite: boolean, ownedTabs: Array, reason: string }}
  */
-export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty = false, currentContainerId = null) {
+export function validateOwnershipForWrite(
+  tabs,
+  currentTabId = null,
+  forceEmpty = false,
+  currentContainerId = null
+) {
   if (!ownershipValidationEnabled) {
     return { shouldWrite: true, ownedTabs: tabs, reason: 'ownership validation disabled' };
   }
@@ -1853,7 +1929,11 @@ export function validateOwnershipForWrite(tabs, currentTabId = null, forceEmpty 
       suggestion:
         'Pass tabId parameter to persistStateToStorage() or wait for initWritingTabId() to complete'
     });
-    return { shouldWrite: false, ownedTabs: [], reason: 'unknown tab ID - blocked for safety (currentTabId null)' };
+    return {
+      shouldWrite: false,
+      ownedTabs: [],
+      reason: 'unknown tab ID - blocked for safety (currentTabId null)'
+    };
   }
 
   // v1.6.3.10-v6 - FIX Issue #13: Filter by both tab ID and container ID
@@ -1983,24 +2063,27 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
 export async function beginTransaction(logPrefix = '[StorageUtils]') {
   // v1.6.3.10-v10 - FIX Issue J: Generate correlation ID for transaction tracking
   const correlationId = `txn-begin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  
+
   if (transactionActive) {
-    console.warn(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN BLOCKED - nested transaction attempt`, {
-      correlationId,
-      existingCorrelationId: currentTransactionCorrelationId,
-      reason: 'nested transactions not supported'
-    });
+    console.warn(
+      `${logPrefix} v1.6.3.10-v10 Transaction BEGIN BLOCKED - nested transaction attempt`,
+      {
+        correlationId,
+        existingCorrelationId: currentTransactionCorrelationId,
+        reason: 'nested transactions not supported'
+      }
+    );
     return false;
   }
 
   transactionActive = true;
   currentTransactionCorrelationId = correlationId;
-  
+
   console.info(`${logPrefix} v1.6.3.10-v10 Transaction BEGIN`, {
     correlationId,
     phase: 'capturing_snapshot'
   });
-  
+
   const snapshot = await captureStateSnapshot(logPrefix);
 
   if (!snapshot) {
@@ -2031,7 +2114,7 @@ export async function beginTransaction(logPrefix = '[StorageUtils]') {
  */
 export function commitTransaction(logPrefix = '[StorageUtils]') {
   const correlationId = currentTransactionCorrelationId;
-  
+
   if (!transactionActive) {
     console.warn(`${logPrefix} v1.6.3.10-v10 Transaction COMMIT BLOCKED - no active transaction`, {
       correlationId: correlationId ?? 'none',
@@ -2044,7 +2127,7 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
   stateSnapshot = null;
   transactionActive = false;
   currentTransactionCorrelationId = null;
-  
+
   console.info(`${logPrefix} v1.6.3.10-v10 Transaction COMMIT SUCCESS`, {
     correlationId,
     clearedSnapshotTabCount: snapshotTabCount
@@ -2056,18 +2139,18 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
  * Rollback current transaction - restores state snapshot to storage
  * v1.6.3.4-v9 - FIX Issue #16, #17: Rollback on failure instead of writing empty state
  * v1.6.3.10-v10 - FIX Issue J: Add correlation ID logging at INFO level
- * 
+ *
  * NOTE (v1.6.3.10-v9 - Issue V): This function is currently not called in any code path.
  * It was designed for error recovery but the current architecture uses queue reset instead.
  * KEPT FOR FUTURE USE: Could be integrated into _executeStorageWrite() error handling
  * to provide atomic rollback capability for failed multi-step transactions.
- * 
+ *
  * ROLLBACK POLICY (v1.6.3.10-v10 - Issue J):
  * - TRIGGERS: Could be triggered after all write retries fail in _executeStorageWrite()
  * - RESTORES: The state snapshot captured at beginTransaction() time
  * - PREVENTS RE-TRIGGER: Use transactionActive flag - rollback clears it, preventing cascade
  * - INTEGRATION POINT: In _handleFailedWrite() after STORAGE_MAX_RETRIES exhausted
- * 
+ *
  * Potential integration point: In _executeStorageWrite() after all retries fail,
  * could call rollbackTransaction() to restore previous known-good state.
  *
@@ -2077,13 +2160,16 @@ export function commitTransaction(logPrefix = '[StorageUtils]') {
  */
 export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason = 'unspecified') {
   const correlationId = currentTransactionCorrelationId;
-  
+
   if (!transactionActive) {
-    console.warn(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK BLOCKED - no active transaction`, {
-      correlationId: correlationId ?? 'none',
-      reason: 'no active transaction to rollback',
-      triggerReason: reason
-    });
+    console.warn(
+      `${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK BLOCKED - no active transaction`,
+      {
+        correlationId: correlationId ?? 'none',
+        reason: 'no active transaction to rollback',
+        triggerReason: reason
+      }
+    );
     return false;
   }
 
@@ -2111,7 +2197,7 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason =
   }
 
   const snapshotTabCount = stateSnapshot.tabs?.length ?? 0;
-  
+
   console.info(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK INITIATED`, {
     correlationId,
     triggerReason: reason,
@@ -2125,7 +2211,7 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason =
     stateSnapshot = null;
     transactionActive = false;
     currentTransactionCorrelationId = null;
-    
+
     console.info(`${logPrefix} v1.6.3.10-v10 Transaction ROLLBACK SUCCESS`, {
       correlationId,
       triggerReason: reason,
@@ -2192,7 +2278,7 @@ export function generateTransactionId() {
   // v1.6.3.10-v9 - FIX Issue L: Label when identity is unknown
   // Using UNKNOWN_TAB_ID_LABEL makes debugging easier when tab ID wasn't initialized
   const tabId = currentWritingTabId ?? UNKNOWN_TAB_ID_LABEL;
-  
+
   // v1.6.3.10-v9 - FIX Issue L: Log warning if generating transaction ID before identity is ready
   if (currentWritingTabId === null) {
     console.warn('[StorageUtils] v1.6.3.10-v9 generateTransactionId: Identity not initialized', {
@@ -2225,7 +2311,7 @@ export function generateTransactionId() {
  */
 export function withTimeout(promise, timeoutMs = MESSAGE_TIMEOUT_MS, operation = 'operation') {
   let timeoutId = null;
-  
+
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
       console.warn('[MSG_TIMEOUT] Operation timed out:', {
@@ -2236,7 +2322,7 @@ export function withTimeout(promise, timeoutMs = MESSAGE_TIMEOUT_MS, operation =
       reject(new Error(`[MSG_TIMEOUT] ${operation} timed out after ${timeoutMs}ms`));
     }, timeoutMs);
   });
-  
+
   return Promise.race([promise, timeoutPromise]).finally(() => {
     if (timeoutId !== null) {
       clearTimeout(timeoutId);
@@ -2254,24 +2340,24 @@ export function withTimeout(promise, timeoutMs = MESSAGE_TIMEOUT_MS, operation =
 export async function sendMessageWithTimeout(message, timeoutMs = MESSAGE_TIMEOUT_MS) {
   const operationName = `sendMessage(${message.action || message.type || 'unknown'})`;
   const startTime = Date.now();
-  
+
   try {
     const browserAPI = getBrowserStorageAPI();
     if (!browserAPI || !browserAPI.runtime?.sendMessage) {
       throw new Error('Browser runtime API not available');
     }
-    
+
     const result = await withTimeout(
       browserAPI.runtime.sendMessage(message),
       timeoutMs,
       operationName
     );
-    
+
     console.log('[MSG_TIMEOUT] Message completed successfully:', {
       operation: operationName,
       durationMs: Date.now() - startTime
     });
-    
+
     return result;
   } catch (err) {
     console.error('[MSG_TIMEOUT] Message failed:', {
@@ -2368,13 +2454,13 @@ function _checkStoredStateStructure(storedState, transactionId, errors) {
     console.error('[STORAGE_INTEGRITY] No data found:', { transactionId });
     return false;
   }
-  
+
   if (!storedState.tabs || !Array.isArray(storedState.tabs)) {
     errors.push('Storage missing tabs array');
     console.error('[STORAGE_INTEGRITY] Missing tabs array:', { transactionId });
     return false;
   }
-  
+
   return true;
 }
 
@@ -2386,18 +2472,18 @@ function _checkStoredStateStructure(storedState, transactionId, errors) {
 function _checkTabCountConsistency(expectedState, storedState, transactionId, errors) {
   const expectedCount = expectedState?.tabs?.length ?? 0;
   const storedCount = storedState.tabs.length;
-  
+
   if (expectedCount === storedCount) {
     return { needsRecovery: false };
   }
-  
+
   errors.push(`Tab count mismatch: expected ${expectedCount}, stored ${storedCount}`);
   console.warn('[STORAGE_INTEGRITY] Tab count mismatch:', {
     transactionId,
     expected: expectedCount,
     stored: storedCount
   });
-  
+
   // Significant difference requires recovery
   return { needsRecovery: Math.abs(expectedCount - storedCount) > 5 };
 }
@@ -2423,7 +2509,7 @@ function _checkTabsRequiredFields(storedState, transactionId, errors) {
  * v1.6.4.16 - FIX Area F: No recovery from partially written storage
  * Verifies that storage contains expected data structure after write
  * Refactored to reduce complexity
- * 
+ *
  * @param {Object} expectedState - State that was written
  * @param {string} transactionId - Transaction ID for logging
  * @returns {Promise<{valid: boolean, errors: string[], recoveryNeeded: boolean}>}
@@ -2431,35 +2517,35 @@ function _checkTabsRequiredFields(storedState, transactionId, errors) {
 export async function validateStorageIntegrity(expectedState, transactionId = 'unknown') {
   const errors = [];
   const startTime = Date.now();
-  
+
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     errors.push('Browser API not available');
     console.error('[STORAGE_INTEGRITY] Browser API not available');
     return { valid: false, errors, recoveryNeeded: true };
   }
-  
+
   try {
     const result = await browserAPI.storage.local.get(STATE_KEY);
     const storedState = result?.[STATE_KEY];
-    
+
     // Check structure
     if (!_checkStoredStateStructure(storedState, transactionId, errors)) {
       return { valid: false, errors, recoveryNeeded: true };
     }
-    
+
     // Check count consistency
     const countCheck = _checkTabCountConsistency(expectedState, storedState, transactionId, errors);
     if (countCheck.needsRecovery) {
       return { valid: false, errors, recoveryNeeded: true };
     }
-    
+
     // Check required fields
     _checkTabsRequiredFields(storedState, transactionId, errors);
-    
+
     const durationMs = Date.now() - startTime;
     const isValid = errors.length === 0;
-    
+
     console.log('[STORAGE_INTEGRITY] Validation complete:', {
       transactionId,
       valid: isValid,
@@ -2467,13 +2553,12 @@ export async function validateStorageIntegrity(expectedState, transactionId = 'u
       tabCount: storedState.tabs.length,
       durationMs
     });
-    
+
     return {
       valid: isValid,
       errors,
       recoveryNeeded: errors.some(e => e.includes('missing') || e.includes('No data'))
     };
-    
   } catch (err) {
     errors.push(`Validation error: ${err.message}`);
     console.error('[STORAGE_INTEGRITY] Validation failed:', {
@@ -2487,11 +2572,36 @@ export async function validateStorageIntegrity(expectedState, transactionId = 'u
 // v1.6.4.16 - FIX Area A: Error classification patterns
 // Using a lookup map reduces complexity below the threshold
 const STORAGE_ERROR_PATTERNS = [
-  { patterns: ['quota', 'QUOTA'], type: 'QUOTA_EXCEEDED', recoverable: false, action: 'Clear old data or upgrade storage' },
-  { patterns: ['serialize', 'JSON', 'circular'], type: 'SERIALIZATION_ERROR', recoverable: true, action: 'Filter invalid data and retry' },
-  { patterns: ['permission', 'Permission'], type: 'PERMISSION_ERROR', recoverable: false, action: 'Request storage permission' },
-  { patterns: ['context invalidated', 'Extension context'], type: 'CONTEXT_INVALIDATED', recoverable: false, action: 'Extension reloading, wait for restart' },
-  { patterns: ['network', 'Network'], type: 'NETWORK_ERROR', recoverable: true, action: 'Retry with exponential backoff' }
+  {
+    patterns: ['quota', 'QUOTA'],
+    type: 'QUOTA_EXCEEDED',
+    recoverable: false,
+    action: 'Clear old data or upgrade storage'
+  },
+  {
+    patterns: ['serialize', 'JSON', 'circular'],
+    type: 'SERIALIZATION_ERROR',
+    recoverable: true,
+    action: 'Filter invalid data and retry'
+  },
+  {
+    patterns: ['permission', 'Permission'],
+    type: 'PERMISSION_ERROR',
+    recoverable: false,
+    action: 'Request storage permission'
+  },
+  {
+    patterns: ['context invalidated', 'Extension context'],
+    type: 'CONTEXT_INVALIDATED',
+    recoverable: false,
+    action: 'Extension reloading, wait for restart'
+  },
+  {
+    patterns: ['network', 'Network'],
+    type: 'NETWORK_ERROR',
+    recoverable: true,
+    action: 'Retry with exponential backoff'
+  }
 ];
 
 /**
@@ -2512,7 +2622,7 @@ function _matchesPatterns(message, patterns) {
  */
 export function classifyStorageError(error) {
   const message = error?.message || String(error);
-  
+
   // Find matching error pattern
   for (const pattern of STORAGE_ERROR_PATTERNS) {
     if (_matchesPatterns(message, pattern.patterns)) {
@@ -2523,7 +2633,7 @@ export function classifyStorageError(error) {
       };
     }
   }
-  
+
   // Default: unknown error
   return {
     type: 'UNKNOWN_ERROR',
@@ -2539,7 +2649,7 @@ const operationCheckpoints = new Map();
 /**
  * Create a checkpoint for a long-running operation
  * v1.6.4.16 - FIX Area D: No checkpoint/savepoint system for long operations
- * 
+ *
  * @param {string} operationId - Unique operation identifier
  * @param {string} stepName - Name of the current step
  * @param {Object} stateSnapshot - State at this checkpoint
@@ -2551,11 +2661,11 @@ export function createCheckpoint(operationId, stepName, stateSnapshot = null) {
     stepName,
     timestamp: Date.now(),
     stateSnapshot: stateSnapshot ? JSON.parse(JSON.stringify(stateSnapshot)) : null,
-    stepIndex: operationCheckpoints.has(operationId) 
-      ? (operationCheckpoints.get(operationId).steps?.length || 0) + 1 
+    stepIndex: operationCheckpoints.has(operationId)
+      ? (operationCheckpoints.get(operationId).steps?.length || 0) + 1
       : 1
   };
-  
+
   // Initialize or update operation checkpoints
   if (!operationCheckpoints.has(operationId)) {
     operationCheckpoints.set(operationId, {
@@ -2566,14 +2676,14 @@ export function createCheckpoint(operationId, stepName, stateSnapshot = null) {
   } else {
     operationCheckpoints.get(operationId).steps.push(checkpoint);
   }
-  
+
   console.log('[CHECKPOINT] Created:', {
     operationId,
     stepName,
     stepIndex: checkpoint.stepIndex,
     hasSnapshot: !!stateSnapshot
   });
-  
+
   return checkpoint;
 }
 
@@ -2592,7 +2702,7 @@ function _hasValidCheckpointSteps(operation) {
  * Get the last checkpoint for an operation
  * v1.6.4.16 - FIX Area D: Retrieve checkpoint for recovery
  * v1.6.3.11-v3 - FIX CodeScene: Simplify complex conditional
- * 
+ *
  * @param {string} operationId - Operation identifier
  * @returns {Object|null} Last checkpoint or null
  */
@@ -2607,7 +2717,7 @@ export function getLastCheckpoint(operationId) {
 /**
  * Mark operation as completed
  * v1.6.4.16 - FIX Area D: Complete checkpoint tracking
- * 
+ *
  * @param {string} operationId - Operation identifier
  * @param {boolean} success - Whether operation succeeded
  */
@@ -2617,18 +2727,18 @@ export function completeCheckpoint(operationId, success = true) {
     console.warn('[CHECKPOINT] No checkpoints found for operation:', operationId);
     return;
   }
-  
+
   operation.status = success ? 'completed' : 'failed';
   operation.endTime = Date.now();
   operation.duration = operation.endTime - operation.startTime;
-  
+
   console.log('[CHECKPOINT] Operation completed:', {
     operationId,
     success,
     durationMs: operation.duration,
     totalSteps: operation.steps.length
   });
-  
+
   // Clean up old checkpoints (keep last 10 operations)
   if (operationCheckpoints.size > 10) {
     const oldestKey = operationCheckpoints.keys().next().value;
@@ -2639,7 +2749,7 @@ export function completeCheckpoint(operationId, success = true) {
 /**
  * Rollback to a checkpoint
  * v1.6.4.16 - FIX Area D: Basic recovery mechanism
- * 
+ *
  * @param {string} operationId - Operation identifier
  * @param {number} stepIndex - Step index to rollback to (0 for latest)
  * @returns {Object|null} State snapshot at checkpoint or null
@@ -2650,10 +2760,10 @@ export function rollbackToCheckpoint(operationId, stepIndex = 0) {
     console.warn('[CHECKPOINT] No checkpoints found for rollback:', operationId);
     return null;
   }
-  
+
   const targetIndex = stepIndex > 0 ? stepIndex - 1 : operation.steps.length - 1;
   const checkpoint = operation.steps[targetIndex];
-  
+
   if (!checkpoint || !checkpoint.stateSnapshot) {
     console.warn('[CHECKPOINT] No snapshot at checkpoint:', {
       operationId,
@@ -2662,14 +2772,14 @@ export function rollbackToCheckpoint(operationId, stepIndex = 0) {
     });
     return null;
   }
-  
+
   console.log('[CHECKPOINT] Rolling back to:', {
     operationId,
     stepName: checkpoint.stepName,
     stepIndex: checkpoint.stepIndex,
     snapshotAge: Date.now() - checkpoint.timestamp
   });
-  
+
   return checkpoint.stateSnapshot;
 }
 
@@ -3180,7 +3290,10 @@ function _extractOriginContainerId(tab) {
   });
 
   // v1.6.3.10-v6 - FIX Issue #13: Use normalizeOriginContainerId for type safety
-  const normalizedOriginContainerId = normalizeOriginContainerId(rawOriginContainerId, '_extractOriginContainerId');
+  const normalizedOriginContainerId = normalizeOriginContainerId(
+    rawOriginContainerId,
+    '_extractOriginContainerId'
+  );
 
   // v1.6.3.10-v6 - FIX Issue #13: Log the result with full type visibility
   console.log('[StorageUtils] _extractOriginContainerId: Extraction completed', {
@@ -3211,11 +3324,12 @@ function _logSerializationResult(tab, extractedOriginTabId, extractedOriginConta
 
   console.log('[StorageUtils] serializeTabForStorage: Serialization completed', {
     quickTabId: tab.id,
-    originTabIdSource: sourceField === 'originTabId'
-      ? 'tab.originTabId'
-      : sourceField === 'activeTabId'
-        ? 'tab.activeTabId'
-        : 'null',
+    originTabIdSource:
+      sourceField === 'originTabId'
+        ? 'tab.originTabId'
+        : sourceField === 'activeTabId'
+          ? 'tab.activeTabId'
+          : 'null',
     originTabIdRaw: rawOriginTabId,
     originTabIdRawType: typeof rawOriginTabId,
     extractedOriginTabId,
@@ -3592,21 +3706,19 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
 
   const now = Date.now();
   const timeSinceLastEmptyWrite = now - lastEmptyWriteTime;
-  
+
   if (timeSinceLastEmptyWrite < EMPTY_WRITE_COOLDOWN_MS) {
     // v1.6.3.10-v10 - FIX Issue U: Enhanced cooldown logging with timing correlation
-    console.warn(
-      `${logPrefix} v1.6.3.10-v10 EMPTY_WRITE_COOLDOWN_BLOCKED [${transactionId}]`, {
-        timeSinceLastEmptyWriteMs: timeSinceLastEmptyWrite,
-        cooldownMs: EMPTY_WRITE_COOLDOWN_MS,
-        remainingCooldownMs: EMPTY_WRITE_COOLDOWN_MS - timeSinceLastEmptyWrite,
-        lastEmptyWriteTime,
-        currentTime: now,
-        rationale: 'Prevents rapid-fire empty writes during page reload/tab switching storms',
-        typicalPageLoadMs: '200-500 DOMContentLoaded, 500-2000 full load',
-        limitation: 'May block rapid intentional Close All clicks (idempotent operation)'
-      }
-    );
+    console.warn(`${logPrefix} v1.6.3.10-v10 EMPTY_WRITE_COOLDOWN_BLOCKED [${transactionId}]`, {
+      timeSinceLastEmptyWriteMs: timeSinceLastEmptyWrite,
+      cooldownMs: EMPTY_WRITE_COOLDOWN_MS,
+      remainingCooldownMs: EMPTY_WRITE_COOLDOWN_MS - timeSinceLastEmptyWrite,
+      lastEmptyWriteTime,
+      currentTime: now,
+      rationale: 'Prevents rapid-fire empty writes during page reload/tab switching storms',
+      typicalPageLoadMs: '200-500 DOMContentLoaded, 500-2000 full load',
+      limitation: 'May block rapid intentional Close All clicks (idempotent operation)'
+    });
     return true;
   }
 
@@ -3640,15 +3752,18 @@ function _cleanupExpiredSaveIdEntries(now) {
  */
 function _logDuplicateWriteWarning(saveId, existing, transactionId, now) {
   const elapsedMs = now - existing.firstTimestamp;
-  
+
   // v1.6.3.10-v10 - FIX Issue I: Check if elapsed time coincides with storage timeout windows
   const coincidenceFlags = {
-    coincidesToStorageTimeout: elapsedMs >= STORAGE_TIMEOUT_MS && elapsedMs < STORAGE_TIMEOUT_MS * 2,
-    coincidesToEscalationWarning: elapsedMs >= ESCALATION_WARNING_MS && elapsedMs < TRANSACTION_FALLBACK_CLEANUP_MS,
-    coincidesToFallbackCleanup: elapsedMs >= TRANSACTION_FALLBACK_CLEANUP_MS && elapsedMs < STORAGE_TIMEOUT_MS,
+    coincidesToStorageTimeout:
+      elapsedMs >= STORAGE_TIMEOUT_MS && elapsedMs < STORAGE_TIMEOUT_MS * 2,
+    coincidesToEscalationWarning:
+      elapsedMs >= ESCALATION_WARNING_MS && elapsedMs < TRANSACTION_FALLBACK_CLEANUP_MS,
+    coincidesToFallbackCleanup:
+      elapsedMs >= TRANSACTION_FALLBACK_CLEANUP_MS && elapsedMs < STORAGE_TIMEOUT_MS,
     withinDedupWindow: elapsedMs <= DUPLICATE_SAVEID_WINDOW_MS
   };
-  
+
   console.error(
     `[StorageUtils] ⚠️ DUPLICATE WRITE DETECTED: saveId "${saveId}" written ${existing.count} times in ${elapsedMs}ms`
   );
@@ -3759,7 +3874,14 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
  * @private
  * @param {SuccessfulWriteOptions} options - Write options
  */
-function _handleSuccessfulWrite({ operationId, transactionId, tabCount, startTime, attempt, logPrefix }) {
+function _handleSuccessfulWrite({
+  operationId,
+  transactionId,
+  tabCount,
+  startTime,
+  attempt,
+  logPrefix
+}) {
   const durationMs = Date.now() - startTime;
 
   // v1.6.3.4-v8 - Update previous tab count after successful write
@@ -3788,7 +3910,9 @@ function _handleSuccessfulWrite({ operationId, transactionId, tabCount, startTim
 
   // v1.6.3.10-v6 - FIX Issue A20: Log if retry was needed
   if (attempt > 1) {
-    console.log(`${logPrefix} Storage write SUCCEEDED after ${attempt} attempts [${transactionId}]`);
+    console.log(
+      `${logPrefix} Storage write SUCCEEDED after ${attempt} attempts [${transactionId}]`
+    );
   } else {
     console.log(`${logPrefix} Storage write COMPLETED [${transactionId}] (${tabCount} tabs)`);
   }
@@ -3836,11 +3960,21 @@ function _buildQuotaResult(canWrite, bytesUsed, bytesAvailable, usagePercent) {
  * @private
  * @param {QuotaStatusOptions} options - Quota status options
  */
-function _logQuotaStatusIfNeeded({ logPrefix, bytesUsed, bytesQuota, bytesAvailable, usagePercent }) {
-  const shouldLog = pendingWriteCount % STORAGE_QUOTA_LOG_SAMPLING_INTERVAL === 0 || usagePercent > STORAGE_QUOTA_WARNING_THRESHOLD * 100;
+function _logQuotaStatusIfNeeded({
+  logPrefix,
+  bytesUsed,
+  bytesQuota,
+  bytesAvailable,
+  usagePercent
+}) {
+  const shouldLog =
+    pendingWriteCount % STORAGE_QUOTA_LOG_SAMPLING_INTERVAL === 0 ||
+    usagePercent > STORAGE_QUOTA_WARNING_THRESHOLD * 100;
   if (shouldLog) {
     console.log(`${logPrefix} v1.6.3.10-v9 Storage quota status:`, {
-      bytesUsed, bytesQuota, bytesAvailable,
+      bytesUsed,
+      bytesQuota,
+      bytesAvailable,
       usagePercent: `${usagePercent.toFixed(2)}%`,
       headroomBytes: STORAGE_QUOTA_MIN_HEADROOM_BYTES
     });
@@ -3889,13 +4023,13 @@ export async function checkStorageQuota(logPrefix = '[StorageUtils]') {
 function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix) {
   const saveId = stateWithTxn.saveId;
   if (saveId) _trackDuplicateSaveIdWrite(saveId, transactionId, logPrefix);
-  
+
   IN_PROGRESS_TRANSACTIONS.add(transactionId);
   scheduleFallbackCleanup(transactionId);
-  
+
   const operationId = generateStorageOperationId();
   logStorageWrite(operationId, STATE_KEY, 'start', { tabCount, transactionId });
-  
+
   return { operationId, startTime: Date.now() };
 }
 
@@ -3917,11 +4051,28 @@ function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPref
  * @private
  * @param {FailedWriteOptions} options - Write failure options
  */
-function _handleFailedWrite({ operationId, transactionId, tabCount, startTime, totalAttempts, logPrefix }) {
+function _handleFailedWrite({
+  operationId,
+  transactionId,
+  tabCount,
+  startTime,
+  totalAttempts,
+  logPrefix
+}) {
   const durationMs = Date.now() - startTime;
   pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-  logStorageWrite(operationId, STATE_KEY, 'complete', { success: false, tabCount, durationMs, transactionId, attempts: totalAttempts });
-  console.error(`${logPrefix} v1.6.3.10-v9 WRITE_FAILED_AFTER_RETRIES:`, { transactionId, totalAttempts, durationMs });
+  logStorageWrite(operationId, STATE_KEY, 'complete', {
+    success: false,
+    tabCount,
+    durationMs,
+    transactionId,
+    attempts: totalAttempts
+  });
+  console.error(`${logPrefix} v1.6.3.10-v9 WRITE_FAILED_AFTER_RETRIES:`, {
+    transactionId,
+    totalAttempts,
+    durationMs
+  });
 }
 
 /**
@@ -3962,7 +4113,7 @@ function _logWriteResult({ context, transactionId, tabCount, attempt, totalAttem
     durationMs: totalDurationMs,
     timestamp: new Date().toISOString()
   };
-  
+
   if (isSuccess) {
     logData.attempt = attempt;
     console.log('[StorageWrite] LIFECYCLE_SUCCESS:', logData);
@@ -4000,7 +4151,14 @@ function _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAtte
  * @private
  */
 function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
-  _logWriteResult({ context, transactionId, tabCount, attempt: totalAttempts, totalAttempts, isSuccess: false });
+  _logWriteResult({
+    context,
+    transactionId,
+    tabCount,
+    attempt: totalAttempts,
+    totalAttempts,
+    isSuccess: false
+  });
 }
 
 /**
@@ -4023,7 +4181,14 @@ function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
  * @private
  * @param {WriteRetryLoopOptions} options - Retry loop options
  */
-async function _executeWriteRetryLoop({ browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount }) {
+async function _executeWriteRetryLoop({
+  browserAPI,
+  stateWithTxn,
+  logPrefix,
+  transactionId,
+  context,
+  tabCount
+}) {
   const totalAttempts = STORAGE_MAX_RETRIES + 1;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
@@ -4083,9 +4248,16 @@ async function _executeWriteRetryLoop({ browserAPI, stateWithTxn, logPrefix, tra
  * @private
  * @param {ExecuteStorageWriteOptions} options - Write execution options
  */
-async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transactionId, writeCorrelationId = null, startTime = null }) {
+async function _executeStorageWrite({
+  stateWithTxn,
+  tabCount,
+  logPrefix,
+  transactionId,
+  writeCorrelationId = null,
+  startTime = null
+}) {
   const actualStartTime = startTime || Date.now();
-  
+
   // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for fetch phase
   console.log(`${logPrefix} [WRITE_PHASE] FETCH_PHASE: Starting storage write`, {
     correlationId: writeCorrelationId,
@@ -4094,7 +4266,7 @@ async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transac
     phase: 'FETCH_PHASE',
     timestamp: new Date().toISOString()
   });
-  
+
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
     // v1.6.3.10-v10 - FIX Gap 3.1: Log failure
@@ -4115,7 +4287,7 @@ async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transac
     transactionId,
     phase: 'QUOTA_CHECK_PHASE'
   });
-  
+
   // Preflight quota check
   const quotaCheck = await checkStorageQuota(logPrefix);
   if (!quotaCheck.canWrite) {
@@ -4144,7 +4316,7 @@ async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transac
   // v1.6.3.10-v10 - FIX Gap 3.1: Pass correlation ID to retry loop
   context.writeCorrelationId = writeCorrelationId;
   context.writeStartTime = actualStartTime;
-  
+
   // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for write API phase
   console.log(`${logPrefix} [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set`, {
     correlationId: writeCorrelationId,
@@ -4152,8 +4324,15 @@ async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transac
     tabCount,
     phase: 'WRITE_API_PHASE'
   });
-  
-  return _executeWriteRetryLoop({ browserAPI, stateWithTxn, logPrefix, transactionId, context, tabCount });
+
+  return _executeWriteRetryLoop({
+    browserAPI,
+    stateWithTxn,
+    logPrefix,
+    transactionId,
+    context,
+    tabCount
+  });
 }
 
 /**
@@ -4163,17 +4342,21 @@ async function _executeStorageWrite({ stateWithTxn, tabCount, logPrefix, transac
  */
 function _performQueueRecovery(logPrefix, transactionId, stallDuration, reason) {
   writeQueueRecoveryCount++;
-  
+
   console.error(`${logPrefix} v1.6.3.10-v9 WRITE_QUEUE_STALL_RECOVERY:`, {
-    transactionId, stallDurationMs: stallDuration, pendingWriteCount,
-    recoveryCount: writeQueueRecoveryCount, reason, action: 'RESETTING_QUEUE'
+    transactionId,
+    stallDurationMs: stallDuration,
+    pendingWriteCount,
+    recoveryCount: writeQueueRecoveryCount,
+    reason,
+    action: 'RESETTING_QUEUE'
   });
-  
+
   // Reset queue state
   storageWriteQueuePromise = Promise.resolve();
   pendingWriteCount = 0;
   writeQueueStallStartTime = null;
-  
+
   // Reset circuit breaker if it was tripped
   if (circuitBreakerTripped) {
     circuitBreakerTripped = false;
@@ -4188,7 +4371,9 @@ function _performQueueRecovery(logPrefix, transactionId, stallDuration, reason) 
  * @private
  */
 function _isQueueStalled(stallDuration) {
-  return stallDuration > WRITE_QUEUE_STALL_TIMEOUT_MS || pendingWriteCount >= WRITE_QUEUE_MAX_PENDING;
+  return (
+    stallDuration > WRITE_QUEUE_STALL_TIMEOUT_MS || pendingWriteCount >= WRITE_QUEUE_MAX_PENDING
+  );
 }
 
 /**
@@ -4205,20 +4390,20 @@ function _checkAndRecoverStalledQueue(logPrefix, transactionId) {
     writeQueueStallStartTime = null;
     return false;
   }
-  
+
   // Start tracking stall time
   if (writeQueueStallStartTime === null) {
     writeQueueStallStartTime = Date.now();
     return false;
   }
-  
+
   const stallDuration = Date.now() - writeQueueStallStartTime;
-  
+
   // Check if stalled
   if (!_isQueueStalled(stallDuration)) {
     return false;
   }
-  
+
   const reason = stallDuration > WRITE_QUEUE_STALL_TIMEOUT_MS ? 'timeout' : 'max_pending_reached';
   _performQueueRecovery(logPrefix, transactionId, stallDuration, reason);
   return true;
@@ -4241,7 +4426,9 @@ function _logQueueStateTransition(logPrefix, transactionId, event, details = {})
     transactionId,
     queueDepth: pendingWriteCount,
     circuitBreakerTripped,
-    circuitBreakerTripTime: circuitBreakerTripTime ? new Date(circuitBreakerTripTime).toISOString() : null,
+    circuitBreakerTripTime: circuitBreakerTripTime
+      ? new Date(circuitBreakerTripTime).toISOString()
+      : null,
     writeQueueRecoveryCount,
     stallDurationMs: writeQueueStallStartTime ? Date.now() - writeQueueStallStartTime : 0,
     timestamp: new Date().toISOString(),
@@ -4258,7 +4445,7 @@ function _logQueueStateTransition(logPrefix, transactionId, event, details = {})
 function _tripCircuitBreaker(transactionId, threshold) {
   circuitBreakerTripped = true;
   circuitBreakerTripTime = Date.now();
-  
+
   // v1.6.3.10-v10 - FIX Gap 3.3: Structured circuit breaker logging
   console.error('[StorageQueue] CIRCUIT_BREAKER_TRIPPED:', {
     transactionId,
@@ -4317,24 +4504,27 @@ async function _waitForIdentityBeforeWrite(logPrefix, transactionId) {
     currentWritingTabId,
     currentWritingContainerId
   });
-  
+
   const identity = await waitForIdentityInit(3000); // 3 second timeout
-  
+
   console.log(`${logPrefix} [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [${transactionId}]:`, {
     isReady: identity.isReady,
     tabId: identity.tabId,
     containerId: identity.containerId
   });
-  
+
   if (!identity.isReady) {
-    console.warn(`${logPrefix} [WRITE_PHASE] IDENTITY_NOT_READY - WRITE_BLOCKED [${transactionId}]:`, {
-      warning: 'Identity not ready after timeout - rejecting write',
-      tabId: identity.tabId,
-      containerId: identity.containerId
-    });
+    console.warn(
+      `${logPrefix} [WRITE_PHASE] IDENTITY_NOT_READY - WRITE_BLOCKED [${transactionId}]:`,
+      {
+        warning: 'Identity not ready after timeout - rejecting write',
+        tabId: identity.tabId,
+        containerId: identity.containerId
+      }
+    );
     return false;
   }
-  
+
   return true;
 }
 
@@ -4352,7 +4542,11 @@ async function _waitForIdentityBeforeWrite(logPrefix, transactionId) {
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
  * @returns {Promise<boolean>} Result of the write operation
  */
-export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', transactionId = '') {
+export function queueStorageWrite(
+  writeOperation,
+  logPrefix = '[StorageUtils]',
+  transactionId = ''
+) {
   _checkAndRecoverStalledQueue(logPrefix, transactionId);
 
   // Circuit breaker check
@@ -4363,21 +4557,23 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
   }
 
   pendingWriteCount++;
-  _logQueueStateTransition(logPrefix, transactionId, 'enqueue', { prevTransaction: lastCompletedTransactionId });
+  _logQueueStateTransition(logPrefix, transactionId, 'enqueue', {
+    prevTransaction: lastCompletedTransactionId
+  });
   _logBacklogWarnings(transactionId);
 
   // Chain operation to queue
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(async () => {
       _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
-      
+
       // v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write execution
       // v1.6.3.12 - FIX CodeScene: Extracted to _waitForIdentityBeforeWrite
       const identityReady = await _waitForIdentityBeforeWrite(logPrefix, transactionId);
       if (!identityReady) {
         return false;
       }
-      
+
       return writeOperation();
     })
     .then(result => {
@@ -4387,7 +4583,10 @@ export function queueStorageWrite(writeOperation, logPrefix = '[StorageUtils]', 
     })
     .catch(err => {
       const droppedWrites = pendingWriteCount - 1;
-      _logQueueStateTransition(logPrefix, transactionId, 'dequeue_failure', { error: err.message, droppedWrites });
+      _logQueueStateTransition(logPrefix, transactionId, 'dequeue_failure', {
+        error: err.message,
+        droppedWrites
+      });
       pendingWriteCount = Math.max(0, pendingWriteCount - 1);
       storageWriteQueuePromise = Promise.resolve();
       writeQueueStallStartTime = null;
@@ -4431,7 +4630,7 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
   // v1.6.3.6-v2 - FIX Issue #3: Pass forceEmpty to ownership validation
   // This allows validateOwnershipForWrite to properly handle empty writes
   const ownershipCheck = validateOwnershipForWrite(state.tabs, currentWritingTabId, forceEmpty);
-  
+
   // v1.6.3.11-v9 - FIX Issue E: Capture post-validation state for delta comparison
   const postValidationState = {
     ownedTabs: ownershipCheck.ownedTabs?.length ?? 0,
@@ -4445,9 +4644,10 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
     post: postValidationState,
     delta: {
       tabsFiltered: postValidationState.filteredOut,
-      percentageFiltered: preValidationState.totalTabs > 0 
-        ? Math.round((postValidationState.filteredOut / preValidationState.totalTabs) * 100) 
-        : 0
+      percentageFiltered:
+        preValidationState.totalTabs > 0
+          ? Math.round((postValidationState.filteredOut / preValidationState.totalTabs) * 100)
+          : 0
     },
     phase: 'ownership-validation-complete'
   });
@@ -4461,10 +4661,12 @@ function _validatePersistOwnership(state, forceEmpty, logPrefix, transactionId) 
       isTabIdInitialized: currentWritingTabId !== null,
       tabCount: state.tabs.length,
       forceEmpty,
-      blockingCheck: currentWritingTabId === null ? 'dual-block (currentTabId null)' : 'ownership-filter',
-      suggestion: currentWritingTabId === null
-        ? 'Ensure setWritingTabId() is called before storage writes'
-        : 'Current tab does not own any Quick Tabs in the state'
+      blockingCheck:
+        currentWritingTabId === null ? 'dual-block (currentTabId null)' : 'ownership-filter',
+      suggestion:
+        currentWritingTabId === null
+          ? 'Ensure setWritingTabId() is called before storage writes'
+          : 'Current tab does not own any Quick Tabs in the state'
     });
     return { shouldProceed: false };
   }
@@ -4503,20 +4705,20 @@ function _logLifecycleEvent(eventType, context, extraFields = {}) {
     transactionId: context.transactionId,
     timestamp: context.timestamp
   };
-  
+
   // Add phase if event type defines one or if passed in extraFields
   if (eventType.phase) logData.phase = eventType.phase;
   if (context.phase) logData.phase = context.phase;
-  
+
   // Add duration if present
   if (context.durationMs !== undefined) logData.durationMs = context.durationMs;
-  
+
   // Merge extra fields
   Object.assign(logData, extraFields);
-  
+
   // Merge extras object if present (for FAILURE event compatibility)
   if (context.extras) Object.assign(logData, context.extras);
-  
+
   console[eventType.level](`[StorageWrite] ${eventType.name}:`, logData);
 }
 
@@ -4582,12 +4784,12 @@ function _logLifecycleExecuteStart(context) {
 /**
  * Check if write should be coalesced/rate-limited
  * v1.6.3.10-v10 - FIX Issue H: Add write scheduling policy for high-frequency UI events
- * 
+ *
  * This function implements a write coalescing policy that:
  * 1. Checks if the last write was too recent (rate limiting)
  * 2. Checks if the state hash is unchanged (hash-based dedup)
  * 3. Logs when writes are coalesced with the reason
- * 
+ *
  * @private
  * @param {Object} state - State to check
  * @param {string} logPrefix - Log prefix
@@ -4597,10 +4799,10 @@ function _logLifecycleExecuteStart(context) {
 function _checkWriteCoalescing(state, logPrefix, transactionId) {
   const now = Date.now();
   const timeSinceLastWrite = now - lastWriteTimestamp;
-  
+
   // Compute current state hash for comparison
   const currentHash = computeStateHash(state);
-  
+
   // Check 1: Hash unchanged (same content as last persisted)
   if (currentHash === lastPersistedHash && lastPersistedHash !== null) {
     coalescedWriteCount++;
@@ -4612,7 +4814,7 @@ function _checkWriteCoalescing(state, logPrefix, transactionId) {
     });
     return { shouldCoalesce: true, reason: 'hash_unchanged' };
   }
-  
+
   // Check 2: Rate limiting - writes too close together
   if (timeSinceLastWrite < WRITE_COALESCE_MIN_INTERVAL_MS) {
     coalescedWriteCount++;
@@ -4624,11 +4826,11 @@ function _checkWriteCoalescing(state, logPrefix, transactionId) {
     });
     return { shouldCoalesce: true, reason: 'rate_limit' };
   }
-  
+
   // Write is allowed - update tracking state
   lastWriteTimestamp = now;
   lastPersistedHash = currentHash;
-  
+
   // Log if we had coalesced writes that are now being flushed
   if (coalescedWriteCount > 0) {
     console.log(`${logPrefix} v1.6.3.10-v10 WRITE_FLUSHED [${transactionId}]:`, {
@@ -4637,7 +4839,7 @@ function _checkWriteCoalescing(state, logPrefix, transactionId) {
     });
     coalescedWriteCount = 0;
   }
-  
+
   return { shouldCoalesce: false, reason: null };
 }
 
@@ -4744,31 +4946,67 @@ function _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, t
   // Phase 1.5: Check write coalescing
   const coalesceResult = _checkWriteCoalescing(state, logPrefix, transactionId);
   if (coalesceResult.shouldCoalesce) {
-    return { shouldProceed: false, shouldReturnTrue: true, failurePhase: 'COALESCE', failureReason: coalesceResult.reason, extras: { tabCount } };
+    return {
+      shouldProceed: false,
+      shouldReturnTrue: true,
+      failurePhase: 'COALESCE',
+      failureReason: coalesceResult.reason,
+      extras: { tabCount }
+    };
   }
 
   // Phase 2: Check empty write protection
   if (_shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)) {
-    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'EMPTY_CHECK', failureReason: 'Empty write rejected', extras: { tabCount, forceEmpty } };
+    return {
+      shouldProceed: false,
+      shouldReturnTrue: false,
+      failurePhase: 'EMPTY_CHECK',
+      failureReason: 'Empty write rejected',
+      extras: { tabCount, forceEmpty }
+    };
   }
 
   // Phase 3: Validate ownership
   if (!_validatePersistOwnership(state, forceEmpty, logPrefix, transactionId).shouldProceed) {
-    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'OWNERSHIP_FILTER', failureReason: 'Ownership validation failed', extras: null };
+    return {
+      shouldProceed: false,
+      shouldReturnTrue: false,
+      failurePhase: 'OWNERSHIP_FILTER',
+      failureReason: 'Ownership validation failed',
+      extras: null
+    };
   }
 
   // Phase 4: Check for state changes
   if (!hasStateChanged(state)) {
-    return { shouldProceed: false, shouldReturnTrue: true, failurePhase: 'HASH_CHECK', failureReason: 'No changes detected', extras: null };
+    return {
+      shouldProceed: false,
+      shouldReturnTrue: true,
+      failurePhase: 'HASH_CHECK',
+      failureReason: 'No changes detected',
+      extras: null
+    };
   }
 
   // Phase 5: Validate state content
   const validation = validateStateForPersist(state);
   if (!validation.valid) {
-    return { shouldProceed: false, shouldReturnTrue: false, failurePhase: 'VALIDATE_CONTENT', failureReason: 'State validation failed', extras: { errors: validation.errors } };
+    return {
+      shouldProceed: false,
+      shouldReturnTrue: false,
+      failurePhase: 'VALIDATE_CONTENT',
+      failureReason: 'State validation failed',
+      extras: { errors: validation.errors }
+    };
   }
 
-  return { shouldProceed: true, shouldReturnTrue: false, failurePhase: null, failureReason: null, extras: null };
+  return {
+    shouldProceed: true,
+    shouldReturnTrue: false,
+    failurePhase: null,
+    failureReason: null,
+    extras: null
+  };
 }
 
 /**
@@ -4795,14 +5033,23 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const correlationId = `write-${timestamp}-${Math.random().toString(36).substring(2, 8)}`;
 
   _logLifecycleQueued({
-    correlationId, transactionId, tabCount: state?.tabs?.length ?? 0, forceEmpty, logPrefix, timestamp
+    correlationId,
+    transactionId,
+    tabCount: state?.tabs?.length ?? 0,
+    forceEmpty,
+    logPrefix,
+    timestamp
   });
 
   // Phase 1: Validate state structure
   if (!_validateStateStructure(state, logPrefix).valid) {
     _logLifecycleFailure({
-      correlationId, transactionId, phase: 'VALIDATE_STRUCTURE',
-      reason: 'Invalid state structure', durationMs: Date.now() - startTime, timestamp
+      correlationId,
+      transactionId,
+      phase: 'VALIDATE_STRUCTURE',
+      reason: 'Invalid state structure',
+      durationMs: Date.now() - startTime,
+      timestamp
     });
     return Promise.resolve(false);
   }
@@ -4811,21 +5058,53 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   const minimizedCount = state.tabs.filter(t => t.minimized).length;
 
   // Run validation phases 1.5-5
-  const validation = _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, transactionId });
+  const validation = _runPersistValidationPhases({
+    state,
+    tabCount,
+    forceEmpty,
+    logPrefix,
+    transactionId
+  });
   if (!validation.shouldProceed) {
     if (validation.failurePhase === 'COALESCE') {
-      _logLifecycleCoalesced({ correlationId, transactionId, reason: validation.failureReason, tabCount, durationMs: Date.now() - startTime, timestamp });
+      _logLifecycleCoalesced({
+        correlationId,
+        transactionId,
+        reason: validation.failureReason,
+        tabCount,
+        durationMs: Date.now() - startTime,
+        timestamp
+      });
     } else if (validation.failurePhase === 'HASH_CHECK') {
-      _logLifecycleSkipped({ correlationId, transactionId, reason: validation.failureReason, durationMs: Date.now() - startTime, timestamp });
+      _logLifecycleSkipped({
+        correlationId,
+        transactionId,
+        reason: validation.failureReason,
+        durationMs: Date.now() - startTime,
+        timestamp
+      });
     } else {
-      _logLifecycleFailure({ correlationId, transactionId, phase: validation.failurePhase, reason: validation.failureReason, durationMs: Date.now() - startTime, timestamp, extras: validation.extras });
+      _logLifecycleFailure({
+        correlationId,
+        transactionId,
+        phase: validation.failurePhase,
+        reason: validation.failureReason,
+        durationMs: Date.now() - startTime,
+        timestamp,
+        extras: validation.extras
+      });
     }
     return Promise.resolve(validation.shouldReturnTrue);
   }
 
   // Phase 6: Log and execute write
   _logLifecycleExecuteStart({
-    correlationId, transactionId, tabCount, minimizedCount, durationMs: Date.now() - startTime, timestamp
+    correlationId,
+    transactionId,
+    tabCount,
+    minimizedCount,
+    durationMs: Date.now() - startTime,
+    timestamp
   });
   _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
 
@@ -4833,15 +5112,498 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
   stateWithTxn._writeCorrelationId = correlationId;
 
   return queueStorageWrite(
-    () => _executeStorageWrite({
-      stateWithTxn,
-      tabCount,
-      logPrefix,
-      transactionId,
-      writeCorrelationId: correlationId,
-      startTime
-    }),
+    () =>
+      _executeStorageWrite({
+        stateWithTxn,
+        tabCount,
+        logPrefix,
+        transactionId,
+        writeCorrelationId: correlationId,
+        startTime
+      }),
     logPrefix,
     transactionId
   );
+}
+
+// =============================================================================
+// STORAGE COORDINATOR
+// v1.6.3.12 - FIX Issue #14: Centralized storage write coordination
+// Serializes all writes - only ONE write operation in-flight at a time
+// =============================================================================
+
+/**
+ * StorageCoordinator - Centralized manager for storage writes
+ * v1.6.3.12 - FIX Issue #14: Prevents concurrent write race conditions
+ *
+ * This class ensures that:
+ * 1. Only ONE storage write is in-flight at a time
+ * 2. Write requests are queued and processed in order
+ * 3. Queue status is logged for debugging
+ *
+ * @class StorageCoordinator
+ */
+class StorageCoordinator {
+  constructor() {
+    this._writeQueue = [];
+    this._isWriting = false;
+    this._writeCount = 0;
+    this._currentHandler = null;
+  }
+
+  /**
+   * Queue a storage write operation
+   * @param {string} handlerName - Name of handler requesting write (e.g., 'VisibilityHandler')
+   * @param {Function} writeOperation - Async function that performs the actual write
+   * @returns {Promise<boolean>} Promise resolving to write success status
+   */
+  queueWrite(handlerName, writeOperation) {
+    return new Promise((resolve, reject) => {
+      this._writeQueue.push({
+        handlerName,
+        writeOperation,
+        resolve,
+        reject,
+        queuedAt: Date.now()
+      });
+
+      console.log('[WRITE_QUEUE] ENQUEUED:', {
+        handler: handlerName,
+        queueSize: this._writeQueue.length,
+        isWriting: this._isWriting,
+        currentHandler: this._currentHandler,
+        timestamp: new Date().toISOString()
+      });
+
+      this._processQueue();
+    });
+  }
+
+  /**
+   * Process the write queue sequentially
+   * @private
+   */
+  async _processQueue() {
+    if (this._isWriting || this._writeQueue.length === 0) {
+      return;
+    }
+
+    this._isWriting = true;
+    const { handlerName, writeOperation, resolve, reject, queuedAt } = this._writeQueue.shift();
+    this._currentHandler = handlerName;
+    this._writeCount++;
+
+    const waitTimeMs = Date.now() - queuedAt;
+    console.log('[WRITE_QUEUE] DEQUEUE_START:', {
+      handler: handlerName,
+      writeNumber: this._writeCount,
+      queueSize: this._writeQueue.length,
+      waitTimeMs,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const result = await writeOperation();
+
+      console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
+        handler: handlerName,
+        writeNumber: this._writeCount,
+        queueSize: this._writeQueue.length,
+        nextWriteIn: this._writeQueue.length > 0 ? '0ms' : 'N/A',
+        timestamp: new Date().toISOString()
+      });
+
+      resolve(result);
+    } catch (error) {
+      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
+        handler: handlerName,
+        writeNumber: this._writeCount,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      reject(error);
+    } finally {
+      this._isWriting = false;
+      this._currentHandler = null;
+
+      // Process next write immediately if queue has items
+      if (this._writeQueue.length > 0) {
+        // Use setImmediate/setTimeout(0) to avoid call stack growth
+        setTimeout(() => this._processQueue(), 0);
+      }
+    }
+  }
+
+  /**
+   * Get current queue status
+   * @returns {Object} Queue status information
+   */
+  getStatus() {
+    return {
+      queueSize: this._writeQueue.length,
+      isWriting: this._isWriting,
+      currentHandler: this._currentHandler,
+      totalWrites: this._writeCount,
+      pendingHandlers: this._writeQueue.map(w => w.handlerName)
+    };
+  }
+
+  /**
+   * Clear the write queue (emergency use only)
+   */
+  clearQueue() {
+    const droppedCount = this._writeQueue.length;
+    this._writeQueue.forEach(item => {
+      item.reject(new Error('Queue cleared'));
+    });
+    this._writeQueue = [];
+
+    console.warn('[WRITE_QUEUE] QUEUE_CLEARED:', {
+      droppedWrites: droppedCount,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+// Singleton instance of StorageCoordinator
+const storageCoordinator = new StorageCoordinator();
+
+/**
+ * Get the StorageCoordinator singleton instance
+ * v1.6.3.12 - FIX Issue #14: Expose coordinator for handler use
+ * @returns {StorageCoordinator} Singleton instance
+ */
+export function getStorageCoordinator() {
+  return storageCoordinator;
+}
+
+// =============================================================================
+// STORAGE LISTENER HEALTH MONITOR
+// v1.6.3.12 - FIX Issue #15: Detect storage listener disconnection
+// =============================================================================
+
+/**
+ * Storage listener health monitor state
+ * @private
+ */
+const _storageListenerHealthState = {
+  isRegistered: false,
+  listenerAddress: null,
+  lastHeartbeatSent: null,
+  lastHeartbeatReceived: null,
+  heartbeatIntervalId: null,
+  heartbeatTimeoutId: null,
+  missedHeartbeats: 0,
+  reregistrationCount: 0
+};
+
+/**
+ * Handle heartbeat storage change
+ * v1.6.3.12 - FIX Issue #15: Detect heartbeat response
+ * @private
+ * @param {Object} changes - Storage changes
+ * @param {string} _areaName - Storage area name (unused, kept for signature)
+ */
+function _handleHeartbeatChange(changes, _areaName) {
+  const heartbeatChange = changes[STORAGE_LISTENER_HEARTBEAT_KEY];
+  if (!heartbeatChange) return;
+
+  const latency = Date.now() - (heartbeatChange.newValue?.timestamp ?? 0);
+  _storageListenerHealthState.lastHeartbeatReceived = Date.now();
+  _storageListenerHealthState.missedHeartbeats = 0;
+
+  // Clear timeout since we received response
+  if (_storageListenerHealthState.heartbeatTimeoutId) {
+    clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
+    _storageListenerHealthState.heartbeatTimeoutId = null;
+  }
+
+  console.log('[STORAGE_HEARTBEAT] Received:', {
+    latencyMs: latency,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Send a heartbeat write to storage
+ * v1.6.3.12 - FIX Issue #15: Periodic health check
+ * @private
+ */
+async function _sendHeartbeat() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) return;
+
+  const timestamp = Date.now();
+  _storageListenerHealthState.lastHeartbeatSent = timestamp;
+
+  console.log('[STORAGE_HEARTBEAT] Sent:', {
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    await browserAPI.storage.local.set({
+      [STORAGE_LISTENER_HEARTBEAT_KEY]: {
+        timestamp,
+        instanceId: getWritingInstanceId()
+      }
+    });
+
+    // Set timeout for heartbeat response
+    _storageListenerHealthState.heartbeatTimeoutId = setTimeout(() => {
+      _handleMissedHeartbeat();
+    }, STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS);
+  } catch (err) {
+    console.error('[STORAGE_HEARTBEAT] Send failed:', err.message);
+  }
+}
+
+/**
+ * Handle missed heartbeat response
+ * v1.6.3.12 - FIX Issue #15: Re-register listener if heartbeat not received
+ * @private
+ */
+function _handleMissedHeartbeat() {
+  _storageListenerHealthState.missedHeartbeats++;
+
+  console.warn('[STORAGE_LISTENER_DEAD] No heartbeat received:', {
+    missedCount: _storageListenerHealthState.missedHeartbeats,
+    lastSent: _storageListenerHealthState.lastHeartbeatSent,
+    lastReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    timestamp: new Date().toISOString()
+  });
+
+  // Re-register listener after multiple missed heartbeats
+  if (_storageListenerHealthState.missedHeartbeats >= 2) {
+    _reregisterStorageListener();
+  }
+}
+
+/**
+ * Re-register the storage listener
+ * v1.6.3.12 - FIX Issue #15: Recovery mechanism
+ * @private
+ */
+function _reregisterStorageListener() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.onChanged) return;
+
+  _storageListenerHealthState.reregistrationCount++;
+
+  console.warn('[STORAGE_LISTENER] Re-registering:', {
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    timestamp: new Date().toISOString()
+  });
+
+  // Remove existing listener if any
+  try {
+    browserAPI.storage.onChanged.removeListener(_handleHeartbeatChange);
+  } catch (_e) {
+    // Ignore removal errors
+  }
+
+  // Add fresh listener
+  browserAPI.storage.onChanged.addListener(_handleHeartbeatChange);
+  _storageListenerHealthState.missedHeartbeats = 0;
+  _storageListenerHealthState.listenerAddress = `listener-${Date.now()}`;
+
+  console.log('[STORAGE_LISTENER] Registered:', {
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Start storage listener health monitoring
+ * v1.6.3.12 - FIX Issue #15: Initialize heartbeat mechanism
+ * @returns {boolean} True if monitoring started successfully
+ */
+export function startStorageListenerHealthMonitor() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.onChanged) {
+    console.warn('[STORAGE_LISTENER] Cannot start monitor: Storage API unavailable');
+    return false;
+  }
+
+  // Register initial listener
+  browserAPI.storage.onChanged.addListener(_handleHeartbeatChange);
+  _storageListenerHealthState.isRegistered = true;
+  _storageListenerHealthState.listenerAddress = `listener-${Date.now()}`;
+
+  console.log('[STORAGE_LISTENER] Registered:', {
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    timestamp: new Date().toISOString()
+  });
+
+  // Start heartbeat interval
+  _storageListenerHealthState.heartbeatIntervalId = setInterval(() => {
+    _sendHeartbeat();
+  }, STORAGE_LISTENER_HEARTBEAT_INTERVAL_MS);
+
+  // Send initial heartbeat
+  _sendHeartbeat();
+
+  return true;
+}
+
+/**
+ * Stop storage listener health monitoring
+ * v1.6.3.12 - FIX Issue #15: Cleanup
+ */
+export function stopStorageListenerHealthMonitor() {
+  if (_storageListenerHealthState.heartbeatIntervalId) {
+    clearInterval(_storageListenerHealthState.heartbeatIntervalId);
+    _storageListenerHealthState.heartbeatIntervalId = null;
+  }
+
+  if (_storageListenerHealthState.heartbeatTimeoutId) {
+    clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
+    _storageListenerHealthState.heartbeatTimeoutId = null;
+  }
+
+  const browserAPI = getBrowserStorageAPI();
+  if (browserAPI?.storage?.onChanged) {
+    try {
+      browserAPI.storage.onChanged.removeListener(_handleHeartbeatChange);
+    } catch (_e) {
+      // Ignore removal errors
+    }
+  }
+
+  _storageListenerHealthState.isRegistered = false;
+
+  console.log('[STORAGE_LISTENER] Monitor stopped:', {
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Get storage listener health status
+ * v1.6.3.12 - FIX Issue #15: Diagnostic info
+ * @returns {Object} Health status
+ */
+export function getStorageListenerHealthStatus() {
+  return {
+    isRegistered: _storageListenerHealthState.isRegistered,
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    lastHeartbeatSent: _storageListenerHealthState.lastHeartbeatSent,
+    lastHeartbeatReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    missedHeartbeats: _storageListenerHealthState.missedHeartbeats,
+    reregistrationCount: _storageListenerHealthState.reregistrationCount
+  };
+}
+
+// =============================================================================
+// Z-INDEX COUNTER PERSISTENCE
+// v1.6.3.12 - FIX Issue #17: Persist z-index counter across reloads
+// =============================================================================
+
+/**
+ * Load z-index counter from storage
+ * v1.6.3.12 - FIX Issue #17: Restore counter value on startup
+ * @param {number} defaultValue - Default value if not found in storage
+ * @returns {Promise<number>} Persisted counter value or default
+ */
+export async function loadZIndexCounter(defaultValue = 1000) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[ZINDEX_RESTORE] Storage API unavailable, using default:', defaultValue);
+    return defaultValue;
+  }
+
+  try {
+    const result = await browserAPI.storage.local.get(ZINDEX_COUNTER_KEY);
+    const storedValue = result[ZINDEX_COUNTER_KEY];
+
+    if (typeof storedValue === 'number' && storedValue >= defaultValue) {
+      console.log('[ZINDEX_RESTORED] Counter restored from storage:', {
+        value: storedValue,
+        timestamp: new Date().toISOString()
+      });
+      return storedValue;
+    }
+
+    console.log('[ZINDEX_RESTORE] No stored value found, using default:', defaultValue);
+    return defaultValue;
+  } catch (err) {
+    console.error('[ZINDEX_RESTORE] Failed to load:', err.message);
+    return defaultValue;
+  }
+}
+
+/**
+ * Save z-index counter to storage
+ * v1.6.3.12 - FIX Issue #17: Persist counter value after increment
+ * @param {number} value - Counter value to persist
+ * @returns {Promise<boolean>} True if saved successfully
+ */
+export async function saveZIndexCounter(value) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[ZINDEX_PERSIST] Storage API unavailable');
+    return false;
+  }
+
+  try {
+    await browserAPI.storage.local.set({ [ZINDEX_COUNTER_KEY]: value });
+
+    // Log periodically (every 100 increments) to avoid log spam
+    if (value % 100 === 0) {
+      console.log('[ZINDEX_PERSIST] Counter saved:', {
+        value,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[ZINDEX_PERSIST] Failed to save:', err.message);
+    return false;
+  }
+}
+
+// =============================================================================
+// ORIGIN TAB ID VALIDATION
+// v1.6.3.12 - FIX Issue #16: Ensure originTabId is properly serialized
+// =============================================================================
+
+/**
+ * Validate that a Quick Tab entity has originTabId before serialization
+ * v1.6.3.12 - FIX Issue #16: Prevent originTabId loss during serialization
+ * @param {Object} quickTab - Quick Tab entity to validate
+ * @param {string} [context='unknown'] - Context for logging
+ * @returns {{ valid: boolean, originTabId: number|null, warning?: string }}
+ */
+export function validateOriginTabIdForSerialization(quickTab, context = 'unknown') {
+  console.log('[TAB_LIFECYCLE] Serializing tab:', {
+    id: quickTab?.id ?? 'unknown',
+    readingFrom: 'tab.originTabId',
+    context
+  });
+
+  // Check direct property
+  const originTabId = quickTab?.originTabId;
+
+  if (originTabId === null || originTabId === undefined) {
+    console.warn('[ORIGINID_LOST] Expected originTabId but found null:', {
+      id: quickTab?.id ?? 'unknown',
+      context,
+      availableKeys: quickTab ? Object.keys(quickTab) : [],
+      timestamp: new Date().toISOString()
+    });
+    return { valid: false, originTabId: null, warning: 'originTabId is null or undefined' };
+  }
+
+  // Normalize and validate
+  const normalized = normalizeOriginTabId(originTabId, context);
+  if (normalized === null) {
+    console.warn('[ORIGINID_LOST] originTabId failed normalization:', {
+      id: quickTab?.id ?? 'unknown',
+      rawValue: originTabId,
+      context
+    });
+    return { valid: false, originTabId: null, warning: 'originTabId failed normalization' };
+  }
+
+  return { valid: true, originTabId: normalized };
 }

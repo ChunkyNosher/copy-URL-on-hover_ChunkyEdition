@@ -410,16 +410,16 @@ function _validateMessageFormat(message) {
   if (!message) {
     return { valid: false, error: 'Message is null or undefined' };
   }
-  
+
   if (typeof message !== 'object') {
     return { valid: false, error: 'Message must be an object' };
   }
-  
+
   // Must have action or type
   if (!message.action && !message.type) {
     return { valid: false, error: 'Message must have action or type property' };
   }
-  
+
   return { valid: true };
 }
 
@@ -437,13 +437,13 @@ function _queueInitializationMessage(message, callback) {
       queueSize: initializationMessageQueue.length
     });
   }
-  
+
   initializationMessageQueue.push({
     message,
     callback,
     queuedAt: Date.now()
   });
-  
+
   console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
     action: message.action || message.type,
     queueSize: initializationMessageQueue.length
@@ -456,15 +456,15 @@ function _queueInitializationMessage(message, callback) {
  */
 async function _flushInitializationMessageQueue() {
   if (initializationMessageQueue.length === 0) return;
-  
+
   console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
     queueSize: initializationMessageQueue.length
   });
-  
+
   while (initializationMessageQueue.length > 0) {
     const { message, callback, queuedAt } = initializationMessageQueue.shift();
     const queueDuration = Date.now() - queuedAt;
-    
+
     try {
       const result = await callback(message);
       console.log('[MSG][Content] QUEUED_MESSAGE_SENT:', {
@@ -506,12 +506,12 @@ function _updateBackgroundResponseTime() {
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
-  
+
   contentScriptInitialized = true;
   console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
     timestamp: new Date().toISOString()
   });
-  
+
   // Flush any queued messages
   await _flushInitializationMessageQueue();
 }
@@ -553,13 +553,13 @@ function _extractTabIdFromResponse(response) {
   if (!response?.success) {
     return { found: false };
   }
-  
+
   // v1.6.4.15 - Support both new format (data.currentTabId) and old format (tabId)
   const tabId = response.data?.currentTabId ?? response.tabId;
   if (typeof tabId !== 'number') {
     return { found: false };
   }
-  
+
   const format = response.data ? 'v2 (data.currentTabId)' : 'v1 (tabId)';
   return { found: true, tabId, format };
 }
@@ -574,7 +574,7 @@ function _extractTabIdFromResponse(response) {
  */
 async function _attemptGetTabIdFromBackground(attemptNumber) {
   const startTime = Date.now();
-  
+
   try {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
@@ -604,14 +604,14 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       durationMs: duration
     });
 
-    return { 
-      tabId: null, 
+    return {
+      tabId: null,
       error: response?.error || 'Invalid response from background',
       retryable: isRetryable
     };
   } catch (err) {
     const duration = Date.now() - startTime;
-    
+
     // Network/messaging errors are usually retryable
     const isRetryable = _isRetryableError(err.message);
 
@@ -622,8 +622,8 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       durationMs: duration
     });
 
-    return { 
-      tabId: null, 
+    return {
+      tabId: null,
       error: err.message,
       retryable: isRetryable
     };
@@ -640,8 +640,10 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
  */
 function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
   const isFirstAttempt = attemptNumber === null;
-  const message = isFirstAttempt ? 'Tab ID received on first attempt' : 'Tab ID received after retry';
-  
+  const message = isFirstAttempt
+    ? 'Tab ID received on first attempt'
+    : 'Tab ID received after retry';
+
   console.log(`[IDENTITY_INIT] TAB_ID_RESPONSE: ${message}`, {
     tabId,
     ...(attemptNumber !== null && { attemptNumber }),
@@ -649,12 +651,15 @@ function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
     timestamp: new Date().toISOString(),
     phase: 'TAB_ID_RESPONSE'
   });
-  
-  console.log(`[Content][TabID][INIT] COMPLETE: Tab ID acquired ${isFirstAttempt ? 'on first attempt' : 'on retry'}`, {
-    tabId,
-    ...(attemptNumber !== null && { attemptNumber }),
-    totalDurationMs: durationMs
-  });
+
+  console.log(
+    `[Content][TabID][INIT] COMPLETE: Tab ID acquired ${isFirstAttempt ? 'on first attempt' : 'on retry'}`,
+    {
+      tabId,
+      ...(attemptNumber !== null && { attemptNumber }),
+      totalDurationMs: durationMs
+    }
+  );
 }
 
 /**
@@ -672,7 +677,7 @@ function _logTabIdAcquisitionFailure(lastError, totalDurationMs) {
     timestamp: new Date().toISOString(),
     phase: 'TAB_ID_FAILED'
   });
-  
+
   console.error('[Content][TabID][INIT] FAILED: All retries exhausted', {
     totalAttempts: TAB_ID_MAX_RETRIES + 1,
     lastError,
@@ -691,11 +696,11 @@ function _logTabIdAcquisitionFailure(lastError, totalDurationMs) {
  */
 async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
   let result = initialResult;
-  
+
   for (let retryIndex = 0; retryIndex < TAB_ID_MAX_RETRIES; retryIndex++) {
     const attemptNumber = retryIndex + 2; // First retry is attempt #2
     const delayMs = TAB_ID_RETRY_DELAYS_MS[retryIndex];
-    
+
     // Only retry if the error was retryable
     if (!result.retryable) {
       console.warn('[Content][TabID][INIT] ABORT: Error is not retryable', {
@@ -705,7 +710,7 @@ async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
       });
       break;
     }
-    
+
     console.log('[Content][TabID][INIT] RETRY_SCHEDULED:', {
       retryNumber: retryIndex + 1,
       attemptNumber,
@@ -713,16 +718,16 @@ async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
       previousError: result.error,
       elapsedMs: Date.now() - overallStartTime
     });
-    
+
     await new Promise(resolve => setTimeout(resolve, delayMs));
     result = await _attemptGetTabIdFromBackground(attemptNumber);
-    
+
     if (result.tabId !== null) {
       _logTabIdAcquisitionSuccess(result.tabId, Date.now() - overallStartTime, attemptNumber);
       return { tabId: result.tabId, error: null };
     }
   }
-  
+
   return { tabId: null, error: result.error };
 }
 
@@ -745,30 +750,30 @@ async function getCurrentTabIdFromBackground() {
     timestamp: new Date().toISOString(),
     phase: 'TAB_ID_REQUEST'
   });
-  
+
   console.log('[Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry', {
     maxRetries: TAB_ID_MAX_RETRIES,
     retryDelays: TAB_ID_RETRY_DELAYS_MS,
     timestamp: new Date().toISOString()
   });
-  
+
   const overallStartTime = Date.now();
-  
+
   // Initial attempt (attempt #1)
   const initialResult = await _attemptGetTabIdFromBackground(1);
-  
+
   if (initialResult.tabId !== null) {
     _logTabIdAcquisitionSuccess(initialResult.tabId, Date.now() - overallStartTime, null);
     return initialResult.tabId;
   }
-  
+
   // Execute retry loop
   const retryResult = await _executeTabIdRetryLoop(initialResult, overallStartTime);
-  
+
   if (retryResult.tabId !== null) {
     return retryResult.tabId;
   }
-  
+
   // All retries exhausted
   _logTabIdAcquisitionFailure(retryResult.error, Date.now() - overallStartTime);
   return null;
@@ -795,6 +800,25 @@ let backgroundPort = null;
  * v1.6.3.6-v11 - Used for port name and logging
  */
 let cachedTabId = null;
+
+/**
+ * v1.6.3.11-v10 - FIX Issue #13: Track identity initialization state
+ * This flag gates Quick Tab operations until identity is fully initialized
+ * Set to true only AFTER getCurrentTabIdFromBackground() completes successfully
+ */
+let identityReady = false;
+
+/**
+ * v1.6.3.11-v10 - FIX Issue #13: Identity ready timeout (15 seconds)
+ */
+const IDENTITY_READY_TIMEOUT_MS = 15000;
+
+/**
+ * v1.6.3.11-v10 - FIX Issue #13: Promise that resolves when identity is ready
+ * Used to block Quick Tab operations until identity is initialized
+ */
+let identityReadyPromise = null;
+let identityReadyResolver = null;
 
 /**
  * v1.6.3.10-v4 - FIX Issue #3/6: Track last known background startup time for restart detection
@@ -1004,7 +1028,10 @@ function _isInGracePeriod() {
  */
 function _resetReconnectionAttempts() {
   if (reconnectionAttempts > 0) {
-    console.log('[Content] v1.6.3.10-v7 Reconnection successful, resetting attempt count from:', reconnectionAttempts);
+    console.log(
+      '[Content] v1.6.3.10-v7 Reconnection successful, resetting attempt count from:',
+      reconnectionAttempts
+    );
     reconnectionAttempts = 0;
   }
   // Start grace period
@@ -1029,7 +1056,7 @@ function _getNextSequenceId() {
  */
 function _validateMessageSequence(sequenceId) {
   if (typeof sequenceId !== 'number') return true; // Skip validation if no sequence
-  
+
   if (sequenceId <= lastReceivedSequenceId) {
     console.warn('[Content] MESSAGE_ORDER_VIOLATION: Received out-of-order message:', {
       received: sequenceId,
@@ -1038,7 +1065,7 @@ function _validateMessageSequence(sequenceId) {
     });
     return false;
   }
-  
+
   lastReceivedSequenceId = sequenceId;
   return true;
 }
@@ -1085,10 +1112,12 @@ function _cleanupStaleRestoreEntries(now) {
 function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
   if (!existingOp || existingOp.status !== 'pending') return false;
   if (messageSequenceId === undefined || existingOp.sequenceId === undefined) return false;
-  
+
   if (messageSequenceId < existingOp.sequenceId) {
     console.warn('[Content] v1.6.3.10-v10 RESTORE_ORDER_REJECTED:', {
-      ...details, reason: 'out-of-order: newer operation already pending', action: 'rejected'
+      ...details,
+      reason: 'out-of-order: newer operation already pending',
+      action: 'rejected'
     });
     return true;
   }
@@ -1098,10 +1127,10 @@ function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
 /**
  * Check if a RESTORE operation should be rejected due to ordering violation
  * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
- * 
+ *
  * Out-of-order RESTORE messages are rejected to prevent ownership lookups from
  * resolving incorrectly during rapid tab switching (Scenario 17).
- * 
+ *
  * @param {string} quickTabId - Quick Tab ID being restored
  * @param {number|undefined} messageSequenceId - Sequence ID from message (if present)
  * @returns {{allowed: boolean, reason: string|null, details: Object}}
@@ -1109,39 +1138,45 @@ function _shouldRejectRestoreOrder(existingOp, messageSequenceId, details) {
 function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
   const now = Date.now();
   _cleanupStaleRestoreEntries(now);
-  
+
   const existingOperation = pendingRestoreOperations.get(quickTabId);
   const effectiveSequence = messageSequenceId ?? ++restoreSequenceCounter;
-  
+
   const details = {
     quickTabId,
     messageSequenceId,
     effectiveSequence,
-    existingOperation: existingOperation ? {
-      sequenceId: existingOperation.sequenceId,
-      status: existingOperation.status,
-      age: now - existingOperation.timestamp
-    } : null,
+    existingOperation: existingOperation
+      ? {
+          sequenceId: existingOperation.sequenceId,
+          status: existingOperation.status,
+          age: now - existingOperation.timestamp
+        }
+      : null,
     pendingCount: pendingRestoreOperations.size
   };
-  
+
   // Check if should reject due to ordering
   if (_shouldRejectRestoreOrder(existingOperation, messageSequenceId, details)) {
     return { allowed: false, reason: 'out-of-order', details };
   }
-  
+
   // Log if queued behind pending operation
   if (existingOperation && existingOperation.status === 'pending') {
     console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_QUEUED:', {
-      ...details, reason: 'existing operation pending', action: 'will proceed after existing completes'
+      ...details,
+      reason: 'existing operation pending',
+      action: 'will proceed after existing completes'
     });
   }
-  
+
   // Track this operation
   pendingRestoreOperations.set(quickTabId, {
-    sequenceId: effectiveSequence, timestamp: now, status: 'pending'
+    sequenceId: effectiveSequence,
+    timestamp: now,
+    status: 'pending'
   });
-  
+
   console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_ALLOWED:', details);
   return { allowed: true, reason: null, details };
 }
@@ -1157,7 +1192,10 @@ function _markRestoreComplete(quickTabId, success) {
   if (operation) {
     operation.status = success ? 'completed' : 'failed';
     console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
-      quickTabId, success, sequenceId: operation.sequenceId, duration: Date.now() - operation.timestamp
+      quickTabId,
+      success,
+      sequenceId: operation.sequenceId,
+      duration: Date.now() - operation.timestamp
     });
   }
 }
@@ -1176,7 +1214,7 @@ function _queueMessage(message) {
     queuedAt: Date.now(),
     retryCount: 0
   };
-  
+
   if (messageQueue.length >= MAX_MESSAGE_QUEUE_SIZE) {
     const dropped = messageQueue.shift();
     console.warn('[Content] MESSAGE_QUEUE_OVERFLOW: Dropped oldest message:', {
@@ -1185,14 +1223,14 @@ function _queueMessage(message) {
       queueSize: messageQueue.length
     });
   }
-  
+
   messageQueue.push(queuedMessage);
   console.log('[Content] MESSAGE_QUEUED:', {
     messageId,
     type: message.type,
     queueSize: messageQueue.length
   });
-  
+
   return messageId;
 }
 
@@ -1202,16 +1240,16 @@ function _queueMessage(message) {
  */
 function _drainMessageQueue() {
   if (messageQueue.length === 0) return;
-  
+
   console.log('[Content] DRAINING_MESSAGE_QUEUE:', {
     queueSize: messageQueue.length,
     timestamp: Date.now()
   });
-  
+
   while (messageQueue.length > 0 && backgroundPort) {
     const queuedMessage = messageQueue.shift();
     queuedMessage.retryCount++;
-    
+
     try {
       backgroundPort.postMessage(queuedMessage.message);
       console.log('[Content] QUEUE_MESSAGE_SENT:', {
@@ -1244,12 +1282,12 @@ function _bufferCommand(command) {
       bufferSize: pendingCommandsBuffer.length
     });
   }
-  
+
   pendingCommandsBuffer.push({
     ...command,
     bufferedAt: Date.now()
   });
-  
+
   console.log('[Content] COMMAND_BUFFERED:', {
     type: command.type,
     bufferSize: pendingCommandsBuffer.length
@@ -1271,18 +1309,22 @@ function _canFlushCommands() {
  */
 function _flushCommandBuffer() {
   if (pendingCommandsBuffer.length === 0) return;
-  
+
   console.log('[Content] FLUSHING_COMMAND_BUFFER:', { bufferSize: pendingCommandsBuffer.length });
-  
+
   while (_canFlushCommands()) {
     const command = pendingCommandsBuffer.shift();
     try {
       backgroundPort.postMessage(command);
       console.log('[Content] BUFFERED_COMMAND_SENT:', {
-        type: command.type, bufferedDuration: Date.now() - command.bufferedAt
+        type: command.type,
+        bufferedDuration: Date.now() - command.bufferedAt
       });
     } catch (err) {
-      console.error('[Content] BUFFERED_COMMAND_FAILED:', { type: command.type, error: err.message });
+      console.error('[Content] BUFFERED_COMMAND_FAILED:', {
+        type: command.type,
+        error: err.message
+      });
       pendingCommandsBuffer.unshift(command);
       break;
     }
@@ -1301,13 +1343,13 @@ function _sendPortMessage(message, isCritical = false) {
   if (isCritical) {
     message.sequenceId = _getNextSequenceId();
   }
-  
+
   // Check if port is available and connected
   if (!backgroundPort || portConnectionState !== PORT_CONNECTION_STATE.CONNECTED) {
     _queueMessage(message);
     return false;
   }
-  
+
   try {
     backgroundPort.postMessage(message);
     return true;
@@ -1363,7 +1405,7 @@ function handleBackgroundRestartDetected(newStartupTime) {
     tabId: cachedTabId,
     timestamp: Date.now()
   };
-  
+
   const sent = _sendPortMessage(syncMessage, true);
   console.log('[Content] v1.6.3.10-v7 State sync request:', {
     sent,
@@ -1398,7 +1440,11 @@ function _handleReconnection(tabId, reason) {
   }
 
   const reconnectDelay = _calculateReconnectDelay();
-  console.log('[Content] Scheduling reconnection:', { attempt: reconnectionAttempts, delayMs: reconnectDelay, reason });
+  console.log('[Content] Scheduling reconnection:', {
+    attempt: reconnectionAttempts,
+    delayMs: reconnectDelay,
+    reason
+  });
 
   setTimeout(() => {
     if (!backgroundPort && document.visibilityState !== 'hidden') {
@@ -1412,7 +1458,9 @@ function connectContentToBackground(tabId) {
 
   // v1.6.3.10-v7 - FIX Issue #1: Check circuit breaker state
   if (portConnectionState === PORT_CONNECTION_STATE.FAILED) {
-    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', { attempts: reconnectionAttempts });
+    console.warn('[Content] CIRCUIT_BREAKER_OPEN: Refusing to reconnect', {
+      attempts: reconnectionAttempts
+    });
     return;
   }
 
@@ -1480,7 +1528,7 @@ function _processBackgroundStartupTime(startupTime) {
 function _handleBackgroundHandshake(message) {
   // v1.6.3.10-v7 - FIX Issue #2: Calculate handshake roundtrip latency
   const latencyMs = handshakeRequestTimestamp ? Date.now() - handshakeRequestTimestamp : null;
-  
+
   console.log('[Content] v1.6.3.10-v7 Background handshake received:', {
     startupTime: message.startupTime,
     uptime: message.uptime,
@@ -1493,7 +1541,7 @@ function _handleBackgroundHandshake(message) {
   // v1.6.3.10-v7 - FIX Issue #3: Track latency for adaptive dedup window
   if (latencyMs !== null) {
     lastKnownBackgroundLatencyMs = latencyMs;
-    
+
     // Log warning if latency exceeds 5s
     if (latencyMs > 5000) {
       console.warn('[Content] HIGH_HANDSHAKE_LATENCY: Background response took too long:', {
@@ -1516,7 +1564,7 @@ function _handleBackgroundHandshake(message) {
       latencyMs,
       timestamp: Date.now()
     });
-    
+
     // v1.6.3.10-v7 - FIX Issue #2: Flush buffered commands
     _flushCommandBuffer();
   } else if (wasReady && !isNowReady) {
@@ -1622,7 +1670,10 @@ function _logInitSuccess(currentTabId, totalDurationMs) {
     timestamp: new Date().toISOString()
   });
   console.log('[Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully');
-  console.log('[Copy-URL-on-Hover] Manager has createQuickTab:', typeof quickTabsManager.createQuickTab);
+  console.log(
+    '[Copy-URL-on-Hover] Manager has createQuickTab:',
+    typeof quickTabsManager.createQuickTab
+  );
   console.log('[Copy-URL-on-Hover] Manager currentTabId:', quickTabsManager.currentTabId);
 }
 
@@ -1658,13 +1709,16 @@ function _logTabIdAcquisitionFailed() {
   console.warn(
     '[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_FAILED: Could not acquire tab ID from background'
   );
-  console.warn('[Copy-URL-on-Hover] WARNING: Storage writes may fail ownership validation without tab ID');
+  console.warn(
+    '[Copy-URL-on-Hover] WARNING: Storage writes may fail ownership validation without tab ID'
+  );
 }
 
 /**
  * Handle successful tab ID acquisition - set writing tab ID and establish port connection
  * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
  * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] READY logging
+ * v1.6.3.11-v10 - FIX Issue #13: Set identityReady flag and resolve promise
  * @private
  * @param {number} tabId - The acquired tab ID
  */
@@ -1693,6 +1747,16 @@ function _handleTabIdAcquired(tabId) {
     tabId,
     isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
   });
+
+  // v1.6.3.11-v10 - FIX Issue #13: Set identity ready flag
+  console.log('[IDENTITY_STATE] Ready state transitioned: false → true, tabId=' + tabId);
+  identityReady = true;
+
+  // Resolve the identity ready promise if waiting
+  if (identityReadyResolver) {
+    identityReadyResolver(tabId);
+    identityReadyResolver = null;
+  }
 
   // Establish persistent port connection
   console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId });
@@ -2441,12 +2505,15 @@ function buildQuickTabData(options) {
 
   // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
   if (originTabId === null) {
-    console.warn('[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized', {
-      url,
-      id,
-      cachedTabId,
-      suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
-    });
+    console.warn(
+      '[Content] QUICK_TAB_CREATE_WARNING: originTabId is null, tab ID not yet initialized',
+      {
+        url,
+        id,
+        cachedTabId,
+        suggestion: 'Ensure connectContentToBackground() completes before creating Quick Tabs'
+      }
+    );
   } else {
     console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
       url,
@@ -2537,13 +2604,90 @@ function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
 }
 
 /**
+ * Wait for identity to be ready before proceeding
+ * v1.6.3.11-v10 - FIX Issue #13: Identity ready gate with timeout
+ * @returns {Promise<number|null>} Tab ID when ready, null if timeout
+ */
+function waitForIdentityReady() {
+  // Fast path: already ready
+  if (identityReady) {
+    return Promise.resolve(cachedTabId);
+  }
+
+  // Create promise if not already waiting
+  if (!identityReadyPromise) {
+    identityReadyPromise = new Promise((resolve, _reject) => {
+      identityReadyResolver = resolve;
+
+      // Timeout after IDENTITY_READY_TIMEOUT_MS
+      setTimeout(() => {
+        if (!identityReady) {
+          console.error('[IDENTITY_STATE] Timeout waiting for identity:', {
+            timeoutMs: IDENTITY_READY_TIMEOUT_MS,
+            identityReady,
+            cachedTabId
+          });
+          resolve(null);
+        }
+      }, IDENTITY_READY_TIMEOUT_MS);
+    });
+  }
+
+  return identityReadyPromise;
+}
+
+/**
+ * Check if Quick Tab operations are gated due to identity not ready
+ * v1.6.3.11-v10 - FIX Issue #13: Gate check with logging
+ * @param {string} operation - Operation being attempted (for logging)
+ * @returns {boolean} True if operation should be blocked
+ */
+function isQuickTabOperationGated(operation) {
+  if (!identityReady) {
+    console.warn('[OPERATION_GATED] Blocking operation:', {
+      reason: 'IDENTITY_NOT_READY',
+      operation,
+      identityReady,
+      cachedTabId,
+      timestamp: new Date().toISOString()
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+ * v1.6.3.11-v10 - FIX Issue #13: Add identity ready gate
  */
 async function handleCreateQuickTab(url, targetElement = null) {
   // Early validation
   if (!url) {
     console.warn('[Quick Tab] Missing URL for creation');
     return;
+  }
+
+  // v1.6.3.11-v10 - FIX Issue #13: Gate Quick Tab creation until identity is ready
+  if (isQuickTabOperationGated('CREATE_QUICK_TAB')) {
+    // Wait for identity with timeout
+    showNotification('⏳ Initializing...', 'info');
+    const tabId = await waitForIdentityReady();
+
+    if (tabId === null) {
+      // Timeout - identity not ready after 15 seconds
+      console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
+        operation: 'CREATE_QUICK_TAB',
+        url,
+        reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
+      });
+      showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
+      return;
+    }
+    // Identity now ready, continue with creation
+    console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
+      operation: 'CREATE_QUICK_TAB',
+      tabId
+    });
   }
 
   // Setup and emit event
@@ -2803,7 +2947,7 @@ function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
     newOriginTabId,
     adoptedAt: Date.now()
   });
-  
+
   console.log('[Content] ADOPTION_TRACKED:', {
     quickTabId,
     newOriginTabId,
@@ -2819,17 +2963,17 @@ function _trackAdoptedQuickTab(quickTabId, newOriginTabId) {
  */
 function _getAdoptionOwnership(quickTabId) {
   const adoptionInfo = recentlyAdoptedQuickTabs.get(quickTabId);
-  
+
   if (!adoptionInfo) {
     return { wasAdopted: false, newOriginTabId: null };
   }
-  
+
   // Check if TTL expired
   if (Date.now() - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
     recentlyAdoptedQuickTabs.delete(quickTabId);
     return { wasAdopted: false, newOriginTabId: null };
   }
-  
+
   return { wasAdopted: true, newOriginTabId: adoptionInfo.newOriginTabId };
 }
 
@@ -2840,14 +2984,14 @@ function _getAdoptionOwnership(quickTabId) {
 function _cleanupAdoptionTracking() {
   const now = Date.now();
   let cleanedCount = 0;
-  
+
   for (const [quickTabId, adoptionInfo] of recentlyAdoptedQuickTabs) {
     if (now - adoptionInfo.adoptedAt > ADOPTION_TRACKING_TTL_MS) {
       recentlyAdoptedQuickTabs.delete(quickTabId);
       cleanedCount++;
     }
   }
-  
+
   if (cleanedCount > 0) {
     console.log('[Content] ADOPTION_CLEANUP:', {
       cleanedCount,
@@ -2891,9 +3035,13 @@ const STORAGE_EVENT_DEDUP_WINDOW_MS = 200;
 function _isWithinDedupWindow(lastEvent, newVersion, now) {
   if (!lastEvent) return false;
   const timeSinceLastEvent = now - lastEvent.timestamp;
-  const isDuplicate = timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
+  const isDuplicate =
+    timeSinceLastEvent < STORAGE_EVENT_DEDUP_WINDOW_MS && lastEvent.version === newVersion;
   if (isDuplicate) {
-    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', { timeSinceLastEvent, version: newVersion });
+    console.debug('[Content] STORAGE_EVENT_DUPLICATE:', {
+      timeSinceLastEvent,
+      version: newVersion
+    });
   }
   return isDuplicate;
 }
@@ -2901,19 +3049,19 @@ function _isWithinDedupWindow(lastEvent, newVersion, now) {
 function _isStorageEventDuplicate(key, newValue) {
   const now = Date.now();
   const newVersion = newValue?.correlationId || newValue?.timestamp || null;
-  
+
   if (_isWithinDedupWindow(recentStorageEvents.get(key), newVersion, now)) {
     return true;
   }
-  
+
   // Track this event
   recentStorageEvents.set(key, { timestamp: now, version: newVersion });
-  
+
   // Clean up old entries
   if (recentStorageEvents.size > 20) {
     _cleanupOldStorageEvents(now);
   }
-  
+
   return false;
 }
 
@@ -2960,13 +3108,13 @@ function _getAdaptiveDedupWindow() {
   if (lastKnownBackgroundLatencyMs === null) {
     return BASE_RESTORE_DEDUP_WINDOW_MS;
   }
-  
+
   // 2x observed latency, clamped to range
   const adaptiveWindow = Math.min(
     Math.max(lastKnownBackgroundLatencyMs * 2, BASE_RESTORE_DEDUP_WINDOW_MS),
     MAX_RESTORE_DEDUP_WINDOW_MS
   );
-  
+
   return adaptiveWindow;
 }
 
@@ -3347,7 +3495,7 @@ function _extractTabIdFromQuickTabId(quickTabId) {
 function _logOwnershipDivergence(quickTabId, extractedTabId, adoptionInfo, currentTabId) {
   if (!adoptionInfo.wasAdopted || extractedTabId === null) return;
   if (extractedTabId === adoptionInfo.newOriginTabId) return;
-  
+
   console.warn('[Content] OWNERSHIP_DIVERGENCE: Pattern and adoption ownership mismatch:', {
     quickTabId,
     patternTabId: extractedTabId,
@@ -3382,12 +3530,12 @@ function _getRestoreOwnership(quickTabId) {
   const ownership = _getQuickTabOwnership(quickTabId);
   const extractedTabId = _extractTabIdFromQuickTabId(quickTabId);
   const matchesIdPattern = extractedTabId !== null && extractedTabId === ownership.currentTabId;
-  
+
   // v1.6.3.10-v7 - FIX Issue #7: Check adoption cache
   const adoptionInfo = _getAdoptionOwnership(quickTabId);
-  const matchesAdoptedOwnership = adoptionInfo.wasAdopted && 
-    adoptionInfo.newOriginTabId === ownership.currentTabId;
-  
+  const matchesAdoptedOwnership =
+    adoptionInfo.wasAdopted && adoptionInfo.newOriginTabId === ownership.currentTabId;
+
   // Log warning if pattern and adoption ownership diverge
   _logOwnershipDivergence(quickTabId, extractedTabId, adoptionInfo, ownership.currentTabId);
 
@@ -3398,7 +3546,12 @@ function _getRestoreOwnership(quickTabId) {
     wasAdopted: adoptionInfo.wasAdopted,
     adoptedOwnerTabId: adoptionInfo.newOriginTabId,
     matchesAdoptedOwnership,
-    ownsQuickTab: _determineOwnership(ownership, matchesAdoptedOwnership, adoptionInfo.wasAdopted, matchesIdPattern)
+    ownsQuickTab: _determineOwnership(
+      ownership,
+      matchesAdoptedOwnership,
+      adoptionInfo.wasAdopted,
+      matchesIdPattern
+    )
   };
 }
 
@@ -3551,7 +3704,7 @@ function _handleGetContentLogs(sendResponse) {
  * v1.6.3.10-v8 - FIX Code Health: Consolidated duplicate handler pattern
  * @private
  * @param {Function} action - Action to execute
- * @param {Function} sendResponse - Response callback  
+ * @param {Function} sendResponse - Response callback
  * @param {string} timestampField - Field name for timestamp (e.g. 'clearedAt')
  * @param {string} errorContext - Error log context
  */
@@ -3571,8 +3724,13 @@ function _executeWithResponse(action, sendResponse, timestampField, errorContext
  */
 function _handleClearContentLogs(sendResponse) {
   _executeWithResponse(
-    () => { clearConsoleLogs(); clearLogBuffer(); },
-    sendResponse, 'clearedAt', 'clearing log buffer'
+    () => {
+      clearConsoleLogs();
+      clearLogBuffer();
+    },
+    sendResponse,
+    'clearedAt',
+    'clearing log buffer'
   );
 }
 
@@ -3583,7 +3741,9 @@ function _handleClearContentLogs(sendResponse) {
 function _handleRefreshLiveConsoleFilters(sendResponse) {
   _executeWithResponse(
     refreshLiveConsoleSettings,
-    sendResponse, 'refreshedAt', 'refreshing live console filters'
+    sendResponse,
+    'refreshedAt',
+    'refreshing live console filters'
   );
 }
 
@@ -3628,7 +3788,10 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 function _updateOriginTabIdWithLog(target, adoptedQuickTabId, newOriginTabId, location) {
   if (!target) return false;
   console.log('[Content] ADOPTION_CACHE_UPDATE:', {
-    adoptedQuickTabId, oldOriginTabId: target.originTabId, newOriginTabId, location
+    adoptedQuickTabId,
+    oldOriginTabId: target.originTabId,
+    newOriginTabId,
+    location
   });
   target.originTabId = newOriginTabId;
   return true;
@@ -3647,7 +3810,12 @@ function _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId)
  * @private
  */
 function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOriginTabId) {
-  return _updateOriginTabIdWithLog(snapshot, adoptedQuickTabId, newOriginTabId, 'minimized-snapshot');
+  return _updateOriginTabIdWithLog(
+    snapshot,
+    adoptedQuickTabId,
+    newOriginTabId,
+    'minimized-snapshot'
+  );
 }
 
 /**
@@ -3665,10 +3833,16 @@ function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOri
  * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce _handleAdoptionCompleted complexity
  * @private
  */
-function _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId) {
+function _tryUpdateMinimizedManagerSnapshot(
+  adoptedQuickTabId,
+  newOriginTabId,
+  previousOriginTabId
+) {
   if (!quickTabsManager?.minimizedManager?.updateSnapshotOriginTabId) return false;
   return quickTabsManager.minimizedManager.updateSnapshotOriginTabId(
-    adoptedQuickTabId, newOriginTabId, previousOriginTabId
+    adoptedQuickTabId,
+    newOriginTabId,
+    previousOriginTabId
   );
 }
 
@@ -3682,21 +3856,42 @@ function _handleAdoptionCompleted(message, sendResponse) {
   const minimizedSnapshot = quickTabsManager?.minimizedManager?.getSnapshot?.(adoptedQuickTabId);
 
   console.log('[Content] ADOPTION_COMPLETED received:', {
-    adoptedQuickTabId, previousOriginTabId, newOriginTabId, currentTabId,
-    hasInMap: !!tabEntry, hasSnapshot: !!minimizedSnapshot
+    adoptedQuickTabId,
+    previousOriginTabId,
+    newOriginTabId,
+    currentTabId,
+    hasInMap: !!tabEntry,
+    hasSnapshot: !!minimizedSnapshot
   });
 
   // Update caches
   const tabUpdated = _updateTabEntryOriginTabId(tabEntry, adoptedQuickTabId, newOriginTabId);
-  const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(minimizedSnapshot, adoptedQuickTabId, newOriginTabId);
+  const directSnapshotUpdated = _updateMinimizedSnapshotOriginTabId(
+    minimizedSnapshot,
+    adoptedQuickTabId,
+    newOriginTabId
+  );
   const cacheUpdated = tabUpdated || directSnapshotUpdated;
-  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(adoptedQuickTabId, newOriginTabId, previousOriginTabId);
+  const snapshotUpdated = _tryUpdateMinimizedManagerSnapshot(
+    adoptedQuickTabId,
+    newOriginTabId,
+    previousOriginTabId
+  );
 
   console.log('[Content] ADOPTION_COMPLETED completed:', {
-    adoptedQuickTabId, cacheUpdated, snapshotUpdated, timeSinceAdoption: Date.now() - timestamp
+    adoptedQuickTabId,
+    cacheUpdated,
+    snapshotUpdated,
+    timeSinceAdoption: Date.now() - timestamp
   });
 
-  sendResponse({ success: true, cacheUpdated, snapshotUpdated, currentTabId, timestamp: Date.now() });
+  sendResponse({
+    success: true,
+    cacheUpdated,
+    snapshotUpdated,
+    currentTabId,
+    timestamp: Date.now()
+  });
 }
 
 // ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
@@ -3750,11 +3945,14 @@ function _handleTabActivated(message, sendResponse) {
     console.log('[Content] TAB_ACTIVATED_HANDLER: Triggering hydration');
     try {
       // Trigger async hydration (don't await in handler)
-      quickTabsManager.hydrateFromStorage().then(result => {
-        console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
-      }).catch(err => {
-        console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
-      });
+      quickTabsManager
+        .hydrateFromStorage()
+        .then(result => {
+          console.log('[Content] TAB_ACTIVATED_HANDLER: Hydration complete:', result);
+        })
+        .catch(err => {
+          console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration failed:', err.message);
+        });
       stateUpdated = true;
     } catch (err) {
       console.warn('[Content] TAB_ACTIVATED_HANDLER: Hydration error:', err.message);
@@ -3857,7 +4055,9 @@ function _syncStateTabs(tabs, currentTabId) {
 function _syncOriginTabId(target, tabData, location) {
   if (!target || target.originTabId === tabData.originTabId) return 0;
   console.log(`[Content] STATE_SYNC_FROM_BACKGROUND: Updating ${location}:`, {
-    quickTabId: tabData.id, oldOriginTabId: target.originTabId, newOriginTabId: tabData.originTabId
+    quickTabId: tabData.id,
+    oldOriginTabId: target.originTabId,
+    newOriginTabId: tabData.originTabId
   });
   target.originTabId = tabData.originTabId;
   return 1;
@@ -4589,7 +4789,10 @@ function _createVisibilityHandler(methodName, actionName) {
   return (quickTabId, source) => {
     const handler = quickTabsManager?.visibilityHandler?.[methodName];
     if (!handler) {
-      return { success: false, error: 'Quick Tabs manager not initialized or visibility handler not ready' };
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized or visibility handler not ready'
+      };
     }
     handler.call(quickTabsManager.visibilityHandler, quickTabId, source || 'manager');
     return { success: true, action: actionName };
@@ -4602,7 +4805,10 @@ const QUICK_TAB_COMMAND_HANDLERS = {
   CLOSE_QUICK_TAB: (quickTabId, _source) => {
     const handler = quickTabsManager?.closeById;
     if (!handler) {
-      return { success: false, error: 'Quick Tabs manager not initialized - closeById not available' };
+      return {
+        success: false,
+        error: 'Quick Tabs manager not initialized - closeById not available'
+      };
     }
     handler.call(quickTabsManager, quickTabId);
     return { success: true, action: 'closed' };
