@@ -32,10 +32,11 @@ export class CreateHandler {
    * @param {Map} quickTabsMap - Map of id -> QuickTabWindow
    * @param {Object} currentZIndex - Ref object { value: number }
    * @param {string} cookieStoreId - Current container ID
-   * @param {Object} eventBus - EventEmitter for DOM events
+   * @param {Object} eventBus - EventEmitter for DOM events (external, from content.js)
    * @param {Object} Events - Event constants
    * @param {Function} generateId - ID generation function
    * @param {Function} windowFactory - Optional factory function for creating windows (for testing)
+   * @param {Object} internalEventBus - v1.6.3.11-v10 FIX Issue #12: Internal event bus for UICoordinator communication
    */
   constructor(
     quickTabsMap,
@@ -44,7 +45,8 @@ export class CreateHandler {
     eventBus,
     Events,
     generateId,
-    windowFactory = null
+    windowFactory = null,
+    internalEventBus = null
   ) {
     this.quickTabsMap = quickTabsMap;
     this.currentZIndex = currentZIndex;
@@ -58,6 +60,18 @@ export class CreateHandler {
     this.showDebugIdSetting = false;
     // v1.6.3.4-v9 - Store listener reference for cleanup
     this._storageListener = null;
+    // v1.6.3.11-v10 - FIX Issue #12: Store internal event bus for window:created events
+    // UICoordinator listens on internalEventBus, so window:created must be emitted there
+    this.internalEventBus = internalEventBus;
+    
+    // v1.6.3.11-v10 - FIX Issue #12: Log event bus instances for debugging
+    const externalId = eventBus?.getInstanceId?.() ?? eventBus?.constructor?.name ?? 'unknown';
+    const internalId = internalEventBus?.constructor?.name ?? 'null';
+    console.log('[CreateHandler] Received eventBus instances:', {
+      externalEventBus: externalId,
+      internalEventBus: internalId,
+      hasInternalBus: !!internalEventBus
+    });
   }
 
   /**
@@ -512,14 +526,31 @@ export class CreateHandler {
   /**
    * Emit window:created event for UICoordinator registration
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: UICoordinator Map never populated
+   * v1.6.3.11-v10 - FIX Issue #12: Use internalEventBus to reach UICoordinator
+   *   UICoordinator listens on internalEventBus (EventEmitter3), not external eventBus (EventBus)
+   *   This was the root cause of window:created events never reaching UICoordinator
    * @private
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - Created tab window instance
    */
   _emitWindowCreatedEvent(id, tabWindow) {
-    if (!this.eventBus) return;
+    // v1.6.3.11-v10 - FIX Issue #12: Prefer internalEventBus for UICoordinator communication
+    // UICoordinator listens on internalEventBus, not the external eventBus from content.js
+    const targetBus = this.internalEventBus || this.eventBus;
+    
+    if (!targetBus) {
+      console.warn('[CreateHandler] No event bus available for window:created');
+      return;
+    }
 
-    this.eventBus.emit('window:created', { id, tabWindow });
-    console.log('[CreateHandler] Emitted window:created for UICoordinator:', id);
+    targetBus.emit('window:created', { id, tabWindow });
+    
+    // v1.6.3.11-v10 - FIX Issue #12: Log which bus was used for debugging
+    const busType = this.internalEventBus ? 'internalEventBus' : 'eventBus (fallback)';
+    console.log('[CreateHandler] Emitted window:created for UICoordinator:', {
+      id,
+      busType,
+      busConstructor: targetBus?.constructor?.name ?? 'unknown'
+    });
   }
 }

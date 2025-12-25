@@ -797,6 +797,25 @@ let backgroundPort = null;
 let cachedTabId = null;
 
 /**
+ * v1.6.3.11-v10 - FIX Issue #13: Track identity initialization state
+ * This flag gates Quick Tab operations until identity is fully initialized
+ * Set to true only AFTER getCurrentTabIdFromBackground() completes successfully
+ */
+let identityReady = false;
+
+/**
+ * v1.6.3.11-v10 - FIX Issue #13: Identity ready timeout (15 seconds)
+ */
+const IDENTITY_READY_TIMEOUT_MS = 15000;
+
+/**
+ * v1.6.3.11-v10 - FIX Issue #13: Promise that resolves when identity is ready
+ * Used to block Quick Tab operations until identity is initialized
+ */
+let identityReadyPromise = null;
+let identityReadyResolver = null;
+
+/**
  * v1.6.3.10-v4 - FIX Issue #3/6: Track last known background startup time for restart detection
  */
 let lastKnownBackgroundStartupTime = null;
@@ -1665,6 +1684,7 @@ function _logTabIdAcquisitionFailed() {
  * Handle successful tab ID acquisition - set writing tab ID and establish port connection
  * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
  * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] READY logging
+ * v1.6.3.11-v10 - FIX Issue #13: Set identityReady flag and resolve promise
  * @private
  * @param {number} tabId - The acquired tab ID
  */
@@ -1693,6 +1713,16 @@ function _handleTabIdAcquired(tabId) {
     tabId,
     isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
   });
+
+  // v1.6.3.11-v10 - FIX Issue #13: Set identity ready flag
+  console.log('[IDENTITY_STATE] Ready state transitioned: false → true, tabId=' + tabId);
+  identityReady = true;
+  
+  // Resolve the identity ready promise if waiting
+  if (identityReadyResolver) {
+    identityReadyResolver(tabId);
+    identityReadyResolver = null;
+  }
 
   // Establish persistent port connection
   console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId });
@@ -2537,13 +2567,90 @@ function handleQuickTabCreationError(err, saveId, canUseManagerSaveId) {
 }
 
 /**
+ * Wait for identity to be ready before proceeding
+ * v1.6.3.11-v10 - FIX Issue #13: Identity ready gate with timeout
+ * @returns {Promise<number|null>} Tab ID when ready, null if timeout
+ */
+function waitForIdentityReady() {
+  // Fast path: already ready
+  if (identityReady) {
+    return Promise.resolve(cachedTabId);
+  }
+
+  // Create promise if not already waiting
+  if (!identityReadyPromise) {
+    identityReadyPromise = new Promise((resolve, _reject) => {
+      identityReadyResolver = resolve;
+      
+      // Timeout after IDENTITY_READY_TIMEOUT_MS
+      setTimeout(() => {
+        if (!identityReady) {
+          console.error('[IDENTITY_STATE] Timeout waiting for identity:', {
+            timeoutMs: IDENTITY_READY_TIMEOUT_MS,
+            identityReady,
+            cachedTabId
+          });
+          resolve(null);
+        }
+      }, IDENTITY_READY_TIMEOUT_MS);
+    });
+  }
+
+  return identityReadyPromise;
+}
+
+/**
+ * Check if Quick Tab operations are gated due to identity not ready
+ * v1.6.3.11-v10 - FIX Issue #13: Gate check with logging
+ * @param {string} operation - Operation being attempted (for logging)
+ * @returns {boolean} True if operation should be blocked
+ */
+function isQuickTabOperationGated(operation) {
+  if (!identityReady) {
+    console.warn('[OPERATION_GATED] Blocking operation:', {
+      reason: 'IDENTITY_NOT_READY',
+      operation,
+      identityReady,
+      cachedTabId,
+      timestamp: new Date().toISOString()
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
+ * v1.6.3.11-v10 - FIX Issue #13: Add identity ready gate
  */
 async function handleCreateQuickTab(url, targetElement = null) {
   // Early validation
   if (!url) {
     console.warn('[Quick Tab] Missing URL for creation');
     return;
+  }
+
+  // v1.6.3.11-v10 - FIX Issue #13: Gate Quick Tab creation until identity is ready
+  if (isQuickTabOperationGated('CREATE_QUICK_TAB')) {
+    // Wait for identity with timeout
+    showNotification('⏳ Initializing...', 'info');
+    const tabId = await waitForIdentityReady();
+    
+    if (tabId === null) {
+      // Timeout - identity not ready after 15 seconds
+      console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
+        operation: 'CREATE_QUICK_TAB',
+        url,
+        reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
+      });
+      showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
+      return;
+    }
+    // Identity now ready, continue with creation
+    console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
+      operation: 'CREATE_QUICK_TAB',
+      tabId
+    });
   }
 
   // Setup and emit event

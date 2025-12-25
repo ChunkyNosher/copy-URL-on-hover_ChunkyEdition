@@ -1098,9 +1098,13 @@ class QuickTabsManager {
    * Initialize handler components
    * v1.6.3 - Simplified handlers (no storage/sync)
    * v1.6.3.2 - Made async to initialize CreateHandler settings
+   * v1.6.3.11-v10 - FIX Issue #12: Pass internalEventBus to CreateHandler for UICoordinator communication
    * @private
    */
   async _initializeHandlers() {
+    // v1.6.3.11-v10 - FIX Issue #12: Pass internalEventBus as 8th parameter
+    // CreateHandler needs internalEventBus to emit window:created events that UICoordinator will receive
+    // Previously, CreateHandler only had eventBus (external) which UICoordinator doesn't listen to
     this.createHandler = new CreateHandler(
       this.tabs,
       this.currentZIndex,
@@ -1108,7 +1112,8 @@ class QuickTabsManager {
       this.eventBus,
       this.Events,
       this.generateId.bind(this),
-      this.windowFactory
+      this.windowFactory,
+      this.internalEventBus // v1.6.3.11-v10 - FIX Issue #12: Pass for window:created events
     );
 
     // v1.6.3.2 - Initialize CreateHandler to load debug settings
