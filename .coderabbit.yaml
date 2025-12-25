@@ -12,7 +12,6 @@ reviews:
       - develop
       - deepsource-transform-*
       - copilot-*
-    ignore_usernames: []
 
   high_level_summary: true
   high_level_summary_in_walkthrough: true
