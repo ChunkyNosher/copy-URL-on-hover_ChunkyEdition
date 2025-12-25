@@ -42,6 +42,11 @@
  *   - Issue L: Label transaction IDs when identity is unknown
  *   - Issue V: Document rollbackTransaction() dead code (kept for future error recovery)
  *   - Issue W: Log retry attempts with attempt number for correlation
+ * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
+ *   - Quick Tabs are now session-only (cleared on browser restart)
+ *   - All Quick Tab state operations use storage.session instead of storage.local
+ *   - z-index counter and heartbeat still use storage.local (UI state persistence)
+ *   - User settings/preferences remain in storage.local (persistent)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -2087,14 +2092,16 @@ function _handleSnapshotError(err, operationId, startTime, logPrefix) {
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage read logging
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs state (session-only)
  *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<Object|null>} Captured state snapshot or null on error
  */
 export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
   const browserAPI = getBrowserStorageAPI();
-  if (!browserAPI?.storage?.local) {
-    console.warn(`${logPrefix} Cannot capture snapshot: storage.local API unavailable`);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (!browserAPI?.storage?.session) {
+    console.warn(`${logPrefix} Cannot capture snapshot: storage.session API unavailable`);
     return null;
   }
 
@@ -2104,7 +2111,8 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
   logStorageRead(operationId, STATE_KEY, 'start');
 
   try {
-    const result = await browserAPI.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    const result = await browserAPI.storage.session.get(STATE_KEY);
     return _processSnapshotResult(result, operationId, startTime, logPrefix);
   } catch (err) {
     _handleSnapshotError(err, operationId, startTime, logPrefix);
@@ -2266,7 +2274,8 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason =
   });
 
   try {
-    await browserAPI.storage.local.set({ [STATE_KEY]: stateSnapshot });
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    await browserAPI.storage.session.set({ [STATE_KEY]: stateSnapshot });
 
     stateSnapshot = null;
     transactionActive = false;
@@ -2586,7 +2595,8 @@ export async function validateStorageIntegrity(expectedState, transactionId = 'u
   }
 
   try {
-    const result = await browserAPI.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    const result = await browserAPI.storage.session.get(STATE_KEY);
     const storedState = result?.[STATE_KEY];
 
     // Check structure
@@ -3877,6 +3887,7 @@ function _sleep(ms) {
 /**
  * Attempt a single storage write operation
  * v1.6.3.10-v6 - FIX Issue A20: Extracted from _executeStorageWrite for retry support
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  * @param {Object} browserAPI - Browser storage API
  * @param {Object} stateWithTxn - State with transaction metadata
@@ -3885,10 +3896,12 @@ function _sleep(ms) {
  * @returns {Promise<boolean>} True if write succeeded
  */
 async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attemptNumber) {
-  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.session.set');
 
   try {
-    const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    const storagePromise = browserAPI.storage.session.set({ [STATE_KEY]: stateWithTxn });
     await Promise.race([storagePromise, timeout.promise]);
     return true;
   } catch (err) {
@@ -4333,7 +4346,8 @@ async function _executeStorageWrite({
   context.writeCorrelationId = writeCorrelationId;
   context.writeStartTime = actualStartTime;
 
-  _logWritePhase(logPrefix, 'WRITE_API_PHASE', 'Executing storage.local.set', {
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  _logWritePhase(logPrefix, 'WRITE_API_PHASE', 'Executing storage.session.set', {
     writeCorrelationId,
     transactionId,
     tabCount

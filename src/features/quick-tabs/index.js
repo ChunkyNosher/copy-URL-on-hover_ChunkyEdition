@@ -8,6 +8,7 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
+ * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -15,6 +16,7 @@
  * - Maintains backward compatibility with legacy API (with deprecation warnings)
  * - Delegates all business logic to specialized components
  * - No cross-tab broadcasting - storage used for persistence and hydration only
+ * - v1.6.4.18: Quick Tabs now use storage.session (cleared on browser restart)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -573,13 +575,20 @@ class QuickTabsManager {
   /**
    * Read state from storage and log result
    * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
+   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
   async _readAndLogStorageState() {
-    console.log('[QuickTabsManager] Reading state from storage.local (key:', STATE_KEY, ')');
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    console.log('[QuickTabsManager] Reading state from storage.session (key:', STATE_KEY, ')');
 
-    const result = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[QuickTabsManager] storage.session unavailable');
+      return null;
+    }
+    const result = await browser.storage.session.get(STATE_KEY);
     const storedState = result[STATE_KEY];
 
     console.log('[QuickTabsManager] Storage read result:', {

@@ -2,6 +2,11 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
+ *   - Quick Tabs are now session-only (cleared on browser restart)
+ *   - All Quick Tab state operations use storage.session
+ *   - Collapse state still uses storage.local (UI preference)
+ *
  * v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
  *   - Implemented surgical DOM update for adoption events
  *   - Only adopted Quick Tab animates, other Quick Tabs untouched
@@ -1755,7 +1760,12 @@ async function _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId,
  * @returns {Promise<{success: boolean, adoptedTab?: Object}>}
  */
 async function _loadFreshAdoptionState(adoptedQuickTabId) {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    console.warn('[Manager] SURGICAL_UPDATE: storage.session unavailable');
+    return { success: false };
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   const state = result?.[STATE_KEY];
 
   if (!state?.tabs) {
@@ -3223,6 +3233,7 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * Refactored: Extracted helpers to reduce complexity and nesting depth
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
@@ -3233,13 +3244,19 @@ async function loadQuickTabsState() {
     // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read start
     console.log('[Manager] Reading Quick Tab state from storage...');
 
-    const result = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[Manager] storage.session unavailable');
+      _handleEmptyStorageState();
+      return;
+    }
+    const result = await browser.storage.session.get(STATE_KEY);
     const state = result?.[STATE_KEY];
 
     if (!state) {
       _handleEmptyStorageState();
       console.log('[Manager] Storage read complete: empty state', {
-        source: 'storage.local',
+        source: 'storage.session',
         durationMs: Date.now() - loadStartTime
       });
       return;
@@ -3250,7 +3267,7 @@ async function loadQuickTabsState() {
       tabCount: state.tabs?.length ?? 0,
       saveId: state.saveId,
       timestamp: state.timestamp,
-      source: 'storage.local',
+      source: 'storage.session',
       durationMs: Date.now() - loadStartTime
     });
 
@@ -3443,6 +3460,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
@@ -3451,7 +3469,11 @@ async function _checkAndReloadStaleState() {
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
   try {
-    const freshResult = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      return _buildStaleCheckResult(false, inMemoryHash, 0, debounceWaitTime);
+    }
+    const freshResult = await browser.storage.session.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
 
@@ -3472,11 +3494,17 @@ async function _checkAndReloadStaleState() {
 /**
  * Load fresh state from storage during debounce stale check
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _loadFreshStateFromStorage() {
   try {
-    const freshResult = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[Manager] storage.session unavailable');
+      return;
+    }
+    const freshResult = await browser.storage.session.get(STATE_KEY);
     const freshState = freshResult?.[STATE_KEY];
     if (freshState?.tabs) {
       quickTabsState = freshState;
@@ -4474,11 +4502,13 @@ function setupEventListeners() {
 
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
+  // v1.6.4.18 - FIX: Changed from 'local' to 'session' (Quick Tabs are now session-only)
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+    if (areaName !== 'session' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
 }
@@ -5204,6 +5234,7 @@ async function _processReconciliationResult(uniqueQuickTabs) {
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
  * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
  * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  *
  * ARCHITECTURE NOTE (v1.6.3.5-v6):
  * This function writes directly to storage as a RECOVERY operation.
@@ -5226,7 +5257,10 @@ async function _restoreStateFromContentScripts(quickTabs) {
     saveId: `${SAVEID_RECONCILED}-${Date.now()}`
   };
 
-  await browser.storage.local.set({ [STATE_KEY]: restoredState });
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session !== 'undefined') {
+    await browser.storage.session.set({ [STATE_KEY]: restoredState });
+  }
   console.log('[Manager] State restored from content scripts:', quickTabs.length, 'tabs');
 
   // Update local state and re-render
@@ -5318,10 +5352,15 @@ async function closeMinimizedTabs() {
 
 /**
  * Load state from storage
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _loadStorageState() {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    return null;
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   return result?.[STATE_KEY] ?? null;
 }
 
@@ -5365,13 +5404,17 @@ function _sendCloseMessageToAllTabs(browserTabs, quickTabId) {
 
 /**
  * Update storage after closing minimized tabs
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _updateStorageAfterClose(state) {
   const hasChanges = filterMinimizedFromState(state);
 
   if (hasChanges) {
-    await browser.storage.local.set({ [STATE_KEY]: state });
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session !== 'undefined') {
+      await browser.storage.session.set({ [STATE_KEY]: state });
+    }
     await _broadcastLegacyCloseMessage();
     console.log('Closed all minimized Quick Tabs');
   }
@@ -6534,10 +6577,15 @@ async function _verifyRestoreDOM(quickTabId) {
 
 /**
  * Get Quick Tab from storage by ID
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _getQuickTabFromStorage(quickTabId) {
-  const stateResult = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    return null;
+  }
+  const stateResult = await browser.storage.session.get(STATE_KEY);
   const state = stateResult?.[STATE_KEY];
   return state?.tabs?.find(t => t.id === quickTabId) || null;
 }
@@ -6845,10 +6893,16 @@ async function _performAdoption(quickTabId, targetTabId) {
 /**
  * Read storage state for adoption
  * v1.6.3.7 - FIX Issue #7: Helper for adoption with logging
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _readStorageForAdoption(quickTabId, targetTabId) {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    console.warn('[Manager] storage.session unavailable for adoption');
+    return { success: false };
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   const state = result?.[STATE_KEY];
 
   if (!state?.tabs?.length) {
@@ -6941,7 +6995,10 @@ async function _persistAdoption({
     saveId
   });
 
-  await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session !== 'undefined') {
+    await browser.storage.session.set({ [STATE_KEY]: stateToWrite });
+  }
   const writeEndTime = Date.now();
 
   console.log('[Manager] ADOPTION_FLOW:', {
@@ -6965,6 +7022,7 @@ async function _persistAdoption({
 /**
  * Issue #9: Verify adoption was persisted by monitoring storage.onChanged
  * Logs time delta between write and confirmation, warns if no confirmation within 2 seconds
+ * v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
  * @private
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {string} expectedSaveId - SaveId to look for in storage change
@@ -6975,8 +7033,9 @@ function _verifyAdoptionInStorage(quickTabId, expectedSaveId, writeTimestamp) {
   const CONFIRMATION_TIMEOUT_MS = 2000;
 
   // Issue #9: Temporary listener for this specific saveId
+  // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
   const verificationListener = (changes, areaName) => {
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    if (areaName !== 'session' || !changes[STATE_KEY]) return;
 
     const newValue = changes[STATE_KEY].newValue;
     if (newValue?.saveId === expectedSaveId) {
