@@ -6,9 +6,11 @@
  *
  * Responsibilities:
  * - Build titlebar with left section (navigation + favicon + title)
- * - Build control buttons (solo/mute/minimize/close)
+ * - Build control buttons (minimize/close)
  * - Manage button state updates
  * - Handle button event delegation
+ *
+ * v1.6.4 - Removed Solo/Mute functionality
  *
  * @created 2025-11-19
  * @refactoring Phase 2.9 Task 4
@@ -28,16 +30,12 @@ export class TitlebarBuilder {
    * @param {string} config.id - Quick Tab unique ID (for debug display)
    * @param {string} config.title - Initial title text
    * @param {string} config.url - URL for favicon extraction
-   * @param {Array<number>} config.soloedOnTabs - Solo tab IDs
-   * @param {Array<number>} config.mutedOnTabs - Mute tab IDs
-   * @param {number} config.currentTabId - Current tab ID for solo/mute checks
+   * @param {number} config.currentTabId - Current tab ID
    * @param {HTMLIFrameElement} config.iframe - Iframe element for navigation/zoom
    * @param {boolean} config.showDebugId - Whether to display Quick Tab ID in titlebar
    * @param {Object} callbacks - Event callbacks
    * @param {Function} callbacks.onClose - Close button clicked
    * @param {Function} callbacks.onMinimize - Minimize button clicked
-   * @param {Function} callbacks.onSolo - Solo button clicked
-   * @param {Function} callbacks.onMute - Mute button clicked
    * @param {Function} callbacks.onOpenInTab - Open in tab button clicked
    */
   constructor(config, callbacks) {
@@ -47,8 +45,6 @@ export class TitlebarBuilder {
     // DOM element references (public for window.js access)
     this.titlebar = null;
     this.titleElement = null;
-    this.soloButton = null;
-    this.muteButton = null;
     this.faviconElement = null;
     this.debugIdElement = null; // v1.6.3.2 - Debug ID display element
     this.controlsContainer = null; // v1.6.3.4-v9 - Controls container for dynamic updates
@@ -82,32 +78,6 @@ export class TitlebarBuilder {
   updateTitle(newTitle) {
     if (this.titleElement) {
       this.titleElement.textContent = newTitle;
-    }
-  }
-
-  /**
-   * Update solo button state
-   * @param {boolean} isSoloed - Whether currently soloed on this tab
-   */
-  updateSoloButton(isSoloed) {
-    if (this.soloButton) {
-      this.soloButton.textContent = isSoloed ? '🎯' : '⭕';
-      this.soloButton.title = isSoloed
-        ? 'Un-solo (show on all tabs)'
-        : 'Solo (show only on this tab)';
-      this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
-    }
-  }
-
-  /**
-   * Update mute button state
-   * @param {boolean} isMuted - Whether currently muted on this tab
-   */
-  updateMuteButton(isMuted) {
-    if (this.muteButton) {
-      this.muteButton.textContent = isMuted ? '🔇' : '🔊';
-      this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
-      this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
     }
   }
 
@@ -438,6 +408,7 @@ export class TitlebarBuilder {
 
   /**
    * Create right section with control buttons
+   * v1.6.4 - Removed Solo/Mute buttons
    * @private
    */
   _createRightSection() {
@@ -468,30 +439,6 @@ export class TitlebarBuilder {
     });
     openBtn.title = 'Open in New Tab';
     controls.appendChild(openBtn);
-
-    // v1.5.9.13 - Solo button
-    const isSoloed = this._isCurrentTabSoloed();
-    this.soloButton = this._createButton(isSoloed ? '🎯' : '⭕', () => {
-      if (this.callbacks.onSolo) {
-        this.callbacks.onSolo(this.soloButton);
-      }
-    });
-    this.soloButton.title = isSoloed
-      ? 'Un-solo (show on all tabs)'
-      : 'Solo (show only on this tab)';
-    this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
-    controls.appendChild(this.soloButton);
-
-    // v1.5.9.13 - Mute button
-    const isMuted = this._isCurrentTabMuted();
-    this.muteButton = this._createButton(isMuted ? '🔇' : '🔊', () => {
-      if (this.callbacks.onMute) {
-        this.callbacks.onMute(this.muteButton);
-      }
-    });
-    this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
-    this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
-    controls.appendChild(this.muteButton);
 
     // Minimize button
     const minimizeBtn = this._createButton('−', () => {
@@ -582,23 +529,5 @@ export class TitlebarBuilder {
       this.zoomDisplay.textContent = `${zoomLevel}%`;
     }
     console.log(`[TitlebarBuilder] Zoom applied: ${zoomLevel}% on ${this.config.url}`);
-  }
-
-  /**
-   * Check if current tab is soloed
-   * @private
-   * @returns {boolean} True if current tab is in soloedOnTabs array
-   */
-  _isCurrentTabSoloed() {
-    return this.config.soloedOnTabs && this.config.soloedOnTabs.includes(this.config.currentTabId);
-  }
-
-  /**
-   * Check if current tab is muted
-   * @private
-   * @returns {boolean} True if current tab is in mutedOnTabs array
-   */
-  _isCurrentTabMuted() {
-    return this.config.mutedOnTabs && this.config.mutedOnTabs.includes(this.config.currentTabId);
   }
 }
