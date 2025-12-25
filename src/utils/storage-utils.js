@@ -449,6 +449,9 @@ export const IDENTITY_STATE_MODE = {
 // Current identity state mode
 let identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
 
+// v1.6.3.11-v11 - FIX Issue 48 #1: Track when identity became ready
+let identityReadyTimestamp = null;
+
 // v1.6.3.10-v9 - FIX Issue F: Track write queue state for recovery
 let writeQueueStallStartTime = null;
 let writeQueueRecoveryCount = 0;
@@ -547,6 +550,7 @@ async function _waitForInitWithTimeout({
  * Update identity state mode based on current initialization state
  * v1.6.3.10-v9 - FIX Issue G: Track identity mode for fail-closed container matching
  * v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
+ * v1.6.3.11-v11 - FIX Issue 48 #1: Enhanced state transition logging with trigger context
  * @private
  */
 function _updateIdentityStateMode() {
@@ -562,18 +566,43 @@ function _updateIdentityStateMode() {
     identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
   }
 
-  // v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
+  // v1.6.3.11-v11 - FIX Issue 48 #1: Track when identity became ready
   if (previousMode !== identityStateMode) {
-    console.log('[Storage-Identity] STATE_TRANSITION:', {
-      from: previousMode,
-      to: identityStateMode,
+    if (identityStateMode === IDENTITY_STATE_MODE.READY) {
+      identityReadyTimestamp = Date.now();
+    } else {
+      identityReadyTimestamp = null;
+    }
+
+    // v1.6.3.11-v11 - FIX Issue 48: Log state transition with specific format
+    console.log(`[IDENTITY_STATE] TRANSITION: ${previousMode} → ${identityStateMode}`, {
+      trigger: _determineTransitionTrigger(previousMode, identityStateMode),
       tabId: currentWritingTabId !== null ? `KNOWN(${currentWritingTabId})` : 'UNKNOWN',
       containerId:
         currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
       isFullyReady: identityStateMode === IDENTITY_STATE_MODE.READY,
+      readyTime: identityReadyTimestamp,
       timestamp: new Date().toISOString()
     });
   }
+}
+
+/**
+ * Determine what triggered the state transition
+ * v1.6.3.11-v11 - FIX Issue 48 #1: Helper for transition trigger identification
+ * @private
+ * @param {string} previousMode - Previous identity state mode
+ * @param {string} newMode - New identity state mode
+ * @returns {string} Trigger description
+ */
+function _determineTransitionTrigger(previousMode, newMode) {
+  if (previousMode === IDENTITY_STATE_MODE.INITIALIZING && newMode === IDENTITY_STATE_MODE.READY) {
+    return 'identity_acquired';
+  }
+  if (previousMode === IDENTITY_STATE_MODE.READY && newMode === IDENTITY_STATE_MODE.INITIALIZING) {
+    return 'identity_lost';
+  }
+  return 'state_change';
 }
 
 /**
@@ -592,6 +621,20 @@ export function getIdentityStateMode() {
  */
 export function isIdentityReady() {
   return identityStateMode === IDENTITY_STATE_MODE.READY;
+}
+
+/**
+ * Get current filter state for diagnostics
+ * v1.6.3.11-v11 - FIX Issue 48 #1: Diagnostic method for container filter state
+ * @returns {{identityStateMode: string, currentContainerId: string|null, currentTabId: number|null, readyTime: number|null}}
+ */
+export function getFilterState() {
+  return {
+    identityStateMode,
+    currentContainerId: currentWritingContainerId,
+    currentTabId: currentWritingTabId,
+    readyTime: identityReadyTimestamp
+  };
 }
 
 /**
@@ -905,6 +948,16 @@ export function setWritingContainerId(containerId) {
     durationMs: Date.now() - setStartTime,
     timestamp: new Date().toISOString()
   });
+
+  // v1.6.3.11-v11 - FIX Issue 48 #1: Log container ID acquisition specifically
+  if (normalizedContainerId !== null && oldContainerId === null) {
+    console.log(`[IDENTITY_ACQUIRED] Container ID acquired: ${normalizedContainerId}`, {
+      previousValue: 'NONE',
+      currentTabId: currentWritingTabId,
+      identityStateMode: identityStateMode,
+      timestamp: new Date().toISOString()
+    });
+  }
 
   // v1.6.3.10-v9 - FIX Issue S: Resolve waiting promise for waitForContainerIdInit()
   if (normalizedContainerId !== null) {

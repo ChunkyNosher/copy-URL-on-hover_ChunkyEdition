@@ -5827,6 +5827,18 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
     };
   }
 
+  // v1.6.3.11-v11 - FIX Issue 48 #5: Log message send
+  console.log(
+    `[Manager] MESSAGE_SENDING: action=${message.action}, quickTabId=${message.quickTabId}, targetTabId=${targetTabId ?? 'broadcast'}`,
+    {
+      action: message.action,
+      quickTabId: message.quickTabId,
+      targetTabId: targetTabId ?? 'broadcast',
+      correlationId: message.correlationId,
+      timestamp: new Date().toISOString()
+    }
+  );
+
   // v1.6.3.10-v7 - FIX Bug #3: Mark message as sent before attempting
   _markMessageSent(message.action, message.quickTabId);
 
@@ -5834,6 +5846,14 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
   if (targetTabId) {
     const targetedResult = await _attemptTargetedMessageWithRetry(message, targetTabId, operation);
     if (targetedResult?.success) {
+      // v1.6.3.11-v11 - FIX Issue 48 #5: Log message response
+      console.log(`[Manager] MESSAGE_RESPONSE: action=${message.action}, success=true`, {
+        action: message.action,
+        quickTabId: message.quickTabId,
+        targetTabId: targetedResult.targetTabId,
+        method: 'targeted',
+        attempts: targetedResult.attempts
+      });
       return {
         success: true,
         method: 'targeted',
@@ -5845,7 +5865,22 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
   }
 
   // v1.6.3.10-v1 - FIX Issue #7: Fall back to broadcast
-  return _sendMessageViaBroadcast(message, operation, attempts);
+  const broadcastResult = await _sendMessageViaBroadcast(message, operation, attempts);
+
+  // v1.6.3.11-v11 - FIX Issue 48 #5: Log broadcast response
+  console.log(
+    `[Manager] MESSAGE_RESPONSE: action=${message.action}, success=${broadcastResult.success}`,
+    {
+      action: message.action,
+      quickTabId: message.quickTabId,
+      method: broadcastResult.method,
+      success: broadcastResult.success,
+      attempts: broadcastResult.attempts,
+      error: broadcastResult.error ?? null
+    }
+  );
+
+  return broadcastResult;
 }
 
 /**
