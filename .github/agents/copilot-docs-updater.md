@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.11-v9.
+  documentation. Current version: v1.6.3.11-v11.
 tools: ['*']
 ---
 
@@ -69,29 +69,27 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.11-v9)
+## Current Extension State (v1.6.3.11-v11)
 
-### v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+
+### v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics
 
-- **Issue A Fix** - Content script tab identity initialization before state
-  changes
-  - `[IDENTITY_INIT]` logging markers (SCRIPT_LOAD, TAB_ID_REQUEST,
-    TAB_ID_RESPONSE, IDENTITY_READY)
-- **Issue C Fix** - Identity initialization comprehensive logging with
-  timestamps
+- **Issue 47 Fix** - GET_CURRENT_TAB_ID returns both `tabId` AND `cookieStoreId`
+  - Container filter transitions INITIALIZING → READY when both IDs set
+  - Fixes permanent FAIL_CLOSED issue blocking all storage writes
+- **Issue 48 Fix** - Comprehensive logging infrastructure
+  - `[IDENTITY_STATE] TRANSITION:` - State machine transitions
+  - `[MSG_ROUTER]`/`[MSG_HANDLER]` - Message routing diagnostics
+  - `[HYDRATION]` - Hydration lifecycle events
+  - `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/MESSAGE_RESPONSE:` - Manager ops
+- **Code Health 10.0** - QuickTabHandler.js improved from 7.6 → 10.0
+- **getFilterState()** - New diagnostic export from storage-utils.js
+
+### v1.6.3.11-v9 Features - Diagnostic Report Fixes + Code Health 9.0+
+
+- **Issue A/C Fix** - Content script tab identity initialization with logging
 - **Issue D Fix** - Storage write queue enforces identity-ready precondition
-  - `waitForIdentityInit()` called before processing writes
-  - `[WRITE_PHASE]` logging (FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE,
-    WRITE_API_PHASE)
-- **Issue E Fix** - State validation pre/post comparison logging
-  - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows delta
-- **Issue I Fix** - Debounce timer captures tab context at schedule time
-  - `capturedTabId` stored when timer is scheduled, not when it fires
-- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000
-  → 10000)
-- **Issue 5 Fix** - Container isolation validated in all visibility operations
-  - `_validateContainerIsolation()` helper added
-- **Code Health 9.0+** - All core files now at Code Health 9.0 or higher
+- **Issue E/I Fix** - State validation + debounce context capture
+- **Issue 3.2/5 Fix** - Z-index recycling + container isolation validation
 
 ### v1.6.3.10-v10 Base (Restored)
 
@@ -110,8 +108,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.11-v9
-- [ ] **v1.6.3.11-v9:** Diagnostic report fixes documented
+- [ ] Version numbers match 1.6.3.11-v11
+- [ ] **v1.6.3.11-v11:** Container identity + message diagnostics documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] Solo/Mute terminology used (NOT "Pin to Page")
 
@@ -119,14 +117,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                   | Fix                         |
-| ----------------------- | --------------------------- |
-| v1.6.3.11-v8 or earlier | Update to 1.6.3.11-v9       |
-| "Pin to Page"           | Use "Solo/Mute"             |
-| Direct storage writes   | Use Single Writer Authority |
-| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
-| Port-based messaging    | REMOVE - Ports DELETED v12  |
-| CONNECTION_STATE refs   | REMOVE - Deleted in v6      |
+| Error                    | Fix                         |
+| ------------------------ | --------------------------- |
+| v1.6.3.11-v9 or earlier  | Update to 1.6.3.11-v11      |
+| "Pin to Page"            | Use "Solo/Mute"             |
+| Direct storage writes    | Use Single Writer Authority |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6   |
+| Port-based messaging     | REMOVE - Ports DELETED v12  |
+| CONNECTION_STATE refs    | REMOVE - Deleted in v6      |
 
 ---
 

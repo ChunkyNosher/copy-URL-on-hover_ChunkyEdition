@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.11-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Solo/Mute
 visibility control**, **Per-Tab Isolation**, **Container Isolation**, Session
 Quick Tabs, and Persistent Floating Panel Manager.
@@ -9,12 +9,39 @@ Quick Tabs, and Persistent Floating Panel Manager.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v9 Status:** Diagnostic Report Fixes ✅ | Code Health 9.0+ |
+**🔧 v1.6.3.11-v11 Status:** Container Identity Fix ✅ | Code Health 10.0 |
 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.3.11-v11
+
+**🔧 Container Identity Fix + Message Diagnostics (December 2025) ✅**
+
+**Critical Bug Fixes (Issue 47):**
+
+- ✅ **GET_CURRENT_TAB_ID** - Now returns both `tabId` AND `cookieStoreId`
+- ✅ **Container ID Acquisition** - Content script calls `setWritingContainerId()`
+- ✅ **State Machine Fix** - Filter transitions INITIALIZING → READY correctly
+- ✅ **Manager Button Logging** - Added `[Manager] BUTTON_CLICKED:` diagnostics
+
+**Logging Improvements (Issue 48):**
+
+- ✅ **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
+- ✅ **Message Routing** - `[MSG_ROUTER]`/`[MSG_HANDLER]` diagnostics
+- ✅ **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
+- ✅ **Manager Messages** - `[Manager] MESSAGE_SENDING/MESSAGE_RESPONSE:`
+
+**Code Health 10.0:**
+
+- ✅ **QuickTabHandler.js** - Score 7.6 → **10.0** (extracted helpers)
+- ✅ **content.js** - Score 8.81 → **9.09**
+- ✅ **background.js** - Score 8.63 → **9.09**
+- ✅ **storage-utils.js** - Score 7.91 → **9.09** + `getFilterState()` export
+
+---
 
 ## 🎉 What's New in v1.6.3.11-v9
 
@@ -233,6 +260,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.11-v11** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
