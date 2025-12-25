@@ -3,22 +3,24 @@ import browser from 'webextension-polyfill';
 import { StorageAdapter } from './StorageAdapter.js';
 
 /**
- * SyncStorageAdapter - Storage adapter for browser.storage.local API
+ * SyncStorageAdapter - Storage adapter for browser.storage.session API
  * v1.6.2.2 - ISSUE #35/#51 FIX: Unified storage format (no container separation)
  * v1.6.3.10-v10 - FIX Issue P: Atomic migration with version field and locking
+ * v1.6.4.17 - FIX: Switch from storage.local to storage.session for session-scoped Quick Tabs
  * 
  * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
+ * v1.6.4.17 - UPDATED: Quick Tabs now use session storage (not persistent across browser restart)
  * 
  * CANONICAL ADAPTER SELECTION:
  * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence ✓
- *   - Uses browser.storage.local for permanent state
- *   - Data survives browser restart
+ *   - Uses browser.storage.session for session-scoped state
+ *   - Data persists during browser session (survives page reload, tab switch)
+ *   - Data is CLEARED on browser close/restart
  *   - Used for hydration on extension load
  *   - All Quick Tab state is stored and loaded through this adapter
  * 
- * - **SessionStorageAdapter** is for TEMPORARY session state only
- *   - Uses browser.storage.session (cleared on browser close)
- *   - NOT used for Quick Tab persistence
+ * - **SessionStorageAdapter** is DEPRECATED - use SyncStorageAdapter instead
+ *   - Both now use browser.storage.session
  *
  * Features:
  * - Unified storage format for global Quick Tab visibility
@@ -62,7 +64,8 @@ export class SyncStorageAdapter extends StorageAdapter {
     // v1.6.3.10-v10 - FIX Issue P: Migration lock to prevent concurrent migrations
     this._migrationInProgress = false;
     this._migrationPromise = null;
-    console.log('[SyncStorageAdapter] Initialized (CANONICAL adapter - browser.storage.local)');
+    // v1.6.4.17 - FIX: Now uses storage.session for session-scoped Quick Tabs
+    console.log('[SyncStorageAdapter] Initialized (CANONICAL adapter - browser.storage.session - session-scoped, cleared on browser restart)');
   }
 
   /**
@@ -90,9 +93,10 @@ export class SyncStorageAdapter extends StorageAdapter {
     const size = this._calculateSize(stateToSave);
 
     try {
-      await browser.storage.local.set(stateToSave);
+      // v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
+      await browser.storage.session.set(stateToSave);
       console.log(
-        `[SyncStorageAdapter] Saved ${tabs.length} tabs (unified format v${FORMAT_VERSION_UNIFIED}, saveId: ${saveId}, size: ${size} bytes)`
+        `[SyncStorageAdapter] Saved ${tabs.length} tabs to session storage (unified format v${FORMAT_VERSION_UNIFIED}, saveId: ${saveId}, size: ${size} bytes)`
       );
       return saveId;
     } catch (error) {
@@ -375,12 +379,14 @@ export class SyncStorageAdapter extends StorageAdapter {
   /**
    * Clear all Quick Tabs
    * v1.6.2.2 - Unified format
+   * v1.6.4.17 - FIX: Use storage.session
    *
    * @returns {Promise<void>}
    */
   async clear() {
-    await browser.storage.local.remove(this.STORAGE_KEY);
-    console.log('[SyncStorageAdapter] Cleared all Quick Tabs');
+    // v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
+    await browser.storage.session.remove(this.STORAGE_KEY);
+    console.log('[SyncStorageAdapter] Cleared all Quick Tabs from session storage');
   }
 
   /**
@@ -413,27 +419,24 @@ export class SyncStorageAdapter extends StorageAdapter {
 
   /**
    * Load raw state from storage
-   * v1.6.2.2 - Only uses local storage (no sync storage fallback)
+   * v1.6.2.2 - Only uses session storage (no sync storage fallback)
    * v1.6.3.10-v10 - FIX Issue P: Include formatVersion in empty state
+   * v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
    *
    * @private
    * @returns {Promise<Object>} Raw state object
    */
   async _loadRawState() {
     try {
-      const localResult = await browser.storage.local.get(this.STORAGE_KEY);
+      // v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
+      const sessionResult = await browser.storage.session.get(this.STORAGE_KEY);
 
-      if (localResult[this.STORAGE_KEY]) {
-        return localResult[this.STORAGE_KEY];
+      if (sessionResult[this.STORAGE_KEY]) {
+        return sessionResult[this.STORAGE_KEY];
       }
 
-      // Fallback to sync storage for backward compatibility migration
-      const syncResult = await browser.storage.sync.get(this.STORAGE_KEY);
-
-      if (syncResult[this.STORAGE_KEY]) {
-        console.log('[SyncStorageAdapter] Loaded from sync storage (legacy fallback)');
-        return syncResult[this.STORAGE_KEY];
-      }
+      // v1.6.4.17 - NOTE: No migration from storage.local - Quick Tabs are now session-scoped
+      // On browser restart, Quick Tabs start fresh (this is the expected behavior)
 
       // Return empty state with version
       return {
@@ -443,7 +446,7 @@ export class SyncStorageAdapter extends StorageAdapter {
         formatVersion: FORMAT_VERSION_UNIFIED
       };
     } catch (error) {
-      console.error('[SyncStorageAdapter] Load failed:', {
+      console.error('[SyncStorageAdapter] Load from session storage failed:', {
         message: error?.message,
         name: error?.name,
         stack: error?.stack,
@@ -463,6 +466,7 @@ export class SyncStorageAdapter extends StorageAdapter {
   /**
    * Save raw state to storage
    * v1.6.3.10-v10 - FIX Issue P: Ensure formatVersion is always present
+   * v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
    * @private
    * @param {Object} state - State to save
    * @returns {Promise<void>}
@@ -474,7 +478,8 @@ export class SyncStorageAdapter extends StorageAdapter {
       formatVersion: state.formatVersion ?? FORMAT_VERSION_UNIFIED
     };
     
-    await browser.storage.local.set({
+    // v1.6.4.17 - FIX: Use storage.session for session-scoped Quick Tabs
+    await browser.storage.session.set({
       [this.STORAGE_KEY]: stateWithVersion
     });
   }
