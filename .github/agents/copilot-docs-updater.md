@@ -117,14 +117,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                         |
-| ------------------------ | --------------------------- |
-| v1.6.3.11-v9 or earlier  | Update to 1.6.3.11-v11      |
-| "Pin to Page"            | Use "Solo/Mute"             |
-| Direct storage writes    | Use Single Writer Authority |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6   |
-| Port-based messaging     | REMOVE - Ports DELETED v12  |
-| CONNECTION_STATE refs    | REMOVE - Deleted in v6      |
+| Error                   | Fix                         |
+| ----------------------- | --------------------------- |
+| v1.6.3.11-v9 or earlier | Update to 1.6.3.11-v11      |
+| "Pin to Page"           | Use "Solo/Mute"             |
+| Direct storage writes   | Use Single Writer Authority |
+| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
+| Port-based messaging    | REMOVE - Ports DELETED v12  |
+| CONNECTION_STATE refs   | REMOVE - Deleted in v6      |
 
 ---
 

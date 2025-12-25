@@ -23,7 +23,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 **Critical Bug Fixes (Issue 47):**
 
 - ✅ **GET_CURRENT_TAB_ID** - Now returns both `tabId` AND `cookieStoreId`
-- ✅ **Container ID Acquisition** - Content script calls `setWritingContainerId()`
+- ✅ **Container ID Acquisition** - Content script calls
+  `setWritingContainerId()`
 - ✅ **State Machine Fix** - Filter transitions INITIALIZING → READY correctly
 - ✅ **Manager Button Logging** - Added `[Manager] BUTTON_CLICKED:` diagnostics
 

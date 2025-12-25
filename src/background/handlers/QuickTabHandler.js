@@ -570,14 +570,14 @@ export class QuickTabHandler {
     },
     pin: {
       logName: 'Pin',
-      logProps: (msg) => ({ pinnedToUrl: msg.pinnedToUrl }),
+      logProps: msg => ({ pinnedToUrl: msg.pinnedToUrl }),
       updater: (tab, msg) => {
         tab.pinnedToUrl = msg.pinnedToUrl;
       }
     },
     solo: {
       logName: 'Solo',
-      logProps: (msg) => ({
+      logProps: msg => ({
         soloedOnTabs: msg.soloedOnTabs || [],
         tabCount: (msg.soloedOnTabs || []).length
       }),
@@ -587,7 +587,7 @@ export class QuickTabHandler {
     },
     mute: {
       logName: 'Mute',
-      logProps: (msg) => ({
+      logProps: msg => ({
         mutedOnTabs: msg.mutedOnTabs || [],
         tabCount: (msg.mutedOnTabs || []).length
       }),
@@ -597,14 +597,14 @@ export class QuickTabHandler {
     },
     minimize: {
       logName: 'Minimize',
-      logProps: (msg) => ({ minimized: msg.minimized }),
+      logProps: msg => ({ minimized: msg.minimized }),
       updater: (tab, msg) => {
         tab.minimized = msg.minimized;
       }
     },
     zIndex: {
       logName: 'Z-Index',
-      logProps: (msg) => ({ zIndex: msg.zIndex }),
+      logProps: msg => ({ zIndex: msg.zIndex }),
       updater: (tab, msg) => {
         tab.zIndex = msg.zIndex;
       }
@@ -1433,7 +1433,13 @@ export class QuickTabHandler {
       this._storageVersion = newVersion;
       this._expectedVersion = newVersion;
 
-      this._logStorageWriteSuccess({ writeSourceId, transactionId, tabCount, saveTimestamp, newVersion });
+      this._logStorageWriteSuccess({
+        writeSourceId,
+        transactionId,
+        tabCount,
+        saveTimestamp,
+        newVersion
+      });
 
       return { success: true };
     } catch (err) {

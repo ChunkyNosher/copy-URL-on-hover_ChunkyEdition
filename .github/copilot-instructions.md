@@ -45,8 +45,8 @@ Tabs Manager
 - **Issue I Fix** - Debounce timer captures tab context at schedule time
 - **Issue 3.2/5 Fix** - Z-index recycling + container isolation validation
 
-**v1.6.3.11-v8 Features:** Transaction tracking wired, null originTabId rejection,
-identity system gating, hydration boundary logging
+**v1.6.3.11-v8 Features:** Transaction tracking wired, null originTabId
+rejection, identity system gating, hydration boundary logging
 
 **v1.6.3.11-v7 Features:** Orphan Quick Tabs fix, helper methods for tab ID
 resolution, Code Health 9.0+ achieved
@@ -114,8 +114,8 @@ references.
   `cookieStoreId`
 - **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
 - **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
-- **Manager Button Logging** - `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/
-  MESSAGE_RESPONSE:`
+- **Manager Button Logging** -
+  `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/ MESSAGE_RESPONSE:`
 - **getFilterState()** - Diagnostic method for filter state introspection
 - **Code Health 10.0** - QuickTabHandler.js fully refactored
 

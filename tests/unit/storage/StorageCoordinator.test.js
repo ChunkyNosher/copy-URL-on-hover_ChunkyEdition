@@ -173,13 +173,10 @@ describe('StorageCoordinator', () => {
         });
 
       // Queue a successful write after the failing one
-      const successfulWrite = coordinator.queueWrite(
-        'SuccessHandler',
-        async () => {
-          executionOrder.push('SuccessHandler');
-          return 'success';
-        }
-      );
+      const successfulWrite = coordinator.queueWrite('SuccessHandler', async () => {
+        executionOrder.push('SuccessHandler');
+        return 'success';
+      });
 
       await Promise.all([failingWrite, successfulWrite]);
 
@@ -258,10 +255,7 @@ describe('StorageCoordinator', () => {
 
       // Check status while blocked
       const statusWhileBlocked = coordinator.getStatus();
-      expect(statusWhileBlocked.pendingHandlers).toEqual([
-        'PendingHandler1',
-        'PendingHandler2'
-      ]);
+      expect(statusWhileBlocked.pendingHandlers).toEqual(['PendingHandler1', 'PendingHandler2']);
 
       // Release blocked write
       resolveFirst();
@@ -388,16 +382,9 @@ describe('StorageCoordinator', () => {
         data: 'test'
       }));
 
-      const arrayResult = await coordinator.queueWrite('ArrayHandler', async () => [
-        1,
-        2,
-        3
-      ]);
+      const arrayResult = await coordinator.queueWrite('ArrayHandler', async () => [1, 2, 3]);
 
-      const nullResult = await coordinator.queueWrite(
-        'NullHandler',
-        async () => null
-      );
+      const nullResult = await coordinator.queueWrite('NullHandler', async () => null);
 
       const undefinedResult = await coordinator.queueWrite(
         'UndefinedHandler',
