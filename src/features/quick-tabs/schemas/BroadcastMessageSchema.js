@@ -13,6 +13,8 @@
 /**
  * Known broadcast message types
  * v1.6.3.11-v12 - Removed SOLO, MUTE, UPDATE_MUTE message types (Solo/Mute feature removed)
+ * v1.6.3.11-v12 - FIX Issue #5: Added QUICKTAB_MOVED, QUICKTAB_RESIZED, QUICKTAB_MINIMIZED,
+ *                 QUICKTAB_REMOVED for real-time Manager sidebar updates
  */
 export const MESSAGE_TYPES = {
   CREATE: 'CREATE',
@@ -25,7 +27,12 @@ export const MESSAGE_TYPES = {
   CLOSE_ALL: 'CLOSE_ALL', // Close all Quick Tabs
   CLOSE_MINIMIZED: 'CLOSE_MINIMIZED', // Close only minimized Quick Tabs
   UPDATE_MINIMIZE: 'UPDATE_MINIMIZE', // Update minimize state (used in scenario-13)
-  DESTROY: 'DESTROY' // Destroy Quick Tab (used in scenario-15)
+  DESTROY: 'DESTROY', // Destroy Quick Tab (used in scenario-15)
+  // v1.6.3.11-v12 - FIX Issue #5: Real-time Manager sidebar update messages
+  QUICKTAB_MOVED: 'QUICKTAB_MOVED', // Quick Tab position changed
+  QUICKTAB_RESIZED: 'QUICKTAB_RESIZED', // Quick Tab size changed
+  QUICKTAB_MINIMIZED: 'QUICKTAB_MINIMIZED', // Quick Tab minimize state changed
+  QUICKTAB_REMOVED: 'QUICKTAB_REMOVED' // Quick Tab was destroyed/closed
 };
 
 /**
@@ -212,6 +219,53 @@ export const MESSAGE_SCHEMAS = {
     },
     optional: {
       ...commonOptionalFields
+    }
+  },
+
+  // v1.6.3.11-v12 - FIX Issue #5: Real-time Manager sidebar update message schemas
+  [MESSAGE_TYPES.QUICKTAB_MOVED]: {
+    required: {
+      id: validators.string,
+      left: validators.number,
+      top: validators.number
+    },
+    optional: {
+      ...commonOptionalFields,
+      originTabId: validators.number
+    }
+  },
+
+  [MESSAGE_TYPES.QUICKTAB_RESIZED]: {
+    required: {
+      id: validators.string,
+      width: (v, f) => validators.positiveNumber(v, f),
+      height: (v, f) => validators.positiveNumber(v, f)
+    },
+    optional: {
+      ...commonOptionalFields,
+      originTabId: validators.number
+    }
+  },
+
+  [MESSAGE_TYPES.QUICKTAB_MINIMIZED]: {
+    required: {
+      id: validators.string,
+      minimized: v => ({ valid: true, value: Boolean(v) })
+    },
+    optional: {
+      ...commonOptionalFields,
+      originTabId: validators.number
+    }
+  },
+
+  [MESSAGE_TYPES.QUICKTAB_REMOVED]: {
+    required: {
+      id: validators.string
+    },
+    optional: {
+      ...commonOptionalFields,
+      originTabId: validators.number,
+      source: validators.string
     }
   }
 };
