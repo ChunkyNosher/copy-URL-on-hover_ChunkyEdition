@@ -8,6 +8,7 @@
  * Lines 903-992 from original index.js
  */
 
+import { validateOriginTabIdForSerialization } from '@utils/storage-utils.js'; // v1.6.3.12 - FIX Issue #16
 import browser from 'webextension-polyfill';
 
 import { createQuickTabWindow } from '../window.js';
@@ -231,6 +232,7 @@ export class CreateHandler {
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Capture originTabId for cross-tab filtering
    * v1.6.3.5-v6 - FIX Diagnostic Issue #4: Emit window:created for UICoordinator Map
+   * v1.6.3.12 - FIX Issue #16: Validate originTabId is set on tab data before storing
    * @private
    */
   _createNewTab(id, cookieStoreId, options) {
@@ -239,10 +241,30 @@ export class CreateHandler {
     const defaults = this._getDefaults();
     const tabOptions = this._buildTabOptions(id, cookieStoreId, options, defaults);
 
+    // v1.6.3.12 - FIX Issue #16: Validate originTabId before creating window
+    const originValidation = validateOriginTabIdForSerialization(tabOptions, 'CreateHandler._createNewTab');
+    if (!originValidation.valid) {
+      console.warn('[CreateHandler] originTabId validation failed:', {
+        id,
+        warning: originValidation.warning,
+        tabOptions: { originTabId: tabOptions.originTabId, originContainerId: tabOptions.originContainerId }
+      });
+      // Continue anyway - the logging will help debug serialization issues
+    }
+
     console.log('[CreateHandler] Creating window with factory:', typeof this.createWindow);
     console.log('[CreateHandler] Tab options:', tabOptions);
 
     const tabWindow = this.createWindow(tabOptions);
+
+    // v1.6.3.12 - FIX Issue #16: Ensure originTabId is assigned directly on tabWindow
+    // This ensures serialization reads from the same location where it's assigned
+    if (tabOptions.originTabId !== null && tabOptions.originTabId !== undefined) {
+      tabWindow.originTabId = tabOptions.originTabId;
+    }
+    if (tabOptions.originContainerId !== null && tabOptions.originContainerId !== undefined) {
+      tabWindow.originContainerId = tabOptions.originContainerId;
+    }
 
     console.log('[CreateHandler] Window created:', tabWindow);
 

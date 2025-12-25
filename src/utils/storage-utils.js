@@ -102,6 +102,14 @@ export const NORMALIZATION_REJECTION_REASON = {
 // v1.6.3.4 - FIX Issue #3: Use CONSTANTS.QUICK_TAB_BASE_Z_INDEX for consistency
 const DEFAULT_ZINDEX = CONSTANTS.QUICK_TAB_BASE_Z_INDEX;
 
+// v1.6.3.12 - FIX Issue #14: Storage keys for z-index counter persistence
+export const ZINDEX_COUNTER_KEY = 'quickTabsZIndexCounter';
+
+// v1.6.3.12 - FIX Issue #15: Storage listener health monitoring constants
+const STORAGE_LISTENER_HEARTBEAT_INTERVAL_MS = 30000; // 30s heartbeat interval
+const STORAGE_LISTENER_HEARTBEAT_KEY = '_storage_heartbeat_';
+const STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS = 5000; // 5s for heartbeat response
+
 // v1.6.3.4-v6 - FIX Issue #1: Transaction tracking for atomic storage writes
 // Set of in-progress transaction IDs to prevent storage.onChanged race conditions
 export const IN_PROGRESS_TRANSACTIONS = new Set();
@@ -4844,4 +4852,487 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
     logPrefix,
     transactionId
   );
+}
+
+// =============================================================================
+// STORAGE COORDINATOR
+// v1.6.3.12 - FIX Issue #14: Centralized storage write coordination
+// Serializes all writes - only ONE write operation in-flight at a time
+// =============================================================================
+
+/**
+ * StorageCoordinator - Centralized manager for storage writes
+ * v1.6.3.12 - FIX Issue #14: Prevents concurrent write race conditions
+ * 
+ * This class ensures that:
+ * 1. Only ONE storage write is in-flight at a time
+ * 2. Write requests are queued and processed in order
+ * 3. Queue status is logged for debugging
+ * 
+ * @class StorageCoordinator
+ */
+class StorageCoordinator {
+  constructor() {
+    this._writeQueue = [];
+    this._isWriting = false;
+    this._writeCount = 0;
+    this._currentHandler = null;
+  }
+
+  /**
+   * Queue a storage write operation
+   * @param {string} handlerName - Name of handler requesting write (e.g., 'VisibilityHandler')
+   * @param {Function} writeOperation - Async function that performs the actual write
+   * @returns {Promise<boolean>} Promise resolving to write success status
+   */
+  queueWrite(handlerName, writeOperation) {
+    return new Promise((resolve, reject) => {
+      this._writeQueue.push({
+        handlerName,
+        writeOperation,
+        resolve,
+        reject,
+        queuedAt: Date.now()
+      });
+
+      console.log('[WRITE_QUEUE] ENQUEUED:', {
+        handler: handlerName,
+        queueSize: this._writeQueue.length,
+        isWriting: this._isWriting,
+        currentHandler: this._currentHandler,
+        timestamp: new Date().toISOString()
+      });
+
+      this._processQueue();
+    });
+  }
+
+  /**
+   * Process the write queue sequentially
+   * @private
+   */
+  async _processQueue() {
+    if (this._isWriting || this._writeQueue.length === 0) {
+      return;
+    }
+
+    this._isWriting = true;
+    const { handlerName, writeOperation, resolve, reject, queuedAt } = this._writeQueue.shift();
+    this._currentHandler = handlerName;
+    this._writeCount++;
+
+    const waitTimeMs = Date.now() - queuedAt;
+    console.log('[WRITE_QUEUE] DEQUEUE_START:', {
+      handler: handlerName,
+      writeNumber: this._writeCount,
+      queueSize: this._writeQueue.length,
+      waitTimeMs,
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const result = await writeOperation();
+      
+      console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
+        handler: handlerName,
+        writeNumber: this._writeCount,
+        queueSize: this._writeQueue.length,
+        nextWriteIn: this._writeQueue.length > 0 ? '0ms' : 'N/A',
+        timestamp: new Date().toISOString()
+      });
+
+      resolve(result);
+    } catch (error) {
+      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
+        handler: handlerName,
+        writeNumber: this._writeCount,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      reject(error);
+    } finally {
+      this._isWriting = false;
+      this._currentHandler = null;
+
+      // Process next write immediately if queue has items
+      if (this._writeQueue.length > 0) {
+        // Use setImmediate/setTimeout(0) to avoid call stack growth
+        setTimeout(() => this._processQueue(), 0);
+      }
+    }
+  }
+
+  /**
+   * Get current queue status
+   * @returns {Object} Queue status information
+   */
+  getStatus() {
+    return {
+      queueSize: this._writeQueue.length,
+      isWriting: this._isWriting,
+      currentHandler: this._currentHandler,
+      totalWrites: this._writeCount,
+      pendingHandlers: this._writeQueue.map(w => w.handlerName)
+    };
+  }
+
+  /**
+   * Clear the write queue (emergency use only)
+   */
+  clearQueue() {
+    const droppedCount = this._writeQueue.length;
+    this._writeQueue.forEach(item => {
+      item.reject(new Error('Queue cleared'));
+    });
+    this._writeQueue = [];
+    
+    console.warn('[WRITE_QUEUE] QUEUE_CLEARED:', {
+      droppedWrites: droppedCount,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+// Singleton instance of StorageCoordinator
+const storageCoordinator = new StorageCoordinator();
+
+/**
+ * Get the StorageCoordinator singleton instance
+ * v1.6.3.12 - FIX Issue #14: Expose coordinator for handler use
+ * @returns {StorageCoordinator} Singleton instance
+ */
+export function getStorageCoordinator() {
+  return storageCoordinator;
+}
+
+// =============================================================================
+// STORAGE LISTENER HEALTH MONITOR
+// v1.6.3.12 - FIX Issue #15: Detect storage listener disconnection
+// =============================================================================
+
+/**
+ * Storage listener health monitor state
+ * @private
+ */
+const _storageListenerHealthState = {
+  isRegistered: false,
+  listenerAddress: null,
+  lastHeartbeatSent: null,
+  lastHeartbeatReceived: null,
+  heartbeatIntervalId: null,
+  heartbeatTimeoutId: null,
+  missedHeartbeats: 0,
+  reregistrationCount: 0
+};
+
+/**
+ * Handle heartbeat storage change
+ * v1.6.3.12 - FIX Issue #15: Detect heartbeat response
+ * @private
+ * @param {Object} changes - Storage changes
+ * @param {string} _areaName - Storage area name (unused, kept for signature)
+ */
+function _handleHeartbeatChange(changes, _areaName) {
+  const heartbeatChange = changes[STORAGE_LISTENER_HEARTBEAT_KEY];
+  if (!heartbeatChange) return;
+
+  const latency = Date.now() - (heartbeatChange.newValue?.timestamp ?? 0);
+  _storageListenerHealthState.lastHeartbeatReceived = Date.now();
+  _storageListenerHealthState.missedHeartbeats = 0;
+
+  // Clear timeout since we received response
+  if (_storageListenerHealthState.heartbeatTimeoutId) {
+    clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
+    _storageListenerHealthState.heartbeatTimeoutId = null;
+  }
+
+  console.log('[STORAGE_HEARTBEAT] Received:', {
+    latencyMs: latency,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Send a heartbeat write to storage
+ * v1.6.3.12 - FIX Issue #15: Periodic health check
+ * @private
+ */
+async function _sendHeartbeat() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) return;
+
+  const timestamp = Date.now();
+  _storageListenerHealthState.lastHeartbeatSent = timestamp;
+
+  console.log('[STORAGE_HEARTBEAT] Sent:', {
+    timestamp: new Date().toISOString()
+  });
+
+  try {
+    await browserAPI.storage.local.set({
+      [STORAGE_LISTENER_HEARTBEAT_KEY]: {
+        timestamp,
+        instanceId: getWritingInstanceId()
+      }
+    });
+
+    // Set timeout for heartbeat response
+    _storageListenerHealthState.heartbeatTimeoutId = setTimeout(() => {
+      _handleMissedHeartbeat();
+    }, STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS);
+
+  } catch (err) {
+    console.error('[STORAGE_HEARTBEAT] Send failed:', err.message);
+  }
+}
+
+/**
+ * Handle missed heartbeat response
+ * v1.6.3.12 - FIX Issue #15: Re-register listener if heartbeat not received
+ * @private
+ */
+function _handleMissedHeartbeat() {
+  _storageListenerHealthState.missedHeartbeats++;
+
+  console.warn('[STORAGE_LISTENER_DEAD] No heartbeat received:', {
+    missedCount: _storageListenerHealthState.missedHeartbeats,
+    lastSent: _storageListenerHealthState.lastHeartbeatSent,
+    lastReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    timestamp: new Date().toISOString()
+  });
+
+  // Re-register listener after multiple missed heartbeats
+  if (_storageListenerHealthState.missedHeartbeats >= 2) {
+    _reregisterStorageListener();
+  }
+}
+
+/**
+ * Re-register the storage listener
+ * v1.6.3.12 - FIX Issue #15: Recovery mechanism
+ * @private
+ */
+function _reregisterStorageListener() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.onChanged) return;
+
+  _storageListenerHealthState.reregistrationCount++;
+
+  console.warn('[STORAGE_LISTENER] Re-registering:', {
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    timestamp: new Date().toISOString()
+  });
+
+  // Remove existing listener if any
+  try {
+    browserAPI.storage.onChanged.removeListener(_handleHeartbeatChange);
+  } catch (_e) {
+    // Ignore removal errors
+  }
+
+  // Add fresh listener
+  browserAPI.storage.onChanged.addListener(_handleHeartbeatChange);
+  _storageListenerHealthState.missedHeartbeats = 0;
+  _storageListenerHealthState.listenerAddress = `listener-${Date.now()}`;
+
+  console.log('[STORAGE_LISTENER] Registered:', {
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Start storage listener health monitoring
+ * v1.6.3.12 - FIX Issue #15: Initialize heartbeat mechanism
+ * @returns {boolean} True if monitoring started successfully
+ */
+export function startStorageListenerHealthMonitor() {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.onChanged) {
+    console.warn('[STORAGE_LISTENER] Cannot start monitor: Storage API unavailable');
+    return false;
+  }
+
+  // Register initial listener
+  browserAPI.storage.onChanged.addListener(_handleHeartbeatChange);
+  _storageListenerHealthState.isRegistered = true;
+  _storageListenerHealthState.listenerAddress = `listener-${Date.now()}`;
+
+  console.log('[STORAGE_LISTENER] Registered:', {
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    timestamp: new Date().toISOString()
+  });
+
+  // Start heartbeat interval
+  _storageListenerHealthState.heartbeatIntervalId = setInterval(() => {
+    _sendHeartbeat();
+  }, STORAGE_LISTENER_HEARTBEAT_INTERVAL_MS);
+
+  // Send initial heartbeat
+  _sendHeartbeat();
+
+  return true;
+}
+
+/**
+ * Stop storage listener health monitoring
+ * v1.6.3.12 - FIX Issue #15: Cleanup
+ */
+export function stopStorageListenerHealthMonitor() {
+  if (_storageListenerHealthState.heartbeatIntervalId) {
+    clearInterval(_storageListenerHealthState.heartbeatIntervalId);
+    _storageListenerHealthState.heartbeatIntervalId = null;
+  }
+
+  if (_storageListenerHealthState.heartbeatTimeoutId) {
+    clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
+    _storageListenerHealthState.heartbeatTimeoutId = null;
+  }
+
+  const browserAPI = getBrowserStorageAPI();
+  if (browserAPI?.storage?.onChanged) {
+    try {
+      browserAPI.storage.onChanged.removeListener(_handleHeartbeatChange);
+    } catch (_e) {
+      // Ignore removal errors
+    }
+  }
+
+  _storageListenerHealthState.isRegistered = false;
+
+  console.log('[STORAGE_LISTENER] Monitor stopped:', {
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Get storage listener health status
+ * v1.6.3.12 - FIX Issue #15: Diagnostic info
+ * @returns {Object} Health status
+ */
+export function getStorageListenerHealthStatus() {
+  return {
+    isRegistered: _storageListenerHealthState.isRegistered,
+    listenerAddress: _storageListenerHealthState.listenerAddress,
+    lastHeartbeatSent: _storageListenerHealthState.lastHeartbeatSent,
+    lastHeartbeatReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    missedHeartbeats: _storageListenerHealthState.missedHeartbeats,
+    reregistrationCount: _storageListenerHealthState.reregistrationCount
+  };
+}
+
+// =============================================================================
+// Z-INDEX COUNTER PERSISTENCE
+// v1.6.3.12 - FIX Issue #17: Persist z-index counter across reloads
+// =============================================================================
+
+/**
+ * Load z-index counter from storage
+ * v1.6.3.12 - FIX Issue #17: Restore counter value on startup
+ * @param {number} defaultValue - Default value if not found in storage
+ * @returns {Promise<number>} Persisted counter value or default
+ */
+export async function loadZIndexCounter(defaultValue = 1000) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[ZINDEX_RESTORE] Storage API unavailable, using default:', defaultValue);
+    return defaultValue;
+  }
+
+  try {
+    const result = await browserAPI.storage.local.get(ZINDEX_COUNTER_KEY);
+    const storedValue = result[ZINDEX_COUNTER_KEY];
+
+    if (typeof storedValue === 'number' && storedValue >= defaultValue) {
+      console.log('[ZINDEX_RESTORED] Counter restored from storage:', {
+        value: storedValue,
+        timestamp: new Date().toISOString()
+      });
+      return storedValue;
+    }
+
+    console.log('[ZINDEX_RESTORE] No stored value found, using default:', defaultValue);
+    return defaultValue;
+  } catch (err) {
+    console.error('[ZINDEX_RESTORE] Failed to load:', err.message);
+    return defaultValue;
+  }
+}
+
+/**
+ * Save z-index counter to storage
+ * v1.6.3.12 - FIX Issue #17: Persist counter value after increment
+ * @param {number} value - Counter value to persist
+ * @returns {Promise<boolean>} True if saved successfully
+ */
+export async function saveZIndexCounter(value) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[ZINDEX_PERSIST] Storage API unavailable');
+    return false;
+  }
+
+  try {
+    await browserAPI.storage.local.set({ [ZINDEX_COUNTER_KEY]: value });
+    
+    // Log periodically (every 100 increments) to avoid log spam
+    if (value % 100 === 0) {
+      console.log('[ZINDEX_PERSIST] Counter saved:', {
+        value,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[ZINDEX_PERSIST] Failed to save:', err.message);
+    return false;
+  }
+}
+
+// =============================================================================
+// ORIGIN TAB ID VALIDATION
+// v1.6.3.12 - FIX Issue #16: Ensure originTabId is properly serialized
+// =============================================================================
+
+/**
+ * Validate that a Quick Tab entity has originTabId before serialization
+ * v1.6.3.12 - FIX Issue #16: Prevent originTabId loss during serialization
+ * @param {Object} quickTab - Quick Tab entity to validate
+ * @param {string} [context='unknown'] - Context for logging
+ * @returns {{ valid: boolean, originTabId: number|null, warning?: string }}
+ */
+export function validateOriginTabIdForSerialization(quickTab, context = 'unknown') {
+  console.log('[TAB_LIFECYCLE] Serializing tab:', {
+    id: quickTab?.id ?? 'unknown',
+    readingFrom: 'tab.originTabId',
+    context
+  });
+
+  // Check direct property
+  const originTabId = quickTab?.originTabId;
+
+  if (originTabId === null || originTabId === undefined) {
+    console.warn('[ORIGINID_LOST] Expected originTabId but found null:', {
+      id: quickTab?.id ?? 'unknown',
+      context,
+      availableKeys: quickTab ? Object.keys(quickTab) : [],
+      timestamp: new Date().toISOString()
+    });
+    return { valid: false, originTabId: null, warning: 'originTabId is null or undefined' };
+  }
+
+  // Normalize and validate
+  const normalized = normalizeOriginTabId(originTabId, context);
+  if (normalized === null) {
+    console.warn('[ORIGINID_LOST] originTabId failed normalization:', {
+      id: quickTab?.id ?? 'unknown',
+      rawValue: originTabId,
+      context
+    });
+    return { valid: false, originTabId: null, warning: 'originTabId failed normalization' };
+  }
+
+  return { valid: true, originTabId: normalized };
 }

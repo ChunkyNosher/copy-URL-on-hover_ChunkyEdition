@@ -30,7 +30,11 @@ import { StateManager } from './managers/StateManager.js';
 import { MinimizedManager } from './minimized-manager.js';
 import { QuickTabWindow } from './window.js'; // v1.6.3.4-v7 - FIX Issue #1: Import for hydration
 import { CONSTANTS } from '../../core/config.js';
-import { STATE_KEY } from '../../utils/storage-utils.js';
+import {
+  STATE_KEY,
+  loadZIndexCounter, // v1.6.3.12 - FIX Issue #17: Z-index counter persistence
+  startStorageListenerHealthMonitor // v1.6.3.12 - FIX Issue #15: Storage listener health
+} from '../../utils/storage-utils.js';
 
 /**
  * QuickTabsManager - Facade for Quick Tab management
@@ -144,6 +148,8 @@ class QuickTabsManager {
   /**
    * STEP 1: Detect context (container, tab ID)
    * v1.6.3.5-v10 - FIX Issue #3: Accept options parameter for pre-fetched tab ID
+   * v1.6.3.12 - FIX Issue #17: Load z-index counter from storage
+   * v1.6.3.12 - FIX Issue #15: Start storage listener health monitoring
    * @private
    * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
@@ -165,6 +171,24 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
       await this.detectCurrentTabId();
     }
+
+    // v1.6.3.12 - FIX Issue #17: Load z-index counter from storage
+    try {
+      const restoredZIndex = await loadZIndexCounter(CONSTANTS.QUICK_TAB_BASE_Z_INDEX);
+      this.currentZIndex.value = restoredZIndex;
+      console.log('[QuickTabsManager] STEP 1: Z-index counter restored:', restoredZIndex);
+    } catch (err) {
+      console.warn('[QuickTabsManager] STEP 1: Z-index restore failed, using default:', err.message);
+    }
+
+    // v1.6.3.12 - FIX Issue #15: Start storage listener health monitoring
+    try {
+      const monitorStarted = startStorageListenerHealthMonitor();
+      console.log('[QuickTabsManager] STEP 1: Storage health monitor:', monitorStarted ? 'started' : 'failed');
+    } catch (err) {
+      console.warn('[QuickTabsManager] STEP 1: Storage health monitor failed to start:', err.message);
+    }
+
     console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
   }
 

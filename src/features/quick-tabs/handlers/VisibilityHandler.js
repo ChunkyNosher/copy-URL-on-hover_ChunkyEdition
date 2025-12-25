@@ -81,7 +81,9 @@ import {
   validateStateForPersist,
   STATE_KEY,
   getBrowserStorageAPI,
-  getWritingContainerId // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
+  getWritingContainerId, // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
+  getStorageCoordinator, // v1.6.3.12 - FIX Issue #14: Centralized write coordination
+  saveZIndexCounter // v1.6.3.12 - FIX Issue #17: Z-index counter persistence
 } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
@@ -1694,6 +1696,12 @@ export class VisibilityHandler {
 
     tabWindow.zIndex = newZIndex;
 
+    // v1.6.3.12 - FIX Issue #17: Persist z-index counter after increment
+    // Use fire-and-forget pattern to avoid blocking focus operation
+    saveZIndexCounter(newZIndex).catch(err => {
+      console.warn(`${this._logPrefix}[handleFocus] Z-index persist failed:`, err.message);
+    });
+
     // Apply z-index via helper
     this._applyZIndexUpdate(id, { tabWindow, newZIndex, hasContainer, isAttachedToDOM });
 
@@ -1715,6 +1723,7 @@ export class VisibilityHandler {
    * Recycle z-indices to prevent unbounded growth
    * v1.6.3.10-v10 - FIX Issue 3.2: Reset z-index counter and reassign to all Quick Tabs
    * v1.6.3.11-v9 - FIX: Add defensive check for container.style
+   * v1.6.3.12 - FIX Issue #17: Persist z-index counter after recycle
    * @private
    */
   _recycleZIndices() {
@@ -1746,6 +1755,11 @@ export class VisibilityHandler {
         newZIndex
       });
     }
+
+    // v1.6.3.12 - FIX Issue #17: Persist z-index counter after recycle
+    saveZIndexCounter(this.currentZIndex.value).catch(err => {
+      console.warn(`${this._logPrefix} Z-INDEX_RECYCLE: Counter persist failed:`, err.message);
+    });
 
     console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Complete`, {
       newCounterValue: this.currentZIndex.value,
@@ -2066,6 +2080,7 @@ export class VisibilityHandler {
    * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
    * v1.6.3.4-v6 - FIX Issue #6: Validate counts and state before persist
    * v1.6.3.10-v4 - FIX Issue #15: Only persist Quick Tabs owned by this tab
+   * v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    * @returns {Promise<void>}
@@ -2122,13 +2137,21 @@ export class VisibilityHandler {
       `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`
     );
 
-    // v1.6.3.4-v2 - FIX Bug #1: Await the async persist and log result
-    const success = await persistStateToStorage(state, '[VisibilityHandler]');
-    if (!success) {
-      // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes
-      console.error(
-        '[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded'
-      );
+    // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
+    const coordinator = getStorageCoordinator();
+    try {
+      const success = await coordinator.queueWrite('VisibilityHandler', () => {
+        return persistStateToStorage(state, '[VisibilityHandler]');
+      });
+
+      if (!success) {
+        // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes
+        console.error(
+          '[VisibilityHandler] Storage persist failed: operation timed out, storage API unavailable, or quota exceeded'
+        );
+      }
+    } catch (err) {
+      console.error('[VisibilityHandler] Storage coordinator error:', err.message);
     }
   }
 

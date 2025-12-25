@@ -30,7 +30,11 @@
  * @version 1.6.3.10-v6
  */
 
-import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+import {
+  buildStateForStorage,
+  persistStateToStorage,
+  getStorageCoordinator // v1.6.3.12 - FIX Issue #14: Centralized write coordination
+} from '@utils/storage-utils.js';
 
 // v1.6.3.4 - FIX Issue #2: Debounce delay (Mozilla best practice: 200-350ms)
 const DEBOUNCE_DELAY_MS = 300;
@@ -396,6 +400,7 @@ export class UpdateHandler {
    *   window after tab is minimized
    * v1.6.3.10-v7 - FIX Diagnostic Issue #7: Enhanced logging showing storage write initiated/blocked
    * v1.6.3.10-v7 - FIX CodeScene: Extracted helpers to reduce complexity
+   * v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
    * @private
    * @returns {Promise<void>}
    */
@@ -447,19 +452,28 @@ export class UpdateHandler {
 
     // Update hash and persist
     this._lastStateHash = newHash;
-    const success = await persistStateToStorage(state, '[UpdateHandler]');
 
-    // v1.6.3.6-v4 - FIX Issue #1: Log result
-    if (success) {
-      console.log('[UpdateHandler] STORAGE_PERSIST_SUCCESS:', {
-        tabCount: state.tabs?.length,
-        timestamp: Date.now()
+    // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
+    const coordinator = getStorageCoordinator();
+    try {
+      const success = await coordinator.queueWrite('UpdateHandler', () => {
+        return persistStateToStorage(state, '[UpdateHandler]');
       });
-    } else {
-      console.error('[UpdateHandler] STORAGE_PERSIST_FAILED:', {
-        tabCount: state.tabs?.length,
-        timestamp: Date.now()
-      });
+
+      // v1.6.3.6-v4 - FIX Issue #1: Log result
+      if (success) {
+        console.log('[UpdateHandler] STORAGE_PERSIST_SUCCESS:', {
+          tabCount: state.tabs?.length,
+          timestamp: Date.now()
+        });
+      } else {
+        console.error('[UpdateHandler] STORAGE_PERSIST_FAILED:', {
+          tabCount: state.tabs?.length,
+          timestamp: Date.now()
+        });
+      }
+    } catch (err) {
+      console.error('[UpdateHandler] Storage coordinator error:', err.message);
     }
   }
 
