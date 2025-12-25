@@ -1903,8 +1903,13 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log hydration filtering
   console.log('[ContentScript][Hydration] Filtering by originTabId:', currentTabId);
 
-  // Pass currentTabId as option so UICoordinator can filter by originTabId
-  quickTabsManager = await initQuickTabs(eventBus, Events, { currentTabId });
+  // v1.6.3.11-v12 - FIX Issue 1: Pass BOTH currentTabId AND cookieStoreId to initQuickTabs
+  // This ensures the QuickTabsManager uses the same container ID that was already acquired
+  // and avoids a second network request to detect container context
+  quickTabsManager = await initQuickTabs(eventBus, Events, {
+    currentTabId,
+    cookieStoreId: currentCookieStoreId
+  });
 
   const initEndTime = Date.now();
   const totalInitDuration = initEndTime - initStartTime;
