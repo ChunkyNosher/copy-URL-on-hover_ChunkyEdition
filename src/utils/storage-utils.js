@@ -550,41 +550,48 @@ async function _waitForInitWithTimeout({
  * Update identity state mode based on current initialization state
  * v1.6.3.10-v9 - FIX Issue G: Track identity mode for fail-closed container matching
  * v1.6.3.10-v10 - FIX Gap 1.2: State machine logging for identity phases
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
  * v1.6.3.11-v11 - FIX Issue 48 #1: Enhanced state transition logging with trigger context
  * @private
  */
 function _updateIdentityStateMode() {
   const previousMode = identityStateMode;
+  identityStateMode = _calculateIdentityState();
 
-  if (currentWritingTabId !== null && currentWritingContainerId !== null) {
-    identityStateMode = IDENTITY_STATE_MODE.READY;
-  } else if (currentWritingTabId !== null && currentWritingContainerId === null) {
-    // Tab ID known but container not set yet - still initializing
-    // Could also be legacy context without container support
-    identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
-  } else {
-    identityStateMode = IDENTITY_STATE_MODE.INITIALIZING;
-  }
-
-  // v1.6.3.11-v11 - FIX Issue 48 #1: Track when identity became ready
   if (previousMode !== identityStateMode) {
-    if (identityStateMode === IDENTITY_STATE_MODE.READY) {
-      identityReadyTimestamp = Date.now();
-    } else {
-      identityReadyTimestamp = null;
-    }
-
-    // v1.6.3.11-v11 - FIX Issue 48: Log state transition with specific format
-    console.log(`[IDENTITY_STATE] TRANSITION: ${previousMode} → ${identityStateMode}`, {
-      trigger: _determineTransitionTrigger(previousMode, identityStateMode),
-      tabId: currentWritingTabId !== null ? `KNOWN(${currentWritingTabId})` : 'UNKNOWN',
-      containerId:
-        currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
-      isFullyReady: identityStateMode === IDENTITY_STATE_MODE.READY,
-      readyTime: identityReadyTimestamp,
-      timestamp: new Date().toISOString()
-    });
+    _handleIdentityStateTransition(previousMode);
   }
+}
+
+/**
+ * Calculate the current identity state
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _calculateIdentityState() {
+  if (currentWritingTabId !== null && currentWritingContainerId !== null) {
+    return IDENTITY_STATE_MODE.READY;
+  }
+  return IDENTITY_STATE_MODE.INITIALIZING;
+}
+
+/**
+ * Handle identity state transition
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _handleIdentityStateTransition(previousMode) {
+  identityReadyTimestamp = identityStateMode === IDENTITY_STATE_MODE.READY ? Date.now() : null;
+
+  console.log(`[IDENTITY_STATE] TRANSITION: ${previousMode} → ${identityStateMode}`, {
+    trigger: _determineTransitionTrigger(previousMode, identityStateMode),
+    tabId: currentWritingTabId !== null ? `KNOWN(${currentWritingTabId})` : 'UNKNOWN',
+    containerId:
+      currentWritingContainerId !== null ? `KNOWN(${currentWritingContainerId})` : 'UNKNOWN',
+    isFullyReady: identityStateMode === IDENTITY_STATE_MODE.READY,
+    readyTime: identityReadyTimestamp,
+    timestamp: new Date().toISOString()
+  });
 }
 
 /**
@@ -4297,6 +4304,7 @@ async function _executeWriteRetryLoop({
  * v1.6.3.10-v6 - FIX Issue A20: Added exponential backoff retry
  * v1.6.3.10-v9 - FIX Issue M/D: Added preflight quota check (refactored)
  * v1.6.3.10-v10 - FIX Gap 3.1: Added write correlation ID and success logging
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce function size
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
  * @private
  * @param {ExecuteStorageWriteOptions} options - Write execution options
@@ -4311,71 +4319,41 @@ async function _executeStorageWrite({
 }) {
   const actualStartTime = startTime || Date.now();
 
-  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for fetch phase
-  console.log(`${logPrefix} [WRITE_PHASE] FETCH_PHASE: Starting storage write`, {
-    correlationId: writeCorrelationId,
+  _logWritePhase(logPrefix, 'FETCH_PHASE', 'Starting storage write', {
+    writeCorrelationId,
     transactionId,
-    tabCount,
-    phase: 'FETCH_PHASE',
-    timestamp: new Date().toISOString()
+    tabCount
   });
 
   const browserAPI = getBrowserStorageAPI();
   if (!browserAPI) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Log failure
-    console.warn('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'API_CHECK',
-      reason: 'Storage API not available',
-      timestamp: new Date().toISOString()
-    });
-    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-    return false;
+    return _handleApiUnavailable(writeCorrelationId, transactionId);
   }
 
-  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for quota check
-  console.log(`${logPrefix} [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota`, {
-    correlationId: writeCorrelationId,
-    transactionId,
-    phase: 'QUOTA_CHECK_PHASE'
+  _logWritePhase(logPrefix, 'QUOTA_CHECK_PHASE', 'Checking storage quota', {
+    writeCorrelationId,
+    transactionId
   });
 
-  // Preflight quota check
   const quotaCheck = await checkStorageQuota(logPrefix);
   if (!quotaCheck.canWrite) {
-    // v1.6.3.10-v10 - FIX Gap 3.1: Log quota failure
-    console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
-      correlationId: writeCorrelationId,
-      transactionId,
-      phase: 'QUOTA_CHECK',
-      reason: 'Quota exceeded',
-      quotaInfo: quotaCheck,
-      timestamp: new Date().toISOString()
-    });
-    pendingWriteCount = Math.max(0, pendingWriteCount - 1);
-    return false;
+    return _handleQuotaExceeded(writeCorrelationId, transactionId, quotaCheck);
   }
 
-  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for serialize phase
-  console.log(`${logPrefix} [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context`, {
-    correlationId: writeCorrelationId,
+  _logWritePhase(logPrefix, 'SERIALIZE_PHASE', 'Preparing write context', {
+    writeCorrelationId,
     transactionId,
-    tabCount,
-    phase: 'SERIALIZE_PHASE'
+    tabCount
   });
 
   const context = _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPrefix);
-  // v1.6.3.10-v10 - FIX Gap 3.1: Pass correlation ID to retry loop
   context.writeCorrelationId = writeCorrelationId;
   context.writeStartTime = actualStartTime;
 
-  // v1.6.3.11-v9 - FIX Issue F: [WRITE_PHASE] logging for write API phase
-  console.log(`${logPrefix} [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set`, {
-    correlationId: writeCorrelationId,
+  _logWritePhase(logPrefix, 'WRITE_API_PHASE', 'Executing storage.local.set', {
+    writeCorrelationId,
     transactionId,
-    tabCount,
-    phase: 'WRITE_API_PHASE'
+    tabCount
   });
 
   return _executeWriteRetryLoop({
@@ -4386,6 +4364,54 @@ async function _executeStorageWrite({
     context,
     tabCount
   });
+}
+
+/**
+ * Log write phase
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _logWritePhase(logPrefix, phase, message, extras) {
+  console.log(`${logPrefix} [WRITE_PHASE] ${phase}: ${message}`, {
+    ...extras,
+    phase,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Handle API unavailable
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _handleApiUnavailable(writeCorrelationId, transactionId) {
+  console.warn('[StorageWrite] LIFECYCLE_FAILURE:', {
+    correlationId: writeCorrelationId,
+    transactionId,
+    phase: 'API_CHECK',
+    reason: 'Storage API not available',
+    timestamp: new Date().toISOString()
+  });
+  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+  return false;
+}
+
+/**
+ * Handle quota exceeded
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _handleQuotaExceeded(writeCorrelationId, transactionId, quotaCheck) {
+  console.error('[StorageWrite] LIFECYCLE_FAILURE:', {
+    correlationId: writeCorrelationId,
+    transactionId,
+    phase: 'QUOTA_CHECK',
+    reason: 'Quota exceeded',
+    quotaInfo: quotaCheck,
+    timestamp: new Date().toISOString()
+  });
+  pendingWriteCount = Math.max(0, pendingWriteCount - 1);
+  return false;
 }
 
 /**
@@ -5073,6 +5099,7 @@ function _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, t
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting phases
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging with correlation ID
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity to cc≤8 by extracting validation phases
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce function size
  *
  * @param {Object} state - State object to persist
  * @param {string} logPrefix - Prefix for log messages (e.g., '[DestroyHandler]')
@@ -5080,6 +5107,26 @@ function _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, t
  * @returns {Promise<boolean>} - Promise resolving to true on success, false on failure
  */
 export function persistStateToStorage(state, logPrefix = '[StorageUtils]', forceEmpty = false) {
+  const context = _initPersistContext(state, logPrefix, forceEmpty);
+
+  if (!_validateStateStructure(state, logPrefix).valid) {
+    return _handlePersistStructureFailure(context);
+  }
+
+  const validationResult = _runPersistValidation(state, context, logPrefix, forceEmpty);
+  if (!validationResult.shouldProceed) {
+    return _handlePersistValidationFailure(validationResult, context);
+  }
+
+  return _executePersistWrite(state, context, logPrefix);
+}
+
+/**
+ * Initialize context for persist operation
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _initPersistContext(state, logPrefix, forceEmpty) {
   const transactionId = generateTransactionId();
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
@@ -5094,75 +5141,109 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
     timestamp
   });
 
-  // Phase 1: Validate state structure
-  if (!_validateStateStructure(state, logPrefix).valid) {
-    _logLifecycleFailure({
-      correlationId,
-      transactionId,
-      phase: 'VALIDATE_STRUCTURE',
-      reason: 'Invalid state structure',
-      durationMs: Date.now() - startTime,
-      timestamp
-    });
-    return Promise.resolve(false);
-  }
+  return { transactionId, startTime, timestamp, correlationId };
+}
 
+/**
+ * Handle structure validation failure
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _handlePersistStructureFailure(context) {
+  _logLifecycleFailure({
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
+    phase: 'VALIDATE_STRUCTURE',
+    reason: 'Invalid state structure',
+    durationMs: Date.now() - context.startTime,
+    timestamp: context.timestamp
+  });
+  return Promise.resolve(false);
+}
+
+/**
+ * Run persist validation phases
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _runPersistValidation(state, context, logPrefix, forceEmpty) {
   const tabCount = state.tabs.length;
-  const minimizedCount = state.tabs.filter(t => t.minimized).length;
-
-  // Run validation phases 1.5-5
-  const validation = _runPersistValidationPhases({
+  return _runPersistValidationPhases({
     state,
     tabCount,
     forceEmpty,
     logPrefix,
-    transactionId
+    transactionId: context.transactionId
   });
-  if (!validation.shouldProceed) {
-    if (validation.failurePhase === 'COALESCE') {
-      _logLifecycleCoalesced({
-        correlationId,
-        transactionId,
-        reason: validation.failureReason,
-        tabCount,
-        durationMs: Date.now() - startTime,
-        timestamp
-      });
-    } else if (validation.failurePhase === 'HASH_CHECK') {
-      _logLifecycleSkipped({
-        correlationId,
-        transactionId,
-        reason: validation.failureReason,
-        durationMs: Date.now() - startTime,
-        timestamp
-      });
-    } else {
-      _logLifecycleFailure({
-        correlationId,
-        transactionId,
-        phase: validation.failurePhase,
-        reason: validation.failureReason,
-        durationMs: Date.now() - startTime,
-        timestamp,
-        extras: validation.extras
-      });
-    }
-    return Promise.resolve(validation.shouldReturnTrue);
-  }
+}
 
-  // Phase 6: Log and execute write
+/**
+ * Handle validation failure
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _handlePersistValidationFailure(validation, context) {
+  const tabCount = validation.tabCount || 0;
+  const durationMs = Date.now() - context.startTime;
+
+  if (validation.failurePhase === 'COALESCE') {
+    _logLifecycleCoalesced({
+      correlationId: context.correlationId,
+      transactionId: context.transactionId,
+      reason: validation.failureReason,
+      tabCount,
+      durationMs,
+      timestamp: context.timestamp
+    });
+  } else if (validation.failurePhase === 'HASH_CHECK') {
+    _logLifecycleSkipped({
+      correlationId: context.correlationId,
+      transactionId: context.transactionId,
+      reason: validation.failureReason,
+      durationMs,
+      timestamp: context.timestamp
+    });
+  } else {
+    _logLifecycleFailure({
+      correlationId: context.correlationId,
+      transactionId: context.transactionId,
+      phase: validation.failurePhase,
+      reason: validation.failureReason,
+      durationMs,
+      timestamp: context.timestamp,
+      extras: validation.extras
+    });
+  }
+  return Promise.resolve(validation.shouldReturnTrue);
+}
+
+/**
+ * Execute persist write
+ * v1.6.3.11-v10 - Extracted to reduce function size
+ * @private
+ */
+function _executePersistWrite(state, context, logPrefix) {
+  const tabCount = state.tabs.length;
+  const minimizedCount = state.tabs.filter(t => t.minimized).length;
+
   _logLifecycleExecuteStart({
-    correlationId,
-    transactionId,
+    correlationId: context.correlationId,
+    transactionId: context.transactionId,
     tabCount,
     minimizedCount,
-    durationMs: Date.now() - startTime,
-    timestamp
+    durationMs: Date.now() - context.startTime,
+    timestamp: context.timestamp
   });
-  _logPersistInitiation({ logPrefix, transactionId, tabCount, minimizedCount, forceEmpty });
+  _logPersistInitiation({
+    logPrefix,
+    transactionId: context.transactionId,
+    tabCount,
+    minimizedCount,
+    forceEmpty: false
+  });
 
-  const stateWithTxn = _prepareStateForWrite(state, transactionId);
-  stateWithTxn._writeCorrelationId = correlationId;
+  const stateWithTxn = _prepareStateForWrite(state, context.transactionId);
+  stateWithTxn._writeCorrelationId = context.correlationId;
 
   return queueStorageWrite(
     () =>
@@ -5170,12 +5251,12 @@ export function persistStateToStorage(state, logPrefix = '[StorageUtils]', force
         stateWithTxn,
         tabCount,
         logPrefix,
-        transactionId,
-        writeCorrelationId: correlationId,
-        startTime
+        transactionId: context.transactionId,
+        writeCorrelationId: context.correlationId,
+        startTime: context.startTime
       }),
     logPrefix,
-    transactionId
+    context.transactionId
   );
 }
 
@@ -5628,35 +5709,60 @@ export async function saveZIndexCounter(value) {
  * @returns {{ valid: boolean, originTabId: number|null, warning?: string }}
  */
 export function validateOriginTabIdForSerialization(quickTab, context = 'unknown') {
+  _logSerializingTab(quickTab, context);
+
+  const originTabId = quickTab?.originTabId;
+
+  if (originTabId === null || originTabId === undefined) {
+    return _handleMissingOriginTabId(quickTab, context);
+  }
+
+  const normalized = normalizeOriginTabId(originTabId, context);
+  if (normalized === null) {
+    return _handleNormalizationFailure(quickTab, originTabId, context);
+  }
+
+  return { valid: true, originTabId: normalized };
+}
+
+/**
+ * Log serializing tab
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _logSerializingTab(quickTab, context) {
   console.log('[TAB_LIFECYCLE] Serializing tab:', {
     id: quickTab?.id ?? 'unknown',
     readingFrom: 'tab.originTabId',
     context
   });
+}
 
-  // Check direct property
-  const originTabId = quickTab?.originTabId;
+/**
+ * Handle missing originTabId
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _handleMissingOriginTabId(quickTab, context) {
+  console.warn('[ORIGINID_LOST] Expected originTabId but found null:', {
+    id: quickTab?.id ?? 'unknown',
+    context,
+    availableKeys: quickTab ? Object.keys(quickTab) : [],
+    timestamp: new Date().toISOString()
+  });
+  return { valid: false, originTabId: null, warning: 'originTabId is null or undefined' };
+}
 
-  if (originTabId === null || originTabId === undefined) {
-    console.warn('[ORIGINID_LOST] Expected originTabId but found null:', {
-      id: quickTab?.id ?? 'unknown',
-      context,
-      availableKeys: quickTab ? Object.keys(quickTab) : [],
-      timestamp: new Date().toISOString()
-    });
-    return { valid: false, originTabId: null, warning: 'originTabId is null or undefined' };
-  }
-
-  // Normalize and validate
-  const normalized = normalizeOriginTabId(originTabId, context);
-  if (normalized === null) {
-    console.warn('[ORIGINID_LOST] originTabId failed normalization:', {
-      id: quickTab?.id ?? 'unknown',
-      rawValue: originTabId,
-      context
-    });
-    return { valid: false, originTabId: null, warning: 'originTabId failed normalization' };
-  }
-
-  return { valid: true, originTabId: normalized };
+/**
+ * Handle normalization failure
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _handleNormalizationFailure(quickTab, originTabId, context) {
+  console.warn('[ORIGINID_LOST] originTabId failed normalization:', {
+    id: quickTab?.id ?? 'unknown',
+    rawValue: originTabId,
+    context
+  });
+  return { valid: false, originTabId: null, warning: 'originTabId failed normalization' };
 }

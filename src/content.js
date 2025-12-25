@@ -2703,60 +2703,86 @@ function isQuickTabOperationGated(operation) {
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
  * v1.6.3.11-v10 - FIX Issue #13: Add identity ready gate
  */
+/**
+ * Handle Quick Tab creation with identity gating
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+ */
 async function handleCreateQuickTab(url, targetElement = null) {
-  // Early validation
   if (!url) {
     console.warn('[Quick Tab] Missing URL for creation');
     return;
   }
 
-  // v1.6.3.11-v10 - FIX Issue #13: Gate Quick Tab creation until identity is ready
-  if (isQuickTabOperationGated('CREATE_QUICK_TAB')) {
-    // Wait for identity with timeout
-    showNotification('⏳ Initializing...', 'info');
-    const tabId = await waitForIdentityReady();
-
-    if (tabId === null) {
-      // Timeout - identity not ready after 15 seconds
-      console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
-        operation: 'CREATE_QUICK_TAB',
-        url,
-        reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
-      });
-      showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
-      return;
-    }
-    // Identity now ready, continue with creation
-    console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
-      operation: 'CREATE_QUICK_TAB',
-      tabId
-    });
+  const gateResult = await _handleIdentityGating('CREATE_QUICK_TAB', url);
+  if (!gateResult.proceed) {
+    return;
   }
 
-  // Setup and emit event
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
 
-  // Prepare Quick Tab data
+  const quickTabData = _prepareQuickTabData(url, targetElement);
+
+  try {
+    await executeQuickTabCreation(quickTabData.data, quickTabData.saveId, quickTabData.canUseManagerSaveId);
+  } catch (err) {
+    handleQuickTabCreationError(err, quickTabData.saveId, quickTabData.canUseManagerSaveId);
+  }
+}
+
+/**
+ * Handle identity gating for Quick Tab operations
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+async function _handleIdentityGating(operation, url) {
+  if (!isQuickTabOperationGated(operation)) {
+    return { proceed: true };
+  }
+
+  showNotification('⏳ Initializing...', 'info');
+  const tabId = await waitForIdentityReady();
+
+  if (tabId === null) {
+    console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
+      operation,
+      url,
+      reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
+    });
+    showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
+    return { proceed: false };
+  }
+
+  console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
+    operation,
+    tabId
+  });
+  return { proceed: true, tabId };
+}
+
+/**
+ * Prepare Quick Tab data for creation
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _prepareQuickTabData(url, targetElement) {
   const width = CONFIG.quickTabDefaultWidth || 800;
   const height = CONFIG.quickTabDefaultHeight || 600;
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
   const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
-  const quickTabData = buildQuickTabData({
-    url,
-    id: quickTabId,
-    position,
-    size: { width, height },
-    title
-  });
 
-  // Execute creation with error handling
-  try {
-    await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
-  } catch (err) {
-    handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
-  }
+  return {
+    data: buildQuickTabData({
+      url,
+      id: quickTabId,
+      position,
+      size: { width, height },
+      title
+    }),
+    saveId,
+    canUseManagerSaveId
+  };
 }
 
 function calculateQuickTabPosition(targetElement, width, height) {

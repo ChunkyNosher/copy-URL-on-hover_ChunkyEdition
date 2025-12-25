@@ -53,7 +53,7 @@ describe('Message ID Collision Handling', () => {
    * v1.6.3.11-v6 - Iterative, not recursive
    */
   const generateUniqueMessageId = () => {
-    let baseId = generateBaseMessageId();
+    const baseId = generateBaseMessageId();
     let finalId = baseId;
     let retryCount = 0;
     const MAX_RETRIES = 1000; // Prevent infinite loop
