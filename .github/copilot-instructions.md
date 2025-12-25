@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v9  
+**Version:** 1.6.3.11-v11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
@@ -23,58 +23,37 @@ Tabs Manager
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes:**
+**v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics:**
 
-- **Issue A Fix** - Content script tab identity initialization before state
-  changes
-  - `[IDENTITY_INIT]` logging markers added (SCRIPT_LOAD, TAB_ID_REQUEST,
-    TAB_ID_RESPONSE, IDENTITY_READY)
-- **Issue C Fix** - Identity initialization has comprehensive logging
-  - All identity phases logged with timestamps
+- **Issue 47 Fix** - GET_CURRENT_TAB_ID returns both `tabId` AND `cookieStoreId`
+  - Container filter transitions INITIALIZING → READY when both IDs set
+  - Fixes permanent FAIL_CLOSED issue blocking all storage writes
+- **Issue 48 Fix** - Comprehensive logging infrastructure for diagnostics
+  - `[IDENTITY_STATE] TRANSITION:` - State machine transitions
+  - `[IDENTITY_ACQUIRED]` - Container ID acquisition
+  - `[MSG_ROUTER]`/`[MSG_HANDLER]` - Message routing diagnostics
+  - `[HYDRATION]` - Hydration lifecycle events
+  - `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/MESSAGE_RESPONSE:` - Manager ops
+- **Code Health 10.0** - QuickTabHandler.js improved from 7.6 → 10.0
+- **getFilterState()** - New diagnostic export from storage-utils.js
+
+**v1.6.3.11-v9 Features - Diagnostic Report Fixes:**
+
+- **Issue A/C Fix** - Content script tab identity initialization with logging
 - **Issue D Fix** - Storage write queue enforces identity-ready precondition
-  - `waitForIdentityInit()` called before processing writes
-  - `[WRITE_PHASE]` logging for FETCH_PHASE, QUOTA_CHECK_PHASE, SERIALIZE_PHASE,
-    WRITE_API_PHASE
-- **Issue E Fix** - State validation has pre/post comparison logging
-  - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows delta
+- **Issue E Fix** - State validation pre/post comparison logging
 - **Issue I Fix** - Debounce timer captures tab context at schedule time
-  - `capturedTabId` stored when timer is scheduled, not when it fires
-- **Issue 3.2 Fix** - Z-index counter recycling threshold lowered (100000
-  → 10000)
-- **Issue 5 Fix** - Container isolation validated in all visibility operations
-  - `_validateContainerIsolation()` helper added
-  - `currentContainerId` stored in VisibilityHandler constructor
+- **Issue 3.2/5 Fix** - Z-index recycling + container isolation validation
 
-**v1.6.3.11-v8 Features - Transaction Tracking + Null originTabId Rejection:**
+**v1.6.3.11-v8 Features:** Transaction tracking wired, null originTabId
+rejection, identity system gating, hydration boundary logging
 
-- **Issue #10 Fix** - Transaction tracking wired to storage writes
-  - `setTransactionCallbacks()` method for background.js injection
-  - `transactionId` included in storage payloads for deduplication
-- **Issue #12 Fix** - Quick Tab creation rejected if originTabId is null
-  - `_validateOriginTabIdResolution()` validates before creation
-  - Returns retryable error with clear message
-- **Issue #21 Fix** - Identity system must be ready before creation
-  - `_hasUnknownPlaceholder()` detects "unknown" in quickTabId
-  - Creation rejected with `IDENTITY_NOT_READY` error
-- **Issue #5 Fix** - Hydration race condition handling improved
-  - `[HydrationBoundary]` logging markers added
-  - All error responses include `retryable: true` flag
+**v1.6.3.11-v7 Features:** Orphan Quick Tabs fix, helper methods for tab ID
+resolution, Code Health 9.0+ achieved
 
-**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
-
-- **Orphan Quick Tabs Fix** - `originTabId` and `originContainerId` now stored
-  in `handleCreate()` method in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()` for robust tab ID handling
-- **Code Health 9.0+ Achieved** - All core files refactored:
-  - `sidebar/quick-tabs-manager.js` - Score 8.26 → 9.09
-  - `src/utils/storage-utils.js` - Score 7.66 → 9.09
-  - `src/content.js` - Score 8.71 → 9.09
-  - `background.js` - Score 8.1 → 9.09
-
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
-adoption lock timeout, checkpoint system, message validation, identity gating,
-storage quota monitoring, container isolation
+**v1.6.3.10-v10 Base:** Tab ID acquisition, handler deferral, adoption lock
+timeout, checkpoint system, message validation, identity gating, container
+isolation
 
 **v1.6.3.10 & Earlier:** Shadow DOM, debouncing, LRU guard, acknowledgment
 
@@ -126,7 +105,21 @@ references.
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v9 Patterns (Current)
+### v1.6.3.11-v11 Patterns (Current)
+
+- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
+  `cookieStoreId`
+- **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
+- **Container ID Acquisition** - `setWritingContainerId()` called with
+  `cookieStoreId`
+- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
+- **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
+- **Manager Button Logging** -
+  `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/ MESSAGE_RESPONSE:`
+- **getFilterState()** - Diagnostic method for filter state introspection
+- **Code Health 10.0** - QuickTabHandler.js fully refactored
+
+### v1.6.3.11-v9 Patterns
 
 - **Identity Init Logging** - `[IDENTITY_INIT]` markers for SCRIPT_LOAD,
   TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY
@@ -144,43 +137,18 @@ references.
 
 ### v1.6.3.11-v8 Patterns
 
-- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects
-  background.js `_trackTransaction/_completeTransaction` to QuickTabHandler
-- **transactionId in Storage** - Included in payloads for deduplication via
-  `_isTransactionSelfWrite()`
+- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects tracking
 - **Null originTabId Rejection** - `handleCreate()` rejects with retryable error
-- **Identity System Gate** - `_hasUnknownPlaceholder()` detects "unknown" in
-  quickTabId
-- **Hydration Boundary Logging** - `[HydrationBoundary]` markers in
-  `handleGetQuickTabsState()`
-
-### v1.6.3.11-v7 Patterns
-
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Tab ID Resolution** - `_resolveOriginTabId()` with pattern extraction
-  fallback
-- **Tab ID Validation** - `_validateTabId()` for robust integer checks
-- **Pattern Extraction** - `_extractTabIdFromPattern()` extracts from
-  qt-{tabId}-{timestamp}
-- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
-
-### v1.6.3.10-v10 Base Architecture (Restored)
-
-- **tabs.sendMessage** - Background → Content script / Manager messaging
-- **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Single Storage Key** - `quick_tabs_state_v2` with unified format
-- **Unified Barrier** - Single barrier initialization with resolve-only
-  semantics
-- **Tab ID Backoff** - Exponential backoff (200ms, 500ms, 1500ms, 5000ms)
+- **Hydration Boundary Logging** - `[HydrationBoundary]` markers added
 
 ### Previous Version Patterns (Consolidated)
 
-- **v1.6.3.10:** Tab ID exponential backoff, handler deferral, adoption lock
-  timeout
+- **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods, Code Health 8.0+
+- **v1.6.3.10-v10:** tabs.sendMessage, storage.onChanged, unified barrier
+- **v1.6.3.10:** Tab ID backoff, handler deferral, adoption lock timeout
 - **v5:** Operation sequence, port viability, state gating, error telemetry
 - **v4:** Shadow DOM traversal, event debouncing, operation acknowledgment
-- **v3:** LRU Map Guard, checkpoint system, identity gating, code health 9.0+
+- **v3:** LRU Map Guard, checkpoint system, identity gating
 
 ### Key Timing Constants (v1.6.3.11-v8)
 
@@ -219,10 +187,10 @@ references.
 
 **Key Exports:** `STATE_KEY`, `SESSION_STATE_KEY`, `logStorageRead()`,
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
-`validateOwnershipForWrite()`, `_computeStateChecksum()`
+`validateOwnershipForWrite()`, `_computeStateChecksum()`, `getFilterState()`
 
-**v1.6.3.10-v11 New Exports:** `OPERATION_TYPE` enum, `trackStorageLatency()`,
-`getAdaptiveDedupWindow()`, `LRUMapGuard`, `createSerialQueue()`
+**v1.6.3.11-v11 New Exports:** `getFilterState()` - Returns current filter state
+for diagnostics
 
 **Earlier Exports:** `normalizeOriginTabId()`, `checkStorageQuota()`
 
@@ -230,7 +198,11 @@ references.
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v9 (NEW):** `[IDENTITY_INIT]` `[WRITE_PHASE]` `[STATE_VALIDATION]`
+**v1.6.3.11-v11 (NEW):** `[IDENTITY_STATE] TRANSITION:` `[IDENTITY_ACQUIRED]`
+`[MSG_ROUTER]` `[MSG_HANDLER]` `[HYDRATION]` `[Manager] BUTTON_CLICKED:`
+`[Manager] MESSAGE_SENDING:` `[Manager] MESSAGE_RESPONSE:`
+
+**v1.6.3.11-v9:** `[IDENTITY_INIT]` `[WRITE_PHASE]` `[STATE_VALIDATION]`
 `[CONTAINER_VALIDATION]` `TAB_CONTEXT_CHANGED`
 
 **v1.6.3.11-v8:** `[HydrationBoundary]` `[CREATE_REJECTED]`
@@ -253,7 +225,8 @@ transaction rollback, state machine, ownership validation, Single Writer
 Authority, Shadow DOM traversal, operation acknowledgment, state readiness
 gating, error telemetry, originTabId resolution, tab ID pattern extraction,
 transaction tracking, null originTabId rejection, identity system gating,
-debounce context capture, container isolation, z-index recycling.
+debounce context capture, container isolation, z-index recycling, container
+identity acquisition, message routing diagnostics.
 
 ---
 

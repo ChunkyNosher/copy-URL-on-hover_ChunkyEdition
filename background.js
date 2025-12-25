@@ -91,22 +91,31 @@ console.log('[INIT][Background] PHASE_START:', {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // v1.6.3.11-v10 - Handle GET_CURRENT_TAB_ID immediately without initialization checks
   // This is the FIX for the 8-second delay - respond instantly using sender.tab.id
+  // v1.6.3.11-v11 - FIX Issue #47 Problem 1 & 3: Also return cookieStoreId for container isolation
   if (message.action === 'GET_CURRENT_TAB_ID') {
     const tabId = sender?.tab?.id;
+    // v1.6.3.11-v11 - FIX Issue #47: Extract cookieStoreId for Firefox Multi-Account Container support
+    const cookieStoreId = sender?.tab?.cookieStoreId ?? null;
 
     console.log('[INIT][Background] GET_CURRENT_TAB_ID_EARLY:', {
       timestamp: new Date().toISOString(),
       'sender.tab.id': tabId,
+      'sender.tab.cookieStoreId': cookieStoreId,
       hasValidTabId: typeof tabId === 'number' && tabId > 0
     });
 
     if (typeof tabId === 'number' && tabId > 0) {
-      // SUCCESS: Return tab ID immediately - this is the fast path
+      // SUCCESS: Return tab ID and container ID immediately - this is the fast path
       // Response format matches QuickTabHandler._buildTabIdSuccessResponse() for consistency
+      // v1.6.3.11-v11 - FIX Issue #47: Include cookieStoreId in response
       sendResponse({
         success: true,
-        data: { currentTabId: tabId },
+        data: {
+          currentTabId: tabId,
+          cookieStoreId: cookieStoreId // v1.6.3.11-v11: Include container ID
+        },
         tabId: tabId, // Backward compatibility
+        cookieStoreId: cookieStoreId, // v1.6.3.11-v11: Backward compatibility
         source: 'early_listener'
       });
       return true; // Indicate we handled the response - prevents MessageRouter from processing
@@ -126,8 +135,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendResponse({
       success: false,
-      data: { currentTabId: null },
+      data: { currentTabId: null, cookieStoreId: null },
       tabId: null,
+      cookieStoreId: null,
       error: 'sender.tab.id not available from early listener',
       code: 'SENDER_TAB_UNAVAILABLE',
       retryable: true,
@@ -5926,7 +5936,29 @@ function _logManagerActionResult({
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
  * @returns {Promise<Object>} Result object with success status
  */
-async function executeManagerCommand(command, quickTabId, hostTabId) {
+/**
+ * Execute manager command with messaging and scripting fallback
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce function size
+ */
+function executeManagerCommand(command, quickTabId, hostTabId) {
+  const context = _initManagerCommandContext(command, quickTabId, hostTabId);
+
+  if (!_validateManagerCommand(command, context)) {
+    return Promise.resolve({ success: false, error: `Unknown command: ${command}` });
+  }
+
+  const executeMessage = _buildExecuteMessage(command, quickTabId, context.correlationId);
+  _logCommandRouting(context, executeMessage);
+
+  return _executeWithFallback(executeMessage, context);
+}
+
+/**
+ * Initialize context for manager command execution
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+function _initManagerCommandContext(command, quickTabId, hostTabId) {
   const correlationId = generateCorrelationId('mgr-cmd');
   const startTime = Date.now();
 
@@ -5938,94 +5970,150 @@ async function executeManagerCommand(command, quickTabId, hostTabId) {
     timestamp: startTime
   });
 
-  // Validate command against allowlist
+  return { correlationId, startTime, command, quickTabId, hostTabId };
+}
+
+/**
+ * Validate manager command against allowlist
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+function _validateManagerCommand(command, context) {
   if (!VALID_MANAGER_COMMANDS.has(command)) {
     console.warn('[Background] MANAGER_ACTION_REJECTED:', {
       action: command,
-      quickTabId,
-      correlationId,
+      quickTabId: context.quickTabId,
+      correlationId: context.correlationId,
       reason: 'invalid-command'
     });
-    return { success: false, error: `Unknown command: ${command}` };
+    return false;
   }
+  return true;
+}
 
-  const executeMessage = {
+/**
+ * Build execute message for manager command
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+function _buildExecuteMessage(command, quickTabId, correlationId) {
+  return {
     type: 'EXECUTE_COMMAND',
     command,
     quickTabId,
     source: 'manager',
     correlationId
   };
+}
 
+/**
+ * Log command routing
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+function _logCommandRouting(context, _executeMessage) {
   console.log('[Background] Routing command to tab:', {
-    command,
-    quickTabId,
-    hostTabId,
-    correlationId
+    command: context.command,
+    quickTabId: context.quickTabId,
+    hostTabId: context.hostTabId,
+    correlationId: context.correlationId
+  });
+}
+
+/**
+ * Execute command with messaging and scripting fallback
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+async function _executeWithFallback(executeMessage, context) {
+  try {
+    return await _executeViaMessaging(executeMessage, context);
+  } catch (messagingErr) {
+    return _handleMessagingFailure(executeMessage, context, messagingErr);
+  }
+}
+
+/**
+ * Execute command via messaging
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+async function _executeViaMessaging(executeMessage, context) {
+  const response = await Promise.race([
+    browser.tabs.sendMessage(context.hostTabId, executeMessage),
+    createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
+  ]);
+  _logManagerActionResult({
+    action: context.command,
+    quickTabId: context.quickTabId,
+    hostTabId: context.hostTabId,
+    correlationId: context.correlationId,
+    result: { success: true },
+    startTime: context.startTime,
+    method: 'messaging'
+  });
+  console.log('[Background] Command executed successfully:', response);
+  return { success: true, response };
+}
+
+/**
+ * Handle messaging failure with scripting fallback
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+async function _handleMessagingFailure(executeMessage, context, messagingErr) {
+  console.log('[Background] Messaging failed, falling back to Scripting API:', {
+    command: context.command,
+    quickTabId: context.quickTabId,
+    correlationId: context.correlationId,
+    error: messagingErr.message
   });
 
-  // Try messaging first, fall back to Scripting API
   try {
-    const response = await Promise.race([
-      browser.tabs.sendMessage(hostTabId, executeMessage),
-      createTimeoutPromise(MESSAGING_TIMEOUT_MS, 'Messaging timeout')
-    ]);
+    const fallbackResult = await _executeViaScripting(
+      context.hostTabId,
+      context.command,
+      { quickTabId: context.quickTabId },
+      context.correlationId
+    );
     _logManagerActionResult({
-      action: command,
-      quickTabId,
-      hostTabId,
-      correlationId,
-      result: { success: true },
-      startTime,
-      method: 'messaging'
+      action: context.command,
+      quickTabId: context.quickTabId,
+      hostTabId: context.hostTabId,
+      correlationId: context.correlationId,
+      result: fallbackResult,
+      startTime: context.startTime,
+      method: 'scripting-fallback'
     });
-    console.log('[Background] Command executed successfully:', response);
-    return { success: true, response };
-  } catch (err) {
-    console.log('[Background] Messaging failed, falling back to Scripting API:', {
-      command,
-      quickTabId,
-      correlationId,
-      error: err.message
-    });
-
-    try {
-      const fallbackResult = await _executeViaScripting(
-        hostTabId,
-        command,
-        { quickTabId },
-        correlationId
-      );
-      _logManagerActionResult({
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        result: fallbackResult,
-        startTime,
-        method: 'scripting-fallback'
-      });
-      return fallbackResult;
-    } catch (fallbackErr) {
-      _logManagerActionResult({
-        action: command,
-        quickTabId,
-        hostTabId,
-        correlationId,
-        result: { success: false, error: fallbackErr.message },
-        startTime,
-        method: 'scripting-fallback'
-      });
-      console.error('[Background] Both messaging and scripting failed:', {
-        command,
-        quickTabId,
-        hostTabId,
-        messagingError: err.message,
-        scriptingError: fallbackErr.message
-      });
-      return { success: false, error: fallbackErr.message, fallbackFailed: true };
-    }
+    return fallbackResult;
+  } catch (fallbackErr) {
+    return _handleBothMethodsFailed(context, messagingErr, fallbackErr);
   }
+}
+
+/**
+ * Handle both messaging and scripting methods failed
+ * v1.6.3.11-v10 - Extracted for clarity
+ * @private
+ */
+function _handleBothMethodsFailed(context, messagingErr, fallbackErr) {
+  _logManagerActionResult({
+    action: context.command,
+    quickTabId: context.quickTabId,
+    hostTabId: context.hostTabId,
+    correlationId: context.correlationId,
+    result: { success: false, error: fallbackErr.message },
+    startTime: context.startTime,
+    method: 'scripting-fallback'
+  });
+  console.error('[Background] Both messaging and scripting failed:', {
+    command: context.command,
+    quickTabId: context.quickTabId,
+    hostTabId: context.hostTabId,
+    messagingError: messagingErr.message,
+    scriptingError: fallbackErr.message
+  });
+  return { success: false, error: fallbackErr.message, fallbackFailed: true };
 }
 
 // Register message handlers for Quick Tab coordination

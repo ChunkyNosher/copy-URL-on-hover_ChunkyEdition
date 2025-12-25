@@ -225,10 +225,77 @@ export class MessageRouter {
   }
 
   /**
+   * Handle case when no handler exists for action
+   * v1.6.3.11-v11 - FIX Issue 48 #3: Extracted to reduce route() complexity
+   * @private
+   * @param {Object} message - Message object
+   * @param {string} action - Extracted action
+   * @param {Object} sender - Message sender
+   * @param {Function} sendResponse - Response callback
+   * @returns {boolean} True if message was handled (deferred to other listeners returns false)
+   */
+  _handleNoHandler(message, action, sender, sendResponse) {
+    // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
+    if (this._shouldDeferToOtherListeners(message)) {
+      return false;
+    }
+
+    // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
+    const validation = this._validateAction(action, sender);
+    if (!validation.valid) {
+      sendResponse({
+        success: false,
+        error: 'UNKNOWN_COMMAND',
+        command: action,
+        code: 'UNKNOWN_COMMAND',
+        version: MESSAGE_PROTOCOL_VERSION
+      });
+      return true;
+    }
+
+    console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
+    sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
+    return true;
+  }
+
+  /**
+   * Execute handler and send response
+   * v1.6.3.11-v11 - FIX Issue 48 #3: Extracted to reduce route() complexity
+   * @private
+   */
+  async _executeHandler(handler, message, sender, sendResponse, action, routeStartTime) {
+    // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler execution start
+    console.log(`[MSG_HANDLER] Handler for ${action} executing`, {
+      senderTabId: sender?.tab?.id ?? 'unknown',
+      timestamp: new Date().toISOString()
+    });
+
+    // Call handler and wait for result
+    const result = await handler(message, sender);
+
+    // v1.6.4.15 - FIX Issue #22: Normalize response format
+    const normalizedResponse = this._normalizeResponse(result, action);
+
+    // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler result
+    const routeDurationMs = Date.now() - routeStartTime;
+    console.log(`[MSG_HANDLER] Handler returned: success=${normalizedResponse.success}`, {
+      action,
+      durationMs: routeDurationMs,
+      hasData: normalizedResponse.data !== undefined && normalizedResponse.data !== null
+    });
+
+    // Send response
+    if (sendResponse) {
+      sendResponse(normalizedResponse);
+    }
+  }
+
+  /**
    * Route message to appropriate handler
    * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
    * v1.6.4.15 - FIX Issue #22: Normalize response format
+   * v1.6.3.11-v11 - FIX Issue 48 #3: Enhanced message routing diagnostics
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
@@ -237,6 +304,7 @@ export class MessageRouter {
   async route(message, sender, sendResponse) {
     // v1.6.4.14 - Extract action from either `action` or `type` property
     const action = this._extractAction(message);
+    const routeStartTime = Date.now();
 
     // Validate message format - must have either action or type
     if (!action) {
@@ -249,47 +317,32 @@ export class MessageRouter {
       return false;
     }
 
+    // v1.6.3.11-v11 - FIX Issue 48 #3: Log message received after validation
+    console.log(`[MSG_ROUTER] Message received: action=${action}`, {
+      senderTabId: sender?.tab?.id ?? 'unknown',
+      senderFrameId: sender?.frameId ?? 'unknown',
+      hasHandler: this.handlers.has(action),
+      timestamp: new Date().toISOString()
+    });
+
     const handler = this.handlers.get(action);
 
     if (!handler) {
-      // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
-      if (this._shouldDeferToOtherListeners(message)) {
-        return false;
-      }
-
-      // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
-      const validation = this._validateAction(action, sender);
-      if (!validation.valid) {
-        sendResponse({
-          success: false,
-          error: 'UNKNOWN_COMMAND',
-          command: action,
-          code: 'UNKNOWN_COMMAND',
-          version: MESSAGE_PROTOCOL_VERSION
-        });
-        return false;
-      }
-
-      console.warn(`[MSG][MessageRouter] No handler for action: ${action}`);
-      sendResponse({ success: false, error: `Unknown action: ${action}`, code: 'NO_HANDLER' });
-      return false;
+      // v1.6.3.11-v11 - FIX Code Review: Simplified boolean return
+      return this._handleNoHandler(message, action, sender, sendResponse);
     }
 
     try {
-      // Call handler and wait for result
-      const result = await handler(message, sender);
-
-      // v1.6.4.15 - FIX Issue #22: Normalize response format
-      const normalizedResponse = this._normalizeResponse(result, action);
-
-      // Send response
-      if (sendResponse) {
-        sendResponse(normalizedResponse);
-      }
-
+      await this._executeHandler(handler, message, sender, sendResponse, action, routeStartTime);
       return true; // Keep channel open for async response
     } catch (error) {
-      console.error(`[MSG][MessageRouter] Handler error for ${action}:`, error);
+      // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler error with details
+      const routeDurationMs = Date.now() - routeStartTime;
+      console.error('[MSG_HANDLER] Handler returned: success=false', {
+        action,
+        error: error.message,
+        durationMs: routeDurationMs
+      });
 
       if (sendResponse) {
         sendResponse({

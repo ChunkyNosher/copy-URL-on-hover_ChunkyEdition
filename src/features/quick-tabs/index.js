@@ -329,8 +329,22 @@ class QuickTabsManager {
   }
 
   /**
+   * Log per-tab hydration status
+   * v1.6.3.11-v11 - FIX Issue 48 #4: Extracted helper for consistent hydration logging
+   * @private
+   * @param {string} tabId - Tab ID being hydrated
+   * @param {string} status - 'success' or 'failed'
+   * @param {string} reason - Reason for the status
+   */
+  _logHydrationStatus(tabId, status, reason) {
+    console.log(`[HYDRATION] Tab ${tabId}: status=${status}, reason=${reason}`);
+  }
+
+  /**
    * Safely hydrate a single tab with error handling and reason tracking
    * v1.6.3.6-v5 - FIX: Added reason tracking for comprehensive logging
+   * v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration status logging
+   * v1.6.3.11-v11 - FIX Code Review: Use helper for consistent logging
    * @private
    * @param {Object} tabData - Tab data from storage
    * @param {Object} filterReasons - Object to track filter reasons
@@ -340,6 +354,8 @@ class QuickTabsManager {
     try {
       // Validate required fields
       if (!this._isValidTabData(tabData)) {
+        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
+        this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', 'invalidData');
         // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
         console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
           id: tabData?.id,
@@ -355,6 +371,8 @@ class QuickTabsManager {
       // Check tab scope validation with reason tracking
       const skipResult = this._checkTabScopeWithReason(tabData);
       if (skipResult.skip) {
+        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
+        this._logHydrationStatus(tabData.id, 'failed', skipResult.reason);
         // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
         console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
           id: tabData.id,
@@ -369,6 +387,8 @@ class QuickTabsManager {
 
       // Skip if tab already exists
       if (this.tabs.has(tabData.id)) {
+        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
+        this._logHydrationStatus(tabData.id, 'failed', 'alreadyExists');
         // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
         console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
           id: tabData.id,
@@ -384,6 +404,8 @@ class QuickTabsManager {
 
       // Skip if no createHandler available
       if (!this.createHandler) {
+        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
+        this._logHydrationStatus(tabData.id, 'failed', 'noHandler');
         console.warn('[QuickTabsManager] No createHandler available for hydration');
         filterReasons.noHandler++;
         return { success: false, reason: 'noHandler' };
@@ -409,8 +431,13 @@ class QuickTabsManager {
       } else {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
+
+      // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration success logging
+      this._logHydrationStatus(tabData.id, 'success', 'hydrated');
       return { success: true, reason: 'hydrated' };
     } catch (tabError) {
+      // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration error logging
+      this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message);
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
       return { success: false, reason: 'error' };
@@ -445,6 +472,7 @@ class QuickTabsManager {
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
    * v1.6.4.15 - FIX Issue #21: Detect and log domain changes during hydration
+   * v1.6.3.11-v11 - FIX Issue 48 #4: Enhanced hydration lifecycle logging
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
@@ -478,6 +506,14 @@ class QuickTabsManager {
         return { success: false, count: 0, reason: validation.reason };
       }
 
+      // v1.6.3.11-v11 - FIX Issue 48 #4: Log hydration start with tab count
+      const tabIds = storedState.tabs.map(t => t.id);
+      console.log(`[HYDRATION] START: Retrieving ${storedState.tabs.length} tabs from storage`, {
+        tabIds,
+        currentTabId: this.currentTabId,
+        timestamp: new Date().toISOString()
+      });
+
       console.log(
         `[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`
       );
@@ -492,6 +528,19 @@ class QuickTabsManager {
         filteredOutCount: storedState.tabs.length - hydratedCount,
         currentTabId: this.currentTabId
       });
+
+      // v1.6.3.11-v11 - FIX Issue 48 #4: Log hydration completion summary
+      const failedCount = storedState.tabs.length - hydratedCount;
+      console.log(
+        `[HYDRATION] COMPLETE: total=${storedState.tabs.length}, success=${hydratedCount}, failed=${failedCount}`,
+        {
+          totalFromStorage: storedState.tabs.length,
+          successfullyHydrated: hydratedCount,
+          failedOrFiltered: failedCount,
+          currentTabId: this.currentTabId,
+          timestamp: new Date().toISOString()
+        }
+      );
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);

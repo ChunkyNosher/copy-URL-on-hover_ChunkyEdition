@@ -79,7 +79,7 @@ describe('Port Lifecycle Edge Cases', () => {
 
       // Simulate pageshow with persisted = true (restored from BFCache)
       const pageshowEvent = { persisted: true };
-      let portPotentiallyInvalidDueToBFCache = true;
+      const portPotentiallyInvalidDueToBFCache = true;
 
       // Handler logic
       if (pageshowEvent.persisted && portPotentiallyInvalidDueToBFCache) {
@@ -98,7 +98,7 @@ describe('Port Lifecycle Edge Cases', () => {
       const _initiatePortReconnection = jest.fn();
 
       const pageshowEvent = { persisted: true };
-      let portPotentiallyInvalidDueToBFCache = true;
+      const portPotentiallyInvalidDueToBFCache = true;
 
       if (pageshowEvent.persisted && portPotentiallyInvalidDueToBFCache) {
         const isValid = await _validatePortConnectivity();
@@ -116,7 +116,7 @@ describe('Port Lifecycle Edge Cases', () => {
       const _initiatePortReconnection = jest.fn();
 
       const pageshowEvent = { persisted: false };
-      let portPotentiallyInvalidDueToBFCache = true;
+      const portPotentiallyInvalidDueToBFCache = true;
 
       if (pageshowEvent.persisted && portPotentiallyInvalidDueToBFCache) {
         const isValid = await _validatePortConnectivity();
@@ -214,7 +214,7 @@ describe('Port Lifecycle Edge Cases', () => {
      */
     test('should queue messages if port is being validated', async () => {
       const messageQueue = [];
-      let isValidatingPort = true;
+      const isValidatingPort = true;
 
       const sendMessage = jest.fn().mockImplementation(msg => {
         if (isValidatingPort) {

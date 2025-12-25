@@ -402,9 +402,7 @@ describe('Storage Listener Health Monitor', () => {
 
   describe('Edge Cases', () => {
     test('handles storage.local.set failure gracefully', async () => {
-      global.browser.storage.local.set.mockRejectedValue(
-        new Error('Storage error')
-      );
+      global.browser.storage.local.set.mockRejectedValue(new Error('Storage error'));
 
       // Should not throw
       expect(() => {

@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v9 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v11 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
@@ -48,7 +48,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
 - **Session Quick Tabs** - Auto-clear on browser close (storage.session)
 
-**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+:**
+**v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics:**
+
+- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
+  `cookieStoreId`
+- **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
+- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
+- **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
+- **Manager Button Logging** - `[Manager] BUTTON_CLICKED/MESSAGE_*:` diagnostics
+- **Code Health 10.0** - QuickTabHandler.js fully refactored
+- **getFilterState()** - Diagnostic method for filter state introspection
+
+**v1.6.3.11-v9 Features - Diagnostic Report Fixes + Code Health 9.0+:**
 
 - **Identity Init Logging** - `[IDENTITY_INIT]` phases for tab identity
   lifecycle
@@ -58,7 +69,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Debounce Context Capture** - `capturedTabId` stored at schedule time
 - **Z-Index Recycling** - Threshold lowered from 100000 to 10000
 - **Container Validation** - `_validateContainerIsolation()` in visibility ops
-- **Code Health 9.0+** - All core files at Code Health 9.0 or higher
 
 **v1.6.3.11-v8 Features - Transaction Tracking + Validation:**
 
@@ -118,6 +128,5 @@ monitoring, code health 9.0+, container isolation
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.11-v9 diagnostic fixes,
-identity init logging, write phase logging, container validation, Code Health
-9.0+.**
+**Your strength: Complete Quick Tab system with v1.6.3.11-v11 container identity
+fix, message routing diagnostics, Code Health 10.0.**

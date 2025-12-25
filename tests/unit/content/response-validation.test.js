@@ -110,7 +110,7 @@ describe('Response Field Validation', () => {
   const logValidationWarnings = (operationType, result) => {
     if (!result.valid) {
       result.errors.forEach(error => {
-        console.warn(`[Content] RESPONSE_VALIDATION_ERROR:`, {
+        console.warn('[Content] RESPONSE_VALIDATION_ERROR:', {
           operationType,
           error: error.type,
           field: error.field,
@@ -120,7 +120,7 @@ describe('Response Field Validation', () => {
     }
 
     result.warnings.forEach(warning => {
-      console.warn(`[Content] RESPONSE_VALIDATION_WARNING:`, {
+      console.warn('[Content] RESPONSE_VALIDATION_WARNING:', {
         operationType,
         warning: warning.type,
         field: warning.field,

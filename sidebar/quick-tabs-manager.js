@@ -4399,22 +4399,43 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
 function setupEventListeners() {
   // Close Minimized button
   document.getElementById('closeMinimized').addEventListener('click', async () => {
+    console.log('[Manager] BUTTON_CLICKED: closeMinimized button');
     await closeMinimizedTabs();
   });
 
   // Close All button
   document.getElementById('closeAll').addEventListener('click', async () => {
+    console.log('[Manager] BUTTON_CLICKED: closeAll button');
     await closeAllTabs();
   });
 
   // Delegated event listener for Quick Tab actions
+  // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Add detailed logging for button clicks
   containersList.addEventListener('click', async e => {
     const button = e.target.closest('button[data-action]');
-    if (!button) return;
+    if (!button) {
+      // v1.6.3.11-v11 - FIX Issue #47: Log when click doesn't match a button
+      console.log('[Manager] CLICK_NOT_BUTTON:', {
+        tagName: e.target.tagName,
+        className: e.target.className,
+        id: e.target.id
+      });
+      return;
+    }
 
     const action = button.dataset.action;
     const quickTabId = button.dataset.quickTabId;
     const tabId = button.dataset.tabId;
+
+    // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Log button click with all relevant data
+    console.log('[Manager] BUTTON_CLICKED:', {
+      action,
+      quickTabId,
+      tabId,
+      buttonText: button.textContent,
+      buttonTitle: button.title,
+      timestamp: new Date().toISOString()
+    });
 
     switch (action) {
       case 'goToTab':
@@ -4433,7 +4454,22 @@ function setupEventListeners() {
       case 'adoptToCurrentTab':
         await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
         break;
+      default:
+        // v1.6.3.11-v11 - FIX Issue #47: Log unknown actions
+        console.warn('[Manager] UNKNOWN_ACTION:', {
+          action,
+          quickTabId,
+          tabId
+        });
     }
+  });
+
+  // v1.6.3.11-v11 - FIX Issue #47: Log event listener setup completion
+  console.log('[Manager] EVENT_LISTENERS_SETUP_COMPLETE:', {
+    timestamp: new Date().toISOString(),
+    containersListElement: !!containersList,
+    closeMinimizedElement: !!document.getElementById('closeMinimized'),
+    closeAllElement: !!document.getElementById('closeAll')
   });
 
   // Listen for storage changes to auto-update
@@ -5791,6 +5827,18 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
     };
   }
 
+  // v1.6.3.11-v11 - FIX Issue 48 #5: Log message send
+  console.log(
+    `[Manager] MESSAGE_SENDING: action=${message.action}, quickTabId=${message.quickTabId}, targetTabId=${targetTabId ?? 'broadcast'}`,
+    {
+      action: message.action,
+      quickTabId: message.quickTabId,
+      targetTabId: targetTabId ?? 'broadcast',
+      correlationId: message.correlationId,
+      timestamp: new Date().toISOString()
+    }
+  );
+
   // v1.6.3.10-v7 - FIX Bug #3: Mark message as sent before attempting
   _markMessageSent(message.action, message.quickTabId);
 
@@ -5798,6 +5846,14 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
   if (targetTabId) {
     const targetedResult = await _attemptTargetedMessageWithRetry(message, targetTabId, operation);
     if (targetedResult?.success) {
+      // v1.6.3.11-v11 - FIX Issue 48 #5: Log message response
+      console.log(`[Manager] MESSAGE_RESPONSE: action=${message.action}, success=true`, {
+        action: message.action,
+        quickTabId: message.quickTabId,
+        targetTabId: targetedResult.targetTabId,
+        method: 'targeted',
+        attempts: targetedResult.attempts
+      });
       return {
         success: true,
         method: 'targeted',
@@ -5809,7 +5865,22 @@ async function _sendMessageWithRetry(message, targetTabId, operation) {
   }
 
   // v1.6.3.10-v1 - FIX Issue #7: Fall back to broadcast
-  return _sendMessageViaBroadcast(message, operation, attempts);
+  const broadcastResult = await _sendMessageViaBroadcast(message, operation, attempts);
+
+  // v1.6.3.11-v11 - FIX Issue 48 #5: Log broadcast response
+  console.log(
+    `[Manager] MESSAGE_RESPONSE: action=${message.action}, success=${broadcastResult.success}`,
+    {
+      action: message.action,
+      quickTabId: message.quickTabId,
+      method: broadcastResult.method,
+      success: broadcastResult.success,
+      attempts: broadcastResult.attempts,
+      error: broadcastResult.error ?? null
+    }
+  );
+
+  return broadcastResult;
 }
 
 /**

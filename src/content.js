@@ -240,7 +240,12 @@ import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
-import { setWritingTabId, isWritingTabIdInitialized } from './utils/storage-utils.js';
+// v1.6.3.11-v11 - FIX Issue #47: Import setWritingContainerId for container isolation
+import {
+  setWritingTabId,
+  isWritingTabIdInitialized,
+  setWritingContainerId
+} from './utils/storage-utils.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 
@@ -543,11 +548,12 @@ function _isRetryableError(message) {
 }
 
 /**
- * Extract tab ID from response, supporting both v1 and v2 formats
+ * Extract tab ID and container ID from response, supporting both v1 and v2 formats
  * v1.6.4.15 - FIX Code Health: Extracted to reduce nesting depth
+ * v1.6.3.11-v11 - FIX Issue #47: Also extract cookieStoreId for container isolation
  * @private
  * @param {Object} response - Response from GET_CURRENT_TAB_ID
- * @returns {{found: boolean, tabId?: number, format?: string}}
+ * @returns {{found: boolean, tabId?: number, cookieStoreId?: string|null, format?: string}}
  */
 function _extractTabIdFromResponse(response) {
   if (!response?.success) {
@@ -560,17 +566,21 @@ function _extractTabIdFromResponse(response) {
     return { found: false };
   }
 
+  // v1.6.3.11-v11 - FIX Issue #47: Extract cookieStoreId for container isolation
+  const cookieStoreId = response.data?.cookieStoreId ?? response.cookieStoreId ?? null;
+
   const format = response.data ? 'v2 (data.currentTabId)' : 'v1 (tabId)';
-  return { found: true, tabId, format };
+  return { found: true, tabId, cookieStoreId, format };
 }
 
 /**
- * Single attempt to get tab ID from background
+ * Single attempt to get tab ID and container ID from background
  * v1.6.3.10-v10 - FIX Issue #5: Extracted to support retry logic
  * v1.6.4.15 - FIX Issue #15: Check response.success and response.data
+ * v1.6.3.11-v11 - FIX Issue #47: Also return cookieStoreId for container isolation
  * @private
  * @param {number} attemptNumber - Current attempt number (1-based)
- * @returns {Promise<{tabId: number|null, error: string|null, retryable: boolean}>}
+ * @returns {Promise<{tabId: number|null, cookieStoreId: string|null, error: string|null, retryable: boolean}>}
  */
 async function _attemptGetTabIdFromBackground(attemptNumber) {
   const startTime = Date.now();
@@ -583,13 +593,20 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
     // v1.6.4.15 - FIX Code Health: Extract tabId handling to avoid nested depth
     const tabIdResult = _extractTabIdFromResponse(response);
     if (tabIdResult.found) {
+      // v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
       console.log('[Content][TabID][INIT] ATTEMPT_SUCCESS:', {
         attempt: attemptNumber,
         tabId: tabIdResult.tabId,
+        cookieStoreId: tabIdResult.cookieStoreId,
         responseFormat: tabIdResult.format,
         durationMs: duration
       });
-      return { tabId: tabIdResult.tabId, error: null, retryable: false };
+      return {
+        tabId: tabIdResult.tabId,
+        cookieStoreId: tabIdResult.cookieStoreId,
+        error: null,
+        retryable: false
+      };
     }
 
     // Check if error is retryable (background not initialized yet)
@@ -606,6 +623,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 
     return {
       tabId: null,
+      cookieStoreId: null,
       error: response?.error || 'Invalid response from background',
       retryable: isRetryable
     };
@@ -624,6 +642,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 
     return {
       tabId: null,
+      cookieStoreId: null,
       error: err.message,
       retryable: isRetryable
     };
@@ -633,12 +652,14 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
 /**
  * Log successful tab ID acquisition
  * v1.6.3.11-v9 - FIX Code Health: Extracted from getCurrentTabIdFromBackground
+ * v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
  * @private
  * @param {number} tabId - The acquired tab ID
+ * @param {string|null} cookieStoreId - The container ID (if available)
  * @param {number} durationMs - Total duration in milliseconds
  * @param {number|null} attemptNumber - Attempt number (null for first attempt)
  */
-function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
+function _logTabIdAcquisitionSuccess(tabId, cookieStoreId, durationMs, attemptNumber) {
   const isFirstAttempt = attemptNumber === null;
   const message = isFirstAttempt
     ? 'Tab ID received on first attempt'
@@ -646,6 +667,7 @@ function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
 
   console.log(`[IDENTITY_INIT] TAB_ID_RESPONSE: ${message}`, {
     tabId,
+    cookieStoreId,
     ...(attemptNumber !== null && { attemptNumber }),
     durationMs,
     timestamp: new Date().toISOString(),
@@ -656,6 +678,7 @@ function _logTabIdAcquisitionSuccess(tabId, durationMs, attemptNumber) {
     `[Content][TabID][INIT] COMPLETE: Tab ID acquired ${isFirstAttempt ? 'on first attempt' : 'on retry'}`,
     {
       tabId,
+      cookieStoreId,
       ...(attemptNumber !== null && { attemptNumber }),
       totalDurationMs: durationMs
     }
@@ -689,10 +712,11 @@ function _logTabIdAcquisitionFailure(lastError, totalDurationMs) {
 /**
  * Execute retry loop for tab ID acquisition
  * v1.6.3.11-v9 - FIX Code Health: Extracted from getCurrentTabIdFromBackground
+ * v1.6.3.11-v11 - FIX Issue #47: Also return cookieStoreId
  * @private
  * @param {Object} initialResult - Result from first attempt
  * @param {number} overallStartTime - Start time for duration tracking
- * @returns {Promise<{tabId: number|null, error: string|null}>}
+ * @returns {Promise<{tabId: number|null, cookieStoreId: string|null, error: string|null}>}
  */
 async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
   let result = initialResult;
@@ -723,12 +747,17 @@ async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
     result = await _attemptGetTabIdFromBackground(attemptNumber);
 
     if (result.tabId !== null) {
-      _logTabIdAcquisitionSuccess(result.tabId, Date.now() - overallStartTime, attemptNumber);
-      return { tabId: result.tabId, error: null };
+      _logTabIdAcquisitionSuccess(
+        result.tabId,
+        result.cookieStoreId,
+        Date.now() - overallStartTime,
+        attemptNumber
+      );
+      return { tabId: result.tabId, cookieStoreId: result.cookieStoreId, error: null };
     }
   }
 
-  return { tabId: null, error: result.error };
+  return { tabId: null, cookieStoreId: null, error: result.error };
 }
 
 /**
@@ -739,11 +768,12 @@ async function _executeTabIdRetryLoop(initialResult, overallStartTime) {
  * v1.6.3.10-v10 - FIX Issue #5: Implement exponential backoff retry loop
  * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] logging markers
  * v1.6.3.11-v9 - FIX Code Health: Extracted helpers to reduce function length
+ * v1.6.3.11-v11 - FIX Issue #47: Also return cookieStoreId for container isolation
  *
  * Retry delays: 200ms, 500ms, 1500ms, 5000ms
  * Maximum 5 attempts (initial + 4 retries)
  *
- * @returns {Promise<number|null>} Current tab ID or null if all retries exhausted
+ * @returns {Promise<{tabId: number|null, cookieStoreId: string|null}>} Current tab ID and container ID or nulls if all retries exhausted
  */
 async function getCurrentTabIdFromBackground() {
   console.log('[IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background', {
@@ -763,20 +793,25 @@ async function getCurrentTabIdFromBackground() {
   const initialResult = await _attemptGetTabIdFromBackground(1);
 
   if (initialResult.tabId !== null) {
-    _logTabIdAcquisitionSuccess(initialResult.tabId, Date.now() - overallStartTime, null);
-    return initialResult.tabId;
+    _logTabIdAcquisitionSuccess(
+      initialResult.tabId,
+      initialResult.cookieStoreId,
+      Date.now() - overallStartTime,
+      null
+    );
+    return { tabId: initialResult.tabId, cookieStoreId: initialResult.cookieStoreId };
   }
 
   // Execute retry loop
   const retryResult = await _executeTabIdRetryLoop(initialResult, overallStartTime);
 
   if (retryResult.tabId !== null) {
-    return retryResult.tabId;
+    return { tabId: retryResult.tabId, cookieStoreId: retryResult.cookieStoreId };
   }
 
   // All retries exhausted
   _logTabIdAcquisitionFailure(retryResult.error, Date.now() - overallStartTime);
-  return null;
+  return { tabId: null, cookieStoreId: null };
 }
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
@@ -1722,7 +1757,7 @@ function _logTabIdAcquisitionFailed() {
  * @private
  * @param {number} tabId - The acquired tab ID
  */
-function _handleTabIdAcquired(tabId) {
+function _handleTabIdAcquired(tabId, cookieStoreId = null) {
   // v1.6.3.11-v8 - FIX Diagnostic Logging #3: Identity state transition logging
   // Note: Full identity acquisition duration is tracked by TAB_ID_ACQUISITION logs
   // This measures only the local state update portion of the transition
@@ -1731,25 +1766,48 @@ function _handleTabIdAcquired(tabId) {
 
   setWritingTabId(tabId);
 
+  // v1.6.3.11-v11 - FIX Issue #47: Also set container ID for container isolation
+  // This is critical for the identity state machine to transition to READY
+  if (cookieStoreId !== null) {
+    setWritingContainerId(cookieStoreId);
+    console.log('[Identity] Container ID set:', cookieStoreId);
+  } else {
+    // If no cookieStoreId was provided, use a default value for non-container environments
+    // This allows the identity state machine to transition to READY even without containers
+    setWritingContainerId('firefox-default');
+    console.log(
+      '[Identity] Container ID set to default: firefox-default (no container info available)'
+    );
+  }
+
   // v1.6.3.11-v8 - FIX Diagnostic Logging #3: Log identity state completion
   const localUpdateDuration = Date.now() - localUpdateStartTime;
   console.log('[Identity] Initialization duration:', localUpdateDuration + 'ms');
   console.log('[Identity] Tab ID acquired:', tabId);
+  console.log('[Identity] Container ID acquired:', cookieStoreId ?? 'firefox-default');
 
   // v1.6.3.11-v9 - FIX Issue C: Log identity ready status
+  // v1.6.3.11-v11 - FIX Issue #47: Include cookieStoreId in identity ready log
   console.log('[IDENTITY_INIT] IDENTITY_READY: Tab identity fully initialized', {
     tabId,
+    cookieStoreId: cookieStoreId ?? 'firefox-default',
     phase: 'IDENTITY_READY',
     timestamp: new Date().toISOString()
   });
 
   console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set', {
     tabId,
+    cookieStoreId: cookieStoreId ?? 'firefox-default',
     isWritingTabIdInitializedAfter: isWritingTabIdInitialized()
   });
 
   // v1.6.3.11-v10 - FIX Issue #13: Set identity ready flag
-  console.log('[IDENTITY_STATE] Ready state transitioned: false → true, tabId=' + tabId);
+  console.log(
+    '[IDENTITY_STATE] Ready state transitioned: false → true, tabId=' +
+      tabId +
+      ', cookieStoreId=' +
+      (cookieStoreId ?? 'firefox-default')
+  );
   identityReady = true;
 
   // Resolve the identity ready promise if waiting
@@ -1759,9 +1817,9 @@ function _handleTabIdAcquired(tabId) {
   }
 
   // Establish persistent port connection
-  console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId });
+  console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId, cookieStoreId });
   connectContentToBackground(tabId);
-  console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId });
+  console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId, cookieStoreId });
 }
 
 /**
@@ -1792,26 +1850,35 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.5-v10 - FIX Issue #3: Get tab ID FIRST from background script
   // This is critical for cross-tab scoping - Quick Tabs should only render
   // in the tab they were created in (originTabId must match currentTabId)
-  const currentTabId = await getCurrentTabIdFromBackground();
+  // v1.6.3.11-v11 - FIX Issue #47: Also get cookieStoreId for container isolation
+  const identityResult = await getCurrentTabIdFromBackground();
+  const currentTabId = identityResult.tabId;
+  const currentCookieStoreId = identityResult.cookieStoreId;
   const tabIdAcquisitionDuration = Date.now() - initStartTime;
 
   // v1.6.3.11-v8 - FIX Diagnostic Logging #6: Log response received
+  // v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
   console.log('[ContentScript][Init] Received response:', {
     success: currentTabId !== null,
+    cookieStoreId: currentCookieStoreId,
     tabCountStatus: 'awaiting-hydration' // Numeric count available after hydration
   });
 
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for tab ID result
+  // v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
   console.log('[INIT][Content] TAB_ID_ACQUISITION_COMPLETE:', {
     currentTabId: currentTabId !== null ? currentTabId : 'FAILED',
+    cookieStoreId: currentCookieStoreId,
     durationMs: tabIdAcquisitionDuration,
     success: currentTabId !== null,
     timestamp: new Date().toISOString()
   });
 
   // v1.6.3.10-v6 - FIX Issue #4/11: Log tab ID acquisition result
+  // v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
   console.log('[Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_RESULT: Tab ID acquired', {
     currentTabId,
+    cookieStoreId: currentCookieStoreId,
     source: 'background messaging (GET_CURRENT_TAB_ID)',
     success: currentTabId !== null
   });
@@ -1819,8 +1886,9 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Set writing tab ID for storage ownership
   // This is CRITICAL: content scripts cannot use browser.tabs.getCurrent(), so they must
   // explicitly set the tab ID for storage-utils to validate ownership during writes
+  // v1.6.3.11-v11 - FIX Issue #47: Also set container ID for container isolation
   if (currentTabId !== null) {
-    _handleTabIdAcquired(currentTabId);
+    _handleTabIdAcquired(currentTabId, currentCookieStoreId);
   } else {
     _logTabIdAcquisitionFailed();
   }
@@ -1828,6 +1896,7 @@ async function initializeQuickTabsFeature() {
   // v1.6.3.10-v10 - FIX Issue #6: [INIT] boundary logging for manager init
   console.log('[INIT][Content] QUICKTABS_MANAGER_INIT_START:', {
     currentTabId: currentTabId !== null ? currentTabId : 'NULL',
+    cookieStoreId: currentCookieStoreId,
     timestamp: new Date().toISOString()
   });
 
@@ -2660,60 +2729,90 @@ function isQuickTabOperationGated(operation) {
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
  * v1.6.3.11-v10 - FIX Issue #13: Add identity ready gate
  */
+/**
+ * Handle Quick Tab creation with identity gating
+ * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+ */
 async function handleCreateQuickTab(url, targetElement = null) {
-  // Early validation
   if (!url) {
     console.warn('[Quick Tab] Missing URL for creation');
     return;
   }
 
-  // v1.6.3.11-v10 - FIX Issue #13: Gate Quick Tab creation until identity is ready
-  if (isQuickTabOperationGated('CREATE_QUICK_TAB')) {
-    // Wait for identity with timeout
-    showNotification('⏳ Initializing...', 'info');
-    const tabId = await waitForIdentityReady();
-
-    if (tabId === null) {
-      // Timeout - identity not ready after 15 seconds
-      console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
-        operation: 'CREATE_QUICK_TAB',
-        url,
-        reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
-      });
-      showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
-      return;
-    }
-    // Identity now ready, continue with creation
-    console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
-      operation: 'CREATE_QUICK_TAB',
-      tabId
-    });
+  const gateResult = await _handleIdentityGating('CREATE_QUICK_TAB', url);
+  if (!gateResult.proceed) {
+    return;
   }
 
-  // Setup and emit event
   debug('Creating Quick Tab for:', url);
   eventBus.emit(Events.QUICK_TAB_REQUESTED, { url });
 
-  // Prepare Quick Tab data
+  const quickTabData = _prepareQuickTabData(url, targetElement);
+
+  try {
+    await executeQuickTabCreation(
+      quickTabData.data,
+      quickTabData.saveId,
+      quickTabData.canUseManagerSaveId
+    );
+  } catch (err) {
+    handleQuickTabCreationError(err, quickTabData.saveId, quickTabData.canUseManagerSaveId);
+  }
+}
+
+/**
+ * Handle identity gating for Quick Tab operations
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+async function _handleIdentityGating(operation, url) {
+  if (!isQuickTabOperationGated(operation)) {
+    return { proceed: true };
+  }
+
+  showNotification('⏳ Initializing...', 'info');
+  const tabId = await waitForIdentityReady();
+
+  if (tabId === null) {
+    console.error('[OPERATION_GATED] Quick Tab creation BLOCKED - identity timeout:', {
+      operation,
+      url,
+      reason: 'Identity initialization timed out after ' + IDENTITY_READY_TIMEOUT_MS + 'ms'
+    });
+    showNotification('✗ Quick Tab unavailable - please refresh the page', 'error');
+    return { proceed: false };
+  }
+
+  console.log('[OPERATION_GATED] Quick Tab creation UNBLOCKED - identity ready:', {
+    operation,
+    tabId
+  });
+  return { proceed: true, tabId };
+}
+
+/**
+ * Prepare Quick Tab data for creation
+ * v1.6.3.11-v10 - Extracted to reduce cyclomatic complexity
+ * @private
+ */
+function _prepareQuickTabData(url, targetElement) {
   const width = CONFIG.quickTabDefaultWidth || 800;
   const height = CONFIG.quickTabDefaultHeight || 600;
   const position = calculateQuickTabPosition(targetElement, width, height);
   const title = targetElement?.textContent?.trim() || 'Quick Tab';
   const { quickTabId, saveId, canUseManagerSaveId } = generateQuickTabIds();
-  const quickTabData = buildQuickTabData({
-    url,
-    id: quickTabId,
-    position,
-    size: { width, height },
-    title
-  });
 
-  // Execute creation with error handling
-  try {
-    await executeQuickTabCreation(quickTabData, saveId, canUseManagerSaveId);
-  } catch (err) {
-    handleQuickTabCreationError(err, saveId, canUseManagerSaveId);
-  }
+  return {
+    data: buildQuickTabData({
+      url,
+      id: quickTabId,
+      position,
+      size: { width, height },
+      title
+    }),
+    saveId,
+    canUseManagerSaveId
+  };
 }
 
 function calculateQuickTabPosition(targetElement, width, height) {
