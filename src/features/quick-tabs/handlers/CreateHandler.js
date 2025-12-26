@@ -272,6 +272,15 @@ export class CreateHandler {
       tabWindow.originContainerId = tabOptions.originContainerId;
     }
 
+    // v1.6.3.11-v12 - FIX Issue #7: Enhanced logging for originTabId and originContainerId
+    console.log('[CreateHandler] 📍 ORIGIN_ASSIGNMENT:', {
+      id,
+      originTabId: tabWindow.originTabId,
+      originContainerId: tabWindow.originContainerId,
+      cookieStoreId: tabOptions.cookieStoreId,
+      url: options.url?.substring(0, 50)
+    });
+
     console.log('[CreateHandler] Window created:', tabWindow);
 
     this.quickTabsMap.set(id, tabWindow);

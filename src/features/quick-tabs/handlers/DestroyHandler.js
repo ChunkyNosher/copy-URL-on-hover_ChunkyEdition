@@ -292,6 +292,7 @@ export class DestroyHandler {
   /**
    * Notify background about Quick Tab deletion
    * v1.6.3.5-v11 - FIX Issue #6: Send message to background for immediate Manager update
+   * v1.6.3.11-v12 - FIX Issue #3 & #5: Send QUICKTAB_REMOVED message for sidebar update
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of action
@@ -299,16 +300,23 @@ export class DestroyHandler {
    */
   async _notifyBackgroundOfDeletion(id, source) {
     try {
-      await browser.runtime.sendMessage({
-        type: 'QUICK_TAB_STATE_CHANGE',
-        quickTabId: id,
-        changes: { deleted: true },
-        source: source || 'destroy'
+      // v1.6.3.11-v12 - FIX Issue #3: Send QUICKTAB_REMOVED message for sidebar
+      console.log('[DestroyHandler] [REMOVE_MESSAGE] Sending QUICKTAB_REMOVED:', {
+        id, source, originTabId: this.currentTabId
       });
-      console.log(`[DestroyHandler] Notified background of deletion (source: ${source}):`, id);
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_REMOVED',
+        quickTabId: id,
+        originTabId: this.currentTabId,
+        source: source || 'DestroyHandler',
+        timestamp: Date.now()
+      });
+
+      console.log('[DestroyHandler] [REMOVE_MESSAGE] Sent successfully:', { id });
     } catch (err) {
       // Background may not be available - this is expected in some edge cases
-      console.debug('[DestroyHandler] Could not notify background:', err.message);
+      console.debug('[DestroyHandler] [REMOVE_MESSAGE] Could not send:', { id, error: err.message });
     }
   }
 
@@ -449,6 +457,7 @@ export class DestroyHandler {
   /**
    * Request cross-tab broadcast of deletion via background script
    * v1.6.3.7 - FIX Issue #3: Explicit cross-tab broadcast request
+   * v1.6.3.11-v12 - FIX Issue #3: Use QUICKTAB_REMOVED message type
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} source - Source of deletion
@@ -456,20 +465,23 @@ export class DestroyHandler {
    */
   async _requestCrossTabBroadcast(id, source) {
     try {
-      await browser.runtime.sendMessage({
-        type: 'QUICK_TAB_STATE_CHANGE',
-        quickTabId: id,
-        changes: { deleted: true },
-        source: source || 'destroy',
-        requestBroadcast: true // Explicit flag to request cross-tab broadcast
+      console.log('[DestroyHandler] [BROADCAST] Requesting cross-tab broadcast:', {
+        id, source, originTabId: this.currentTabId
       });
-      console.log(
-        `[DestroyHandler] Requested cross-tab broadcast for deletion (source: ${source}):`,
-        id
-      );
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_REMOVED',
+        quickTabId: id,
+        originTabId: this.currentTabId,
+        source: source || 'DestroyHandler',
+        requestBroadcast: true, // Explicit flag to request cross-tab broadcast
+        timestamp: Date.now()
+      });
+
+      console.log('[DestroyHandler] [BROADCAST] Request sent successfully:', { id });
     } catch (err) {
       // Background may not be available
-      console.debug('[DestroyHandler] Could not request cross-tab broadcast:', err.message);
+      console.debug('[DestroyHandler] [BROADCAST] Could not request:', { id, error: err.message });
     }
   }
 

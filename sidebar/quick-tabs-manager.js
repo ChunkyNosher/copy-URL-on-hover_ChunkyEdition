@@ -219,6 +219,10 @@ const MESSAGE_DEDUP_TTL_MS = 2000; // Dedup window: don't resend same message wi
 // v1.6.3.5-v7 - FIX Issue #7: Track when Manager's internal state was last updated (from any source)
 let lastLocalUpdateTime = 0;
 
+// v1.6.3.11-v12 - FIX Issue #6: Track last event received for staleness detection
+let lastEventReceivedTime = 0;
+const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
+
 // Browser tab info cache
 const browserTabInfoCache = new Map();
 
@@ -2411,44 +2415,145 @@ async function saveCollapseState(collapseState) {
   }
 }
 
+/**
+ * Dispatch incoming runtime message to appropriate handler
+ * v1.6.3.11-v12 - FIX Issue #5: Refactored from inline listener to reduce complexity
+ * @param {Object} message - Incoming message
+ * @param {Function} sendResponse - Response callback
+ * @returns {boolean} True if message was handled, false otherwise
+ */
+function _dispatchRuntimeMessage(message, sendResponse) {
+  const handlers = {
+    'QUICK_TAB_STATE_UPDATED': () => _handleStateUpdatedMessage(message, sendResponse),
+    'QUICK_TAB_DELETED': () => _handleDeletedMessage(message, sendResponse),
+    'QUICKTAB_MOVED': () => _handleMovedMessage(message, sendResponse),
+    'QUICKTAB_RESIZED': () => _handleResizedMessage(message, sendResponse),
+    'QUICKTAB_MINIMIZED': () => _handleMinimizedMessage(message, sendResponse),
+    'QUICKTAB_REMOVED': () => _handleRemovedMessage(message, sendResponse)
+  };
+
+  const handler = handlers[message.type];
+  if (handler) {
+    return handler();
+  }
+  return false;
+}
+
+/**
+ * Handle QUICK_TAB_STATE_UPDATED message
+ * @private
+ */
+function _handleStateUpdatedMessage(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+    quickTabId: message.quickTabId,
+    changes: message.changes,
+    source: message.originalSource
+  });
+
+  if (message.changes?.deleted === true || message.originalSource === 'destroy') {
+    handleStateDeletedMessage(message.quickTabId);
+  } else if (message.quickTabId && message.changes) {
+    handleStateUpdateMessage(message.quickTabId, message.changes);
+  }
+
+  // v1.6.3.11-v12 - FIX: Route through scheduleRender for consistency
+  scheduleRender('QUICK_TAB_STATE_UPDATED');
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICK_TAB_DELETED message
+ * @private
+ */
+function _handleDeletedMessage(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_DELETED:', {
+    quickTabId: message.quickTabId,
+    source: message.source
+  });
+
+  handleStateDeletedMessage(message.quickTabId);
+  // v1.6.3.11-v12 - FIX: Route through scheduleRender for consistency
+  scheduleRender('QUICK_TAB_DELETED');
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICKTAB_MOVED message
+ * @private
+ */
+function _handleMovedMessage(message, sendResponse) {
+  console.log('[Manager] 📍 Received QUICKTAB_MOVED:', {
+    quickTabId: message.quickTabId,
+    left: message.left,
+    top: message.top,
+    originTabId: message.originTabId
+  });
+
+  handleQuickTabMovedMessage(message);
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message
+ * @private
+ */
+function _handleResizedMessage(message, sendResponse) {
+  console.log('[Manager] 📐 Received QUICKTAB_RESIZED:', {
+    quickTabId: message.quickTabId,
+    width: message.width,
+    height: message.height,
+    originTabId: message.originTabId
+  });
+
+  handleQuickTabResizedMessage(message);
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICKTAB_MINIMIZED message
+ * @private
+ */
+function _handleMinimizedMessage(message, sendResponse) {
+  console.log('[Manager] 🔽 Received QUICKTAB_MINIMIZED:', {
+    quickTabId: message.quickTabId,
+    minimized: message.minimized,
+    originTabId: message.originTabId
+  });
+
+  handleQuickTabMinimizedMessage(message);
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICKTAB_REMOVED message
+ * @private
+ */
+function _handleRemovedMessage(message, sendResponse) {
+  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+  _markEventReceived();
+
+  console.log('[Manager] ❌ Received QUICKTAB_REMOVED:', {
+    quickTabId: message.quickTabId,
+    originTabId: message.originTabId,
+    source: message.source
+  });
+
+  handleStateDeletedMessage(message.quickTabId);
+  scheduleRender('QUICKTAB_REMOVED');
+  sendResponse({ received: true });
+  return true;
+}
+
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
+// v1.6.3.11-v12 - FIX Issue #5: Handle QUICKTAB_MOVED, QUICKTAB_RESIZED, QUICKTAB_MINIMIZED, QUICKTAB_REMOVED
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes,
-      source: message.originalSource
-    });
-
-    // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
-    if (message.changes?.deleted === true || message.originalSource === 'destroy') {
-      handleStateDeletedMessage(message.quickTabId);
-    } else if (message.quickTabId && message.changes) {
-      // Update local state cache
-      handleStateUpdateMessage(message.quickTabId, message.changes);
-    }
-
-    // Re-render UI
-    renderUI();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
-  if (message.type === 'QUICK_TAB_DELETED') {
-    console.log('[Manager] Received QUICK_TAB_DELETED:', {
-      quickTabId: message.quickTabId,
-      source: message.source
-    });
-
-    handleStateDeletedMessage(message.quickTabId);
-    renderUI();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  return false;
+  return _dispatchRuntimeMessage(message, sendResponse);
 });
 
 /**
@@ -2486,6 +2591,128 @@ function handleStateUpdateMessage(quickTabId, changes) {
 
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
+}
+
+/**
+ * Handle QUICKTAB_MOVED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
+ * @param {Object} message - QUICKTAB_MOVED message
+ */
+function handleQuickTabMovedMessage(message) {
+  const { quickTabId, left, top, originTabId } = message;
+
+  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+  _markEventReceived();
+
+  console.log('[Manager] [MOVE_HANDLER] Processing position update:', {
+    quickTabId, left, top, originTabId
+  });
+
+  if (!quickTabsState.tabs) {
+    quickTabsState = { tabs: [] };
+  }
+
+  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+  if (existingIndex >= 0) {
+    quickTabsState.tabs[existingIndex].left = left;
+    quickTabsState.tabs[existingIndex].top = top;
+    console.log('[Manager] [MOVE_HANDLER] Updated position for:', quickTabId);
+  } else {
+    console.warn('[Manager] [MOVE_HANDLER] Tab not found in state:', quickTabId);
+  }
+
+  // Update host info if originTabId provided
+  if (originTabId != null) {
+    _updateQuickTabHostInfo(quickTabId, { originTabId, left, top });
+  }
+
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+  lastLocalUpdateTime = Date.now();
+
+  // Schedule render for UI update
+  scheduleRender('QUICKTAB_MOVED');
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
+ * @param {Object} message - QUICKTAB_RESIZED message
+ */
+function handleQuickTabResizedMessage(message) {
+  const { quickTabId, width, height, originTabId } = message;
+
+  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+  _markEventReceived();
+
+  console.log('[Manager] [RESIZE_HANDLER] Processing size update:', {
+    quickTabId, width, height, originTabId
+  });
+
+  if (!quickTabsState.tabs) {
+    quickTabsState = { tabs: [] };
+  }
+
+  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+  if (existingIndex >= 0) {
+    quickTabsState.tabs[existingIndex].width = width;
+    quickTabsState.tabs[existingIndex].height = height;
+    console.log('[Manager] [RESIZE_HANDLER] Updated size for:', quickTabId);
+  } else {
+    console.warn('[Manager] [RESIZE_HANDLER] Tab not found in state:', quickTabId);
+  }
+
+  // Update host info if originTabId provided
+  if (originTabId != null) {
+    _updateQuickTabHostInfo(quickTabId, { originTabId, width, height });
+  }
+
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+  lastLocalUpdateTime = Date.now();
+
+  // Schedule render for UI update
+  scheduleRender('QUICKTAB_RESIZED');
+}
+
+/**
+ * Handle QUICKTAB_MINIMIZED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
+ * @param {Object} message - QUICKTAB_MINIMIZED message
+ */
+function handleQuickTabMinimizedMessage(message) {
+  const { quickTabId, minimized, originTabId } = message;
+
+  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+  _markEventReceived();
+
+  console.log('[Manager] [MINIMIZE_HANDLER] Processing minimize state update:', {
+    quickTabId, minimized, originTabId
+  });
+
+  if (!quickTabsState.tabs) {
+    quickTabsState = { tabs: [] };
+  }
+
+  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+  if (existingIndex >= 0) {
+    quickTabsState.tabs[existingIndex].minimized = minimized;
+    console.log('[Manager] [MINIMIZE_HANDLER] Updated minimize state for:', quickTabId, minimized);
+  } else {
+    console.warn('[Manager] [MINIMIZE_HANDLER] Tab not found in state:', quickTabId);
+  }
+
+  // Update host info if originTabId provided
+  if (originTabId != null) {
+    _updateQuickTabHostInfo(quickTabId, { originTabId, minimized });
+  }
+
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+  lastLocalUpdateTime = Date.now();
+
+  // Schedule render for UI update
+  scheduleRender('QUICKTAB_MINIMIZED');
 }
 
 /**
@@ -2893,15 +3120,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   _startHostInfoMaintenance();
 
   // Auto-refresh every 2 seconds
+  // v1.6.3.11-v12 - FIX Issue #6: Enhanced with staleness detection
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
+
+    // v1.6.3.11-v12 - FIX Issue #6: Check for staleness
+    _checkStaleness();
   }, 2000);
 
+  // v1.6.3.11-v12 - FIX Issue #6: Request immediate sync on Manager open
+  _requestImmediateSync();
+
   console.log(
-    '[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized'
+    '[Manager] v1.6.3.11-v12 Port connection + Message infrastructure + Host info maintenance + Staleness tracking initialized'
   );
 });
+
+/**
+ * Check for staleness and log warning if no events received for threshold period
+ * v1.6.3.11-v12 - FIX Issue #6: Staleness tracking for fallback sync
+ * @private
+ */
+function _checkStaleness() {
+  if (lastEventReceivedTime === 0) {
+    // No events received yet - this is normal on startup
+    return;
+  }
+
+  const timeSinceLastEvent = Date.now() - lastEventReceivedTime;
+  if (timeSinceLastEvent > STALENESS_THRESHOLD_MS) {
+    console.warn('[Manager] ⚠️ STALENESS_WARNING: No events received for', {
+      timeSinceLastEventMs: timeSinceLastEvent,
+      thresholdMs: STALENESS_THRESHOLD_MS,
+      lastEventReceivedTime,
+      lastLocalUpdateTime,
+      recommendation: 'Consider checking content script connectivity'
+    });
+  }
+}
+
+/**
+ * Request immediate state sync from background when Manager opens
+ * v1.6.3.11-v12 - FIX Issue #6: Ensure Manager has current state on open
+ * @private
+ */
+async function _requestImmediateSync() {
+  try {
+    console.log('[Manager] [SYNC] Requesting immediate state sync on open');
+
+    await browser.runtime.sendMessage({
+      type: 'REQUEST_FULL_STATE_SYNC',
+      source: 'Manager',
+      timestamp: Date.now()
+    });
+
+    console.log('[Manager] [SYNC] Sync request sent');
+  } catch (err) {
+    console.debug('[Manager] [SYNC] Could not request sync:', err.message);
+  }
+}
+
+/**
+ * Update lastEventReceivedTime when any event is processed
+ * v1.6.3.11-v12 - FIX Issue #6: Track last event for staleness detection
+ * @private
+ */
+function _markEventReceived() {
+  lastEventReceivedTime = Date.now();
+}
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload

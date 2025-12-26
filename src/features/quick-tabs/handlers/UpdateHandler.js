@@ -174,6 +174,44 @@ export class UpdateHandler {
     // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
     console.log('[UpdateHandler] Scheduling storage persist after position change');
     this._persistToStorage();
+
+    // v1.6.3.11-v12 - FIX Issue #4: Send QUICKTAB_MOVED message to sidebar for immediate update
+    // Fire-and-forget pattern - errors are handled internally by _sendMoveMessage
+    this._sendMoveMessage(id, roundedLeft, roundedTop, tab.originTabId).catch(() => {
+      // Error already logged by _sendMoveMessage
+    });
+  }
+
+  /**
+   * Send QUICKTAB_MOVED message to background for sidebar notification
+   * v1.6.3.11-v12 - FIX Issue #4 & #5: Direct message to sidebar via background
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {number} left - New left position
+   * @param {number} top - New top position
+   * @param {number|null} originTabId - Origin tab ID
+   */
+  async _sendMoveMessage(id, left, top, originTabId) {
+    try {
+      console.log('[UpdateHandler] [MOVE_MESSAGE] Sending QUICKTAB_MOVED:', {
+        id, left, top, originTabId
+      });
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_MOVED',
+        quickTabId: id,
+        left,
+        top,
+        originTabId,
+        source: 'UpdateHandler',
+        timestamp: Date.now()
+      });
+
+      console.log('[UpdateHandler] [MOVE_MESSAGE] Sent successfully:', { id });
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug('[UpdateHandler] [MOVE_MESSAGE] Could not send:', { id, error: err.message });
+    }
   }
 
   /**
@@ -308,6 +346,44 @@ export class UpdateHandler {
     // v1.6.3.4 - FIX Issue #3: Persist to storage after resize ends
     console.log('[UpdateHandler] Scheduling storage persist after size change');
     this._persistToStorage();
+
+    // v1.6.3.11-v12 - FIX Issue #4: Send QUICKTAB_RESIZED message to sidebar for immediate update
+    // Fire-and-forget pattern - errors are handled internally by _sendResizeMessage
+    this._sendResizeMessage(id, roundedWidth, roundedHeight, tab.originTabId).catch(() => {
+      // Error already logged by _sendResizeMessage
+    });
+  }
+
+  /**
+   * Send QUICKTAB_RESIZED message to background for sidebar notification
+   * v1.6.3.11-v12 - FIX Issue #4 & #5: Direct message to sidebar via background
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {number} width - New width
+   * @param {number} height - New height
+   * @param {number|null} originTabId - Origin tab ID
+   */
+  async _sendResizeMessage(id, width, height, originTabId) {
+    try {
+      console.log('[UpdateHandler] [RESIZE_MESSAGE] Sending QUICKTAB_RESIZED:', {
+        id, width, height, originTabId
+      });
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_RESIZED',
+        quickTabId: id,
+        width,
+        height,
+        originTabId,
+        source: 'UpdateHandler',
+        timestamp: Date.now()
+      });
+
+      console.log('[UpdateHandler] [RESIZE_MESSAGE] Sent successfully:', { id });
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug('[UpdateHandler] [RESIZE_MESSAGE] Could not send:', { id, error: err.message });
+    }
   }
 
   /**
