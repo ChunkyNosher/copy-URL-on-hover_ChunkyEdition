@@ -1958,9 +1958,20 @@ messageRouter.register('EXPORT_LOGS', (msg, sender) => logHandler.handleExportLo
 messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
   quickTabHandler.handleBatchUpdate(msg, sender)
 );
-messageRouter.register('CREATE_QUICK_TAB', (msg, sender) =>
-  quickTabHandler.handleCreate(msg, sender)
-);
+// v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
+// The handleCreate returns a result, and we notify the sidebar if creation was successful
+messageRouter.register('CREATE_QUICK_TAB', async (msg, sender) => {
+  const result = await quickTabHandler.handleCreate(msg, sender);
+  // v1.6.3.12-v3 - FIX Issue F: Notify sidebar if creation was successful
+  if (result?.success && !result?.duplicate) {
+    notifySidebarOfStateChange();
+    console.log('[Background] v1.6.3.12-v3 CREATE_QUICK_TAB: Notified sidebar of state change', {
+      quickTabId: msg.id,
+      success: result.success
+    });
+  }
+  return result;
+});
 messageRouter.register('CLOSE_QUICK_TAB', (msg, sender) =>
   quickTabHandler.handleClose(msg, sender)
 );

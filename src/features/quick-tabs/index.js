@@ -576,29 +576,57 @@ class QuickTabsManager {
    * Read state from storage and log result
    * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
    * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+   * v1.6.3.12-v3 - FIX Issue D: Remove storage.session usage for Firefox MV2 compatibility
+   *   Firefox MV2 does NOT have browser.storage.session. The extension uses Option 4
+   *   architecture with port-based messaging (quickTabsSessionState in background).
+   *   Hydration should happen via content.js port messaging, not storage.session.
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
   async _readAndLogStorageState() {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    console.log('[QuickTabsManager] Reading state from storage.session (key:', STATE_KEY, ')');
-
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
-      console.warn('[QuickTabsManager] storage.session unavailable');
-      return null;
-    }
-    const result = await browser.storage.session.get(STATE_KEY);
-    const storedState = result[STATE_KEY];
-
-    console.log('[QuickTabsManager] Storage read result:', {
-      found: !!storedState,
-      tabCount: storedState?.tabs?.length ?? 0,
-      saveId: storedState?.saveId ?? 'none',
-      transactionId: storedState?.transactionId ?? 'none'
+    // v1.6.3.12-v3 - FIX Issue D: storage.session API not available
+    // This extension uses Option 4 architecture with port-based messaging.
+    // Quick Tabs state is stored in background script memory (quickTabsSessionState),
+    // NOT in storage.session. Hydration happens via content.js port messaging.
+    console.log('[QuickTabsManager] v1.6.3.12-v3 _readAndLogStorageState: Checking storage.session availability', {
+      storageSessionAvailable: typeof browser?.storage?.session !== 'undefined',
+      hydrationMethod: 'port-based (Option 4 architecture)',
+      note: 'Quick Tabs state is stored in background memory, not storage.session'
     });
 
-    return storedState;
+    // v1.6.3.12-v3 - Return null to indicate storage-based hydration is unavailable.
+    // The actual hydration should happen via port-based messaging in content.js
+    // which calls _hydrateQuickTabsFromBackground() before QuickTabsManager.init().
+    // This prevents the error "storage.session unavailable" and allows the
+    // port-based hydration to be the single source of truth.
+    
+    // Check if storage.session exists (MV3 or Firefox 115+) - for future-proofing
+    if (typeof browser?.storage?.session !== 'undefined') {
+      console.log('[QuickTabsManager] storage.session available, attempting read');
+      try {
+        const result = await browser.storage.session.get(STATE_KEY);
+        const storedState = result[STATE_KEY];
+        console.log('[QuickTabsManager] Storage read result:', {
+          found: !!storedState,
+          tabCount: storedState?.tabs?.length ?? 0,
+          saveId: storedState?.saveId ?? 'none',
+          transactionId: storedState?.transactionId ?? 'none'
+        });
+        return storedState;
+      } catch (err) {
+        console.warn('[QuickTabsManager] storage.session read failed:', err.message);
+        return null;
+      }
+    }
+
+    // v1.6.3.12-v3 - storage.session unavailable: Return null, hydration via port-based messaging
+    // Note: storage.session is only available in MV3 or Firefox 115+ MV3
+    console.log('[QuickTabsManager] v1.6.3.12-v3 storage.session unavailable', {
+      action: 'Returning null - hydration handled by content.js port messaging',
+      portName: 'quick-tabs-port',
+      messageType: 'HYDRATE_ON_LOAD'
+    });
+    return null;
   }
 
   /**
