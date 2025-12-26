@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   tabs.sendMessage messaging, Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.10-v10), unified barrier init, scheduleRender() with revision dedup,
-  single storage key, storage.onChanged PRIMARY, MANAGER pattern actions
+  (v1.6.3.11-v12), unified barrier init, scheduleRender() with revision dedup,
+  single storage key, storage.onChanged PRIMARY, sidebar polling sync, real-time updates
 tools: ['*']
 ---
 
@@ -36,35 +36,37 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v9 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v12 - Quick Tabs Architecture v2 (Simplified)
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
 - **tabs.sendMessage Messaging** - Receives updates via tabs.sendMessage
 - **Single Writer Authority** - Manager sends commands, never writes storage
-- **MANAGER Pattern Actions** - close all, close minimized
+- **MANAGER Pattern Actions** - close all, close by ID
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **storage.onChanged PRIMARY** - Primary sync via storage.onChanged
 
-**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+:**
+**v1.6.3.11-v12 Features (NEW) - Real-Time Updates + Polling:**
 
-- **Identity Init Logging** - `[IDENTITY_INIT]` phases for tab identity
-  lifecycle
-- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON`
-  comparison
-- **Debounce Context Capture** - `capturedTabId` stored at schedule time
-- **Code Health 9.09** - `sidebar/quick-tabs-manager.js` improved to 9.09
+- **Solo/Mute REMOVED** - Solo and Mute features completely removed
+- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
+  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
+- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
+- **Scenario-Aware Logging** - Source, container ID, state changes tracked
+- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
 
-**v1.6.3.10-v10 Base (Restored):** Adoption locks, snapshot watchdog, z-index
-recycling, host info cleanup, container validation
+**v1.6.3.11-v11 Features - Container Identity + Message Diagnostics:**
 
-**Key Modules (v1.6.3.10-v9):**
+- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
+  `cookieStoreId`
+- **Manager Button Logging** - `[Manager] BUTTON_CLICKED/MESSAGE_*:` diagnostics
+
+**Key Modules:**
 
 | Module                             | Purpose                       |
 | ---------------------------------- | ----------------------------- |
-| `src/constants.js`                 | Centralized constants (+v9)   |
+| `src/constants.js`                 | Centralized constants         |
 | `sidebar/manager-state-handler.js` | Manager Pattern C actions     |
 | `src/messaging/message-router.js`  | MESSAGE_TYPES, MessageBuilder |
 | `src/storage/schema-v2.js`         | Pure state utilities          |
@@ -84,20 +86,17 @@ recycling, host info cleanup, container validation
 
 ## Testing Requirements
 
-- [ ] Adoption lock timeout works (10 seconds with escalation)
-- [ ] Snapshot integrity validation works (`validateSnapshotIntegrity()`)
-- [ ] Sidebar lifecycle tracking works (`[SIDEBAR_LIFECYCLE]` logging)
-- [ ] Render performance logging works (`[RENDER_PERF]` prefix)
+- [ ] Real-time message types work (QUICKTAB_MOVED, QUICKTAB_RESIZED, etc.)
+- [ ] Sidebar polling sync works (3-5s interval with staleness tracking)
 - [ ] scheduleRender() works with revision dedup
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
-- [ ] MANAGER pattern works (close all, close minimized)
+- [ ] MANAGER pattern works (close all, close by ID)
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.11-v9 diagnostic fixes,
-identity init logging, state validation, Code Health 9.09, MANAGER pattern
-actions.**
+**Your strength: Manager coordination with v1.6.3.11-v12 real-time updates,
+sidebar polling sync, MANAGER pattern actions, Code Health 9.09.**

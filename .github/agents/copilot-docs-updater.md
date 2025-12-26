@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.11-v11.
+  documentation. Current version: v1.6.3.11-v12.
 tools: ['*']
 ---
 
@@ -69,33 +69,24 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.11-v11)
+## Current Extension State (v1.6.3.11-v12)
 
-### v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics
+### v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates
 
-- **Issue 47 Fix** - GET_CURRENT_TAB_ID returns both `tabId` AND `cookieStoreId`
-  - Container filter transitions INITIALIZING → READY when both IDs set
-  - Fixes permanent FAIL_CLOSED issue blocking all storage writes
-- **Issue 48 Fix** - Comprehensive logging infrastructure
-  - `[IDENTITY_STATE] TRANSITION:` - State machine transitions
-  - `[MSG_ROUTER]`/`[MSG_HANDLER]` - Message routing diagnostics
-  - `[HYDRATION]` - Hydration lifecycle events
-  - `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/MESSAGE_RESPONSE:` - Manager ops
-- **Code Health 10.0** - QuickTabHandler.js improved from 7.6 → 10.0
-- **getFilterState()** - New diagnostic export from storage-utils.js
+- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
+- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
+- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
+- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
+  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
+- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
+- **Scenario-Aware Logging** - Source, container ID, state changes tracked
 
-### v1.6.3.11-v9 Features - Diagnostic Report Fixes + Code Health 9.0+
+### v1.6.3.11-v11 Features - Container Identity + Message Diagnostics
 
-- **Issue A/C Fix** - Content script tab identity initialization with logging
-- **Issue D Fix** - Storage write queue enforces identity-ready precondition
-- **Issue E/I Fix** - State validation + debounce context capture
-- **Issue 3.2/5 Fix** - Z-index recycling + container isolation validation
-
-### v1.6.3.10-v10 Base (Restored)
-
-- Tab ID exponential backoff, handler deferral, adoption lock timeout
-- Checkpoint system, message validation, identity gating, quota monitoring
-- tabs.sendMessage messaging, single storage key, storage.onChanged PRIMARY
+- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
+  `cookieStoreId`
+- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
+- **Code Health 10.0** - QuickTabHandler.js fully refactored
 
 ### Architecture
 
@@ -108,23 +99,24 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.11-v11
-- [ ] **v1.6.3.11-v11:** Container identity + message diagnostics documented
+- [ ] Version numbers match 1.6.3.11-v12
+- [ ] **v1.6.3.11-v12:** Solo/Mute removal + real-time updates documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
-- [ ] Solo/Mute terminology used (NOT "Pin to Page")
+- [ ] NO Solo/Mute references (REMOVED in v12)
 
 ---
 
 ## Common Documentation Errors
 
-| Error                   | Fix                         |
-| ----------------------- | --------------------------- |
-| v1.6.3.11-v9 or earlier | Update to 1.6.3.11-v11      |
-| "Pin to Page"           | Use "Solo/Mute"             |
-| Direct storage writes   | Use Single Writer Authority |
-| BroadcastChannel refs   | REMOVE - BC DELETED in v6   |
-| Port-based messaging    | REMOVE - Ports DELETED v12  |
-| CONNECTION_STATE refs   | REMOVE - Deleted in v6      |
+| Error                    | Fix                              |
+| ------------------------ | -------------------------------- |
+| v1.6.3.11-v11 or earlier | Update to 1.6.3.11-v12           |
+| "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
+| "Pin to Page"            | REMOVE - Feature DELETED in v12  |
+| Cross-session persist    | REMOVE - Session-only in v12     |
+| Direct storage writes    | Use Single Writer Authority      |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6        |
+| Port-based messaging     | REMOVE - Ports DELETED in v12    |
 
 ---
 
