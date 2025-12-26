@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12), scheduleRender() with revision dedup, memory-based state,
-  real-time port updates, MANAGER pattern actions
+  (v1.6.3.13), scheduleRender() with revision dedup, memory-based state,
+  real-time port updates, QUICKTAB_MINIMIZED reception, port roundtrip tracking, MANAGER pattern actions
 tools: ['*']
 ---
 
@@ -36,12 +36,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.13 - Option 4 Architecture (Port Messaging + Memory State)
+
+**v1.6.3.13 Features (NEW):**
+
+- **QUICKTAB_MINIMIZED Reception** - Receives minimize/restore events from background
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
+- **Enhanced Port Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED/SENT` with timestamps
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
-- **Port Messaging** - Connects via `'quick-tabs-port'`, receives STATE_CHANGED
+- **Port Messaging** - Connects via `'quick-tabs-port'`, receives STATE_CHANGED,
+  QUICKTAB_MINIMIZED
 - **Single Writer Authority** - Manager sends commands, never writes state
 - **MANAGER Pattern Actions** - MANAGER_CLOSE_ALL, MANAGER_CLOSE_BY_ID
 - **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
@@ -102,5 +109,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12 port messaging,
-real-time state push, MANAGER pattern actions, Code Health 9.09.**
+**Your strength: Manager coordination with v1.6.3.13 port messaging,
+real-time state push, QUICKTAB_MINIMIZED reception, MANAGER pattern actions.**

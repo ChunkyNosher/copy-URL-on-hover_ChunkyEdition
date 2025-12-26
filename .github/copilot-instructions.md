@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12  
+**Version:** 1.6.3.13  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,16 +20,25 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12 Features (NEW) - Option 4 In-Memory Architecture:**
+**v1.6.3.13 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics:**
+
+- **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
+  minimize/restore events from VisibilityHandler to sidebar for immediate UI updates
+- **Container ID Priority Fix** - CreateHandler now prioritizes identity context
+  (`this.cookieStoreId`) over explicit `options.cookieStoreId`
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map tracks ACK
+  message roundtrip times via `_handleQuickTabPortAck()`
+- **Enhanced Port Disconnect Logging** - Logs reason from `browser.runtime.lastError`,
+  timestamp, and pending operation count
+- **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED` and
+  `QUICK_TAB_PORT_MESSAGE_SENT` with timestamps
+
+**v1.6.3.12 Features - Option 4 In-Memory Architecture:**
 
 - **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
-  object
 - **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
 - **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
 - **Push Notifications** - Background → Sidebar via `STATE_CHANGED` messages
-- **Factory Patterns** - Port handlers use factory/lookup table patterns
-- **Generic Wrappers** - `executeQuickTabPortOperation()`,
-  `executeSidebarPortOperation()`
 
 **v1.6.3.11-v12 Features - Solo/Mute Removal:**
 
@@ -61,7 +70,7 @@ references.
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Option 4 Architecture (v1.6.3.12)
+### CRITICAL: Option 4 Architecture (v1.6.3.12+)
 
 **Background Script as SINGLE SOURCE OF TRUTH:**
 
@@ -84,7 +93,7 @@ const quickTabsSessionState = {
 - **Sidebar → Background:**
   - `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`, `SIDEBAR_CLOSE_QUICK_TAB`
   - `SIDEBAR_MINIMIZE_QUICK_TAB`, `SIDEBAR_RESTORE_QUICK_TAB`
-- **Background → Sidebar:** `STATE_CHANGED` (push notifications)
+- **Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED` (push notifications)
 
 **Dual Architecture (Retained):**
 
@@ -95,16 +104,18 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12 Patterns (Current)
+### v1.6.3.13 Patterns (Current)
+
+- **Minimize/Restore Forwarding** - `handleQuickTabMinimizedMessage()` in background.js
+- **Container ID Priority** - Identity context takes priority over explicit options
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map for ACK timing
+- **Enhanced Port Logging** - Disconnect reasons, timestamps, pending operation counts
+
+### v1.6.3.12 Patterns
 
 - **Option 4 Architecture** - Background script in-memory storage
-- **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage for
-  Quick Tabs
+- **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
 - **No browser.storage.session** - Fixed Firefox MV2 compatibility
-- **Factory Patterns** - Port handlers use lookup tables (reduce switch
-  complexity)
-- **Generic Wrappers** - `executeQuickTabPortOperation()`,
-  `executeSidebarPortOperation()`
 - **Push Notifications** - Background → Sidebar via `STATE_CHANGED`
 
 ### v1.6.3.11-v12 Patterns
@@ -121,7 +132,7 @@ const quickTabsSessionState = {
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods
 - **v1.6.3.10:** tabs.sendMessage, storage.onChanged, unified barrier
 
-### Key Timing Constants (v1.6.3.12)
+### Key Timing Constants (v1.6.3.12+)
 
 | Constant                | Value | Purpose                          |
 | ----------------------- | ----- | -------------------------------- |
@@ -166,7 +177,10 @@ compatibility)
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12 (NEW):** `[Background] PORT_CONNECT:` `[Background] PORT_MESSAGE:`
+**v1.6.3.13 (NEW):** `QUICK_TAB_PORT_MESSAGE_RECEIVED` `QUICK_TAB_PORT_MESSAGE_SENT`
+`[Background] PORT_DISCONNECT:`
+
+**v1.6.3.12:** `[Background] PORT_CONNECT:` `[Background] PORT_MESSAGE:`
 `[Content] QUICK_TABS_PORT:` `[Sidebar] QUICK_TABS_PORT:`
 
 **v1.6.3.11-v12:** `[VERSION_LOG_CLEANUP]` `[SCENARIO_LOG]`
@@ -182,7 +196,7 @@ Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
 machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
 error telemetry, originTabId resolution, container isolation, z-index recycling,
 port messaging, factory patterns, lookup tables, generic wrapper functions,
-in-memory state, push notifications.
+in-memory state, push notifications, port roundtrip tracking.
 
 ---
 
@@ -256,7 +270,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/quick-tabs-manager.js`   | Port-based queries to background      |
 | `src/content.js`                  | Port messaging for Quick Tabs         |
 
-### Storage (v1.6.3.12)
+### Storage (v1.6.3.12+)
 
 **In-Memory State:** `quickTabsSessionState` in background.js (NOT persisted)  
 **Format:** `{ quickTabsByTab: {}, contentScriptPorts: {}, sidebarPort, sessionId, sessionStartTime }`
@@ -264,7 +278,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 **Note:** No `browser.storage.session` for Quick Tabs - Firefox MV2
 incompatible.
 
-### Port Messages (v1.6.3.12)
+### Port Messages (v1.6.3.12+)
 
 **Content → Background:** `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`,
 `RESTORE_QUICK_TAB`, `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`, `HYDRATE_ON_LOAD`,
@@ -273,7 +287,7 @@ incompatible.
 **Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
 `SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`, `SIDEBAR_RESTORE_QUICK_TAB`
 
-**Background → Sidebar:** `STATE_CHANGED`
+**Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`
 
 ---
 
