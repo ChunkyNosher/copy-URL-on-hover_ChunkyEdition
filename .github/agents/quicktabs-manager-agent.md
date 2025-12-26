@@ -40,9 +40,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.13 Features (NEW):**
 
+- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`) as
+  fallback for port messaging (Firefox MV2 has no storage.session)
 - **QUICKTAB_MINIMIZED Reception** - Receives minimize/restore events from background
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
-- **Enhanced Port Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED/SENT` with timestamps
+- **State Hash Timing** - Hash recomputed at render time, not on message receipt
+- **Debounce Timing** - 100ms for Manager (intentional difference from UpdateHandler)
 
 **Key Manager Features:**
 
@@ -104,7 +107,7 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Deprecated:**
 
-- ❌ `storage.onChanged` - Replaced by port messaging
+- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
 - ❌ Polling sync - Replaced by real-time port updates
 
 ---

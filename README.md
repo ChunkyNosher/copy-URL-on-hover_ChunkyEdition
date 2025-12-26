@@ -17,18 +17,18 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.3.13
 
-**🔄 Minimize/Restore Forwarding + Port Diagnostics ✅**
+**🔧 Critical Fixes + Port Diagnostics ✅**
 
+- ✅ **Container ID Priority Fix** - CreateHandler._getOriginContainerId() now
+  prioritizes identity context over explicit options.cookieStoreId
+- ✅ **Storage.onChanged Fallback Fix** - Uses 'local' area (not 'session') as
+  fallback for port messaging (Firefox MV2 has no storage.session)
 - ✅ **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
   minimize/restore events from VisibilityHandler to sidebar for immediate UI updates
-- ✅ **Container ID Priority Fix** - CreateHandler now prioritizes identity context
-  (`this.cookieStoreId`) over explicit `options.cookieStoreId`
 - ✅ **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map tracks
   ACK message roundtrip times via `_handleQuickTabPortAck()`
-- ✅ **Enhanced Port Disconnect Logging** - Logs reason from `browser.runtime.lastError`,
-  timestamp, and pending operation count
-- ✅ **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED` and
-  `QUICK_TAB_PORT_MESSAGE_SENT` with timestamps
+- ✅ **Enhanced Port Disconnect Logging** - Logs reason, timestamp, pending count
+- ✅ **Architecture Docs** - Port message ordering, state hash timing, debounce diffs
 
 ---
 

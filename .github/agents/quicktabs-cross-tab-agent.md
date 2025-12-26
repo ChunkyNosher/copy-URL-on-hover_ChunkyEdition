@@ -41,10 +41,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.13 Features (NEW):**
 
+- **Container ID Priority Fix** - CreateHandler prioritizes identity context
+- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
 - **QUICKTAB_MINIMIZED Handler** - Forwards minimize/restore events to sidebar
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
 - **Enhanced Port Disconnect Logging** - Reason, timestamp, pending counts
-- **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED/SENT`
+- **Port Message Ordering** - Assumed reliable within single port connection
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -97,7 +99,7 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 **Deprecated:**
 
 - ❌ `browser.storage.session` - Not used for Quick Tabs
-- ❌ `storage.onChanged` - Replaced by port messaging
+- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
 - ❌ `runtime.sendMessage` - Replaced by port messaging
 
 ---

@@ -49,10 +49,12 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.13 Features (NEW):**
 
+- **Container ID Priority Fix** - CreateHandler prioritizes identity context
+- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards events
-- **Container ID Priority** - Identity context prioritized in CreateHandler
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
 - **Enhanced Port Logging** - Disconnect reasons, timestamps, pending counts
+- **Debounce Timing** - 100ms for Manager, 200-300ms for UpdateHandler (intentional)
 
 **v1.6.3.12 Features (Option 4 Architecture):**
 
@@ -110,6 +112,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - ❌ `browser.storage.session` - Not used for Quick Tabs (MV2 incompatible)
 - ❌ `runtime.sendMessage` - Replaced by port messaging for state sync
+- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
 
 ---
 

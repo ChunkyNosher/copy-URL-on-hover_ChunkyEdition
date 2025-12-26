@@ -20,18 +20,20 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.13 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics:**
+**v1.6.3.13 Features (NEW) - Critical Fixes + Port Diagnostics:**
 
+- **Container ID Priority Fix** - CreateHandler._getOriginContainerId() prioritizes
+  identity context (`this.cookieStoreId`) over explicit `options.cookieStoreId`
+- **Storage.onChanged Fallback Fix** - Manager uses `'local'` area (not `'session'`)
+  as fallback for port messaging (Firefox MV2 has no storage.session)
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
   minimize/restore events from VisibilityHandler to sidebar for immediate UI updates
-- **Container ID Priority Fix** - CreateHandler now prioritizes identity context
-  (`this.cookieStoreId`) over explicit `options.cookieStoreId`
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map tracks ACK
   message roundtrip times via `_handleQuickTabPortAck()`
 - **Enhanced Port Disconnect Logging** - Logs reason from `browser.runtime.lastError`,
   timestamp, and pending operation count
-- **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED` and
-  `QUICK_TAB_PORT_MESSAGE_SENT` with timestamps
+- **Architecture Docs** - Port message ordering, state hash timing (recomputed at
+  render), debounce timing (100ms Manager, 200-300ms UpdateHandler)
 
 **v1.6.3.12 Features - Option 4 In-Memory Architecture:**
 
@@ -106,10 +108,12 @@ const quickTabsSessionState = {
 
 ### v1.6.3.13 Patterns (Current)
 
-- **Minimize/Restore Forwarding** - `handleQuickTabMinimizedMessage()` in background.js
 - **Container ID Priority** - Identity context takes priority over explicit options
+- **Storage.onChanged Fallback** - Uses `'local'` area, not `'session'` (MV2 fix)
+- **Port Messaging PRIMARY** - storage.onChanged is fallback, not primary sync
+- **Minimize/Restore Forwarding** - `handleQuickTabMinimizedMessage()` in background.js
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map for ACK timing
-- **Enhanced Port Logging** - Disconnect reasons, timestamps, pending operation counts
+- **Debounce Timing** - 100ms for Manager, 200-300ms for UpdateHandler (intentional)
 
 ### v1.6.3.12 Patterns
 
@@ -170,8 +174,8 @@ const quickTabsSessionState = {
 **Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
 `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
 
-**Note:** `browser.storage.session` NOT used for Quick Tabs (Firefox MV2
-compatibility)
+**Sync Mechanism:** Port messaging is PRIMARY; `storage.onChanged` with `'local'`
+area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
 
 ---
 
