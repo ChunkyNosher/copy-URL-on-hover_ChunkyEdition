@@ -5115,6 +5115,80 @@ function notifySidebarOfStateChange() {
 }
 
 /**
+ * Handle QUICKTAB_MINIMIZED message from VisibilityHandler
+ * v1.6.3.13 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
+ *
+ * When a Quick Tab is minimized or restored in a content script, the VisibilityHandler
+ * sends a QUICKTAB_MINIMIZED message. This handler:
+ * 1. Updates the in-memory state with the new minimized status
+ * 2. Notifies the sidebar via STATE_CHANGED to update its UI immediately
+ *
+ * @param {Object} message - Message payload
+ * @param {string} message.quickTabId - Quick Tab ID
+ * @param {boolean} message.minimized - New minimized state
+ * @param {number} message.originTabId - Tab where Quick Tab resides
+ * @param {string} message.source - Source of the action
+ * @param {Object} sender - Message sender info
+ * @returns {{success: boolean, error?: string}}
+ */
+function handleQuickTabMinimizedMessage(message, sender) {
+  const { quickTabId, minimized, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.13 QUICKTAB_MINIMIZED received:', {
+    quickTabId,
+    minimized,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp
+  });
+
+  // Find and update the Quick Tab in session state
+  const quickTabs = quickTabsSessionState.quickTabsByTab[senderTabId] || [];
+  const quickTab = quickTabs.find(qt => qt.id === quickTabId);
+
+  if (quickTab) {
+    const previousMinimized = quickTab.minimized;
+    quickTab.minimized = minimized;
+
+    console.log('[Background] v1.6.3.13 Quick Tab minimized state updated:', {
+      quickTabId,
+      previousMinimized,
+      newMinimized: minimized,
+      originTabId: senderTabId
+    });
+
+    // Update globalQuickTabState as well for backward compatibility
+    const globalQuickTab = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+    if (globalQuickTab) {
+      globalQuickTab.minimized = minimized;
+    }
+
+    // Notify sidebar of state change for immediate UI update
+    notifySidebarOfStateChange();
+
+    return { success: true, quickTabId, minimized };
+  }
+
+  console.warn('[Background] v1.6.3.13 Quick Tab not found for QUICKTAB_MINIMIZED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  // v1.6.3.13 - Intentionally notify sidebar even when Quick Tab not found
+  // This helps sync stale sidebar state with actual background state
+  notifySidebarOfStateChange();
+
+  return {
+    success: false,
+    error: 'Quick Tab not found in session state',
+    quickTabId
+  };
+}
+
+/**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
  * @param {number} tabId - Tab ID to notify
@@ -6818,6 +6892,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .then(result => sendResponse(result))
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
+  }
+
+  // v1.6.3.13 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
+  // This routes minimize/restore state changes to sidebar for immediate UI update
+  if (message.type === 'QUICKTAB_MINIMIZED') {
+    const result = handleQuickTabMinimizedMessage(message, sender);
+    sendResponse(result);
+    return false; // Synchronous response
   }
 
   // Let other handlers process the message
