@@ -68,31 +68,57 @@ export class UpdateHandler {
   }
 
   /**
+   * Handle property change during drag/resize
+   * v1.6.3.12 - FIX Code Health: Extracted common logic from handlePositionChange/handleSizeChange
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} values - Values to update { left, top } or { width, height }
+   * @param {string} eventName - Event name to emit (e.g., 'tab:position-changing')
+   * @param {string} persistType - Type for debounced persist ('position' or 'size')
+   */
+  _handlePropertyChange(id, values, eventName, persistType) {
+    const tab = this.quickTabsMap.get(id);
+    if (tab) {
+      // Round and apply values to tab
+      for (const [key, value] of Object.entries(values)) {
+        tab[key] = Math.round(value);
+      }
+
+      // Emit lightweight event for Manager live updates (without persistence)
+      this.eventBus?.emit(eventName, { id, ...this._getRoundedValues(tab, Object.keys(values)) });
+
+      // Debounced persist during drag/resize (200ms) for cross-context sync
+      this._debouncedDragPersist(id, persistType);
+    }
+  }
+
+  /**
+   * Get rounded values from tab for specified keys
+   * @private
+   * @param {Object} tab - Tab object
+   * @param {string[]} keys - Keys to extract
+   * @returns {Object} Object with rounded values
+   */
+  _getRoundedValues(tab, keys) {
+    const result = {};
+    for (const key of keys) {
+      result[key] = tab[key];
+    }
+    return result;
+  }
+
+  /**
    * Handle position change during drag
    * v1.6.3 - Local only (no cross-tab broadcast)
    * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during drag for live Manager updates
+   * v1.6.3.12 - FIX Code Health: Refactored to use shared _handlePropertyChange
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - New left position
    * @param {number} top - New top position
    */
   handlePositionChange(id, left, top) {
-    // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
-    const tab = this.quickTabsMap.get(id);
-    if (tab) {
-      tab.left = Math.round(left);
-      tab.top = Math.round(top);
-
-      // Emit lightweight event for Manager live updates (without persistence)
-      this.eventBus?.emit('tab:position-changing', {
-        id,
-        left: tab.left,
-        top: tab.top
-      });
-
-      // Debounced persist during drag (200ms) for cross-context sync
-      this._debouncedDragPersist(id, 'position');
-    }
+    this._handlePropertyChange(id, { left, top }, 'tab:position-changing', 'position');
   }
 
   /**
@@ -119,72 +145,102 @@ export class UpdateHandler {
   }
 
   /**
+   * Handle property change end (drag/resize end)
+   * v1.6.3.12 - FIX Code Health: Extracted common logic from handlePositionChangeEnd/handleSizeChangeEnd
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} values - Raw values to round and apply
+   * @param {string} updateType - Type for orphan event ('position' or 'size')
+   * @param {string} eventName - Event name to emit (e.g., 'tab:position-updated')
+   * @param {Function} sendMessageFn - Function to send message (bound method)
+   * @returns {boolean} True if update was applied, false if skipped
+   */
+  _handlePropertyChangeEnd(id, values, updateType, eventName, sendMessageFn) {
+    // Log callback invocation for debugging
+    console.log(`[UpdateHandler] handle${updateType === 'position' ? 'Position' : 'Size'}ChangeEnd called:`, { id, ...values });
+
+    // Round all values
+    const roundedValues = {};
+    for (const [key, value] of Object.entries(values)) {
+      roundedValues[key] = Math.round(value);
+    }
+
+    // Update the Quick Tab's stored values
+    const tab = this.quickTabsMap.get(id);
+
+    // Check DOM if tab not in Map
+    if (!tab) {
+      return this._handleMissingTabOnChangeEnd(id, updateType, roundedValues);
+    }
+
+    // Apply rounded values to tab
+    Object.assign(tab, roundedValues);
+    console.log(`[UpdateHandler] Updated tab ${updateType} in Map:`, { id, ...roundedValues });
+
+    // Emit event for coordinators
+    this.eventBus?.emit(eventName, { id, ...roundedValues });
+
+    // Persist to storage after drag/resize ends
+    console.log(`[UpdateHandler] Scheduling storage persist after ${updateType} change`);
+    this._persistToStorage();
+
+    // Send message to sidebar for immediate update (fire-and-forget)
+    sendMessageFn(id, roundedValues, tab.originTabId).catch(() => {
+      // Error already logged by send*Message
+    });
+
+    return true;
+  }
+
+  /**
+   * Handle missing tab during change end
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} updateType - Type for orphan event
+   * @param {Object} roundedValues - Rounded values for orphan event
+   * @returns {boolean} Always false (update skipped)
+   */
+  _handleMissingTabOnChangeEnd(id, updateType, roundedValues) {
+    const domExists = this._checkDOMExists(id);
+    console.warn(`[UpdateHandler] ${updateType === 'position' ? 'Position' : 'Size'} update skipped:`, {
+      id,
+      reason: 'tab not in quickTabsMap',
+      inDOM: domExists
+    });
+
+    if (domExists) {
+      this._emitOrphanedTabEvent(id, updateType, roundedValues);
+    }
+    return false;
+  }
+
+  /**
    * Handle position change end (drag end)
    * v1.6.3 - Local only (no storage persistence)
    * v1.6.3.4 - FIX Issue #3: Added storage persistence
    * v1.6.3.4-v3 - FIX Issue #6: Enhanced logging for callback invocation
    * v1.6.3.4-v12 - FIX Diagnostic Issue #3, #6: Verify DOM before skipping, re-add if missing
    * v1.6.3.5-v8 - FIX Issue #3: Emit event when orphaned DOM detected for re-wiring
+   * v1.6.3.12 - FIX Code Health: Refactored to use shared _handlePropertyChangeEnd
    *
    * @param {string} id - Quick Tab ID
    * @param {number} left - Final left position
    * @param {number} top - Final top position
    */
   handlePositionChangeEnd(id, left, top) {
-    // v1.6.3.4-v3 - FIX Issue #6: Log callback invocation for debugging
-    console.log('[UpdateHandler] handlePositionChangeEnd called:', { id, left, top });
-
-    const roundedLeft = Math.round(left);
-    const roundedTop = Math.round(top);
-
-    // Update the Quick Tab's stored position
-    const tab = this.quickTabsMap.get(id);
-
-    // v1.6.3.4-v12 - FIX Issue #3: Check DOM if tab not in Map
-    if (!tab) {
-      const domExists = this._checkDOMExists(id);
-      console.warn('[UpdateHandler] Position update skipped:', {
-        id,
-        reason: 'tab not in quickTabsMap',
-        inDOM: domExists
-      });
-
-      if (domExists) {
-        // v1.6.3.5-v8 - FIX Issue #3: Request re-wiring via event
-        this._emitOrphanedTabEvent(id, 'position', { left: roundedLeft, top: roundedTop });
-      }
-      return;
-    }
-
-    tab.left = roundedLeft;
-    tab.top = roundedTop;
-    console.log('[UpdateHandler] Updated tab position in Map:', {
+    this._handlePropertyChangeEnd(
       id,
-      left: roundedLeft,
-      top: roundedTop
-    });
-
-    // Emit event for coordinators
-    this.eventBus?.emit('tab:position-updated', {
-      id,
-      left: roundedLeft,
-      top: roundedTop
-    });
-
-    // v1.6.3.4 - FIX Issue #3: Persist to storage after drag ends
-    console.log('[UpdateHandler] Scheduling storage persist after position change');
-    this._persistToStorage();
-
-    // v1.6.3.11-v12 - FIX Issue #4: Send QUICKTAB_MOVED message to sidebar for immediate update
-    // Fire-and-forget pattern - errors are handled internally by _sendMoveMessage
-    this._sendMoveMessage(id, roundedLeft, roundedTop, tab.originTabId).catch(() => {
-      // Error already logged by _sendMoveMessage
-    });
+      { left, top },
+      'position',
+      'tab:position-updated',
+      (qid, vals, originTabId) => this._sendMoveMessage(qid, vals.left, vals.top, originTabId)
+    );
   }
 
   /**
    * Send QUICKTAB_MOVED message to background for sidebar notification
    * v1.6.3.11-v12 - FIX Issue #4 & #5: Direct message to sidebar via background
+   * v1.6.3.12 - FIX Code Health: Refactored to use shared _sendUpdateMessage
    * @private
    * @param {string} id - Quick Tab ID
    * @param {number} left - New left position
@@ -192,25 +248,36 @@ export class UpdateHandler {
    * @param {number|null} originTabId - Origin tab ID
    */
   async _sendMoveMessage(id, left, top, originTabId) {
+    await this._sendUpdateMessage('QUICKTAB_MOVED', id, { left, top }, originTabId);
+  }
+
+  /**
+   * Send update message to background for sidebar notification
+   * v1.6.3.12 - FIX Code Health: Extracted common logic from _sendMoveMessage/_sendResizeMessage
+   * @private
+   * @param {string} type - Message type ('QUICKTAB_MOVED' or 'QUICKTAB_RESIZED')
+   * @param {string} id - Quick Tab ID
+   * @param {Object} data - Update data (position or size)
+   * @param {number|null} originTabId - Origin tab ID
+   */
+  async _sendUpdateMessage(type, id, data, originTabId) {
+    const logPrefix = type === 'QUICKTAB_MOVED' ? 'MOVE_MESSAGE' : 'RESIZE_MESSAGE';
     try {
-      console.log('[UpdateHandler] [MOVE_MESSAGE] Sending QUICKTAB_MOVED:', {
-        id, left, top, originTabId
-      });
+      console.log(`[UpdateHandler] [${logPrefix}] Sending ${type}:`, { id, ...data, originTabId });
 
       await browser.runtime.sendMessage({
-        type: 'QUICKTAB_MOVED',
+        type,
         quickTabId: id,
-        left,
-        top,
+        ...data,
         originTabId,
         source: 'UpdateHandler',
         timestamp: Date.now()
       });
 
-      console.log('[UpdateHandler] [MOVE_MESSAGE] Sent successfully:', { id });
+      console.log(`[UpdateHandler] [${logPrefix}] Sent successfully:`, { id });
     } catch (err) {
       // Background may not be available - this is non-critical
-      console.debug('[UpdateHandler] [MOVE_MESSAGE] Could not send:', { id, error: err.message });
+      console.debug(`[UpdateHandler] [${logPrefix}] Could not send:`, { id, error: err.message });
     }
   }
 
@@ -266,28 +333,14 @@ export class UpdateHandler {
    * Handle size change during resize
    * v1.6.3 - Local only (no cross-tab broadcast)
    * v1.6.3.5-v7 - FIX Issue #4: Add debounced persistence during resize for live Manager updates
+   * v1.6.3.12 - FIX Code Health: Refactored to use shared _handlePropertyChange
    *
    * @param {string} id - Quick Tab ID
    * @param {number} width - New width
    * @param {number} height - New height
    */
   handleSizeChange(id, width, height) {
-    // v1.6.3.5-v7 - FIX Issue #4: Update in-memory state for live tracking
-    const tab = this.quickTabsMap.get(id);
-    if (tab) {
-      tab.width = Math.round(width);
-      tab.height = Math.round(height);
-
-      // Emit lightweight event for Manager live updates (without persistence)
-      this.eventBus?.emit('tab:size-changing', {
-        id,
-        width: tab.width,
-        height: tab.height
-      });
-
-      // Debounced persist during resize (200ms) for cross-context sync
-      this._debouncedDragPersist(id, 'size');
-    }
+    this._handlePropertyChange(id, { width, height }, 'tab:size-changing', 'size');
   }
 
   /**
@@ -357,6 +410,7 @@ export class UpdateHandler {
   /**
    * Send QUICKTAB_RESIZED message to background for sidebar notification
    * v1.6.3.11-v12 - FIX Issue #4 & #5: Direct message to sidebar via background
+   * v1.6.3.12 - FIX Code Health: Refactored to use shared _sendUpdateMessage
    * @private
    * @param {string} id - Quick Tab ID
    * @param {number} width - New width
@@ -364,26 +418,7 @@ export class UpdateHandler {
    * @param {number|null} originTabId - Origin tab ID
    */
   async _sendResizeMessage(id, width, height, originTabId) {
-    try {
-      console.log('[UpdateHandler] [RESIZE_MESSAGE] Sending QUICKTAB_RESIZED:', {
-        id, width, height, originTabId
-      });
-
-      await browser.runtime.sendMessage({
-        type: 'QUICKTAB_RESIZED',
-        quickTabId: id,
-        width,
-        height,
-        originTabId,
-        source: 'UpdateHandler',
-        timestamp: Date.now()
-      });
-
-      console.log('[UpdateHandler] [RESIZE_MESSAGE] Sent successfully:', { id });
-    } catch (err) {
-      // Background may not be available - this is non-critical
-      console.debug('[UpdateHandler] [RESIZE_MESSAGE] Could not send:', { id, error: err.message });
-    }
+    await this._sendUpdateMessage('QUICKTAB_RESIZED', id, { width, height }, originTabId);
   }
 
   /**
