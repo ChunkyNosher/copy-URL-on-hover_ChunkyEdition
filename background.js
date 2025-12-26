@@ -400,6 +400,63 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
+// ==================== v1.6.4 J7: SCENARIO-LEVEL LOGGING ====================
+// Optional scenario logger that logs scenario IDs (e.g., SCENARIO_10_STEP_4)
+// Can be enabled via Test Bridge or debug flag
+
+/**
+ * Flag to enable scenario-level logging
+ * v1.6.4 - J7: Set to true via Test Bridge or debug flag
+ */
+let _scenarioLoggingEnabled = false;
+
+/**
+ * Current scenario context for logging
+ * v1.6.4 - J7: Set by Test Bridge when running scenario tests
+ */
+let _currentScenarioContext = null;
+
+/**
+ * Enable scenario logging
+ * v1.6.4 - J7: Called by Test Bridge to enable detailed scenario tracking
+ * @param {Object} context - Scenario context { scenarioId, scenarioName }
+ */
+function enableScenarioLogging(context = {}) {
+  _scenarioLoggingEnabled = true;
+  _currentScenarioContext = context;
+  console.log('[Background] SCENARIO_LOGGING_ENABLED:', context);
+}
+
+/**
+ * Disable scenario logging
+ * v1.6.4 - J7: Called by Test Bridge to disable scenario tracking
+ */
+function disableScenarioLogging() {
+  _scenarioLoggingEnabled = false;
+  _currentScenarioContext = null;
+  console.log('[Background] SCENARIO_LOGGING_DISABLED');
+}
+
+/**
+ * Log a scenario step
+ * v1.6.4 - J7: Optional scenario-level logging for test debugging
+ * @param {string} scenarioId - Scenario identifier (e.g., 'SCENARIO_10')
+ * @param {number} step - Step number
+ * @param {string} description - Step description
+ * @param {Object} data - Additional data to log
+ */
+function logScenarioStep(scenarioId, step, description, data = {}) {
+  if (!_scenarioLoggingEnabled) return;
+  
+  console.log(`[SCENARIO_LOG] ${scenarioId}_STEP_${step}: ${description}`, {
+    ...data,
+    scenarioContext: _currentScenarioContext,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== END v1.6.4 J7 ====================
+
 // ==================== v1.6.3.10-v4 CONSTANTS ====================
 // FIX Issue #3/6: Firefox timeout recovery - transaction cleanup
 const TRANSACTION_TIMEOUT_MS = 30000; // 30s - matches Firefox background timeout
@@ -904,10 +961,13 @@ async function waitForInitialization(timeoutMs = 5000) {
 /**
  * Extract relevant tab data for hashing
  * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
+ * v1.6.4 - J6: Fields included in hash are documented in return object
  * @param {Object} tab - Tab object
  * @returns {Object} Normalized tab data for hashing
  */
 function _extractTabDataForHash(tab) {
+  // v1.6.4 - J6: These are ALL fields that participate in hash computation
+  // If any of these change, the hash will change, triggering a state update
   return {
     id: tab.id,
     url: tab.url,
@@ -916,8 +976,17 @@ function _extractTabDataForHash(tab) {
     width: tab.width ?? tab.size?.width,
     height: tab.height ?? tab.size?.height,
     minimized: tab.minimized ?? tab.visibility?.minimized
+    // Note: originContainerId IS NOT in hash - container changes don't trigger re-render alone
+    // Note: originTabId IS NOT in hash - tab ownership changes handled separately
   };
 }
+
+/**
+ * Fields included in state hash computation
+ * v1.6.4 - J6: Exported constant for logging purposes
+ * @private
+ */
+const _HASH_FIELDS = ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId'];
 
 /**
  * Compute 32-bit hash from string
@@ -5114,29 +5183,48 @@ function getAllQuickTabsFromMemory() {
 /**
  * Notify sidebar of Quick Tab state change
  * v1.6.3.12 - Option 4: Push state updates to sidebar
+ * v1.6.4 - J5: Enhanced broadcast error handling and logging
  */
 function notifySidebarOfStateChange() {
   if (!quickTabsSessionState.sidebarPort) {
+    // v1.6.4 - J5: Log when message dropped due to missing port
+    console.log('[Background] BROADCAST_DROPPED: No sidebar port connected', {
+      timestamp: Date.now(),
+      totalQuickTabs: getAllQuickTabsFromMemory().length,
+      reason: 'sidebar_port_null'
+    });
     return;
   }
 
   const allTabs = getAllQuickTabsFromMemory();
+  const correlationId = `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const message = {
     type: 'STATE_CHANGED',
     quickTabs: allTabs,
     tabCount: allTabs.length,
     timestamp: Date.now(),
-    sessionId: quickTabsSessionState.sessionId
+    sessionId: quickTabsSessionState.sessionId,
+    correlationId // v1.6.4 - Gap #8: Add correlation ID
   };
 
   try {
     quickTabsSessionState.sidebarPort.postMessage(message);
-    console.log('[Background] STATE_CHANGED sent to sidebar:', {
+    // v1.6.4 - J5: Log successful broadcast with target info
+    console.log('[Background] BROADCAST_SUCCESS: STATE_CHANGED sent to sidebar', {
+      correlationId,
       tabCount: allTabs.length,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
+      targetPort: 'sidebar'
     });
   } catch (err) {
-    console.warn('[Background] Failed to notify sidebar:', err.message);
+    // v1.6.4 - J5: Log broadcast failure and mark port as dead
+    console.error('[Background] BROADCAST_FAILED: Error sending to sidebar', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now(),
+      tabCount: allTabs.length,
+      action: 'removing_stale_port'
+    });
     quickTabsSessionState.sidebarPort = null;
   }
 }
@@ -5218,27 +5306,48 @@ function handleQuickTabMinimizedMessage(message, sender) {
 /**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
+ * v1.6.4 - J5: Enhanced broadcast error handling with per-target logging
  * @param {number} tabId - Tab ID to notify
  */
 function notifyContentScriptOfStateChange(tabId) {
   const port = quickTabsSessionState.contentScriptPorts[tabId];
-  if (!port) return;
+  if (!port) {
+    // v1.6.4 - J5: Log when message dropped due to missing port
+    console.log('[Background] BROADCAST_DROPPED: No content script port for tab', {
+      tabId,
+      timestamp: Date.now(),
+      reason: 'port_not_found',
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
+    return;
+  }
 
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {
     type: 'QUICK_TABS_UPDATED',
     quickTabs,
     tabCount: quickTabs.length,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    correlationId // v1.6.4 - Gap #8: Add correlation ID
   };
 
   try {
     port.postMessage(message);
-    console.log(`[Background] QUICK_TABS_UPDATED sent to tab ${tabId}:`, {
+    // v1.6.4 - J5: Log successful broadcast
+    console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script', {
+      tabId,
+      correlationId,
       tabCount: quickTabs.length
     });
   } catch (err) {
-    console.warn(`[Background] Failed to notify tab ${tabId}:`, err.message);
+    // v1.6.4 - J5: Log failure and remove dead port
+    console.error('[Background] BROADCAST_FAILED: Error sending to content script', {
+      tabId,
+      correlationId,
+      error: err.message,
+      action: 'removing_dead_port'
+    });
     delete quickTabsSessionState.contentScriptPorts[tabId];
   }
 }
@@ -5246,14 +5355,18 @@ function notifyContentScriptOfStateChange(tabId) {
 /**
  * Handle CREATE_QUICK_TAB message from content script
  * v1.6.3.12 - Option 4: Add Quick Tab to in-memory state
+ * v1.6.4 - J3: Log container info for Manager labeling
  * @param {number} tabId - Origin tab ID
  * @param {Object} quickTab - Quick Tab data
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleCreateQuickTab(tabId, quickTab, port) {
+  // v1.6.4 - J3: Include container info in logging for Manager labeling
   console.log(`[Background] CREATE_QUICK_TAB from tab ${tabId}:`, {
     quickTabId: quickTab.id,
-    url: quickTab.url
+    url: quickTab.url,
+    originContainerId: quickTab.originContainerId || 'firefox-default',
+    originTabId: quickTab.originTabId || tabId
   });
 
   // Initialize tab's Quick Tab array if needed
@@ -5427,12 +5540,40 @@ function handleQueryMyQuickTabs(tabId, port) {
 /**
  * Handle HYDRATE_ON_LOAD message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
+ * v1.6.4 - J4: Container-aware hydration logging
  * @param {number} tabId - Tab ID requesting hydration
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleHydrateOnLoad(tabId, port) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
-  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { count: quickTabs.length, sessionId: quickTabsSessionState.sessionId });
+  const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
+  
+  // v1.6.4 - J4: Log container-aware hydration details
+  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { 
+    count: quickTabs.length, 
+    sessionId: quickTabsSessionState.sessionId,
+    requestingContainer: cookieStoreId
+  });
+  
+  // v1.6.4 - J4: Log container mismatch decisions if any Quick Tabs have different containers
+  if (quickTabs.length > 0) {
+    const containerMismatches = quickTabs.filter(qt => 
+      qt.originContainerId && qt.originContainerId !== cookieStoreId
+    );
+    
+    if (containerMismatches.length > 0) {
+      console.log('[Background] HYDRATION_CONTAINER_MISMATCH:', {
+        tabId,
+        requestingContainer: cookieStoreId,
+        mismatchedQuickTabs: containerMismatches.map(qt => ({
+          id: qt.id,
+          originContainerId: qt.originContainerId
+        })),
+        note: 'Quick Tabs with different containers still returned (filtering at content script)'
+      });
+    }
+  }
+  
   _sendQuickTabsListResponse(port, 'HYDRATE_ON_LOAD_RESPONSE', quickTabs, true);
 }
 
@@ -5738,11 +5879,25 @@ function _updateQuickTabMinimizedState(quickTabId, minimized) {
 /**
  * Setup content script port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.4 - J1: Enhanced port lifecycle logging with container context
  * @private
  * @param {number} tabId - Tab ID
  * @param {browser.runtime.Port} port - The port
  */
 function _setupContentScriptPort(tabId, port) {
+  const existingPort = quickTabsSessionState.contentScriptPorts[tabId];
+  const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
+  
+  // v1.6.4 - J1: Log if replacing existing port (reconnection scenario)
+  if (existingPort) {
+    console.log('[Background] PORT_ROUTING: Replacing existing content script port', {
+      tabId,
+      cookieStoreId,
+      reason: 'reconnection',
+      previousPortExists: true
+    });
+  }
+  
   quickTabsSessionState.contentScriptPorts[tabId] = port;
   
   if (!quickTabsSessionState.quickTabsByTab[tabId]) {
@@ -5750,31 +5905,91 @@ function _setupContentScriptPort(tabId, port) {
   }
 
   port.onMessage.addListener(msg => handleContentScriptPortMessage(tabId, msg, port));
+  
+  // v1.6.4 - J1: Enhanced onDisconnect with container context and state cleanup
   port.onDisconnect.addListener(() => {
-    console.log(`[Background] Content script port disconnected for tab ${tabId}`);
+    // v1.6.4 - J1: Capture lastError immediately in callback
+    let disconnectReason = 'unknown';
+    try {
+      if (browser.runtime?.lastError?.message) {
+        disconnectReason = browser.runtime.lastError.message;
+      }
+    } catch (_e) {
+      // Error context may have been cleared
+    }
+    
+    // v1.6.4 - J1: Log disconnect with full context
+    console.log('[Background] PORT_DISCONNECT: Content script port disconnected', {
+      tabId,
+      cookieStoreId,
+      reason: disconnectReason,
+      timestamp: Date.now(),
+      quickTabsCount: quickTabsSessionState.quickTabsByTab[tabId]?.length || 0,
+      remainingPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length - 1
+    });
+    
     delete quickTabsSessionState.contentScriptPorts[tabId];
     notifySidebarOfStateChange();
   });
 
-  console.log(`[Background] Content script port registered for tab ${tabId}`);
+  // v1.6.4 - J1: Log successful port registration with container context
+  console.log('[Background] PORT_ROUTING: Content script port registered', {
+    tabId,
+    cookieStoreId,
+    totalContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length,
+    existingQuickTabs: quickTabsSessionState.quickTabsByTab[tabId]?.length || 0
+  });
 }
 
 /**
  * Setup sidebar port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.4 - J1: Enhanced port lifecycle logging
  * @private
  * @param {browser.runtime.Port} port - The port
  */
 function _setupSidebarPort(port) {
+  const previousSidebarPort = quickTabsSessionState.sidebarPort;
+  
+  // v1.6.4 - J1: Log if replacing existing sidebar port
+  if (previousSidebarPort) {
+    console.log('[Background] PORT_ROUTING: Replacing existing sidebar port', {
+      reason: 'new_connection',
+      previousPortExists: true
+    });
+  }
+  
   quickTabsSessionState.sidebarPort = port;
 
   port.onMessage.addListener(msg => handleSidebarPortMessage(msg, port));
+  
+  // v1.6.4 - J1: Enhanced onDisconnect with reason capture
   port.onDisconnect.addListener(() => {
-    console.log('[Background] Sidebar port disconnected');
+    let disconnectReason = 'unknown';
+    try {
+      if (browser.runtime?.lastError?.message) {
+        disconnectReason = browser.runtime.lastError.message;
+      }
+    } catch (_e) {
+      // Error context may have been cleared
+    }
+    
+    // v1.6.4 - J1: Log sidebar disconnect with context
+    console.log('[Background] PORT_DISCONNECT: Sidebar port disconnected', {
+      reason: disconnectReason,
+      timestamp: Date.now(),
+      totalQuickTabs: getAllQuickTabsFromMemory().length
+    });
+    
     quickTabsSessionState.sidebarPort = null;
   });
 
-  console.log('[Background] Sidebar port registered');
+  // v1.6.4 - J1: Log successful sidebar port registration
+  console.log('[Background] PORT_ROUTING: Sidebar port registered', {
+    timestamp: Date.now(),
+    connectedContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length
+  });
+  
   handleSidebarReady(port);
 }
 

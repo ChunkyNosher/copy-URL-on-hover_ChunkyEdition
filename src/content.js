@@ -1971,8 +1971,19 @@ async function initializeQuickTabsPort() {
 // These helpers reduce duplication in port messaging functions
 
 /**
+ * Generate correlation ID for content script operations
+ * v1.6.4 - Gap #8: Correlation IDs for async operations
+ * @private
+ * @returns {string} Unique correlation ID
+ */
+function _generateContentCorrelationId() {
+  return `cs-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/**
  * Execute Quick Tab port operation with error handling
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
+ * v1.6.4 - Gap #7 & #8: End-to-end state sync path logging with correlation IDs
  * @private
  * @param {string} operationType - Type of operation (e.g., 'CREATE_QUICK_TAB')
  * @param {Object} payload - Message payload
@@ -1985,15 +1996,37 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
     return false;
   }
 
+  const correlationId = _generateContentCorrelationId();
+  const sentAt = Date.now();
+  
+  // v1.6.4 - Gap #7: Log content script state change initiated
+  console.log('[Content] STATE_SYNC_PATH_INITIATED:', {
+    timestamp: sentAt,
+    operationType,
+    correlationId,
+    quickTabId: payload.quickTabId || payload.quickTab?.id,
+    tabId: cachedTabId
+  });
+
   try {
     quickTabsPort.postMessage({
       type: operationType,
       ...payload,
-      timestamp: Date.now()
+      timestamp: sentAt,
+      correlationId // v1.6.4 - Gap #8: Include correlation ID
     });
     
     if (cacheUpdater) cacheUpdater();
-    console.log(`[Content] ${operationType} sent:`, payload.quickTabId || payload.quickTab?.id);
+    
+    // v1.6.4 - Gap #7: Log state serialized and sent
+    console.log('[Content] STATE_SYNC_PATH_SENT:', {
+      timestamp: Date.now(),
+      operationType,
+      correlationId,
+      quickTabId: payload.quickTabId || payload.quickTab?.id,
+      latencyMs: Date.now() - sentAt
+    });
+    
     return true;
   } catch (err) {
     console.error(`[Content] Failed to ${operationType} via port:`, err.message);
