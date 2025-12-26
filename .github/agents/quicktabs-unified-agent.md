@@ -3,7 +3,7 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.13), memory-based state (`quickTabsSessionState`),
+  sync with Single Writer Authority (v1.6.3.12-v2), memory-based state (`quickTabsSessionState`),
   real-time port updates, QUICKTAB_MINIMIZED forwarding, port roundtrip tracking, FIFO EventBus
 tools: ['*']
 ---
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.13 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v2 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,7 +47,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.13 Features (NEW):**
+**v1.6.3.12-v2 Features (NEW):**
 
 - **Container ID Priority Fix** - CreateHandler prioritizes identity context
 - **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
@@ -63,7 +63,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **No browser.storage.session** - Removed due to Firefox MV2 incompatibility
 - **Real-Time Port Updates** - State changes pushed via port.postMessage()
 - **Message Types** - CREATE_QUICK_TAB, MINIMIZE_QUICK_TAB, DELETE_QUICK_TAB,
-  QUICKTAB_MINIMIZED (v1.6.3.13)
+  QUICKTAB_MINIMIZED (v1.6.3.12-v2)
 
 **Key Architecture Components:**
 
@@ -116,5 +116,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.13 port messaging,
+**Your strength: Complete Quick Tab system with v1.6.3.12-v2 port messaging,
 memory-based state, real-time port updates, QUICKTAB_MINIMIZED forwarding.**

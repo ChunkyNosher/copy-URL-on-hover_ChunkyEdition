@@ -2,7 +2,7 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.3.13 ARCHITECTURE UPDATE ===
+ * === v1.6.3.12-v2 ARCHITECTURE UPDATE ===
  * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
  *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
  *   - All Quick Tab operations use port messaging, NOT storage APIs
@@ -285,7 +285,7 @@ let _allQuickTabsFromPort = [];
 
 /**
  * Track sent Quick Tab port operations for roundtrip time calculation
- * v1.6.3.13 - FIX Issue #16-17: Port messaging roundtrip time tracking
+ * v1.6.3.12-v2 - FIX Issue #16-17: Port messaging roundtrip time tracking
  * Key: quickTabId, Value: { sentAt: number, messageType: string }
  */
 const _quickTabPortOperationTimestamps = new Map();
@@ -304,7 +304,7 @@ function initializeQuickTabsPort() {
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
 
     quickTabsPort.onDisconnect.addListener(() => {
-      // v1.6.3.13 - FIX Issue #16-17: Log disconnect with reason
+      // v1.6.3.12-v2 - FIX Issue #16-17: Log disconnect with reason
       // NOTE: browser.runtime.lastError must be accessed immediately in the callback
       // to capture the error context before it's cleared by the browser
       let lastErrorMessage = 'unknown';
@@ -345,10 +345,10 @@ function initializeQuickTabsPort() {
   }
 }
 
-// ==================== v1.6.3.13 PORT MESSAGE HANDLER HELPERS ====================
+// ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
 /**
  * Handle Quick Tabs state update from background
- * v1.6.3.13 - FIX Code Health: Extract duplicate state update logic
+ * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -364,7 +364,7 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
 
 /**
  * Handle Quick Tab port ACK with roundtrip time calculation
- * v1.6.3.13 - FIX Issue #16-17: Log ACK with roundtrip time
+ * v1.6.3.12-v2 - FIX Issue #16-17: Log ACK with roundtrip time
  * @private
  * @param {Object} msg - ACK message from background
  * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
@@ -390,8 +390,8 @@ function _handleQuickTabPortAck(msg, ackType) {
 
 /**
  * Quick Tabs port message handlers lookup table
- * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
- * v1.6.3.13 - FIX Issue #16-17: ACK handlers now log roundtrip time
+ * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
  *
  * NOTE Issue #11 (Port Message Ordering): Port messages may arrive out of order
  * with async handlers. The current implementation assumes message ordering is
@@ -410,14 +410,14 @@ const _portMessageHandlers = {
 
 /**
  * Handle messages from Quick Tabs port
- * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
- * v1.6.3.13 - FIX Issue #16-17: Enhanced port message logging
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
   const { type, timestamp: msgTimestamp } = message;
   
-  // v1.6.3.13 - FIX Issue #16-17: Log port message with timestamp
+  // v1.6.3.12-v2 - FIX Issue #16-17: Log port message with timestamp
   console.log('[Sidebar] QUICK_TABS_PORT_MESSAGE_RECEIVED:', {
     type,
     timestamp: Date.now(),
@@ -473,11 +473,11 @@ function updateQuickTabsStateFromPort(quickTabs) {
  * v1.6.3.12 - Option 4: Send close command to background
  * @param {string} quickTabId - Quick Tab ID to close
  */
-// ==================== v1.6.3.13 SIDEBAR PORT OPERATION HELPER ====================
+// ==================== v1.6.3.12-v2 SIDEBAR PORT OPERATION HELPER ====================
 /**
  * Execute sidebar port operation with error handling
- * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
- * v1.6.3.13 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
+ * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
+ * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
@@ -498,7 +498,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
       timestamp: sentAt
     });
     
-    // v1.6.3.13 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
+    // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
     // Only track operations that have a quickTabId (for ACK correlation)
     const quickTabId = payload.quickTabId || null;
     if (quickTabId) {
@@ -511,7 +511,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
       quickTabId,
       timestamp: sentAt,
-      hasRoundtripTracking: !!quickTabId // v1.6.3.13 - Indicate if ACK will be tracked
+      hasRoundtripTracking: !!quickTabId // v1.6.3.12-v2 - Indicate if ACK will be tracked
     });
     return true;
   } catch (err) {
@@ -522,7 +522,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
 
 /**
  * Request Quick Tab close via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to close
  */
 function closeQuickTabViaPort(quickTabId) {
@@ -531,7 +531,7 @@ function closeQuickTabViaPort(quickTabId) {
 
 /**
  * Request Quick Tab minimize via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to minimize
  */
 function minimizeQuickTabViaPort(quickTabId) {
@@ -540,7 +540,7 @@ function minimizeQuickTabViaPort(quickTabId) {
 
 /**
  * Request Quick Tab restore via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to restore
  */
 function restoreQuickTabViaPort(quickTabId) {
@@ -549,7 +549,7 @@ function restoreQuickTabViaPort(quickTabId) {
 
 /**
  * Request all Quick Tabs via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  */
 function requestAllQuickTabsViaPort() {
   return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
@@ -5101,12 +5101,12 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
-  // v1.6.3.13 - FIX Issue #13: storage.onChanged is FALLBACK mechanism for port messaging
+  // v1.6.3.12-v2 - FIX Issue #13: storage.onChanged is FALLBACK mechanism for port messaging
   //   - PRIMARY: Port messaging ('quick-tabs-port') for real-time sync
   //   - FALLBACK: storage.local changes caught here for edge cases
   //   - NOTE: 'session' area does NOT exist in Firefox MV2
   browser.storage.onChanged.addListener((changes, areaName) => {
-    // v1.6.3.13 - FIX Issue #13: Listen for 'local' area as fallback
+    // v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area as fallback
     // Port messaging is the PRIMARY sync mechanism (Option 4 Architecture)
     // storage.session does NOT exist in Firefox MV2, so listen for 'local' instead
     if (areaName !== 'local' || !changes[STATE_KEY]) return;

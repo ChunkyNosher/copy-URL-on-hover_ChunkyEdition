@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.13.
+  documentation. Current version: v1.6.3.12-v2.
 tools: ['*']
 ---
 
@@ -69,9 +69,9 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.13)
+## Current Extension State (v1.6.3.12-v2)
 
-### v1.6.3.13 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics
+### v1.6.3.12-v2 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics
 
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
   minimize/restore events from VisibilityHandler to sidebar
@@ -115,8 +115,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.13
-- [ ] **v1.6.3.13:** Minimize/restore forwarding + port diagnostics documented
+- [ ] Version numbers match 1.6.3.12-v2
+- [ ] **v1.6.3.12-v2:** Minimize/restore forwarding + port diagnostics documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -126,7 +126,7 @@ nothing.
 
 | Error                    | Fix                              |
 | ------------------------ | -------------------------------- |
-| v1.6.3.12 or earlier   | Update to 1.6.3.13               |
+| v1.6.3.12 or earlier   | Update to 1.6.3.12-v2            |
 | "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
 | "Pin to Page"            | REMOVE - Feature DELETED in v12  |
 | Cross-session persist    | REMOVE - Session-only in v12     |

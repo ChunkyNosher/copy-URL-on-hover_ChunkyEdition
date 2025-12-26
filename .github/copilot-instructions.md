@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.13  
+**Version:** 1.6.3.12-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,7 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.13 Features (NEW) - Critical Fixes + Port Diagnostics:**
+**v1.6.3.12-v2 Features (NEW) - Critical Fixes + Port Diagnostics:**
 
 - **Container ID Priority Fix** - CreateHandler._getOriginContainerId() prioritizes
   identity context (`this.cookieStoreId`) over explicit `options.cookieStoreId`
@@ -106,7 +106,7 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.13 Patterns (Current)
+### v1.6.3.12-v2 Patterns (Current)
 
 - **Container ID Priority** - Identity context takes priority over explicit options
 - **Storage.onChanged Fallback** - Uses `'local'` area, not `'session'` (MV2 fix)
@@ -181,7 +181,7 @@ area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.13 (NEW):** `QUICK_TAB_PORT_MESSAGE_RECEIVED` `QUICK_TAB_PORT_MESSAGE_SENT`
+**v1.6.3.12-v2 (NEW):** `QUICK_TAB_PORT_MESSAGE_RECEIVED` `QUICK_TAB_PORT_MESSAGE_SENT`
 `[Background] PORT_DISCONNECT:`
 
 **v1.6.3.12:** `[Background] PORT_CONNECT:` `[Background] PORT_MESSAGE:`

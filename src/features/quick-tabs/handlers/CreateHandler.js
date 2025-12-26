@@ -440,7 +440,7 @@ export class CreateHandler {
   /**
    * Determine the source of the origin container ID for logging
    * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
-   * v1.6.3.13 - FIX Issue #2: Updated priority order to match _getOriginContainerId
+   * v1.6.3.12-v2 - FIX Issue #2: Updated priority order to match _getOriginContainerId
    * @private
    * @param {string|null} originContainerId - Resolved container ID
    * @param {Object} options - Creation options
@@ -448,7 +448,7 @@ export class CreateHandler {
    */
   _getContainerIdSource(originContainerId, options) {
     if (originContainerId === options.originContainerId) return 'options.originContainerId';
-    // v1.6.3.13 - FIX Issue #2: Check this.cookieStoreId BEFORE options.cookieStoreId (matches new priority)
+    // v1.6.3.12-v2 - FIX Issue #2: Check this.cookieStoreId BEFORE options.cookieStoreId (matches new priority)
     if (originContainerId === this.cookieStoreId) return 'this.cookieStoreId (identity context)';
     if (originContainerId === options.cookieStoreId) return 'options.cookieStoreId';
     return 'defaults';
@@ -457,7 +457,7 @@ export class CreateHandler {
   /**
    * Resolve origin container ID with fallback priority
    * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
-   * v1.6.3.13 - FIX Issue #2 (issue-logging-analysis): Changed priority - prefer this.cookieStoreId
+   * v1.6.3.12-v2 - FIX Issue #2 (issue-logging-analysis): Changed priority - prefer this.cookieStoreId
    *   (actual identity context) over options.cookieStoreId (potentially stale value from Quick Tab options)
    *   The identity context (this.cookieStoreId) is acquired during content script initialization
    *   and represents the actual container where the tab is running.
@@ -469,7 +469,7 @@ export class CreateHandler {
    * @returns {string|null} Resolved container ID
    */
   _getOriginContainerId(options, defaults, quickTabId) {
-    // v1.6.3.13 - FIX Issue #2: Prioritize identity context (this.cookieStoreId) over options.cookieStoreId
+    // v1.6.3.12-v2 - FIX Issue #2: Prioritize identity context (this.cookieStoreId) over options.cookieStoreId
     // The identity context is acquired during content script initialization and is the actual container
     // where the tab is running. The options.cookieStoreId may contain stale values.
     const originContainerId =
@@ -482,7 +482,7 @@ export class CreateHandler {
       quickTabId,
       originContainerId,
       source: this._getContainerIdSource(originContainerId, options),
-      // v1.6.3.13 - Additional diagnostic fields to track container resolution
+      // v1.6.3.12-v2 - Additional diagnostic fields to track container resolution
       identityContextCookieStoreId: this.cookieStoreId ?? null,
       optionsCookieStoreId: options.cookieStoreId ?? null
     });

@@ -7,7 +7,7 @@
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
 //
-// === v1.6.3.13 ARCHITECTURE UPDATE ===
+// === v1.6.3.12-v2 ARCHITECTURE UPDATE ===
 // PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
 //   - quickTabsSessionState object is SINGLE SOURCE OF TRUTH (in-memory)
 //   - All content scripts and sidebar use port messaging for Quick Tab operations
@@ -5132,7 +5132,7 @@ function notifySidebarOfStateChange() {
 
 /**
  * Handle QUICKTAB_MINIMIZED message from VisibilityHandler
- * v1.6.3.13 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
+ * v1.6.3.12-v2 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
  *
  * When a Quick Tab is minimized or restored in a content script, the VisibilityHandler
  * sends a QUICKTAB_MINIMIZED message. This handler:
@@ -5151,7 +5151,7 @@ function handleQuickTabMinimizedMessage(message, sender) {
   const { quickTabId, minimized, originTabId, source, timestamp } = message;
   const senderTabId = sender?.tab?.id ?? originTabId;
 
-  console.log('[Background] v1.6.3.13 QUICKTAB_MINIMIZED received:', {
+  console.log('[Background] v1.6.3.12-v2 QUICKTAB_MINIMIZED received:', {
     quickTabId,
     minimized,
     originTabId,
@@ -5168,7 +5168,7 @@ function handleQuickTabMinimizedMessage(message, sender) {
     const previousMinimized = quickTab.minimized;
     quickTab.minimized = minimized;
 
-    console.log('[Background] v1.6.3.13 Quick Tab minimized state updated:', {
+    console.log('[Background] v1.6.3.12-v2 Quick Tab minimized state updated:', {
       quickTabId,
       previousMinimized,
       newMinimized: minimized,
@@ -5187,13 +5187,13 @@ function handleQuickTabMinimizedMessage(message, sender) {
     return { success: true, quickTabId, minimized };
   }
 
-  console.warn('[Background] v1.6.3.13 Quick Tab not found for QUICKTAB_MINIMIZED:', {
+  console.warn('[Background] v1.6.3.12-v2 Quick Tab not found for QUICKTAB_MINIMIZED:', {
     quickTabId,
     senderTabId,
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
   });
 
-  // v1.6.3.13 - Do NOT notify sidebar when Quick Tab not found
+  // v1.6.3.12-v2 - Do NOT notify sidebar when Quick Tab not found
   // Notifying on failure could cause unnecessary sidebar updates and
   // potential UI flickering when the Quick Tab genuinely doesn't exist
 
@@ -5284,12 +5284,12 @@ function handleCreateQuickTab(tabId, quickTab, port) {
   notifySidebarOfStateChange();
 }
 
-// ==================== v1.6.3.13 PORT HANDLER HELPERS ====================
+// ==================== v1.6.3.12-v2 PORT HANDLER HELPERS ====================
 // These helpers reduce duplication in port message handlers
 
 /**
  * Update Quick Tab property in both session and global state
- * v1.6.3.13 - FIX Code Health: Unified state update helper
+ * v1.6.3.12-v2 - FIX Code Health: Unified state update helper
  * @private
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to update
@@ -5320,7 +5320,7 @@ function _updateQuickTabProperty(tabId, quickTabId, updater) {
 
 /**
  * Send acknowledgment response via port
- * v1.6.3.13 - FIX Code Health: Unified ACK sender
+ * v1.6.3.12-v2 - FIX Code Health: Unified ACK sender
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} ackType - Type of acknowledgment (e.g., 'MINIMIZE_QUICK_TAB_ACK')
@@ -5338,7 +5338,7 @@ function _sendQuickTabAck(port, ackType, success, quickTabId) {
 
 /**
  * Handle MINIMIZE_QUICK_TAB message from content script
- * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to minimize
  * @param {browser.runtime.Port} port - Source port for response
@@ -5357,7 +5357,7 @@ function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
 
 /**
  * Handle RESTORE_QUICK_TAB message from content script
- * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {browser.runtime.Port} port - Source port for response
@@ -5376,7 +5376,7 @@ function handleRestoreQuickTabPort(tabId, quickTabId, port) {
 
 /**
  * Handle DELETE_QUICK_TAB message from content script
- * v1.6.3.13 - FIX Code Health: Reduced duplication
+ * v1.6.3.12-v2 - FIX Code Health: Reduced duplication
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to delete
  * @param {browser.runtime.Port} port - Source port for response
@@ -5415,7 +5415,7 @@ function handleQueryMyQuickTabs(tabId, port) {
 
 /**
  * Handle HYDRATE_ON_LOAD message from content script
- * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
  * @param {number} tabId - Tab ID requesting hydration
  * @param {browser.runtime.Port} port - Source port for response
  */
@@ -5427,7 +5427,7 @@ function handleHydrateOnLoad(tabId, port) {
 
 /**
  * Handle UPDATE_QUICK_TAB message from content script
- * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * @param {number} tabId - Origin tab ID
  * @param {Object} msg - Message with quickTabId and updates
  * @param {browser.runtime.Port} port - Source port for response
@@ -5447,7 +5447,7 @@ function handleUpdateQuickTab(tabId, msg, port) {
 
 /**
  * Send Quick Tabs list response via port
- * v1.6.3.13 - FIX Code Health: Shared response builder
+ * v1.6.3.12-v2 - FIX Code Health: Shared response builder
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} responseType - Type of response message
@@ -5472,7 +5472,7 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
 
 /**
  * Handle GET_ALL_QUICK_TABS message from sidebar
- * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleGetAllQuickTabs(port) {
@@ -5483,7 +5483,7 @@ function handleGetAllQuickTabs(port) {
 
 /**
  * Handle SIDEBAR_READY message from sidebar
- * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarReady(port) {
@@ -5492,12 +5492,12 @@ function handleSidebarReady(port) {
   _sendQuickTabsListResponse(port, 'SIDEBAR_STATE_SYNC', allTabs, true);
 }
 
-// ==================== v1.6.3.13 MESSAGE HANDLER LOOKUP TABLES ====================
+// ==================== v1.6.3.12-v2 MESSAGE HANDLER LOOKUP TABLES ====================
 // These lookup tables reduce cyclomatic complexity in message routing
 
 /**
  * Content script message handlers lookup table
- * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * @private
  */
 const _contentScriptMessageHandlers = {
@@ -5512,7 +5512,7 @@ const _contentScriptMessageHandlers = {
 
 /**
  * Sidebar message handlers lookup table
- * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * @private
  */
 const _sidebarMessageHandlers = {
@@ -5525,7 +5525,7 @@ const _sidebarMessageHandlers = {
 
 /**
  * Send error response for unknown message type
- * v1.6.3.13 - FIX Code Health: Extracted helper
+ * v1.6.3.12-v2 - FIX Code Health: Extracted helper
  * @private
  */
 function _sendUnknownMessageError(port, source, msgType) {
@@ -5539,7 +5539,7 @@ function _sendUnknownMessageError(port, source, msgType) {
 
 /**
  * Handle content script port message
- * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * @param {number} tabId - Tab ID of the content script
  * @param {Object} msg - Message from content script
  * @param {browser.runtime.Port} port - Source port
@@ -5557,7 +5557,7 @@ function handleContentScriptPortMessage(tabId, msg, port) {
 
 /**
  * Handle sidebar port message
- * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
@@ -5574,7 +5574,7 @@ function handleSidebarPortMessage(msg, port) {
 
 /**
  * Handle sidebar request to close a Quick Tab
- * v1.6.3.13 - FIX Code Health: Reduced duplication
+ * v1.6.3.12-v2 - FIX Code Health: Reduced duplication
  * @param {string} quickTabId - Quick Tab ID to close
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
@@ -5607,7 +5607,7 @@ function _removeQuickTabFromSessionState(quickTabId) {
 
 /**
  * Find Quick Tab in session state and apply a modifier function
- * v1.6.3.13 - FIX Code Health: Unified session state modifier
+ * v1.6.3.12-v2 - FIX Code Health: Unified session state modifier
  * @private
  * @param {string} quickTabId - Quick Tab ID to find
  * @param {Function} modifier - Function to modify the Quick Tab or array (receives tabQuickTabs, index, qt)
@@ -5654,7 +5654,7 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
 
 /**
  * Sidebar minimize/restore operation config
- * v1.6.3.13 - FIX Code Health: Reduce function arguments with config object
+ * v1.6.3.12-v2 - FIX Code Health: Reduce function arguments with config object
  * @private
  */
 const _sidebarMinimizeConfig = {
@@ -5664,7 +5664,7 @@ const _sidebarMinimizeConfig = {
 
 /**
  * Handle sidebar request to toggle Quick Tab minimized state
- * v1.6.3.13 - FIX Code Health: Reduced to 3 arguments using config lookup
+ * v1.6.3.12-v2 - FIX Code Health: Reduced to 3 arguments using config lookup
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {boolean} minimized - Target minimized state
@@ -5690,7 +5690,7 @@ function _handleSidebarMinimizedToggle(quickTabId, minimized, sidebarPort) {
 
 /**
  * Handle sidebar request to minimize a Quick Tab
- * v1.6.3.13 - FIX Code Health: Use unified toggle handler
+ * v1.6.3.12-v2 - FIX Code Health: Use unified toggle handler
  * @param {string} quickTabId - Quick Tab ID to minimize
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
@@ -5700,7 +5700,7 @@ function handleSidebarMinimizeQuickTab(quickTabId, sidebarPort) {
 
 /**
  * Handle sidebar request to restore a Quick Tab
- * v1.6.3.13 - FIX Code Health: Use unified toggle handler
+ * v1.6.3.12-v2 - FIX Code Health: Use unified toggle handler
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
@@ -5710,7 +5710,7 @@ function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
 
 /**
  * Update Quick Tab minimized state in session state
- * v1.6.3.13 - FIX Code Health: Use shared session modifier
+ * v1.6.3.12-v2 - FIX Code Health: Use shared session modifier
  * @private
  * @param {string} quickTabId - Quick Tab ID to update
  * @param {boolean} minimized - Whether to minimize or restore
@@ -5726,7 +5726,7 @@ function _updateQuickTabMinimizedState(quickTabId, minimized) {
 
 /**
  * Setup content script port handlers
- * v1.6.3.13 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
  * @private
  * @param {number} tabId - Tab ID
  * @param {browser.runtime.Port} port - The port
@@ -5750,7 +5750,7 @@ function _setupContentScriptPort(tabId, port) {
 
 /**
  * Setup sidebar port handlers
- * v1.6.3.13 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
  * @private
  * @param {browser.runtime.Port} port - The port
  */
@@ -5769,7 +5769,7 @@ function _setupSidebarPort(port) {
 
 /**
  * Handle Quick Tabs port connection (port name: 'quick-tabs-port')
- * v1.6.3.13 - FIX Code Health: Reduced complexity by extracting helpers
+ * v1.6.3.12-v2 - FIX Code Health: Reduced complexity by extracting helpers
  * @param {browser.runtime.Port} port - The connecting port
  */
 function handleQuickTabsPortConnect(port) {
@@ -6910,7 +6910,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  // v1.6.3.13 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
+  // v1.6.3.12-v2 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
   // This routes minimize/restore state changes to sidebar for immediate UI update
   if (message.type === 'QUICKTAB_MINIMIZED') {
     const result = handleQuickTabMinimizedMessage(message, sender);
