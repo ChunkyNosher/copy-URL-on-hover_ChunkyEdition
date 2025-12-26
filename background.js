@@ -33,6 +33,105 @@ const EXTENSION_ID = runtimeAPI?.id || null;
 const BACKGROUND_LOG_BUFFER = [];
 const MAX_BACKGROUND_BUFFER_SIZE = 2000;
 
+// ==================== VERSION-BASED LOG CLEANUP ====================
+// v1.6.4 - Clear accumulated logs on version upgrade to prevent confusion
+// and reduce storage waste from old logs across version updates
+const EXTENSION_VERSION_KEY = 'extensionVersion';
+
+/**
+ * Get the storage.local API (browser or chrome)
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ * @returns {Object|null} storage.local API or null
+ */
+function _getStorageLocalAPI() {
+  if (typeof browser !== 'undefined' && browser.storage?.local) {
+    return browser.storage.local;
+  }
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    return chrome.storage.local;
+  }
+  return null;
+}
+
+/**
+ * Handle first install - record version without clearing logs
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ */
+async function _handleFirstInstall(storageAPI, currentVersion) {
+  await storageAPI.set({ [EXTENSION_VERSION_KEY]: currentVersion });
+  console.log('[Background] VERSION_INIT: First install detected', {
+    version: currentVersion,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Handle version upgrade - clear logs and update version
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ */
+async function _handleVersionUpgrade(storageAPI, storedVersion, currentVersion) {
+  const previousLogCount = BACKGROUND_LOG_BUFFER.length;
+  BACKGROUND_LOG_BUFFER.length = 0; // Clear the array
+
+  await storageAPI.set({ [EXTENSION_VERSION_KEY]: currentVersion });
+
+  console.log('[Background] VERSION_UPGRADE: Logs cleared on upgrade', {
+    previousVersion: storedVersion,
+    currentVersion: currentVersion,
+    clearedLogCount: previousLogCount,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Check if extension version changed and clear logs if needed
+ * v1.6.4 - Version-based log history cleanup
+ * This runs early in initialization to clear logs before new logging begins
+ */
+async function checkVersionAndClearLogs() {
+  try {
+    const manifest = runtimeAPI?.getManifest?.();
+    if (!manifest?.version) {
+      console.warn('[Background] Version check skipped: manifest.version unavailable');
+      return;
+    }
+
+    const currentVersion = manifest.version;
+    const storageAPI = _getStorageLocalAPI();
+
+    if (!storageAPI) {
+      console.warn('[Background] Version check skipped: storage.local unavailable');
+      return;
+    }
+
+    const result = await storageAPI.get(EXTENSION_VERSION_KEY);
+    const storedVersion = result?.[EXTENSION_VERSION_KEY];
+
+    if (storedVersion === undefined) {
+      await _handleFirstInstall(storageAPI, currentVersion);
+      return;
+    }
+
+    if (storedVersion !== currentVersion) {
+      await _handleVersionUpgrade(storageAPI, storedVersion, currentVersion);
+    } else {
+      console.log('[Background] VERSION_CHECK: No version change', {
+        version: currentVersion,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error('[Background] VERSION_CHECK_ERROR:', err.message);
+  }
+}
+
+// Run version check immediately (async, non-blocking)
+// This is called early before main initialization to clear stale logs
+checkVersionAndClearLogs();
+
 function addBackgroundLog(type, ...args) {
   if (BACKGROUND_LOG_BUFFER.length >= MAX_BACKGROUND_BUFFER_SIZE) {
     BACKGROUND_LOG_BUFFER.shift();
