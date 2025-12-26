@@ -272,6 +272,13 @@ let quickTabsPort = null;
 let _allQuickTabsFromPort = [];
 
 /**
+ * Track sent Quick Tab port operations for roundtrip time calculation
+ * v1.6.3.13 - FIX Issue #16-17: Port messaging roundtrip time tracking
+ * Key: quickTabId, Value: { sentAt: number, messageType: string }
+ */
+const _quickTabPortOperationTimestamps = new Map();
+
+/**
  * Initialize Quick Tabs port connection
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  */
@@ -285,8 +292,17 @@ function initializeQuickTabsPort() {
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
 
     quickTabsPort.onDisconnect.addListener(() => {
-      console.warn('[Sidebar] Quick Tabs port disconnected from background');
+      // v1.6.3.13 - FIX Issue #16-17: Log disconnect with reason
+      const lastError = browser.runtime.lastError;
+      console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
+        reason: lastError?.message || 'unknown',
+        timestamp: Date.now(),
+        pendingOperations: _quickTabPortOperationTimestamps.size
+      });
       quickTabsPort = null;
+      
+      // Clear pending operation timestamps on disconnect
+      _quickTabPortOperationTimestamps.clear();
       
       // Attempt reconnection after a delay
       setTimeout(() => {
@@ -326,27 +342,61 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
 }
 
 /**
+ * Handle Quick Tab port ACK with roundtrip time calculation
+ * v1.6.3.13 - FIX Issue #16-17: Log ACK with roundtrip time
+ * @private
+ * @param {Object} msg - ACK message from background
+ * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
+ */
+function _handleQuickTabPortAck(msg, ackType) {
+  const { quickTabId, success, timestamp: responseTimestamp } = msg;
+  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+  const roundtripMs = sentInfo ? Date.now() - sentInfo.sentAt : null;
+  
+  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
+    quickTabId,
+    success,
+    roundtripMs,
+    responseTimestamp,
+    sentAt: sentInfo?.sentAt || null
+  });
+  
+  // Clean up tracking
+  if (quickTabId) {
+    _quickTabPortOperationTimestamps.delete(quickTabId);
+  }
+}
+
+/**
  * Quick Tabs port message handlers lookup table
  * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.13 - FIX Issue #16-17: ACK handlers now log roundtrip time
  * @private
  */
 const _portMessageHandlers = {
   SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
   GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
   STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification'),
-  CLOSE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: CLOSE_QUICK_TAB_ACK', msg),
-  MINIMIZE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: MINIMIZE_QUICK_TAB_ACK', msg),
-  RESTORE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: RESTORE_QUICK_TAB_ACK', msg)
+  CLOSE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'CLOSE'),
+  MINIMIZE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'MINIMIZE'),
+  RESTORE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'RESTORE')
 };
 
 /**
  * Handle messages from Quick Tabs port
  * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.13 - FIX Issue #16-17: Enhanced port message logging
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
-  const { type } = message;
-  console.log('[Sidebar] Received Quick Tabs message:', type);
+  const { type, timestamp: msgTimestamp } = message;
+  
+  // v1.6.3.13 - FIX Issue #16-17: Log port message with timestamp
+  console.log('[Sidebar] QUICK_TABS_PORT_MESSAGE_RECEIVED:', {
+    type,
+    timestamp: Date.now(),
+    messageTimestamp: msgTimestamp || null
+  });
 
   const handler = _portMessageHandlers[type];
   if (handler) {
@@ -401,6 +451,7 @@ function updateQuickTabsStateFromPort(quickTabs) {
 /**
  * Execute sidebar port operation with error handling
  * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * v1.6.3.13 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
@@ -412,14 +463,28 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     return false;
   }
 
+  const sentAt = Date.now();
+  
   try {
     quickTabsPort.postMessage({
       type: messageType,
       ...payload,
-      timestamp: Date.now()
+      timestamp: sentAt
     });
+    
+    // v1.6.3.13 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
+    if (payload.quickTabId) {
+      _quickTabPortOperationTimestamps.set(payload.quickTabId, {
+        sentAt,
+        messageType
+      });
+    }
+    
     const logId = payload.quickTabId || '';
-    console.log(`[Sidebar] ${messageType} sent${logId ? `: ${logId}` : ''}`);
+    console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
+      quickTabId: logId || null,
+      timestamp: sentAt
+    });
     return true;
   } catch (err) {
     console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
