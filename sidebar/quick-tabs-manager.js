@@ -2016,7 +2016,7 @@ function _createAndInsertQuickTabElement(tabData, targetContent, targetOriginTab
   }
 
   // Update group count
-  _incrementGroupCount(targetOriginTabId);
+  _adjustGroupCount(targetOriginTabId, 1);
 
   // Remove animation class after animation completes
   setTimeout(() => {
@@ -2043,7 +2043,7 @@ function _removeQuickTabFromDOM(element, sourceGroupKey) {
   element.remove();
 
   // Update source group count
-  _decrementGroupCount(sourceGroupKey);
+  _adjustGroupCount(sourceGroupKey, -1);
 
   // Clean up empty source group
   _cleanupEmptySourceGroup(parent, sourceGroupKey);
@@ -2052,22 +2052,24 @@ function _removeQuickTabFromDOM(element, sourceGroupKey) {
 /**
  * Update group counts after moving a Quick Tab
  * v1.6.3.10-v5 - FIX Bug #3: Updates count badges without re-render
+ * v1.6.4.19 - Refactored: Use unified _adjustGroupCount
  * @private
  * @param {number|string|null} oldGroupKey - Previous group key
  * @param {number} newGroupKey - New group key
  */
 function _updateGroupCountAfterMove(oldGroupKey, newGroupKey) {
-  _decrementGroupCount(oldGroupKey);
-  _incrementGroupCount(newGroupKey);
+  _adjustGroupCount(oldGroupKey, -1);
+  _adjustGroupCount(newGroupKey, 1);
 }
 
 /**
- * Decrement a group's count badge
- * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
+ * Adjust a group's count badge by delta
+ * v1.6.4.19 - Refactored: Combined _incrementGroupCount and _decrementGroupCount
  * @private
  * @param {number|string|null} groupKey - Group key
+ * @param {number} delta - Amount to adjust by (positive or negative)
  */
-function _decrementGroupCount(groupKey) {
+function _adjustGroupCount(groupKey, delta) {
   if (groupKey === null || groupKey === undefined) return;
 
   const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
@@ -2077,36 +2079,14 @@ function _decrementGroupCount(groupKey) {
   if (!countBadge) return;
 
   const currentCount = parseInt(countBadge.textContent, 10) || 0;
-  const newCount = Math.max(0, currentCount - 1);
+  const newCount = Math.max(0, currentCount + delta);
   countBadge.textContent = String(newCount);
   countBadge.dataset.count = String(newCount);
 
-  // Add visual feedback
-  countBadge.classList.add('count-decreased');
-  setTimeout(() => countBadge.classList.remove('count-decreased'), 300);
-}
-
-/**
- * Increment a group's count badge
- * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
- * @private
- * @param {number} groupKey - Group key
- */
-function _incrementGroupCount(groupKey) {
-  const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
-  if (!group) return;
-
-  const countBadge = group.querySelector('.tab-group-count');
-  if (!countBadge) return;
-
-  const currentCount = parseInt(countBadge.textContent, 10) || 0;
-  const newCount = currentCount + 1;
-  countBadge.textContent = String(newCount);
-  countBadge.dataset.count = String(newCount);
-
-  // Add visual feedback
-  countBadge.classList.add('count-increased');
-  setTimeout(() => countBadge.classList.remove('count-increased'), 300);
+  // Add visual feedback based on direction
+  const feedbackClass = delta > 0 ? 'count-increased' : 'count-decreased';
+  countBadge.classList.add(feedbackClass);
+  setTimeout(() => countBadge.classList.remove(feedbackClass), 300);
 }
 
 /**
@@ -2480,53 +2460,71 @@ function _handleDeletedMessage(message, sendResponse) {
 }
 
 /**
+ * Generic message dispatcher for Quick Tab state changes
+ * v1.6.4.19 - Refactored: Extracted common pattern from _handleMovedMessage, _handleResizedMessage, _handleMinimizedMessage
+ * @private
+ * @param {Object} params - Dispatch parameters
+ * @param {string} params.emoji - Log emoji
+ * @param {string} params.logLabel - Log label (e.g., 'QUICKTAB_MOVED')
+ * @param {Object} params.logFields - Fields to log
+ * @param {Function} params.handler - Handler function to call
+ * @param {Object} params.message - Original message
+ * @param {Function} params.sendResponse - Response callback
+ * @returns {boolean} True to indicate async response
+ */
+function _dispatchQuickTabMessage({ emoji, logLabel, logFields, handler, message, sendResponse }) {
+  console.log(`[Manager] ${emoji} Received ${logLabel}:`, logFields);
+  handler(message);
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
  * Handle QUICKTAB_MOVED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
  * @private
  */
 function _handleMovedMessage(message, sendResponse) {
-  console.log('[Manager] 📍 Received QUICKTAB_MOVED:', {
-    quickTabId: message.quickTabId,
-    left: message.left,
-    top: message.top,
-    originTabId: message.originTabId
+  return _dispatchQuickTabMessage({
+    emoji: '📍',
+    logLabel: 'QUICKTAB_MOVED',
+    logFields: { quickTabId: message.quickTabId, left: message.left, top: message.top, originTabId: message.originTabId },
+    handler: handleQuickTabMovedMessage,
+    message,
+    sendResponse
   });
-
-  handleQuickTabMovedMessage(message);
-  sendResponse({ received: true });
-  return true;
 }
 
 /**
  * Handle QUICKTAB_RESIZED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
  * @private
  */
 function _handleResizedMessage(message, sendResponse) {
-  console.log('[Manager] 📐 Received QUICKTAB_RESIZED:', {
-    quickTabId: message.quickTabId,
-    width: message.width,
-    height: message.height,
-    originTabId: message.originTabId
+  return _dispatchQuickTabMessage({
+    emoji: '📐',
+    logLabel: 'QUICKTAB_RESIZED',
+    logFields: { quickTabId: message.quickTabId, width: message.width, height: message.height, originTabId: message.originTabId },
+    handler: handleQuickTabResizedMessage,
+    message,
+    sendResponse
   });
-
-  handleQuickTabResizedMessage(message);
-  sendResponse({ received: true });
-  return true;
 }
 
 /**
  * Handle QUICKTAB_MINIMIZED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
  * @private
  */
 function _handleMinimizedMessage(message, sendResponse) {
-  console.log('[Manager] 🔽 Received QUICKTAB_MINIMIZED:', {
-    quickTabId: message.quickTabId,
-    minimized: message.minimized,
-    originTabId: message.originTabId
+  return _dispatchQuickTabMessage({
+    emoji: '🔽',
+    logLabel: 'QUICKTAB_MINIMIZED',
+    logFields: { quickTabId: message.quickTabId, minimized: message.minimized, originTabId: message.originTabId },
+    handler: handleQuickTabMinimizedMessage,
+    message,
+    sendResponse
   });
-
-  handleQuickTabMinimizedMessage(message);
-  sendResponse({ received: true });
-  return true;
 }
 
 /**
@@ -2594,19 +2592,22 @@ function handleStateUpdateMessage(quickTabId, changes) {
 }
 
 /**
- * Handle QUICKTAB_MOVED message from content script
- * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
- * @param {Object} message - QUICKTAB_MOVED message
+ * Generic handler for Quick Tab property updates from content script
+ * v1.6.4.19 - Refactored: Extracted common pattern from handleQuickTab*Message functions
+ * @private
+ * @param {Object} params - Handler parameters
+ * @param {string} params.quickTabId - Quick Tab ID
+ * @param {Object} params.updates - Properties to update on the tab
+ * @param {number|null} params.originTabId - Origin tab ID (optional)
+ * @param {string} params.logLabel - Log label for this handler
+ * @param {string} params.renderReason - Reason string for scheduleRender
+ * @param {Object} params.logFields - Additional fields to log
  */
-function handleQuickTabMovedMessage(message) {
-  const { quickTabId, left, top, originTabId } = message;
-
-  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+function _handleQuickTabPropertyUpdate({ quickTabId, updates, originTabId, logLabel, renderReason, logFields }) {
+  // Track event for staleness detection
   _markEventReceived();
 
-  console.log('[Manager] [MOVE_HANDLER] Processing position update:', {
-    quickTabId, left, top, originTabId
-  });
+  console.log(`[Manager] [${logLabel}] Processing update:`, logFields);
 
   if (!quickTabsState.tabs) {
     quickTabsState = { tabs: [] };
@@ -2614,16 +2615,15 @@ function handleQuickTabMovedMessage(message) {
 
   const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
   if (existingIndex >= 0) {
-    quickTabsState.tabs[existingIndex].left = left;
-    quickTabsState.tabs[existingIndex].top = top;
-    console.log('[Manager] [MOVE_HANDLER] Updated position for:', quickTabId);
+    Object.assign(quickTabsState.tabs[existingIndex], updates);
+    console.log(`[Manager] [${logLabel}] Updated for:`, quickTabId);
   } else {
-    console.warn('[Manager] [MOVE_HANDLER] Tab not found in state:', quickTabId);
+    console.warn(`[Manager] [${logLabel}] Tab not found in state:`, quickTabId);
   }
 
   // Update host info if originTabId provided
   if (originTabId != null) {
-    _updateQuickTabHostInfo(quickTabId, { originTabId, left, top });
+    _updateQuickTabHostInfo(quickTabId, { originTabId, ...updates });
   }
 
   // Update timestamp
@@ -2631,88 +2631,61 @@ function handleQuickTabMovedMessage(message) {
   lastLocalUpdateTime = Date.now();
 
   // Schedule render for UI update
-  scheduleRender('QUICKTAB_MOVED');
+  scheduleRender(renderReason);
+}
+
+/**
+ * Handle QUICKTAB_MOVED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
+ * @param {Object} message - QUICKTAB_MOVED message
+ */
+function handleQuickTabMovedMessage(message) {
+  const { quickTabId, left, top, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { left, top },
+    originTabId,
+    logLabel: 'MOVE_HANDLER',
+    renderReason: 'QUICKTAB_MOVED',
+    logFields: { quickTabId, left, top, originTabId }
+  });
 }
 
 /**
  * Handle QUICKTAB_RESIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
  * @param {Object} message - QUICKTAB_RESIZED message
  */
 function handleQuickTabResizedMessage(message) {
   const { quickTabId, width, height, originTabId } = message;
-
-  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
-  _markEventReceived();
-
-  console.log('[Manager] [RESIZE_HANDLER] Processing size update:', {
-    quickTabId, width, height, originTabId
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { width, height },
+    originTabId,
+    logLabel: 'RESIZE_HANDLER',
+    renderReason: 'QUICKTAB_RESIZED',
+    logFields: { quickTabId, width, height, originTabId }
   });
-
-  if (!quickTabsState.tabs) {
-    quickTabsState = { tabs: [] };
-  }
-
-  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
-  if (existingIndex >= 0) {
-    quickTabsState.tabs[existingIndex].width = width;
-    quickTabsState.tabs[existingIndex].height = height;
-    console.log('[Manager] [RESIZE_HANDLER] Updated size for:', quickTabId);
-  } else {
-    console.warn('[Manager] [RESIZE_HANDLER] Tab not found in state:', quickTabId);
-  }
-
-  // Update host info if originTabId provided
-  if (originTabId != null) {
-    _updateQuickTabHostInfo(quickTabId, { originTabId, width, height });
-  }
-
-  // Update timestamp
-  quickTabsState.timestamp = Date.now();
-  lastLocalUpdateTime = Date.now();
-
-  // Schedule render for UI update
-  scheduleRender('QUICKTAB_RESIZED');
 }
 
 /**
  * Handle QUICKTAB_MINIMIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
  * @param {Object} message - QUICKTAB_MINIMIZED message
  */
 function handleQuickTabMinimizedMessage(message) {
   const { quickTabId, minimized, originTabId } = message;
-
-  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
-  _markEventReceived();
-
-  console.log('[Manager] [MINIMIZE_HANDLER] Processing minimize state update:', {
-    quickTabId, minimized, originTabId
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { minimized },
+    originTabId,
+    logLabel: 'MINIMIZE_HANDLER',
+    renderReason: 'QUICKTAB_MINIMIZED',
+    logFields: { quickTabId, minimized, originTabId }
   });
-
-  if (!quickTabsState.tabs) {
-    quickTabsState = { tabs: [] };
-  }
-
-  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
-  if (existingIndex >= 0) {
-    quickTabsState.tabs[existingIndex].minimized = minimized;
-    console.log('[Manager] [MINIMIZE_HANDLER] Updated minimize state for:', quickTabId, minimized);
-  } else {
-    console.warn('[Manager] [MINIMIZE_HANDLER] Tab not found in state:', quickTabId);
-  }
-
-  // Update host info if originTabId provided
-  if (originTabId != null) {
-    _updateQuickTabHostInfo(quickTabId, { originTabId, minimized });
-  }
-
-  // Update timestamp
-  quickTabsState.timestamp = Date.now();
-  lastLocalUpdateTime = Date.now();
-
-  // Schedule render for UI update
-  scheduleRender('QUICKTAB_MINIMIZED');
 }
 
 /**
@@ -3514,6 +3487,47 @@ function _updateInMemoryCache(tabs) {
 }
 
 /**
+ * Process and apply valid storage state
+ * v1.6.4.19 - Extracted from loadQuickTabsState to reduce complexity
+ * @private
+ * @param {Object} state - Valid storage state
+ * @param {number} loadStartTime - Load operation start timestamp
+ * @returns {boolean} True if state was applied, false if skipped
+ */
+function _processStorageState(state, loadStartTime) {
+  // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
+  console.log('[Manager] Storage read result:', {
+    tabCount: state.tabs?.length ?? 0,
+    saveId: state.saveId,
+    timestamp: state.timestamp,
+    source: 'storage.session',
+    durationMs: Date.now() - loadStartTime
+  });
+
+  // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
+  const newHash = computeStateHash(state);
+  if (newHash === lastRenderedStateHash) {
+    console.log('[Manager] Storage state unchanged (hash match), skipping update');
+    return false;
+  }
+
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
+  if (_detectStorageStorm(state)) return false;
+
+  // v1.6.3.5-v4 - Update cache with new valid state
+  _updateInMemoryCache(state.tabs || []);
+
+  quickTabsState = state;
+  filterInvalidTabs(quickTabsState);
+
+  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
+  lastLocalUpdateTime = Date.now();
+
+  console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
+  return true;
+}
+
+/**
  * Load Quick Tabs state from browser.storage.local
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
@@ -3521,6 +3535,7 @@ function _updateInMemoryCache(tabs) {
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.4.19 - Refactored: Extracted _processStorageState to reduce CC
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
@@ -3549,35 +3564,7 @@ async function loadQuickTabsState() {
       return;
     }
 
-    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
-    console.log('[Manager] Storage read result:', {
-      tabCount: state.tabs?.length ?? 0,
-      saveId: state.saveId,
-      timestamp: state.timestamp,
-      source: 'storage.session',
-      durationMs: Date.now() - loadStartTime
-    });
-
-    // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
-    const newHash = computeStateHash(state);
-    if (newHash === lastRenderedStateHash) {
-      console.log('[Manager] Storage state unchanged (hash match), skipping update');
-      return;
-    }
-
-    // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
-    if (_detectStorageStorm(state)) return;
-
-    // v1.6.3.5-v4 - Update cache with new valid state
-    _updateInMemoryCache(state.tabs || []);
-
-    quickTabsState = state;
-    filterInvalidTabs(quickTabsState);
-
-    // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
-    lastLocalUpdateTime = Date.now();
-
-    console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
+    _processStorageState(state, loadStartTime);
   } catch (err) {
     console.error('[Manager] Error loading Quick Tabs state:', err);
   }
