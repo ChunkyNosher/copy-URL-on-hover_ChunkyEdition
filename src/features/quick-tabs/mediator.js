@@ -2,6 +2,7 @@
  * QuickTabMediator - Centralized coordinator for multi-step Quick Tab operations
  *
  * v1.6.3.5 - New module for Phase 2 of Architecture Refactor
+ * v1.6.4 - Scenario-aware logging hooks for state transitions
  *
  * Responsibilities:
  * - Single entry point for all minimize/restore/destroy operations
@@ -14,6 +15,10 @@
  */
 
 import { QuickTabState, getStateMachine } from './state-machine.js';
+import {
+  quickTabsMediatorLogger,
+  generateCorrelationId
+} from '../../utils/structured-logger.js';
 
 /**
  * @typedef {Object} OperationResult
@@ -160,176 +165,294 @@ export class QuickTabMediator {
   }
 
   /**
+   * Log state transition event
+   * v1.6.4 - Extracted to reduce method complexity
+   * @private
+   */
+  _logStateTransition(logger, event, source, id, containerId, phase, extraData = {}) {
+    const logData = {
+      event,
+      source,
+      quickTabId: id,
+      containerId,
+      phase,
+      ...extraData
+    };
+
+    if (phase === 'BLOCKED' || phase === 'REJECTED') {
+      logger.warn('STATE_TRANSITION', logData);
+    } else if (phase === 'ROLLBACK' || phase === 'TRANSITION_FAILED') {
+      logger.error('STATE_TRANSITION', logData);
+    } else {
+      logger.info('STATE_TRANSITION', logData);
+    }
+  }
+
+  /**
    * Coordinate a minimize operation
+   * v1.6.4 - Scenario-aware logging with structured state transition logging
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
+   * @param {Object} [context] - Optional context with containerId and tabId
    * @returns {OperationResult}
    */
-  minimize(id, source = 'unknown') {
+  minimize(id, source = 'unknown', context = {}) {
+    const correlationId = generateCorrelationId('min');
+    const logger = quickTabsMediatorLogger.withCorrelation(correlationId);
+    const { containerId = null, tabId = null } = context;
+
+    this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'START', { tabId });
     console.log('[QuickTabMediator] minimize() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('minimize', id)) {
+      this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'BLOCKED', {
+        reason: 'Operation lock held'
+      });
       return { success: false, error: 'Operation lock held' };
     }
 
     try {
-      // Step 2: Check state machine - is tab in VISIBLE state?
-      const currentState = this._stateMachine.getState(id);
-      if (currentState !== QuickTabState.VISIBLE && currentState !== QuickTabState.UNKNOWN) {
-        console.log('[QuickTabMediator] Cannot minimize - invalid state:', currentState);
-        return {
-          success: false,
-          error: `Cannot minimize tab in ${currentState} state`
-        };
-      }
-
-      // Step 3: Transition to MINIMIZING state
-      const transitionResult = this._stateMachine.transition(id, QuickTabState.MINIMIZING, {
-        source,
-        metadata: { operation: 'minimize' }
-      });
-
-      if (!transitionResult.success && this._stateMachine.enforceTransitions) {
-        return { success: false, error: transitionResult.error };
-      }
-
-      // Step 4: Execute minimize via VisibilityHandler
-      const result = this.visibilityHandler.handleMinimize(id, source);
-
-      if (!result.success) {
-        // Rollback state machine
-        this._stateMachine.transition(id, QuickTabState.VISIBLE, {
-          source: 'mediator-rollback',
-          metadata: { reason: result.error }
-        });
-        return result;
-      }
-
-      // Step 5: Transition to MINIMIZED state
-      this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
-        source,
-        metadata: { operation: 'minimize-complete' }
-      });
-
-      console.log('[QuickTabMediator] minimize() complete:', { id, source });
-      return { success: true, fromState: QuickTabState.VISIBLE, toState: QuickTabState.MINIMIZED };
+      return this._executeMinimize(id, source, containerId, correlationId, logger);
     } finally {
       this._releaseLock('minimize', id);
     }
   }
 
   /**
+   * Execute minimize operation after lock acquisition
+   * v1.6.4 - Extracted to reduce minimize() complexity
+   * @private
+   */
+  _executeMinimize(id, source, containerId, correlationId, logger) {
+    // Check state machine - is tab in VISIBLE state?
+    const currentState = this._stateMachine.getState(id);
+    if (currentState !== QuickTabState.VISIBLE && currentState !== QuickTabState.UNKNOWN) {
+      this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'REJECTED', {
+        previousState: currentState,
+        reason: `Cannot minimize tab in ${currentState} state`
+      });
+      console.log('[QuickTabMediator] Cannot minimize - invalid state:', currentState);
+      return { success: false, error: `Cannot minimize tab in ${currentState} state` };
+    }
+
+    // Transition to MINIMIZING state
+    const transitionResult = this._stateMachine.transition(id, QuickTabState.MINIMIZING, {
+      source,
+      metadata: { operation: 'minimize', correlationId }
+    });
+
+    if (!transitionResult.success && this._stateMachine.enforceTransitions) {
+      this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'TRANSITION_FAILED', {
+        previousState: currentState,
+        targetState: QuickTabState.MINIMIZING,
+        error: transitionResult.error
+      });
+      return { success: false, error: transitionResult.error };
+    }
+
+    // Execute minimize via VisibilityHandler
+    const result = this.visibilityHandler.handleMinimize(id, source);
+
+    if (!result.success) {
+      this._stateMachine.transition(id, QuickTabState.VISIBLE, {
+        source: 'mediator-rollback',
+        metadata: { reason: result.error, correlationId }
+      });
+      this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'ROLLBACK', {
+        previousState: QuickTabState.MINIMIZING,
+        newState: QuickTabState.VISIBLE,
+        error: result.error
+      });
+      return result;
+    }
+
+    // Transition to MINIMIZED state
+    this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
+      source,
+      metadata: { operation: 'minimize-complete', correlationId }
+    });
+
+    this._logStateTransition(logger, 'MINIMIZE_TOGGLED', source, id, containerId, 'COMPLETE', {
+      previousState: QuickTabState.VISIBLE,
+      newState: QuickTabState.MINIMIZED
+    });
+
+    console.log('[QuickTabMediator] minimize() complete:', { id, source });
+    return { success: true, fromState: QuickTabState.VISIBLE, toState: QuickTabState.MINIMIZED };
+  }
+
+  /**
    * Coordinate a restore operation
+   * v1.6.4 - Scenario-aware logging with structured state transition logging
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
+   * @param {Object} [context] - Optional context with containerId and tabId
    * @returns {OperationResult}
    */
-  restore(id, source = 'unknown') {
+  restore(id, source = 'unknown', context = {}) {
+    const correlationId = generateCorrelationId('rst');
+    const logger = quickTabsMediatorLogger.withCorrelation(correlationId);
+    const { containerId = null, tabId = null } = context;
+
+    this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'START', { tabId });
     console.log('[QuickTabMediator] restore() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('restore', id)) {
+      this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'BLOCKED', {
+        reason: 'Operation lock held'
+      });
       return { success: false, error: 'Operation lock held' };
     }
 
     try {
-      // Step 2: Check state machine - is tab in MINIMIZED state?
-      const currentState = this._stateMachine.getState(id);
-      if (currentState !== QuickTabState.MINIMIZED && currentState !== QuickTabState.UNKNOWN) {
-        console.log('[QuickTabMediator] Cannot restore - invalid state:', currentState);
-        return {
-          success: false,
-          error: `Cannot restore tab in ${currentState} state`
-        };
-      }
-
-      // Step 3: Transition to RESTORING state
-      const transitionResult = this._stateMachine.transition(id, QuickTabState.RESTORING, {
-        source,
-        metadata: { operation: 'restore' }
-      });
-
-      if (!transitionResult.success && this._stateMachine.enforceTransitions) {
-        return { success: false, error: transitionResult.error };
-      }
-
-      // Step 4: Execute restore via VisibilityHandler
-      const result = this.visibilityHandler.handleRestore(id, source);
-
-      if (!result.success) {
-        // Rollback state machine
-        this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
-          source: 'mediator-rollback',
-          metadata: { reason: result.error }
-        });
-        return result;
-      }
-
-      // Step 5: Transition to VISIBLE state
-      this._stateMachine.transition(id, QuickTabState.VISIBLE, {
-        source,
-        metadata: { operation: 'restore-complete' }
-      });
-
-      console.log('[QuickTabMediator] restore() complete:', { id, source });
-      return { success: true, fromState: QuickTabState.MINIMIZED, toState: QuickTabState.VISIBLE };
+      return this._executeRestore(id, source, containerId, correlationId, logger);
     } finally {
       this._releaseLock('restore', id);
     }
   }
 
   /**
+   * Execute restore operation after lock acquisition
+   * v1.6.4 - Extracted to reduce restore() complexity
+   * @private
+   */
+  _executeRestore(id, source, containerId, correlationId, logger) {
+    // Check state machine - is tab in MINIMIZED state?
+    const currentState = this._stateMachine.getState(id);
+    if (currentState !== QuickTabState.MINIMIZED && currentState !== QuickTabState.UNKNOWN) {
+      this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'REJECTED', {
+        previousState: currentState,
+        reason: `Cannot restore tab in ${currentState} state`
+      });
+      console.log('[QuickTabMediator] Cannot restore - invalid state:', currentState);
+      return { success: false, error: `Cannot restore tab in ${currentState} state` };
+    }
+
+    // Transition to RESTORING state
+    const transitionResult = this._stateMachine.transition(id, QuickTabState.RESTORING, {
+      source,
+      metadata: { operation: 'restore', correlationId }
+    });
+
+    if (!transitionResult.success && this._stateMachine.enforceTransitions) {
+      this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'TRANSITION_FAILED', {
+        previousState: currentState,
+        targetState: QuickTabState.RESTORING,
+        error: transitionResult.error
+      });
+      return { success: false, error: transitionResult.error };
+    }
+
+    // Execute restore via VisibilityHandler
+    const result = this.visibilityHandler.handleRestore(id, source);
+
+    if (!result.success) {
+      this._stateMachine.transition(id, QuickTabState.MINIMIZED, {
+        source: 'mediator-rollback',
+        metadata: { reason: result.error, correlationId }
+      });
+      this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'ROLLBACK', {
+        previousState: QuickTabState.RESTORING,
+        newState: QuickTabState.MINIMIZED,
+        error: result.error
+      });
+      return result;
+    }
+
+    // Transition to VISIBLE state
+    this._stateMachine.transition(id, QuickTabState.VISIBLE, {
+      source,
+      metadata: { operation: 'restore-complete', correlationId }
+    });
+
+    this._logStateTransition(logger, 'RESTORE_TOGGLED', source, id, containerId, 'COMPLETE', {
+      previousState: QuickTabState.MINIMIZED,
+      newState: QuickTabState.VISIBLE
+    });
+
+    console.log('[QuickTabMediator] restore() complete:', { id, source });
+    return { success: true, fromState: QuickTabState.MINIMIZED, toState: QuickTabState.VISIBLE };
+  }
+
+  /**
    * Coordinate a destroy operation
+   * v1.6.4 - Scenario-aware logging with structured state transition logging
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
+   * @param {Object} [context] - Optional context with containerId and tabId
    * @returns {OperationResult}
    */
-  destroy(id, source = 'unknown') {
+  destroy(id, source = 'unknown', context = {}) {
+    const correlationId = generateCorrelationId('dst');
+    const logger = quickTabsMediatorLogger.withCorrelation(correlationId);
+    const { containerId = null, tabId = null } = context;
+
+    this._logStateTransition(logger, 'DESTROY_INITIATED', source, id, containerId, 'START', { tabId });
     console.log('[QuickTabMediator] destroy() called:', { id, source });
 
     // Step 1: Acquire lock
     if (!this._tryAcquireLock('destroy', id)) {
+      this._logStateTransition(logger, 'DESTROY_INITIATED', source, id, containerId, 'BLOCKED', {
+        reason: 'Operation lock held'
+      });
       return { success: false, error: 'Operation lock held' };
     }
 
     try {
-      // Step 2: Check state machine - DESTROYED is terminal, can't destroy twice
-      const currentState = this._stateMachine.getState(id);
-      if (currentState === QuickTabState.DESTROYED) {
-        console.log('[QuickTabMediator] Tab already destroyed:', id);
-        return { success: true, error: 'Already destroyed' };
-      }
-
-      // Step 3: Transition to DESTROYED state
-      // Allow from any state except DESTROYED
-      this._stateMachine.transition(id, QuickTabState.DESTROYED, {
-        source,
-        metadata: { operation: 'destroy', previousState: currentState }
-      });
-
-      // Step 4: Clean up from minimized manager if needed
-      if (
-        this.minimizedManager &&
-        typeof this.minimizedManager.hasSnapshot === 'function' &&
-        this.minimizedManager.hasSnapshot(id)
-      ) {
-        this.minimizedManager.clearSnapshot(id);
-      }
-
-      // Step 5: Clean up from UICoordinator
-      if (this.uiCoordinator?.destroy) {
-        this.uiCoordinator.destroy(id);
-      }
-
-      // Step 6: Remove from state machine tracking
-      this._stateMachine.remove(id);
-
-      console.log('[QuickTabMediator] destroy() complete:', { id, source });
-      return { success: true, fromState: currentState, toState: QuickTabState.DESTROYED };
+      return this._executeDestroy(id, source, containerId, correlationId, logger);
     } finally {
       this._releaseLock('destroy', id);
     }
+  }
+
+  /**
+   * Execute destroy operation after lock acquisition
+   * v1.6.4 - Extracted to reduce destroy() complexity
+   * @private
+   */
+  _executeDestroy(id, source, containerId, correlationId, logger) {
+    // Check state machine - DESTROYED is terminal, can't destroy twice
+    const currentState = this._stateMachine.getState(id);
+    if (currentState === QuickTabState.DESTROYED) {
+      this._logStateTransition(logger, 'DESTROY_INITIATED', source, id, containerId, 'ALREADY_DESTROYED', {
+        previousState: currentState
+      });
+      console.log('[QuickTabMediator] Tab already destroyed:', id);
+      return { success: true, error: 'Already destroyed' };
+    }
+
+    // Transition to DESTROYED state (allow from any state except DESTROYED)
+    this._stateMachine.transition(id, QuickTabState.DESTROYED, {
+      source,
+      metadata: { operation: 'destroy', previousState: currentState, correlationId }
+    });
+
+    // Clean up from minimized manager if needed
+    if (
+      this.minimizedManager &&
+      typeof this.minimizedManager.hasSnapshot === 'function' &&
+      this.minimizedManager.hasSnapshot(id)
+    ) {
+      this.minimizedManager.clearSnapshot(id);
+    }
+
+    // Clean up from UICoordinator
+    if (this.uiCoordinator?.destroy) {
+      this.uiCoordinator.destroy(id);
+    }
+
+    // Remove from state machine tracking
+    this._stateMachine.remove(id);
+
+    this._logStateTransition(logger, 'DESTROY_INITIATED', source, id, containerId, 'COMPLETE', {
+      previousState: currentState,
+      newState: QuickTabState.DESTROYED
+    });
+
+    console.log('[QuickTabMediator] destroy() complete:', { id, source });
+    return { success: true, fromState: currentState, toState: QuickTabState.DESTROYED };
   }
 
   /**

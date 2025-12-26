@@ -2,6 +2,7 @@
  * QuickTabStateMachine - Explicit lifecycle state tracking and transition validation
  *
  * v1.6.3.5 - New module for Phase 1 of Architecture Refactor
+ * v1.6.4 - Scenario-aware logging hooks for state transitions
  *
  * Responsibilities:
  * - Track each Quick Tab's current state (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
@@ -12,6 +13,8 @@
  *
  * @module state-machine
  */
+
+import { quickTabsStateMachineLogger } from '../../utils/structured-logger.js';
 
 /**
  * Valid Quick Tab states
@@ -129,17 +132,20 @@ export class QuickTabStateMachine {
 
   /**
    * Perform a state transition with validation and logging
+   * v1.6.4 - Scenario-aware logging with structured state transition events
    * @param {string} id - Quick Tab ID
    * @param {string} toState - Target state
    * @param {Object} options - Transition options
    * @param {string} options.source - Who initiated the transition
-   * @param {Object} [options.metadata] - Additional context
+   * @param {Object} [options.metadata] - Additional context (may include correlationId, containerId)
    * @returns {{ success: boolean, error?: string, fromState: string, toState: string }}
    */
   transition(id, toState, options = {}) {
     const { source = 'unknown', metadata = {} } = options;
     const fromState = this.getState(id);
     const timestamp = Date.now();
+    const correlationId = metadata.correlationId || null;
+    const containerId = metadata.containerId || null;
 
     // Create transition entry for logging
     const transitionEntry = {
@@ -153,6 +159,18 @@ export class QuickTabStateMachine {
     // Check if transition is valid
     if (!this.canTransition(id, toState)) {
       const error = `Invalid transition: ${fromState} → ${toState}`;
+
+      // v1.6.4 - Structured logging for rejected transitions
+      quickTabsStateMachineLogger.warn('TRANSITION_REJECTED', {
+        quickTabId: id,
+        fromState,
+        toState,
+        source,
+        containerId,
+        correlationId,
+        reason: error,
+        enforced: this.enforceTransitions
+      });
 
       if (this.enforceTransitions) {
         console.error('[QuickTabStateMachine] REJECTED:', {
@@ -177,7 +195,18 @@ export class QuickTabStateMachine {
     // Add to history
     this._addToHistory(id, transitionEntry);
 
-    // Log successful transition
+    // v1.6.4 - Structured logging for successful transitions
+    quickTabsStateMachineLogger.info('TRANSITION_COMPLETE', {
+      quickTabId: id,
+      fromState,
+      toState,
+      source,
+      containerId,
+      correlationId,
+      operation: metadata.operation || null
+    });
+
+    // Log successful transition (legacy format retained for compatibility)
     console.log('[QuickTabStateMachine] Transition:', {
       id,
       fromState,
@@ -224,14 +253,24 @@ export class QuickTabStateMachine {
   /**
    * Initialize a Quick Tab in a specific state
    * Useful for hydration from storage
+   * v1.6.4 - Scenario-aware logging for state initialization
    * @param {string} id - Quick Tab ID
    * @param {string} state - Initial state
    * @param {string} source - Who initialized it
+   * @param {Object} [metadata] - Optional metadata (containerId, tabId)
    * @returns {boolean} True if initialized, false if already tracking
    */
-  initialize(id, state, source = 'init') {
+  initialize(id, state, source = 'init', metadata = {}) {
+    const { containerId = null, tabId = null } = metadata;
+
     // Skip if already tracking (idempotent)
     if (this._states.has(id)) {
+      quickTabsStateMachineLogger.debug('INIT_SKIPPED', {
+        quickTabId: id,
+        currentState: this._states.get(id),
+        source,
+        reason: 'Already tracking'
+      });
       console.warn('[QuickTabStateMachine] Already tracking (init skipped):', {
         id,
         currentState: this._states.get(id)
@@ -247,7 +286,16 @@ export class QuickTabStateMachine {
       toState: state,
       timestamp,
       source,
-      metadata: { type: 'initialize' }
+      metadata: { type: 'initialize', containerId, tabId }
+    });
+
+    // v1.6.4 - Structured logging for state initialization
+    quickTabsStateMachineLogger.info('INIT_COMPLETE', {
+      quickTabId: id,
+      initialState: state,
+      source,
+      containerId,
+      tabId
     });
 
     console.log('[QuickTabStateMachine] Initialized:', { id, state, source });
