@@ -3,59 +3,46 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v12  
+**Version:** 1.6.3.12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
 
 **Key Features:**
 
-- **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage
-  key
+- **Option 4 Architecture** - Background script in-memory storage (SINGLE SOURCE
+  OF TRUTH)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- **Single Storage Key** - `quick_tabs_state_v2` with `allQuickTabs[]` array
+- **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Single Barrier Initialization** - Unified barrier with resolve-only
-  semantics
-- **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Session-Only Quick Tabs** - Quick Tabs cleared on browser close (no
-  cross-session persistence)
+- **Ephemeral Storage** - Quick Tabs stored in-memory, NOT persisted to disk
+- **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
+  automatically
 
-**v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates:**
+**v1.6.3.12 Features (NEW) - Option 4 In-Memory Architecture:**
+
+- **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
+  object
+- **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
+- **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
+- **Push Notifications** - Background → Sidebar via `STATE_CHANGED` messages
+- **Factory Patterns** - Port handlers use factory/lookup table patterns
+- **Generic Wrappers** - `executeQuickTabPortOperation()`,
+  `executeSidebarPortOperation()`
+
+**v1.6.3.11-v12 Features - Solo/Mute Removal:**
 
 - **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
-- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
 - **Version-Based Log Cleanup** - Logs auto-cleared when extension version
   changes
-- **Real-Time Manager Updates** - New message types for instant sync:
-  - `QUICKTAB_MOVED` - Position changes
-  - `QUICKTAB_RESIZED` - Size changes
-  - `QUICKTAB_MINIMIZED` - Minimize state changes
-  - `QUICKTAB_REMOVED` - Tab destroyed
-- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
-- **Scenario-Aware Logging** - Source (toolbar/manager/background), container
-  ID, state changes
 
-**v1.6.3.11-v11 Features - Container Identity + Message Diagnostics:**
-
-- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
-  `cookieStoreId`
-- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Code Health 10.0** - QuickTabHandler.js fully refactored
-
-**v1.6.3.11-v9 Features - Diagnostic Report Fixes:**
-
-- **Identity Init Logging** - `[IDENTITY_INIT]` phases for tab identity
-- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
-- **Container Validation** - `_validateContainerIsolation()` in visibility ops
-
-**Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
-TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
+**Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
+MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-runtime.Port (v12), complex init layers (v4), Solo/Mute (v12), cross-session
-persistence (v12)
+`browser.storage.session` for Quick Tabs (v1.6.3.12), `runtime.sendMessage` for
+Quick Tabs sync (v1.6.3.12), Solo/Mute (v12)
 
 ---
 
@@ -74,148 +61,128 @@ references.
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.11-v12)
+### CRITICAL: Option 4 Architecture (v1.6.3.12)
 
-**Simplified stateless architecture (NO Port, NO BroadcastChannel):**
+**Background Script as SINGLE SOURCE OF TRUTH:**
 
-- `runtime.sendMessage()` - Content script → Background
-- `tabs.sendMessage()` - Background → Content script / Manager
-- `storage.onChanged` - **PRIMARY** sync mechanism for state updates
-- **Sidebar Polling Fallback** - Manager polls every 3-5s with staleness
-  tracking
-- Unified barrier initialization - Resolve-only semantics
+```javascript
+const quickTabsSessionState = {
+  quickTabsByTab: {},     // { [tabId]: [quickTab, ...] }
+  contentScriptPorts: {}, // { [tabId]: port }
+  sidebarPort: null,
+  sessionId: generateUUID(),
+  sessionStartTime: Date.now()
+};
+```
 
-**Dual Architecture (Retained from v3):**
+**Port Messaging (`'quick-tabs-port'`):**
+
+- **Content Script → Background:**
+  - `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`, `RESTORE_QUICK_TAB`
+  - `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`, `HYDRATE_ON_LOAD`
+  - `UPDATE_QUICK_TAB`
+- **Sidebar → Background:**
+  - `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`, `SIDEBAR_CLOSE_QUICK_TAB`
+  - `SIDEBAR_MINIMIZE_QUICK_TAB`, `SIDEBAR_RESTORE_QUICK_TAB`
+- **Background → Sidebar:** `STATE_CHANGED` (push notifications)
+
+**Dual Architecture (Retained):**
 
 - **MessageRouter.js** - ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL)
-- **message-handler.js** - TYPE-based v2 routing (QUICKTAB_MOVED,
-  QUICKTAB_RESIZED)
-
-**Message Patterns:**
-
-- **LOCAL** - No broadcast (position, size changes) - **Now also sent to
-  Manager**
-- **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
-- **MANAGER** - Manager-initiated actions (close all, close by ID)
-
-**Real-Time Manager Message Types (v1.6.3.11-v12 NEW):**
-
-- `QUICKTAB_MOVED` - Position changes sent to Manager
-- `QUICKTAB_RESIZED` - Size changes sent to Manager
-- `QUICKTAB_MINIMIZED` - Minimize state changes sent to Manager
-- `QUICKTAB_REMOVED` - Tab destroyed sent to Manager
+- **Port handlers** - TYPE-based Quick Tabs routing via factory patterns
 
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v12 Patterns (Current)
+### v1.6.3.12 Patterns (Current)
+
+- **Option 4 Architecture** - Background script in-memory storage
+- **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage for
+  Quick Tabs
+- **No browser.storage.session** - Fixed Firefox MV2 compatibility
+- **Factory Patterns** - Port handlers use lookup tables (reduce switch
+  complexity)
+- **Generic Wrappers** - `executeQuickTabPortOperation()`,
+  `executeSidebarPortOperation()`
+- **Push Notifications** - Background → Sidebar via `STATE_CHANGED`
+
+### v1.6.3.11-v12 Patterns
 
 - **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
-- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
 - **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
-- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
-  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
-- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
-- **Scenario-Aware Logging** - Source, container ID, state changes tracked
-
-### v1.6.3.11-v11 Patterns
-
-- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
-  `cookieStoreId`
-- **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
-- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Code Health 10.0** - QuickTabHandler.js fully refactored
-
-### v1.6.3.11-v9 Patterns
-
-- **Identity Init Logging** - `[IDENTITY_INIT]` markers for lifecycle phases
-- **Write Phase Logging** - `[WRITE_PHASE]` markers for storage operations
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON`
-- **Container Validation** - `_validateContainerIsolation()` added
 
 ### Previous Version Patterns (Consolidated)
 
-- **v1.6.3.11-v8:** Transaction tracking, null originTabId rejection
-- **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods, Code Health 8.0+
-- **v1.6.3.10-v10:** tabs.sendMessage, storage.onChanged, unified barrier
-- **v1.6.3.10:** Tab ID backoff, handler deferral, adoption lock timeout
+- **v1.6.3.11-v11:** Container identity fix, message diagnostics, Code Health
+  10.0
+- **v1.6.3.11-v9:** Identity init logging, write phase logging, container
+  validation
+- **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods
+- **v1.6.3.10:** tabs.sendMessage, storage.onChanged, unified barrier
 
-### Key Timing Constants (v1.6.3.11-v12)
+### Key Timing Constants (v1.6.3.12)
 
-| Constant                  | Value   | Purpose                           |
-| ------------------------- | ------- | --------------------------------- |
-| `MESSAGE_TIMEOUT_MS`      | 5000    | Message timeout                   |
-| `_MAX_EARLY_QUEUE_SIZE`   | 100     | Max queued messages before ready  |
-| `HYDRATION_TIMEOUT_MS`    | 3000    | Storage hydration timeout         |
-| `TAB_ID_BACKOFF_DELAYS`   | Array   | 200, 500, 1500, 5000ms            |
-| `STORAGE_TIMEOUT_MS`      | 2000    | Storage operation timeout         |
-| `LRU_MAP_MAX_SIZE`        | 500     | Maximum map entries               |
-| `MANAGER_POLL_INTERVAL`   | 3000-5s | Sidebar polling interval          |
-| `STALENESS_THRESHOLD_MS`  | 5000    | State staleness tracking          |
+| Constant                | Value | Purpose                          |
+| ----------------------- | ----- | -------------------------------- |
+| `MESSAGE_TIMEOUT_MS`    | 5000  | Message timeout                  |
+| `_MAX_EARLY_QUEUE_SIZE` | 100   | Max queued messages before ready |
+| `TAB_ID_BACKOFF_DELAYS` | Array | 200, 500, 1500, 5000ms           |
+| `LRU_MAP_MAX_SIZE`      | 500   | Maximum map entries              |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                 | Methods                                                               |
-| --------------------- | --------------------------------------------------------------------- |
-| QuickTabStateMachine  | `canTransition()`, `transition()`                                     |
-| QuickTabMediator      | `minimize()`, `restore()`, `destroy()`                                |
-| MapTransactionManager | `beginTransaction()`, `commitTransaction()`                           |
-| TabStateManager       | `getTabState()`, `setTabState()`                                      |
-| StorageManager        | `readState()`, `writeState()`, `_computeStateChecksum()`              |
-| QuickTabHandler       | `handleCreate()`, `_resolveOriginTabId()`, `_validateTabId()`         |
-| MessageBuilder        | `buildLocalUpdate()`, `buildGlobalAction()`, `buildManagerAction()`   |
-| MessageRouter         | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)             |
-| EventBus              | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()`           |
-| StructuredLogger      | `debug()`, `info()`, `warn()`, `error()`, `withContext()`             |
-| UICoordinator         | `syncState()`, `onStorageChanged()`, `setHandlers()`                  |
-| Manager               | `scheduleRender()`, `_startHostInfoMaintenance()`                     |
-| TabLifecycleHandler   | `start()`, `stop()`, `handleTabRemoved()`, `validateAdoptionTarget()` |
+| Class                | Methods                                                     |
+| -------------------- | ----------------------------------------------------------- |
+| QuickTabStateMachine | `canTransition()`, `transition()`                           |
+| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`                      |
+| TabStateManager      | `getTabState()`, `setTabState()`                            |
+| MessageBuilder       | `buildLocalUpdate()`, `buildGlobalAction()`                 |
+| MessageRouter        | ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL, etc.)   |
+| EventBus             | `on()`, `off()`, `emit()`, `once()`, `removeAllListeners()` |
+| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`, `withContext()`   |
+| Manager              | `scheduleRender()`, `_startHostInfoMaintenance()`           |
+| TabLifecycleHandler  | `start()`, `stop()`, `handleTabRemoved()`                   |
 
 ---
 
-## 🔧 Storage Utilities
+## 🔧 Storage & State
 
-**Key Exports:** `STATE_KEY`, `SESSION_STATE_KEY`, `logStorageRead()`,
-`logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
-`validateOwnershipForWrite()`, `_computeStateChecksum()`, `getFilterState()`
+**v1.6.3.12 In-Memory State:** Quick Tabs stored in background script memory
+(not persisted to disk)
 
-**v1.6.3.11-v12 Note:** Cross-session persistence removed - Quick Tabs are
-session-only
+**State Object:** `quickTabsSessionState` with `quickTabsByTab`,
+`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`
 
-**Earlier Exports:** `normalizeOriginTabId()`, `checkStorageQuota()`
+**Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
+`canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
+
+**Note:** `browser.storage.session` NOT used for Quick Tabs (Firefox MV2
+compatibility)
 
 ---
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v12 (NEW):** `[VERSION_LOG_CLEANUP]` `[SCENARIO_LOG]`
-`[MANAGER_POLL]` `[STALENESS_CHECK]` `[REALTIME_SYNC]`
+**v1.6.3.12 (NEW):** `[Background] PORT_CONNECT:` `[Background] PORT_MESSAGE:`
+`[Content] QUICK_TABS_PORT:` `[Sidebar] QUICK_TABS_PORT:`
 
-**v1.6.3.11-v11:** `[IDENTITY_STATE] TRANSITION:` `[IDENTITY_ACQUIRED]`
-`[MSG_ROUTER]` `[MSG_HANDLER]` `[HYDRATION]` `[Manager] BUTTON_CLICKED:`
+**v1.6.3.11-v12:** `[VERSION_LOG_CLEANUP]` `[SCENARIO_LOG]`
 
-**v1.6.3.11-v9:** `[IDENTITY_INIT]` `[WRITE_PHASE]` `[STATE_VALIDATION]`
-`[CONTAINER_VALIDATION]`
-
-**Previous:** `[HydrationBoundary]` `[QuickTabHandler]` `[STORAGE_PROPAGATE]`
-`[ERROR_TELEMETRY]` `[MSG_COMMAND]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]`
-`[INIT]` `[ADOPTION]` `[HEARTBEAT]` `[LRU_GUARD]` `[STORAGE_LATENCY]`
+**Previous:** `[MSG_ROUTER]` `[MSG_HANDLER]` `[HYDRATION]` `[QuickTabHandler]`
+`[ERROR_TELEMETRY]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]` `[INIT]`
 
 ---
 
 ## 🏗️ Key Patterns
 
-Promise sequencing, debounced drag, orphan recovery, per-tab scoping,
-transaction rollback, state machine, ownership validation, Single Writer
-Authority, Shadow DOM traversal, operation acknowledgment, state readiness
-gating, error telemetry, originTabId resolution, tab ID pattern extraction,
-transaction tracking, null originTabId rejection, identity system gating,
-debounce context capture, container isolation, z-index recycling, container
-identity acquisition, message routing diagnostics, version-based log cleanup,
-scenario-aware logging, sidebar polling sync, real-time manager updates.
+Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
+machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
+error telemetry, originTabId resolution, container isolation, z-index recycling,
+port messaging, factory patterns, lookup tables, generic wrapper functions,
+in-memory state, push notifications.
 
 ---
 
@@ -277,38 +244,36 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                             | Features                                    |
-| ------------------------------------------------ | ------------------------------------------- |
-| `src/constants.js`                               | Centralized constants                       |
-| `src/utils/shadow-dom.js`                        | Shadow DOM link detection                   |
-| `src/utils/storage-utils.js`                     | Storage utilities (Code Health 9.09)        |
-| `src/background/tab-events.js`                   | Tabs API listeners                          |
-| `src/utils/structured-logger.js`                 | StructuredLogger class with contexts        |
-| `src/storage/storage-manager.js`                 | Simplified persistence, checksum validation |
-| `src/messaging/message-router.js`                | ACTION-based routing                        |
-| `src/background/message-handler.js`              | TYPE-based v2 routing                       |
-| `background.js`                                  | Early message listener (Code Health 9.09)   |
-| `sidebar/quick-tabs-manager.js`                  | scheduleRender() (Code Health 9.09)         |
-| `src/content.js`                                 | Content script (Code Health 9.09)           |
-| `src/background/handlers/QuickTabHandler.js`     | handleCreate(), originTabId fix             |
-| `src/background/handlers/TabLifecycleHandler.js` | Tab lifecycle, orphan detection             |
+| File                              | Features                              |
+| --------------------------------- | ------------------------------------- |
+| `src/constants.js`                | Centralized constants                 |
+| `src/utils/shadow-dom.js`         | Shadow DOM link detection             |
+| `src/utils/storage-utils.js`      | Storage utilities                     |
+| `src/background/tab-events.js`    | Tabs API listeners                    |
+| `src/utils/structured-logger.js`  | StructuredLogger class with contexts  |
+| `src/messaging/message-router.js` | ACTION-based routing                  |
+| `background.js`                   | In-memory state, port handlers        |
+| `sidebar/quick-tabs-manager.js`   | Port-based queries to background      |
+| `src/content.js`                  | Port messaging for Quick Tabs         |
 
-### Storage
+### Storage (v1.6.3.12)
 
-**Session State Key:** `quick_tabs_state_v2` (storage.session - session-only)  
-**Format:** `{ allQuickTabs: [...], originTabId, originContainerId, correlationId, timestamp, version: 2 }`
+**In-Memory State:** `quickTabsSessionState` in background.js (NOT persisted)  
+**Format:** `{ quickTabsByTab: {}, contentScriptPorts: {}, sidebarPort, sessionId, sessionStartTime }`
 
-**Note:** Cross-session persistence removed in v1.6.3.11-v12 - Quick Tabs cleared
-on browser close.
+**Note:** No `browser.storage.session` for Quick Tabs - Firefox MV2
+incompatible.
 
-### Messages
+### Port Messages (v1.6.3.12)
 
-**MESSAGE_TYPES (v1.6.3.11-v12):** `QUICKTAB_MOVED`, `QUICKTAB_RESIZED`,
-`QUICKTAB_MINIMIZED`, `QUICKTAB_REMOVED`, `MANAGER_CLOSE_ALL`,
-`MANAGER_CLOSE_BY_ID`, `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+**Content → Background:** `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`,
+`RESTORE_QUICK_TAB`, `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`, `HYDRATE_ON_LOAD`,
+`UPDATE_QUICK_TAB`
 
-**Patterns:** LOCAL (no broadcast), GLOBAL (broadcast to all), MANAGER
-(manager-initiated), REALTIME (sent to Manager)
+**Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
+`SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`, `SIDEBAR_RESTORE_QUICK_TAB`
+
+**Background → Sidebar:** `STATE_CHANGED`
 
 ---
 

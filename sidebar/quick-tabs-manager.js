@@ -249,6 +249,221 @@ const pendingAcks = new Map();
  */
 const ACK_TIMEOUT_MS = 1000;
 
+// ==================== v1.6.3.12 OPTION 4: QUICK TABS PORT ====================
+// FIX: browser.storage.session does NOT exist in Firefox Manifest V2
+// Sidebar connects to background via 'quick-tabs-port' for Quick Tab operations
+
+/**
+ * Delay before attempting Quick Tabs port reconnection (2 seconds)
+ * v1.6.3.12 - Option 4: Centralized reconnect delay constant
+ */
+const QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS = 2000;
+
+/**
+ * Quick Tabs port connection to background
+ * v1.6.3.12 - Option 4: Replaces storage.session with port messaging
+ */
+let quickTabsPort = null;
+
+/**
+ * All Quick Tabs received from background
+ * v1.6.3.12 - Option 4: In-memory cache from background
+ */
+let _allQuickTabsFromPort = [];
+
+/**
+ * Initialize Quick Tabs port connection
+ * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
+ */
+function initializeQuickTabsPort() {
+  console.log('[Sidebar] Initializing Quick Tabs port connection');
+
+  try {
+    quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
+    console.log('[Sidebar] Connected to background via quick-tabs-port');
+
+    quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
+
+    quickTabsPort.onDisconnect.addListener(() => {
+      console.warn('[Sidebar] Quick Tabs port disconnected from background');
+      quickTabsPort = null;
+      
+      // Attempt reconnection after a delay
+      setTimeout(() => {
+        if (!quickTabsPort) {
+          console.log('[Sidebar] Attempting Quick Tabs port reconnection');
+          initializeQuickTabsPort();
+        }
+      }, QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS);
+    });
+
+    // Send SIDEBAR_READY to get initial state
+    quickTabsPort.postMessage({
+      type: 'SIDEBAR_READY',
+      timestamp: Date.now()
+    });
+    console.log('[Sidebar] SIDEBAR_READY sent to background');
+  } catch (err) {
+    console.error('[Sidebar] Failed to connect Quick Tabs port:', err.message);
+  }
+}
+
+// ==================== v1.6.3.13 PORT MESSAGE HANDLER HELPERS ====================
+/**
+ * Handle Quick Tabs state update from background
+ * v1.6.3.13 - FIX Code Health: Extract duplicate state update logic
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render scheduling
+ */
+function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
+  if (!Array.isArray(quickTabs)) return;
+  
+  _allQuickTabsFromPort = quickTabs;
+  console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
+  updateQuickTabsStateFromPort(quickTabs);
+  scheduleRender(renderReason);
+}
+
+/**
+ * Quick Tabs port message handlers lookup table
+ * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * @private
+ */
+const _portMessageHandlers = {
+  SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
+  GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
+  STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification'),
+  CLOSE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: CLOSE_QUICK_TAB_ACK', msg),
+  MINIMIZE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: MINIMIZE_QUICK_TAB_ACK', msg),
+  RESTORE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: RESTORE_QUICK_TAB_ACK', msg)
+};
+
+/**
+ * Handle messages from Quick Tabs port
+ * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * @param {Object} message - Message from background
+ */
+function handleQuickTabsPortMessage(message) {
+  const { type } = message;
+  console.log('[Sidebar] Received Quick Tabs message:', type);
+
+  const handler = _portMessageHandlers[type];
+  if (handler) {
+    handler(message);
+  } else {
+    console.log(`[Sidebar] Unknown Quick Tabs message type: ${type}`);
+  }
+}
+
+/**
+ * Update internal Quick Tabs state from port data
+ * v1.6.3.12 - Option 4: Sync internal state with port data
+ * @param {Array} quickTabs - Quick Tabs array from background
+ */
+function updateQuickTabsStateFromPort(quickTabs) {
+  // Convert to the format expected by the UI
+  const tabsForState = quickTabs.map(qt => ({
+    ...qt,
+    // Ensure required fields exist
+    id: qt.id,
+    originTabId: qt.originTabId,
+    url: qt.url,
+    minimized: qt.minimized || false
+  }));
+
+  // Update quickTabsState 
+  quickTabsState = {
+    tabs: tabsForState,
+    timestamp: Date.now(),
+    saveId: `port-sync-${Date.now()}`
+  };
+
+  // Update in-memory cache
+  inMemoryTabsCache = tabsForState;
+  lastKnownGoodTabCount = tabsForState.length;
+  lastLocalUpdateTime = Date.now();
+  lastCacheSyncFromStorage = Date.now();
+  lastEventReceivedTime = Date.now();
+
+  console.log('[Sidebar] Quick Tabs state updated from port:', {
+    tabCount: tabsForState.length,
+    timestamp: quickTabsState.timestamp
+  });
+}
+
+/**
+ * Request Quick Tab close via port
+ * v1.6.3.12 - Option 4: Send close command to background
+ * @param {string} quickTabId - Quick Tab ID to close
+ */
+// ==================== v1.6.3.13 SIDEBAR PORT OPERATION HELPER ====================
+/**
+ * Execute sidebar port operation with error handling
+ * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * @private
+ * @param {string} messageType - Type of message to send
+ * @param {Object} [payload={}] - Optional message payload
+ * @returns {boolean} Success status
+ */
+function _executeSidebarPortOperation(messageType, payload = {}) {
+  if (!quickTabsPort) {
+    console.warn(`[Sidebar] Cannot ${messageType} - port not connected`);
+    return false;
+  }
+
+  try {
+    quickTabsPort.postMessage({
+      type: messageType,
+      ...payload,
+      timestamp: Date.now()
+    });
+    const logId = payload.quickTabId || '';
+    console.log(`[Sidebar] ${messageType} sent${logId ? `: ${logId}` : ''}`);
+    return true;
+  } catch (err) {
+    console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Request Quick Tab close via port
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to close
+ */
+function closeQuickTabViaPort(quickTabId) {
+  return _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
+}
+
+/**
+ * Request Quick Tab minimize via port
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to minimize
+ */
+function minimizeQuickTabViaPort(quickTabId) {
+  return _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
+}
+
+/**
+ * Request Quick Tab restore via port
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to restore
+ */
+function restoreQuickTabViaPort(quickTabId) {
+  return _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
+}
+
+/**
+ * Request all Quick Tabs via port
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ */
+function requestAllQuickTabsViaPort() {
+  return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+}
+
+// ==================== END v1.6.3.12 OPTION 4 QUICK TABS PORT ====================
+
 // ==================== v1.6.3.6-v12 HEARTBEAT MECHANISM ====================
 // FIX Issue #2, #4: Heartbeat to prevent Firefox 30s background script termination
 // v1.6.3.10-v1 - FIX Issue #5: Reduced interval for better margin
@@ -3073,6 +3288,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
   connectToBackground();
 
+  // v1.6.3.12 - Option 4: Also connect via Quick Tabs port for in-memory storage
+  initializeQuickTabsPort();
+
   // Load container information from Firefox API
   await loadContainerInfo();
 
@@ -3106,7 +3324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.3.11-v12 Port connection + Message infrastructure + Host info maintenance + Staleness tracking initialized'
+    '[Manager] v1.6.3.12 Port connection + Quick Tabs port + Host info maintenance + Staleness tracking initialized'
   );
 });
 

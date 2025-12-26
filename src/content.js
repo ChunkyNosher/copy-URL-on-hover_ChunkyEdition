@@ -1685,9 +1685,400 @@ window.addEventListener('unload', () => {
     backgroundPort.disconnect();
     backgroundPort = null;
   }
+  // v1.6.3.12 - Option 4: Also cleanup Quick Tabs port
+  if (quickTabsPort) {
+    console.log('[Content] Disconnecting Quick Tabs port on unload');
+    quickTabsPort.disconnect();
+    quickTabsPort = null;
+  }
 });
 
 // ==================== END PORT CONNECTION ====================
+
+// ==================== v1.6.3.12 OPTION 4: QUICK TABS PORT MESSAGING ====================
+// FIX: browser.storage.session does NOT exist in Firefox Manifest V2
+// Content scripts communicate with background via 'quick-tabs-port' for Quick Tab operations
+
+/**
+ * Timeout for Quick Tabs port requests (5 seconds)
+ * v1.6.3.12 - Option 4: Centralized timeout constant
+ */
+const QUICK_TABS_REQUEST_TIMEOUT_MS = 5000;
+
+/**
+ * Delay before attempting Quick Tabs port reconnection (1 second)
+ * v1.6.3.12 - Option 4: Centralized reconnect delay constant
+ */
+const QUICK_TABS_RECONNECT_DELAY_MS = 1000;
+
+/**
+ * Port connection to background for Quick Tabs operations
+ * v1.6.3.12 - Option 4: Replaces storage.session with port messaging
+ */
+let quickTabsPort = null;
+
+/**
+ * Local cache of Quick Tabs for this tab
+ * v1.6.3.12 - Option 4: In-memory cache synchronized via port messaging
+ * NOTE: Cache is updated optimistically before background confirms.
+ * If background operation fails, cache may be inconsistent until next sync.
+ */
+const sessionQuickTabs = new Map();
+
+/**
+ * Pending requests waiting for responses
+ * v1.6.3.12 - Option 4: Track request/response pairs
+ */
+const pendingQuickTabRequests = new Map();
+
+/**
+ * Request ID counter for pending requests
+ */
+let quickTabRequestIdCounter = 0;
+
+/**
+ * Query background with timeout
+ * v1.6.3.12 - Option 4: Send request and wait for response
+ * @param {string} messageType - Message type to send
+ * @param {Object} payload - Additional payload
+ * @param {number} timeoutMs - Timeout in milliseconds (default: QUICK_TABS_REQUEST_TIMEOUT_MS)
+ * @returns {Promise<Object>} Response from background
+ */
+function queryQuickTabsBackground(messageType, payload = {}, timeoutMs = QUICK_TABS_REQUEST_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    if (!quickTabsPort) {
+      reject(new Error('Quick Tabs port not connected'));
+      return;
+    }
+
+    const requestId = ++quickTabRequestIdCounter;
+    const message = {
+      type: messageType,
+      requestId,
+      timestamp: Date.now(),
+      ...payload
+    };
+
+    // Set up timeout
+    const timeoutId = setTimeout(() => {
+      pendingQuickTabRequests.delete(requestId);
+      reject(new Error(`Quick Tabs request timeout: ${messageType}`));
+    }, timeoutMs);
+
+    // Store pending request
+    pendingQuickTabRequests.set(requestId, {
+      resolve,
+      reject,
+      timeoutId,
+      messageType
+    });
+
+    try {
+      quickTabsPort.postMessage(message);
+      console.log(`[Content] Sending message to background: ${messageType}`, { requestId });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      pendingQuickTabRequests.delete(requestId);
+      reject(err);
+    }
+  });
+}
+
+/**
+ * Check if message is a sidebar command
+ * v1.6.3.13 - FIX Code Health: Extract predicate
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean}
+ */
+function _isCommandMessage(type) {
+  return type && type.endsWith('_COMMAND');
+}
+
+/**
+ * Check if message is a state update notification
+ * v1.6.3.13 - FIX Code Health: Extract predicate
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean}
+ */
+function _isStateUpdateMessage(type) {
+  return type === 'QUICK_TABS_UPDATED' || type === 'STATE_CHANGED';
+}
+
+/**
+ * Handle pending request response
+ * v1.6.3.13 - FIX Code Health: Extract handler
+ * @private
+ * @param {string} requestId - Request ID
+ * @param {Object} message - Response message
+ * @returns {boolean} Whether the message was handled
+ */
+function _handlePendingRequest(requestId, message) {
+  if (!requestId || !pendingQuickTabRequests.has(requestId)) return false;
+  
+  const pending = pendingQuickTabRequests.get(requestId);
+  clearTimeout(pending.timeoutId);
+  pendingQuickTabRequests.delete(requestId);
+  pending.resolve(message);
+  return true;
+}
+
+/**
+ * Handle response from background for pending requests
+ * v1.6.3.13 - FIX Code Health: Reduced complexity using helpers
+ * @param {Object} message - Response message from background
+ */
+function handleQuickTabsPortResponse(message) {
+  const { requestId, type } = message;
+
+  if (_isCommandMessage(type)) {
+    handleQuickTabsCommand(message);
+    return;
+  }
+
+  if (_isStateUpdateMessage(type)) {
+    handleQuickTabsStateUpdate(message);
+    return;
+  }
+
+  if (_handlePendingRequest(requestId, message)) return;
+
+  if (type && type.endsWith('_ACK')) {
+    console.log(`[Content] Received ACK: ${type}`, message);
+    return;
+  }
+
+  console.log(`[Content] Received Quick Tabs message: ${type}`, message);
+}
+
+/**
+ * Handle state update from background
+ * v1.6.3.12 - Option 4: Update local cache when background notifies of changes
+ * @param {Object} message - State update message
+ */
+function handleQuickTabsStateUpdate(message) {
+  const { quickTabs } = message;
+  
+  if (Array.isArray(quickTabs)) {
+    sessionQuickTabs.clear();
+    for (const qt of quickTabs) {
+      sessionQuickTabs.set(qt.id, qt);
+    }
+    console.log(`[Content] Quick Tabs state updated: ${quickTabs.length} tabs`);
+  }
+}
+
+// ==================== v1.6.3.13 COMMAND HANDLER LOOKUP TABLE ====================
+/**
+ * Quick Tab command handlers lookup table
+ * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * @private
+ */
+const _quickTabCommandHandlers = {
+  CLOSE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.closeById?.(id),
+  MINIMIZE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.minimizeById?.(id),
+  RESTORE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.restoreById?.(id)
+};
+
+/**
+ * Handle command from sidebar (via background)
+ * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * @param {Object} message - Command message
+ */
+function handleQuickTabsCommand(message) {
+  const { type, quickTabId } = message;
+  
+  console.log(`[Content] Received Quick Tabs command: ${type}`, { quickTabId });
+
+  const handler = _quickTabCommandHandlers[type];
+  if (handler) {
+    handler(quickTabId);
+  } else {
+    console.warn(`[Content] Unknown Quick Tabs command: ${type}`);
+  }
+}
+
+/**
+ * Handle Quick Tabs port disconnection
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * @private
+ */
+function _handleQuickTabsPortDisconnect() {
+  console.warn('[Content] Quick Tabs port disconnected from background');
+  quickTabsPort = null;
+  
+  // Attempt reconnection after a delay
+  setTimeout(_attemptQuickTabsPortReconnection, QUICK_TABS_RECONNECT_DELAY_MS);
+}
+
+/**
+ * Attempt Quick Tabs port reconnection
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * @private
+ */
+function _attemptQuickTabsPortReconnection() {
+  if (quickTabsPort) return; // Already connected
+  if (document.visibilityState === 'hidden') return; // Page not visible
+  
+  console.log('[Content] Attempting Quick Tabs port reconnection');
+  initializeQuickTabsPort().catch(err => {
+    console.error('[Content] Quick Tabs port reconnection failed:', err.message);
+  });
+}
+
+/**
+ * Hydrate Quick Tabs from background
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * @private
+ */
+async function _hydrateQuickTabsFromBackground() {
+  try {
+    const response = await queryQuickTabsBackground('HYDRATE_ON_LOAD', {});
+    if (!response?.quickTabs) return;
+    
+    sessionQuickTabs.clear();
+    for (const qt of response.quickTabs) {
+      sessionQuickTabs.set(qt.id, qt);
+    }
+    console.log(`[Content] Hydrated ${response.quickTabs.length} Quick Tabs from background`);
+  } catch (err) {
+    console.warn('[Content] Quick Tabs hydration failed:', err.message);
+  }
+}
+
+/**
+ * Initialize Quick Tabs port connection
+ * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
+ * @returns {Promise<void>}
+ */
+async function initializeQuickTabsPort() {
+  console.log('[Content] Initializing Quick Tabs port connection');
+
+  quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
+  console.log('[Content] Connected to background via quick-tabs-port');
+
+  quickTabsPort.onMessage.addListener(handleQuickTabsPortResponse);
+  quickTabsPort.onDisconnect.addListener(_handleQuickTabsPortDisconnect);
+
+  // Request hydration - get existing Quick Tabs for this tab
+  await _hydrateQuickTabsFromBackground();
+}
+
+// ==================== v1.6.3.13 PORT OPERATION HELPERS ====================
+// These helpers reduce duplication in port messaging functions
+
+/**
+ * Execute Quick Tab port operation with error handling
+ * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * @private
+ * @param {string} operationType - Type of operation (e.g., 'CREATE_QUICK_TAB')
+ * @param {Object} payload - Message payload
+ * @param {Function} [cacheUpdater] - Optional function to update local cache
+ * @returns {boolean} Success status
+ */
+function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
+  if (!quickTabsPort) {
+    console.warn(`[Content] Cannot ${operationType} - port not connected`);
+    return false;
+  }
+
+  try {
+    quickTabsPort.postMessage({
+      type: operationType,
+      ...payload,
+      timestamp: Date.now()
+    });
+    
+    if (cacheUpdater) cacheUpdater();
+    console.log(`[Content] ${operationType} sent:`, payload.quickTabId || payload.quickTab?.id);
+    return true;
+  } catch (err) {
+    console.error(`[Content] Failed to ${operationType} via port:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Create Quick Tab via port messaging
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {Object} quickTab - Quick Tab data to create
+ * @returns {boolean} Success status
+ */
+function createQuickTabViaPort(quickTab) {
+  return _executeQuickTabPortOperation('CREATE_QUICK_TAB', { quickTab }, () => {
+    sessionQuickTabs.set(quickTab.id, quickTab);
+  });
+}
+
+/**
+ * Update Quick Tab via port messaging
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to update
+ * @param {Object} updates - Properties to update
+ * @returns {boolean} Success status
+ */
+function updateQuickTabViaPort(quickTabId, updates) {
+  return _executeQuickTabPortOperation('UPDATE_QUICK_TAB', { quickTabId, updates }, () => {
+    const existing = sessionQuickTabs.get(quickTabId);
+    if (existing) Object.assign(existing, updates);
+  });
+}
+
+/**
+ * Delete Quick Tab via port messaging
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to delete
+ * @returns {boolean} Success status
+ */
+function deleteQuickTabViaPort(quickTabId) {
+  return _executeQuickTabPortOperation('DELETE_QUICK_TAB', { quickTabId }, () => {
+    sessionQuickTabs.delete(quickTabId);
+  });
+}
+
+/**
+ * Minimize Quick Tab via port messaging
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to minimize
+ * @returns {boolean} Success status
+ */
+function minimizeQuickTabViaPort(quickTabId) {
+  return _executeQuickTabPortOperation('MINIMIZE_QUICK_TAB', { quickTabId }, () => {
+    const existing = sessionQuickTabs.get(quickTabId);
+    if (existing) existing.minimized = true;
+  });
+}
+
+/**
+ * Restore Quick Tab via port messaging
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to restore
+ * @returns {boolean} Success status
+ */
+function restoreQuickTabViaPort(quickTabId) {
+  return _executeQuickTabPortOperation('RESTORE_QUICK_TAB', { quickTabId }, () => {
+    const existing = sessionQuickTabs.get(quickTabId);
+    if (existing) existing.minimized = false;
+  });
+}
+
+// Export Quick Tabs port API for use by Quick Tabs manager
+if (typeof window !== 'undefined') {
+  window.QuickTabsPortAPI = {
+    createQuickTab: createQuickTabViaPort,
+    updateQuickTab: updateQuickTabViaPort,
+    deleteQuickTab: deleteQuickTabViaPort,
+    minimizeQuickTab: minimizeQuickTabViaPort,
+    restoreQuickTab: restoreQuickTabViaPort,
+    getLocalCache: () => sessionQuickTabs,
+    isConnected: () => quickTabsPort !== null
+  };
+}
+
+console.log('[Content] v1.6.3.12 Quick Tabs port API initialized');
+
+// ==================== END v1.6.3.12 OPTION 4 PORT MESSAGING ====================
 
 /**
  * Log successful Quick Tabs initialization
@@ -1754,6 +2145,7 @@ function _logTabIdAcquisitionFailed() {
  * v1.6.3.12 - Extracted helper to reduce initializeQuickTabsFeature complexity
  * v1.6.3.11-v9 - FIX Issue C: Add [IDENTITY_INIT] READY logging
  * v1.6.3.11-v10 - FIX Issue #13: Set identityReady flag and resolve promise
+ * v1.6.3.12 - Option 4: Also initialize Quick Tabs port for in-memory storage
  * @private
  * @param {number} tabId - The acquired tab ID
  */
@@ -1820,6 +2212,19 @@ function _handleTabIdAcquired(tabId, cookieStoreId = null) {
   console.log('[INIT][Content] PORT_CONNECTION_START:', { tabId, cookieStoreId });
   connectContentToBackground(tabId);
   console.log('[INIT][Content] PORT_CONNECTION_INITIATED:', { tabId, cookieStoreId });
+
+  // v1.6.3.12 - Option 4: Initialize Quick Tabs port for in-memory storage
+  // This is the new port-based communication that replaces storage.session
+  console.log('[INIT][Content] QUICK_TABS_PORT_START:', { tabId, cookieStoreId });
+  initializeQuickTabsPort().then(() => {
+    console.log('[INIT][Content] QUICK_TABS_PORT_CONNECTED:', { tabId, cookieStoreId });
+  }).catch(err => {
+    console.warn('[INIT][Content] QUICK_TABS_PORT_FAILED:', { 
+      tabId, 
+      cookieStoreId, 
+      error: err.message 
+    });
+  });
 }
 
 /**

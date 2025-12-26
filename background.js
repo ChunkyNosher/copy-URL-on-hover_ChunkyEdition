@@ -275,6 +275,52 @@ const globalQuickTabState = {
   saveId: null
 };
 
+// ==================== v1.6.3.12 OPTION 4: IN-MEMORY QUICK TABS SESSION STATE ====================
+// FIX: browser.storage.session does NOT exist in Firefox Manifest V2
+// Background script is the SINGLE SOURCE OF TRUTH for all Quick Tabs data
+// All content scripts and sidebar communicate with background via port messaging
+// On browser restart, background reloads with empty memory (session-only behavior)
+
+/**
+ * Generate UUID v4 for session tracking
+ * Implements RFC 4122 version 4 UUID using random values
+ * The 4 indicates version 4, and y uses variant bits (8, 9, a, or b)
+ * @returns {string} UUID v4 string (e.g., "550e8400-e29b-41d4-a716-446655440000")
+ */
+function generateSessionUUID() {
+  // RFC 4122 UUID v4 format: xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+  // x = random hex digit, 4 = version 4, y = variant (8,9,a,b)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * In-memory Quick Tabs session state (ephemeral - NOT persisted to disk)
+ * This is the SINGLE SOURCE OF TRUTH for Quick Tabs in Option 4 architecture
+ * v1.6.3.12 - FIX: Replace storage.session with background memory
+ */
+const quickTabsSessionState = {
+  // Quick Tabs organized by origin tab ID: { [tabId]: [quickTab, ...] }
+  quickTabsByTab: {},
+  // Port connections from content scripts: { [tabId]: port }
+  contentScriptPorts: {},
+  // Sidebar port connection (if connected)
+  sidebarPort: null,
+  // Session metadata
+  sessionId: generateSessionUUID(),
+  sessionStartTime: Date.now()
+};
+
+console.log('[Background] v1.6.3.12 Quick Tabs Session State initialized:', {
+  sessionId: quickTabsSessionState.sessionId,
+  sessionStartTime: new Date(quickTabsSessionState.sessionStartTime).toISOString()
+});
+
+// ==================== END v1.6.3.12 OPTION 4 STATE ====================
+
 // v1.6.3.10-v3 - Phase 2: Tab lifecycle handler instance
 const tabLifecycleHandler = new TabLifecycleHandler();
 
@@ -5017,6 +5063,656 @@ browser.runtime.onConnect.addListener(handlePortConnect);
 console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
 
 // ==================== END PORT LIFECYCLE MANAGEMENT ====================
+
+// ==================== v1.6.3.12 OPTION 4: QUICK TABS PORT MESSAGING ====================
+// FIX: browser.storage.session does NOT exist in Firefox Manifest V2
+// This new port-based messaging system replaces storage.session for Quick Tabs
+
+/**
+ * Get all Quick Tabs as a flat array from in-memory state
+ * v1.6.3.12 - Option 4: Helper for sidebar queries
+ * @returns {Array} All Quick Tabs across all tabs
+ */
+function getAllQuickTabsFromMemory() {
+  const allTabs = [];
+  for (const tabId in quickTabsSessionState.quickTabsByTab) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    if (Array.isArray(tabQuickTabs)) {
+      allTabs.push(...tabQuickTabs);
+    }
+  }
+  return allTabs;
+}
+
+/**
+ * Notify sidebar of Quick Tab state change
+ * v1.6.3.12 - Option 4: Push state updates to sidebar
+ */
+function notifySidebarOfStateChange() {
+  if (!quickTabsSessionState.sidebarPort) {
+    return;
+  }
+
+  const allTabs = getAllQuickTabsFromMemory();
+  const message = {
+    type: 'STATE_CHANGED',
+    quickTabs: allTabs,
+    tabCount: allTabs.length,
+    timestamp: Date.now(),
+    sessionId: quickTabsSessionState.sessionId
+  };
+
+  try {
+    quickTabsSessionState.sidebarPort.postMessage(message);
+    console.log('[Background] STATE_CHANGED sent to sidebar:', {
+      tabCount: allTabs.length,
+      timestamp: message.timestamp
+    });
+  } catch (err) {
+    console.warn('[Background] Failed to notify sidebar:', err.message);
+    quickTabsSessionState.sidebarPort = null;
+  }
+}
+
+/**
+ * Notify specific content script of its Quick Tabs
+ * v1.6.3.12 - Option 4: Send updates to content scripts
+ * @param {number} tabId - Tab ID to notify
+ */
+function notifyContentScriptOfStateChange(tabId) {
+  const port = quickTabsSessionState.contentScriptPorts[tabId];
+  if (!port) return;
+
+  const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const message = {
+    type: 'QUICK_TABS_UPDATED',
+    quickTabs,
+    tabCount: quickTabs.length,
+    timestamp: Date.now()
+  };
+
+  try {
+    port.postMessage(message);
+    console.log(`[Background] QUICK_TABS_UPDATED sent to tab ${tabId}:`, {
+      tabCount: quickTabs.length
+    });
+  } catch (err) {
+    console.warn(`[Background] Failed to notify tab ${tabId}:`, err.message);
+    delete quickTabsSessionState.contentScriptPorts[tabId];
+  }
+}
+
+/**
+ * Handle CREATE_QUICK_TAB message from content script
+ * v1.6.3.12 - Option 4: Add Quick Tab to in-memory state
+ * @param {number} tabId - Origin tab ID
+ * @param {Object} quickTab - Quick Tab data
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleCreateQuickTab(tabId, quickTab, port) {
+  console.log(`[Background] CREATE_QUICK_TAB from tab ${tabId}:`, {
+    quickTabId: quickTab.id,
+    url: quickTab.url
+  });
+
+  // Initialize tab's Quick Tab array if needed
+  if (!quickTabsSessionState.quickTabsByTab[tabId]) {
+    quickTabsSessionState.quickTabsByTab[tabId] = [];
+  }
+
+  // Add Quick Tab to memory
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+  
+  // Check for duplicate
+  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === quickTab.id);
+  if (existingIndex >= 0) {
+    tabQuickTabs[existingIndex] = quickTab;
+    console.log(`[Background] Updated existing Quick Tab: ${quickTab.id}`);
+  } else {
+    tabQuickTabs.push(quickTab);
+    console.log(`[Background] Created new Quick Tab: ${quickTab.id}`);
+  }
+
+  // Also update globalQuickTabState for backward compatibility
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTab.id);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs[globalIndex] = quickTab;
+  } else {
+    globalQuickTabState.tabs.push(quickTab);
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Send ACK to content script
+  port.postMessage({
+    type: 'CREATE_QUICK_TAB_ACK',
+    success: true,
+    quickTabId: quickTab.id,
+    timestamp: Date.now()
+  });
+
+  // Notify sidebar
+  notifySidebarOfStateChange();
+}
+
+// ==================== v1.6.3.13 PORT HANDLER HELPERS ====================
+// These helpers reduce duplication in port message handlers
+
+/**
+ * Update Quick Tab property in both session and global state
+ * v1.6.3.13 - FIX Code Health: Unified state update helper
+ * @private
+ * @param {number} tabId - Origin tab ID
+ * @param {string} quickTabId - Quick Tab ID to update
+ * @param {Function} updater - Function to update the Quick Tab (receives qt, returns boolean)
+ * @returns {boolean} Whether the Quick Tab was found and updated
+ */
+function _updateQuickTabProperty(tabId, quickTabId, updater) {
+  let found = false;
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  
+  for (const qt of tabQuickTabs) {
+    if (qt.id === quickTabId) {
+      updater(qt);
+      found = true;
+      break;
+    }
+  }
+
+  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+  if (globalQt) {
+    updater(globalQt);
+    found = true;
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  return found;
+}
+
+/**
+ * Send acknowledgment response via port
+ * v1.6.3.13 - FIX Code Health: Unified ACK sender
+ * @private
+ * @param {browser.runtime.Port} port - Port to send response on
+ * @param {string} ackType - Type of acknowledgment (e.g., 'MINIMIZE_QUICK_TAB_ACK')
+ * @param {boolean} success - Whether the operation succeeded
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _sendQuickTabAck(port, ackType, success, quickTabId) {
+  port.postMessage({
+    type: ackType,
+    success,
+    quickTabId,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle MINIMIZE_QUICK_TAB message from content script
+ * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * @param {number} tabId - Origin tab ID
+ * @param {string} quickTabId - Quick Tab ID to minimize
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
+  console.log(`[Background] MINIMIZE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
+
+  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+    qt.minimized = true;
+    qt.minimizedAt = Date.now();
+  });
+
+  _sendQuickTabAck(port, 'MINIMIZE_QUICK_TAB_ACK', found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
+ * Handle RESTORE_QUICK_TAB message from content script
+ * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * @param {number} tabId - Origin tab ID
+ * @param {string} quickTabId - Quick Tab ID to restore
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleRestoreQuickTabPort(tabId, quickTabId, port) {
+  console.log(`[Background] RESTORE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
+
+  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+    qt.minimized = false;
+    qt.restoredAt = Date.now();
+  });
+
+  _sendQuickTabAck(port, 'RESTORE_QUICK_TAB_ACK', found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
+ * Handle DELETE_QUICK_TAB message from content script
+ * v1.6.3.13 - FIX Code Health: Reduced duplication
+ * @param {number} tabId - Origin tab ID
+ * @param {string} quickTabId - Quick Tab ID to delete
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleDeleteQuickTabPort(tabId, quickTabId, port) {
+  console.log(`[Background] DELETE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
+
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
+  let found = index >= 0;
+  
+  if (found) tabQuickTabs.splice(index, 1);
+
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs.splice(globalIndex, 1);
+    found = true;
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  _sendQuickTabAck(port, 'DELETE_QUICK_TAB_ACK', found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
+ * Handle QUERY_MY_QUICK_TABS message from content script
+ * v1.6.3.12 - Option 4: Return Quick Tabs for specific tab
+ * @param {number} tabId - Tab ID to query
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleQueryMyQuickTabs(tabId, port) {
+  const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  console.log(`[Background] QUERY_MY_QUICK_TABS for tab ${tabId}:`, { count: quickTabs.length });
+  _sendQuickTabsListResponse(port, 'QUERY_MY_QUICK_TABS_RESPONSE', quickTabs, false);
+}
+
+/**
+ * Handle HYDRATE_ON_LOAD message from content script
+ * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * @param {number} tabId - Tab ID requesting hydration
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleHydrateOnLoad(tabId, port) {
+  const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { count: quickTabs.length, sessionId: quickTabsSessionState.sessionId });
+  _sendQuickTabsListResponse(port, 'HYDRATE_ON_LOAD_RESPONSE', quickTabs, true);
+}
+
+/**
+ * Handle UPDATE_QUICK_TAB message from content script
+ * v1.6.3.13 - FIX Code Health: Use unified helpers
+ * @param {number} tabId - Origin tab ID
+ * @param {Object} msg - Message with quickTabId and updates
+ * @param {browser.runtime.Port} port - Source port for response
+ */
+function handleUpdateQuickTab(tabId, msg, port) {
+  const { quickTabId, updates } = msg;
+  console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
+
+  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+    Object.assign(qt, updates);
+    qt.lastUpdate = Date.now();
+  });
+
+  _sendQuickTabAck(port, 'UPDATE_QUICK_TAB_ACK', found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
+ * Send Quick Tabs list response via port
+ * v1.6.3.13 - FIX Code Health: Shared response builder
+ * @private
+ * @param {browser.runtime.Port} port - Port to send response on
+ * @param {string} responseType - Type of response message
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {boolean} includeSessionInfo - Whether to include session info
+ */
+function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessionInfo) {
+  const response = {
+    type: responseType,
+    quickTabs,
+    tabCount: quickTabs.length,
+    timestamp: Date.now()
+  };
+  
+  if (includeSessionInfo) {
+    response.sessionId = quickTabsSessionState.sessionId;
+    response.sessionStartTime = quickTabsSessionState.sessionStartTime;
+  }
+  
+  port.postMessage(response);
+}
+
+/**
+ * Handle GET_ALL_QUICK_TABS message from sidebar
+ * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * @param {browser.runtime.Port} port - Sidebar port
+ */
+function handleGetAllQuickTabs(port) {
+  const allTabs = getAllQuickTabsFromMemory();
+  console.log('[Background] GET_ALL_QUICK_TABS for sidebar:', { count: allTabs.length, sessionId: quickTabsSessionState.sessionId });
+  _sendQuickTabsListResponse(port, 'GET_ALL_QUICK_TABS_RESPONSE', allTabs, true);
+}
+
+/**
+ * Handle SIDEBAR_READY message from sidebar
+ * v1.6.3.13 - FIX Code Health: Use shared response builder
+ * @param {browser.runtime.Port} port - Sidebar port
+ */
+function handleSidebarReady(port) {
+  const allTabs = getAllQuickTabsFromMemory();
+  console.log('[Background] SIDEBAR_READY - sending full state:', { count: allTabs.length, sessionId: quickTabsSessionState.sessionId });
+  _sendQuickTabsListResponse(port, 'SIDEBAR_STATE_SYNC', allTabs, true);
+}
+
+// ==================== v1.6.3.13 MESSAGE HANDLER LOOKUP TABLES ====================
+// These lookup tables reduce cyclomatic complexity in message routing
+
+/**
+ * Content script message handlers lookup table
+ * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * @private
+ */
+const _contentScriptMessageHandlers = {
+  CREATE_QUICK_TAB: (tabId, msg, port) => handleCreateQuickTab(tabId, msg.quickTab, port),
+  MINIMIZE_QUICK_TAB: (tabId, msg, port) => handleMinimizeQuickTabPort(tabId, msg.quickTabId, port),
+  RESTORE_QUICK_TAB: (tabId, msg, port) => handleRestoreQuickTabPort(tabId, msg.quickTabId, port),
+  DELETE_QUICK_TAB: (tabId, msg, port) => handleDeleteQuickTabPort(tabId, msg.quickTabId, port),
+  QUERY_MY_QUICK_TABS: (tabId, _msg, port) => handleQueryMyQuickTabs(tabId, port),
+  HYDRATE_ON_LOAD: (tabId, _msg, port) => handleHydrateOnLoad(tabId, port),
+  UPDATE_QUICK_TAB: (tabId, msg, port) => handleUpdateQuickTab(tabId, msg, port)
+};
+
+/**
+ * Sidebar message handlers lookup table
+ * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * @private
+ */
+const _sidebarMessageHandlers = {
+  GET_ALL_QUICK_TABS: (_msg, port) => handleGetAllQuickTabs(port),
+  SIDEBAR_READY: (_msg, port) => handleSidebarReady(port),
+  CLOSE_QUICK_TAB: (msg, port) => handleSidebarCloseQuickTab(msg.quickTabId, port),
+  MINIMIZE_QUICK_TAB: (msg, port) => handleSidebarMinimizeQuickTab(msg.quickTabId, port),
+  RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port)
+};
+
+/**
+ * Send error response for unknown message type
+ * v1.6.3.13 - FIX Code Health: Extracted helper
+ * @private
+ */
+function _sendUnknownMessageError(port, source, msgType) {
+  console.warn(`[Background] Unknown message type from ${source}:`, msgType);
+  port.postMessage({
+    type: 'ERROR',
+    error: `Unknown message type: ${msgType}`,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Handle content script port message
+ * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * @param {number} tabId - Tab ID of the content script
+ * @param {Object} msg - Message from content script
+ * @param {browser.runtime.Port} port - Source port
+ */
+function handleContentScriptPortMessage(tabId, msg, port) {
+  console.log(`[Background] Message from tab ${tabId}:`, msg.type);
+
+  const handler = _contentScriptMessageHandlers[msg.type];
+  if (handler) {
+    handler(tabId, msg, port);
+  } else {
+    _sendUnknownMessageError(port, `tab ${tabId}`, msg.type);
+  }
+}
+
+/**
+ * Handle sidebar port message
+ * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * @param {Object} msg - Message from sidebar
+ * @param {browser.runtime.Port} port - Sidebar port
+ */
+function handleSidebarPortMessage(msg, port) {
+  console.log('[Background] Message from sidebar:', msg.type);
+
+  const handler = _sidebarMessageHandlers[msg.type];
+  if (handler) {
+    handler(msg, port);
+  } else {
+    _sendUnknownMessageError(port, 'sidebar', msg.type);
+  }
+}
+
+/**
+ * Handle sidebar request to close a Quick Tab
+ * v1.6.3.13 - FIX Code Health: Reduced duplication
+ * @param {string} quickTabId - Quick Tab ID to close
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
+  console.log('[Background] SIDEBAR_CLOSE_QUICK_TAB:', { quickTabId });
+
+  const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
+
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) globalQuickTabState.tabs.splice(globalIndex, 1);
+  globalQuickTabState.lastUpdate = Date.now();
+
+  _notifyContentScriptOfCommand(ownerTabId, found, 'CLOSE_QUICK_TAB_COMMAND', quickTabId);
+  _sendQuickTabAck(sidebarPort, 'CLOSE_QUICK_TAB_ACK', found, quickTabId);
+  notifySidebarOfStateChange();
+}
+
+/**
+ * Remove Quick Tab from session state
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to remove
+ * @returns {{ ownerTabId: number|null, found: boolean }}
+ */
+function _removeQuickTabFromSessionState(quickTabId) {
+  return _findAndModifyQuickTabInSession(quickTabId, (tabQuickTabs, index) => {
+    tabQuickTabs.splice(index, 1);
+  });
+}
+
+/**
+ * Find Quick Tab in session state and apply a modifier function
+ * v1.6.3.13 - FIX Code Health: Unified session state modifier
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @param {Function} modifier - Function to modify the Quick Tab or array (receives tabQuickTabs, index, qt)
+ * @returns {{ ownerTabId: number|null, found: boolean }}
+ */
+function _findAndModifyQuickTabInSession(quickTabId, modifier) {
+  for (const tabId in quickTabsSessionState.quickTabsByTab) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
+    if (index >= 0) {
+      modifier(tabQuickTabs, index, tabQuickTabs[index]);
+      return { ownerTabId: parseInt(tabId, 10), found: true };
+    }
+  }
+  return { ownerTabId: null, found: false };
+}
+
+/**
+ * Notify content script of a command
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * @private
+ * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {boolean} found - Whether the Quick Tab was found
+ * @param {string} commandType - Command type to send
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabId) {
+  if (!found || ownerTabId === null) return;
+
+  const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
+  if (!contentPort) return;
+
+  try {
+    contentPort.postMessage({
+      type: commandType,
+      quickTabId,
+      source: 'sidebar',
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn(`[Background] Failed to notify content script in tab ${ownerTabId}:`, err.message);
+  }
+}
+
+/**
+ * Sidebar minimize/restore operation config
+ * v1.6.3.13 - FIX Code Health: Reduce function arguments with config object
+ * @private
+ */
+const _sidebarMinimizeConfig = {
+  true: { commandType: 'MINIMIZE_QUICK_TAB_COMMAND', ackType: 'MINIMIZE_QUICK_TAB_ACK', logLabel: 'SIDEBAR_MINIMIZE_QUICK_TAB', timestampField: 'minimizedAt' },
+  false: { commandType: 'RESTORE_QUICK_TAB_COMMAND', ackType: 'RESTORE_QUICK_TAB_ACK', logLabel: 'SIDEBAR_RESTORE_QUICK_TAB', timestampField: 'restoredAt' }
+};
+
+/**
+ * Handle sidebar request to toggle Quick Tab minimized state
+ * v1.6.3.13 - FIX Code Health: Reduced to 3 arguments using config lookup
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {boolean} minimized - Target minimized state
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port
+ */
+function _handleSidebarMinimizedToggle(quickTabId, minimized, sidebarPort) {
+  const config = _sidebarMinimizeConfig[minimized];
+  console.log(`[Background] ${config.logLabel}:`, { quickTabId });
+
+  const { ownerTabId, found } = _updateQuickTabMinimizedState(quickTabId, minimized);
+
+  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+  if (globalQt) {
+    globalQt.minimized = minimized;
+    globalQt[config.timestampField] = Date.now();
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  _notifyContentScriptOfCommand(ownerTabId, found, config.commandType, quickTabId);
+  _sendQuickTabAck(sidebarPort, config.ackType, found, quickTabId);
+  notifySidebarOfStateChange();
+}
+
+/**
+ * Handle sidebar request to minimize a Quick Tab
+ * v1.6.3.13 - FIX Code Health: Use unified toggle handler
+ * @param {string} quickTabId - Quick Tab ID to minimize
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarMinimizeQuickTab(quickTabId, sidebarPort) {
+  _handleSidebarMinimizedToggle(quickTabId, true, sidebarPort);
+}
+
+/**
+ * Handle sidebar request to restore a Quick Tab
+ * v1.6.3.13 - FIX Code Health: Use unified toggle handler
+ * @param {string} quickTabId - Quick Tab ID to restore
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
+  _handleSidebarMinimizedToggle(quickTabId, false, sidebarPort);
+}
+
+/**
+ * Update Quick Tab minimized state in session state
+ * v1.6.3.13 - FIX Code Health: Use shared session modifier
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to update
+ * @param {boolean} minimized - Whether to minimize or restore
+ * @returns {{ ownerTabId: number|null, found: boolean }}
+ */
+function _updateQuickTabMinimizedState(quickTabId, minimized) {
+  const timestampField = minimized ? 'minimizedAt' : 'restoredAt';
+  return _findAndModifyQuickTabInSession(quickTabId, (_tabQuickTabs, _index, qt) => {
+    qt.minimized = minimized;
+    qt[timestampField] = Date.now();
+  });
+}
+
+/**
+ * Setup content script port handlers
+ * v1.6.3.13 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {number} tabId - Tab ID
+ * @param {browser.runtime.Port} port - The port
+ */
+function _setupContentScriptPort(tabId, port) {
+  quickTabsSessionState.contentScriptPorts[tabId] = port;
+  
+  if (!quickTabsSessionState.quickTabsByTab[tabId]) {
+    quickTabsSessionState.quickTabsByTab[tabId] = [];
+  }
+
+  port.onMessage.addListener(msg => handleContentScriptPortMessage(tabId, msg, port));
+  port.onDisconnect.addListener(() => {
+    console.log(`[Background] Content script port disconnected for tab ${tabId}`);
+    delete quickTabsSessionState.contentScriptPorts[tabId];
+    notifySidebarOfStateChange();
+  });
+
+  console.log(`[Background] Content script port registered for tab ${tabId}`);
+}
+
+/**
+ * Setup sidebar port handlers
+ * v1.6.3.13 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {browser.runtime.Port} port - The port
+ */
+function _setupSidebarPort(port) {
+  quickTabsSessionState.sidebarPort = port;
+
+  port.onMessage.addListener(msg => handleSidebarPortMessage(msg, port));
+  port.onDisconnect.addListener(() => {
+    console.log('[Background] Sidebar port disconnected');
+    quickTabsSessionState.sidebarPort = null;
+  });
+
+  console.log('[Background] Sidebar port registered');
+  handleSidebarReady(port);
+}
+
+/**
+ * Handle Quick Tabs port connection (port name: 'quick-tabs-port')
+ * v1.6.3.13 - FIX Code Health: Reduced complexity by extracting helpers
+ * @param {browser.runtime.Port} port - The connecting port
+ */
+function handleQuickTabsPortConnect(port) {
+  if (port.name !== 'quick-tabs-port') return false;
+
+  const sender = port.sender;
+  const tabId = sender.tab?.id;
+  const isContentScript = tabId !== undefined;
+  const isSidebar = sender.url?.includes('sidebar');
+
+  console.log('[Background] QUICK_TABS_PORT_CONNECT:', { isContentScript, isSidebar, tabId, url: sender.url });
+
+  if (isContentScript && tabId) {
+    _setupContentScriptPort(tabId, port);
+  } else if (isSidebar) {
+    _setupSidebarPort(port);
+  }
+
+  return true;
+}
+
+// Register the Quick Tabs port handler
+// This runs BEFORE handlePortConnect for matching ports
+browser.runtime.onConnect.addListener(port => {
+  if (port.name === 'quick-tabs-port') {
+    handleQuickTabsPortConnect(port);
+  }
+  // Other ports are handled by handlePortConnect
+});
+
+console.log('[Background] v1.6.3.12 Quick Tabs port messaging initialized');
+
+// ==================== END v1.6.3.12 OPTION 4 PORT MESSAGING ====================
 
 // ==================== v1.6.3.6-v11 TAB LIFECYCLE EVENTS ====================
 // FIX Issue #16: Track browser tab lifecycle for orphan detection

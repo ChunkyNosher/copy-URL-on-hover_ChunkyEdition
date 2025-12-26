@@ -1,65 +1,56 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.11-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
-for quick URL copying and advanced Quick Tab management with **Per-Tab
-Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
+**Version 1.6.3.12** - A feature-rich **Firefox/Chrome/Chromium** extension for
+quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
+**Container Isolation**, and Session-Only Quick Tabs.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.11-v12 Status:** Solo/Mute Removed ✅ | Session-Only Quick Tabs ✅ |
-Code Health 10.0 | 1,971+ Tests Passing
+**🔧 v1.6.3.12 Status:** Option 4 Architecture ✅ | Port Messaging ✅ | Code
+Health 10.0 | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.11-v12
+## 🎉 What's New in v1.6.3.12
 
-**🧹 Solo/Mute Feature Removal (December 2025) ✅**
+**🏗️ Option 4 Architecture - Background Script Memory-Based Storage ✅**
 
-The Solo (🎯) and Mute (🔇) visibility control features have been completely
-removed from the Quick Tabs system. Quick Tabs are now always visible on all
-tabs where they were created.
+Complete architectural overhaul for Firefox MV2 compatibility:
 
-**🔄 Cross-Session Persistence Removed ✅**
+- ✅ **Background Script is SINGLE SOURCE OF TRUTH** - All Quick Tabs data
+  stored in-memory in background script
+- ✅ **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
+- ✅ **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
+- ✅ **Push Notifications** - Background → Sidebar via `STATE_CHANGED` messages
+- ✅ **Ephemeral Storage** - Browser restart clears all Quick Tabs automatically
 
-Quick Tabs no longer persist across browser restarts. They are session-only and
-start fresh each session for a cleaner experience.
+**✨ Code Health Improvements:**
 
-**✨ New Features:**
-
-- ✅ **Version-Based Log Cleanup** - Logs automatically cleared when extension
-  version changes
-- ✅ **Real-Time Manager Updates** - New message types for instant sync:
-  - `QUICKTAB_MOVED` - Position changes
-  - `QUICKTAB_RESIZED` - Size changes
-  - `QUICKTAB_MINIMIZED` - Minimize state changes
-  - `QUICKTAB_REMOVED` - Tab destroyed
-- ✅ **Sidebar Polling Sync** - Manager polls every 3-5 seconds with staleness
-  tracking
-- ✅ **Scenario-Aware Logging** - Structured logging with source, container ID,
-  and state changes
+- ✅ **Factory Patterns** - Port handlers use lookup tables (reduce switch
+  complexity)
+- ✅ **Generic Wrappers** - `executeQuickTabPortOperation()`,
+  `executeSidebarPortOperation()`
 
 **Why Changes Made:**
 
-- Simplified architecture and reduced complexity
-- Solo/Mute features were not actively used by users
-- Session-only tabs provide cleaner startup experience
-- Improved code maintainability
+- `browser.storage.session` not supported in Firefox Manifest V2
+- Simplified architecture with single source of truth
+- Improved code maintainability with factory patterns
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.11-v12:** Solo/Mute removed, session-only Quick Tabs, version-based log
+cleanup  
 **v1.6.3.11-v11:** Container identity fix, message diagnostics, Code Health 10.0  
 **v1.6.3.11-v9:** Diagnostic report fixes, Code Health 9.0+, logging
 infrastructure  
-**v1.6.3.11-v7:** Stability restoration, orphan Quick Tabs fix  
-**v1.6.3.11-v5:** 23 issues fixed, error telemetry  
-**v1.6.3.11-v4:** Shadow DOM detection, event debouncing  
-**v1.6.3.11-v3:** 55+ issues fixed, HEARTBEAT, BFCache queue
+**v1.6.3.11-v7:** Stability restoration, orphan Quick Tabs fix
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -91,15 +82,12 @@ in the sidebar!
 ✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
 ✓ **Container Isolation** - Firefox Container support with originContainerId  
-✓ **Session-Only Quick Tabs** - Start fresh each browser session (v1.6.3.11-v12)  
-✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok (v1.6.3.11-v4)  
-✓ **Firefox Critical Fixes** - BFCache, Adaptive Timeout, Load Shedding
-(v1.6.3.11-v6)  
+✓ **Session-Only Quick Tabs** - Start fresh each browser session (v1.6.3.12)  
+✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok  
+✓ **Port Messaging** - `'quick-tabs-port'` for reliable Quick Tabs sync
+(v1.6.3.12)  
 ✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
 ✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ **Cross-Tab Sync via storage.onChanged** (Stateless, NO BroadcastChannel)  
-✓ **Real-Time Manager Updates** - Position, size, minimize state sync
-(v1.6.3.11-v12)  
 ✓ 100+ Site-Specific Handlers  
 ✓ Dark Mode support  
 ✓ Auto-Updates via GitHub releases
@@ -160,9 +148,10 @@ npm run lint                    # Lint
 
 ## 📝 Notes
 
-- Quick Tabs are session-only and cleared on browser close (v1.6.3.11-v12)
+- Quick Tabs are session-only and cleared on browser close (in-memory storage)
 - Container isolation prevents cross-container state leaks
-- Real-time sync keeps Manager up-to-date with position/size changes
+- Port messaging ensures reliable Quick Tabs sync across tabs
+- Background script is single source of truth for all Quick Tabs data
 
 ## 📄 License
 
@@ -170,6 +159,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.11-v12** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

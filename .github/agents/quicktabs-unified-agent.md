@@ -2,9 +2,9 @@
 name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
-  lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.11-v12), unified barrier init,
-  single storage key, storage.onChanged PRIMARY, real-time manager updates, FIFO EventBus
+  lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
+  sync with Single Writer Authority (v1.6.3.12), memory-based state (`quickTabsSessionState`),
+  real-time port updates, FIFO EventBus
 tools: ['*']
 ---
 
@@ -36,44 +36,42 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v12 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.12 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
 - **Individual Quick Tabs** - Iframe, drag/resize, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
-- **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
-- **Single Writer Authority** - Manager sends commands, background writes
-  storage
-- **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Session-Only Quick Tabs** - Cleared on browser close (no cross-session
-  persistence)
+- **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
+- **Background Memory State** - `quickTabsSessionState` object (no storage API)
+- **Single Writer Authority** - Manager sends commands, background writes state
+- **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates:**
+**v1.6.3.12 Features (Option 4 Architecture):**
 
-- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
-- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
-- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
-- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
-  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
-- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
-- **Scenario-Aware Logging** - Source, container ID, state changes tracked
+- **Port Messaging** - `browser.runtime.connect({ name: 'quick-tabs-port' })`
+- **Memory-Based State** - `quickTabsSessionState` in background.js
+- **No browser.storage.session** - Removed due to Firefox MV2 incompatibility
+- **Real-Time Port Updates** - State changes pushed via port.postMessage()
+- **Message Types** - CREATE_QUICK_TAB, MINIMIZE_QUICK_TAB, DELETE_QUICK_TAB, etc.
 
-**v1.6.3.11-v11 Features - Container Identity + Message Diagnostics:**
+**Key Architecture Components:**
 
-- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
-  `cookieStoreId`
-- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Code Health 10.0** - QuickTabHandler.js fully refactored
+| Component                  | Purpose                          |
+| -------------------------- | -------------------------------- |
+| `quickTabsSessionState`    | Memory-based state in background |
+| `contentScriptPorts`       | Tab ID → Port mapping            |
+| `sidebarPort`              | Manager sidebar port             |
+| `notifySidebarOfStateChange()` | Push updates to sidebar      |
+| `notifyContentScriptOfStateChange()` | Push updates to tabs   |
 
 **Key Modules:**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized constants               |
-| `src/storage/schema-v2.js`        | Pure state utilities, version field |
-| `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
-| `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
+| `background.js`                   | Port handlers, memory state         |
+| `src/content.js`                  | Content script port connection      |
+| `sidebar/quick-tabs-manager.js`   | Sidebar port connection             |
 | `src/utils/event-bus.js`          | EventBus with native EventTarget    |
 
 ---
@@ -91,16 +89,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Real-time message types work (QUICKTAB_MOVED, etc.)
-- [ ] Sidebar polling sync works (3-5s interval)
-- [ ] Version-based log cleanup works
-- [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
-- [ ] Single storage key works (`quick_tabs_state_v2`)
+- [ ] Port messaging works (`'quick-tabs-port'`)
+- [ ] Memory state works (`quickTabsSessionState`)
+- [ ] Port handlers work (CREATE_QUICK_TAB, MINIMIZE_QUICK_TAB, etc.)
+- [ ] Sidebar receives state updates via port
+- [ ] Content scripts receive updates via port
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
 - [ ] All tests pass (`npm test`, `npm run lint`) ⭐
 - [ ] Memory files committed 🧠
 
+**Deprecated:**
+
+- ❌ `browser.storage.session` - Not used for Quick Tabs (MV2 incompatible)
+- ❌ `runtime.sendMessage` - Replaced by port messaging for state sync
+
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.11-v12 real-time updates,
-sidebar polling, session-only storage, Code Health 10.0.**
+**Your strength: Complete Quick Tab system with v1.6.3.12 port messaging,
+memory-based state, real-time port updates, Code Health 10.0.**
