@@ -56,7 +56,12 @@ export const LOG_COMPONENT = {
   QUOTA_MONITOR: 'QuotaMonitor',
   RATE_LIMIT: 'RateLimit',
   RETRY: 'Retry',
-  LIFECYCLE_TRACE: 'LifecycleTrace'
+  LIFECYCLE_TRACE: 'LifecycleTrace',
+  // v1.6.4 - Scenario-aware logging for Quick Tabs state machine
+  QUICK_TABS: 'QuickTabs',
+  QUICK_TABS_MEDIATOR: 'QuickTabs-Mediator',
+  QUICK_TABS_STATE_MACHINE: 'QuickTabs-StateMachine',
+  QUICK_TABS_MINIMIZED: 'QuickTabs-Minimized'
 };
 
 /**
@@ -338,6 +343,30 @@ export const rateLimitLogger = new StructuredLogger(LOG_COMPONENT.RATE_LIMIT);
  * Storage adapter logger
  */
 export const storageAdapterLogger = new StructuredLogger(LOG_COMPONENT.STORAGE_ADAPTER);
+
+/**
+ * Quick Tabs logger
+ * v1.6.4 - Scenario-aware logging
+ */
+export const quickTabsLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS);
+
+/**
+ * Quick Tabs Mediator logger
+ * v1.6.4 - State transition logging at mediator boundaries
+ */
+export const quickTabsMediatorLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_MEDIATOR);
+
+/**
+ * Quick Tabs State Machine logger
+ * v1.6.4 - State machine transition logging
+ */
+export const quickTabsStateMachineLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_STATE_MACHINE);
+
+/**
+ * Quick Tabs Minimized Manager logger
+ * v1.6.4 - Minimized state change logging
+ */
+export const quickTabsMinimizedLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_MINIMIZED);
 
 // ==================== HELPER FUNCTIONS ====================
 

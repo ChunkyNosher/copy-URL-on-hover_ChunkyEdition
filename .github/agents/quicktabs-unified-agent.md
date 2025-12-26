@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, tabs.sendMessage messaging, Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.10-v10), unified barrier init,
-  single storage key, storage.onChanged PRIMARY, FIFO EventBus
+  sync with Single Writer Authority (v1.6.3.11-v12), unified barrier init,
+  single storage key, storage.onChanged PRIMARY, real-time manager updates, FIFO EventBus
 tools: ['*']
 ---
 
@@ -36,63 +36,41 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v11 - Quick Tabs Architecture v2 (Simplified)
+**Version:** 1.6.3.11-v12 - Quick Tabs Architecture v2 (Simplified)
 
 **Complete Quick Tab System:**
 
-- **Individual Quick Tabs** - Iframe, drag/resize, Solo/Mute, navigation
+- **Individual Quick Tabs** - Iframe, drag/resize, navigation
 - **Manager Sidebar** - Global list, Ctrl+Alt+Z or Alt+Shift+Z
 - **tabs.sendMessage Messaging** - Background broadcasts via tabs.sendMessage
 - **Single Writer Authority** - Manager sends commands, background writes
   storage
 - **storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Session Quick Tabs** - Auto-clear on browser close (storage.session)
+- **Session-Only Quick Tabs** - Cleared on browser close (no cross-session
+  persistence)
 
-**v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics:**
+**v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates:**
+
+- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
+- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
+- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
+- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
+  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
+- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
+- **Scenario-Aware Logging** - Source, container ID, state changes tracked
+
+**v1.6.3.11-v11 Features - Container Identity + Message Diagnostics:**
 
 - **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
   `cookieStoreId`
-- **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
 - **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
-- **Manager Button Logging** - `[Manager] BUTTON_CLICKED/MESSAGE_*:` diagnostics
 - **Code Health 10.0** - QuickTabHandler.js fully refactored
-- **getFilterState()** - Diagnostic method for filter state introspection
 
-**v1.6.3.11-v9 Features - Diagnostic Report Fixes + Code Health 9.0+:**
-
-- **Identity Init Logging** - `[IDENTITY_INIT]` phases for tab identity
-  lifecycle
-- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows
-  delta
-- **Debounce Context Capture** - `capturedTabId` stored at schedule time
-- **Z-Index Recycling** - Threshold lowered from 100000 to 10000
-- **Container Validation** - `_validateContainerIsolation()` in visibility ops
-
-**v1.6.3.11-v8 Features - Transaction Tracking + Validation:**
-
-- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects tracking
-- **Null originTabId Rejection** - `_validateOriginTabIdResolution()` rejects
-  null
-- **Identity System Gate** - `_hasUnknownPlaceholder()` rejects "unknown" IDs
-- **Hydration Boundary Logging** - `[HydrationBoundary]` markers added
-
-**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
-
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` in
-  `handleCreate()`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`
-
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
-adoption lock timeout, message validation, identity gating, storage quota
-monitoring, code health 9.0+, container isolation
-
-**Key Modules (v1.6.3.10-v9):**
+**Key Modules:**
 
 | Module                            | Purpose                             |
 | --------------------------------- | ----------------------------------- |
-| `src/constants.js`                | Centralized constants (+v9 timing)  |
+| `src/constants.js`                | Centralized constants               |
 | `src/storage/schema-v2.js`        | Pure state utilities, version field |
 | `src/storage/storage-manager.js`  | Simplified persistence, checksum    |
 | `src/messaging/message-router.js` | MESSAGE_TYPES, MessageBuilder       |
@@ -113,13 +91,9 @@ monitoring, code health 9.0+, container isolation
 
 ## Testing Requirements
 
-- [ ] Tab ID acquisition with backoff works (200ms, 500ms, 1500ms, 5000ms)
-- [ ] Handler registration deferral works
-- [ ] Adoption lock timeout works (10 seconds with escalation)
-- [ ] Message validation works (`VALID_MESSAGE_ACTIONS` allowlist)
-- [ ] Container context tracking works (`updateContainerContextForAdoption()`)
-- [ ] Tab cleanup callback works (`setOnTabRemovedCallback()`)
-- [ ] Snapshot integrity works (`validateSnapshotIntegrity()`)
+- [ ] Real-time message types work (QUICKTAB_MOVED, etc.)
+- [ ] Sidebar polling sync works (3-5s interval)
+- [ ] Version-based log cleanup works
 - [ ] tabs.sendMessage messaging works (NO Port, NO BroadcastChannel)
 - [ ] Single storage key works (`quick_tabs_state_v2`)
 - [ ] Single Writer Authority - Manager sends commands, not storage writes
@@ -128,5 +102,5 @@ monitoring, code health 9.0+, container isolation
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.11-v11 container identity
-fix, message routing diagnostics, Code Health 10.0.**
+**Your strength: Complete Quick Tab system with v1.6.3.11-v12 real-time updates,
+sidebar polling, session-only storage, Code Health 10.0.**

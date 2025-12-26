@@ -676,10 +676,53 @@ export class VisibilityHandler {
       // v1.6.3.4-v6 - FIX Issue #6: Persist to storage with debounce
       this._debouncedPersist(id, 'minimize', source);
 
+      // v1.6.3.11-v12 - FIX Issue #2: Send QUICKTAB_MINIMIZED message to sidebar for immediate update
+      // Fire-and-forget pattern - errors are handled internally by _sendMinimizeMessage
+      this._sendMinimizeMessage(id, true, source).catch(() => {
+        // Error already logged by _sendMinimizeMessage
+      });
+
       return { success: true };
     } finally {
       // v1.6.3.4-v7 - FIX Issue #6: Guarantee lock release even on exceptions
       this._releaseLock('minimize', id);
+    }
+  }
+
+  /**
+   * Send QUICKTAB_MINIMIZED message to background for sidebar notification
+   * v1.6.3.11-v12 - FIX Issue #2 & #5: Direct message to sidebar via background
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {boolean} minimized - New minimized state
+   * @param {string} source - Source of action
+   */
+  async _sendMinimizeMessage(id, minimized, source) {
+    try {
+      console.log(
+        `${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`,
+        { id, minimized, source, originTabId: this.currentTabId }
+      );
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_MINIMIZED',
+        quickTabId: id,
+        minimized,
+        originTabId: this.currentTabId,
+        source: source || 'VisibilityHandler',
+        timestamp: Date.now()
+      });
+
+      console.log(
+        `${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`,
+        { id, minimized }
+      );
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug(
+        `${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`,
+        { id, error: err.message }
+      );
     }
   }
 
@@ -1057,6 +1100,12 @@ export class VisibilityHandler {
 
     // Emit restore event for legacy handlers
     this._emitLegacyRestoredEvent(id, source);
+
+    // v1.6.3.11-v12 - FIX Issue #2: Send QUICKTAB_MINIMIZED message (minimized=false) for restore
+    // Fire-and-forget pattern - errors are handled internally by _sendMinimizeMessage
+    this._sendMinimizeMessage(id, false, source).catch(() => {
+      // Error already logged by _sendMinimizeMessage
+    });
 
     console.log(`${this._logPrefix}[_executeRestore] EXIT (source: ${source}):`, {
       id,

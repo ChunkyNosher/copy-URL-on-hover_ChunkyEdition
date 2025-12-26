@@ -8,6 +8,7 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
+ * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -15,6 +16,7 @@
  * - Maintains backward compatibility with legacy API (with deprecation warnings)
  * - Delegates all business logic to specialized components
  * - No cross-tab broadcasting - storage used for persistence and hydration only
+ * - v1.6.4.18: Quick Tabs now use storage.session (cleared on browser restart)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -109,6 +111,14 @@ class QuickTabsManager {
       console.log('[QuickTabsManager] Using pre-fetched currentTabId:', this.currentTabId);
     }
 
+    // v1.6.3.11-v12 - FIX Issue 1: Use pre-fetched cookieStoreId if provided
+    // This ensures container ID is consistent with what content.js already acquired
+    // and avoids a race condition where container detection returns different values
+    if (options.cookieStoreId !== null && options.cookieStoreId !== undefined) {
+      this.cookieStoreId = options.cookieStoreId;
+      console.log('[QuickTabsManager] Using pre-fetched cookieStoreId:', this.cookieStoreId);
+    }
+
     console.log('[QuickTabsManager] Initializing facade...');
 
     try {
@@ -150,14 +160,24 @@ class QuickTabsManager {
    * v1.6.3.5-v10 - FIX Issue #3: Accept options parameter for pre-fetched tab ID
    * v1.6.3.12 - FIX Issue #17: Load z-index counter from storage
    * v1.6.3.12 - FIX Issue #15: Start storage listener health monitoring
+   * v1.6.3.11-v12 - FIX Issue 1: Skip container detection if already set from options
    * @private
    * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
   async _initStep1_Context(_options = {}) {
-    console.log('[QuickTabsManager] STEP 1: Detecting container context...');
-    const containerDetected = await this.detectContainerContext();
-    if (!containerDetected) {
-      console.warn('[QuickTabsManager] Container detection failed, using default container');
+    // v1.6.3.11-v12 - FIX Issue 1: Skip container detection if already set from options
+    // This prevents a second network request and ensures consistent container ID
+    if (this.cookieStoreId !== null && this.cookieStoreId !== undefined) {
+      console.log(
+        '[QuickTabsManager] STEP 1: Container ID already set (from options):',
+        this.cookieStoreId
+      );
+    } else {
+      console.log('[QuickTabsManager] STEP 1: Detecting container context...');
+      const containerDetected = await this.detectContainerContext();
+      if (!containerDetected) {
+        console.warn('[QuickTabsManager] Container detection failed, using default container');
+      }
     }
 
     // v1.6.3.5-v10 - FIX Issue #3: Skip tab ID detection if already set from options
@@ -555,13 +575,20 @@ class QuickTabsManager {
   /**
    * Read state from storage and log result
    * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
+   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
   async _readAndLogStorageState() {
-    console.log('[QuickTabsManager] Reading state from storage.local (key:', STATE_KEY, ')');
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    console.log('[QuickTabsManager] Reading state from storage.session (key:', STATE_KEY, ')');
 
-    const result = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[QuickTabsManager] storage.session unavailable');
+      return null;
+    }
+    const result = await browser.storage.session.get(STATE_KEY);
     const storedState = result[STATE_KEY];
 
     console.log('[QuickTabsManager] Storage read result:', {
@@ -1183,12 +1210,14 @@ class QuickTabsManager {
 
     this.updateHandler = new UpdateHandler(this.tabs, this.internalEventBus, this.minimizedManager);
 
+    // v1.6.3.11-v12 - FIX Issue 1: Pass currentContainerId for container isolation validation
     this.visibilityHandler = new VisibilityHandler({
       quickTabsMap: this.tabs,
       minimizedManager: this.minimizedManager,
       eventBus: this.internalEventBus,
       currentZIndex: this.currentZIndex,
       currentTabId: this.currentTabId,
+      currentContainerId: this.cookieStoreId, // v1.6.3.11-v12 - FIX Issue 1: Container isolation
       Events: this.Events
     });
 
@@ -1760,12 +1789,15 @@ let quickTabsManagerInstance = null;
  * @param {Object} Events - Event constants
  * @param {Object} options - Optional configuration (for testing)
  * @param {number} [options.currentTabId] - v1.6.3.5-v10: Current tab ID from content script (pre-fetched from background)
+ * @param {string} [options.cookieStoreId] - v1.6.3.11-v12: Container ID from content script (pre-fetched from background)
  * @returns {QuickTabsManager} Initialized manager instance
  */
 export async function initQuickTabs(eventBus, Events, options = {}) {
   console.log('[QuickTabs] Initializing Quick Tabs feature module...');
+  // v1.6.3.11-v12 - FIX Issue 1: Log cookieStoreId option for debugging
   console.log('[QuickTabs] Options received:', {
     currentTabId: options.currentTabId,
+    cookieStoreId: options.cookieStoreId, // v1.6.3.11-v12
     forceNew: options.forceNew,
     hasWindowFactory: !!options.windowFactory
   });
@@ -1779,6 +1811,7 @@ export async function initQuickTabs(eventBus, Events, options = {}) {
   }
 
   // v1.6.3.5-v10 - FIX Issue #3: Pass currentTabId from options to init()
+  // v1.6.3.11-v12 - FIX Issue 1: Also pass cookieStoreId from options to init()
   // This is already available from content.js which got it from background
   await quickTabsManagerInstance.init(eventBus, Events, options);
   console.log('[QuickTabs] Quick Tabs feature module initialized');

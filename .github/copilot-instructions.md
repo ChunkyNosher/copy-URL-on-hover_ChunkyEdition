@@ -3,15 +3,13 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.11-v11  
+**Version:** 1.6.3.11-v12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
-**Purpose:** URL management with Solo/Mute visibility control and sidebar Quick
-Tabs Manager
+**Purpose:** URL management with sidebar Quick Tabs Manager
 
 **Key Features:**
 
-- Solo/Mute tab-specific visibility control
 - **Quick Tabs v2 Architecture** - tabs.sendMessage messaging, single storage
   key
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
@@ -21,47 +19,43 @@ Tabs Manager
 - **Single Barrier Initialization** - Unified barrier with resolve-only
   semantics
 - **Storage.onChanged PRIMARY** - Primary sync mechanism for state updates
-- **Session Quick Tabs** - Auto-clear on browser close (storage.session)
+- **Session-Only Quick Tabs** - Quick Tabs cleared on browser close (no
+  cross-session persistence)
 
-**v1.6.3.11-v11 Features (NEW) - Container Identity + Message Diagnostics:**
+**v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates:**
 
-- **Issue 47 Fix** - GET_CURRENT_TAB_ID returns both `tabId` AND `cookieStoreId`
-  - Container filter transitions INITIALIZING → READY when both IDs set
-  - Fixes permanent FAIL_CLOSED issue blocking all storage writes
-- **Issue 48 Fix** - Comprehensive logging infrastructure for diagnostics
-  - `[IDENTITY_STATE] TRANSITION:` - State machine transitions
-  - `[IDENTITY_ACQUIRED]` - Container ID acquisition
-  - `[MSG_ROUTER]`/`[MSG_HANDLER]` - Message routing diagnostics
-  - `[HYDRATION]` - Hydration lifecycle events
-  - `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/MESSAGE_RESPONSE:` - Manager ops
-- **Code Health 10.0** - QuickTabHandler.js improved from 7.6 → 10.0
-- **getFilterState()** - New diagnostic export from storage-utils.js
+- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
+- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
+- **Version-Based Log Cleanup** - Logs auto-cleared when extension version
+  changes
+- **Real-Time Manager Updates** - New message types for instant sync:
+  - `QUICKTAB_MOVED` - Position changes
+  - `QUICKTAB_RESIZED` - Size changes
+  - `QUICKTAB_MINIMIZED` - Minimize state changes
+  - `QUICKTAB_REMOVED` - Tab destroyed
+- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
+- **Scenario-Aware Logging** - Source (toolbar/manager/background), container
+  ID, state changes
+
+**v1.6.3.11-v11 Features - Container Identity + Message Diagnostics:**
+
+- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
+  `cookieStoreId`
+- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
+- **Code Health 10.0** - QuickTabHandler.js fully refactored
 
 **v1.6.3.11-v9 Features - Diagnostic Report Fixes:**
 
-- **Issue A/C Fix** - Content script tab identity initialization with logging
-- **Issue D Fix** - Storage write queue enforces identity-ready precondition
-- **Issue E Fix** - State validation pre/post comparison logging
-- **Issue I Fix** - Debounce timer captures tab context at schedule time
-- **Issue 3.2/5 Fix** - Z-index recycling + container isolation validation
-
-**v1.6.3.11-v8 Features:** Transaction tracking wired, null originTabId
-rejection, identity system gating, hydration boundary logging
-
-**v1.6.3.11-v7 Features:** Orphan Quick Tabs fix, helper methods for tab ID
-resolution, Code Health 9.0+ achieved
-
-**v1.6.3.10-v10 Base:** Tab ID acquisition, handler deferral, adoption lock
-timeout, checkpoint system, message validation, identity gating, container
-isolation
-
-**v1.6.3.10 & Earlier:** Shadow DOM, debouncing, LRU guard, acknowledgment
+- **Identity Init Logging** - `[IDENTITY_INIT]` phases for tab identity
+- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
+- **Container Validation** - `_validateContainerIsolation()` in visibility ops
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, MapTransactionManager,
 TabStateManager, StorageManager, MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-runtime.Port (v12), complex init layers (v4)
+runtime.Port (v12), complex init layers (v4), Solo/Mute (v12), cross-session
+persistence (v12)
 
 ---
 
@@ -80,86 +74,85 @@ references.
 
 ## 🔄 Cross-Tab Sync Architecture
 
-### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.10-v4)
+### CRITICAL: Quick Tabs Architecture v2 (v1.6.3.11-v12)
 
 **Simplified stateless architecture (NO Port, NO BroadcastChannel):**
 
 - `runtime.sendMessage()` - Content script → Background
 - `tabs.sendMessage()` - Background → Content script / Manager
 - `storage.onChanged` - **PRIMARY** sync mechanism for state updates
-- Storage health check fallback - Polling every 5s if listener fails
+- **Sidebar Polling Fallback** - Manager polls every 3-5s with staleness
+  tracking
 - Unified barrier initialization - Resolve-only semantics
 
 **Dual Architecture (Retained from v3):**
 
 - **MessageRouter.js** - ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL)
-- **message-handler.js** - TYPE-based v2 routing (QT_CREATED, QT_MINIMIZED)
+- **message-handler.js** - TYPE-based v2 routing (QUICKTAB_MOVED,
+  QUICKTAB_RESIZED)
 
 **Message Patterns:**
 
-- **LOCAL** - No broadcast (position, size changes)
+- **LOCAL** - No broadcast (position, size changes) - **Now also sent to
+  Manager**
 - **GLOBAL** - Broadcast to all tabs (create, minimize, restore, close)
-- **MANAGER** - Manager-initiated actions (close all, close minimized)
+- **MANAGER** - Manager-initiated actions (close all, close by ID)
+
+**Real-Time Manager Message Types (v1.6.3.11-v12 NEW):**
+
+- `QUICKTAB_MOVED` - Position changes sent to Manager
+- `QUICKTAB_RESIZED` - Size changes sent to Manager
+- `QUICKTAB_MINIMIZED` - Minimize state changes sent to Manager
+- `QUICKTAB_REMOVED` - Tab destroyed sent to Manager
 
 ---
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.11-v11 Patterns (Current)
+### v1.6.3.11-v12 Patterns (Current)
+
+- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
+- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
+- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
+- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
+  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
+- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
+- **Scenario-Aware Logging** - Source, container ID, state changes tracked
+
+### v1.6.3.11-v11 Patterns
 
 - **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
   `cookieStoreId`
 - **Identity State Transitions** - `[IDENTITY_STATE] TRANSITION:` logging
-- **Container ID Acquisition** - `setWritingContainerId()` called with
-  `cookieStoreId`
 - **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Hydration Lifecycle** - `[HYDRATION] START/COMPLETE` markers
-- **Manager Button Logging** -
-  `[Manager] BUTTON_CLICKED/MESSAGE_SENDING/ MESSAGE_RESPONSE:`
-- **getFilterState()** - Diagnostic method for filter state introspection
 - **Code Health 10.0** - QuickTabHandler.js fully refactored
 
 ### v1.6.3.11-v9 Patterns
 
-- **Identity Init Logging** - `[IDENTITY_INIT]` markers for SCRIPT_LOAD,
-  TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY
-- **Write Phase Logging** - `[WRITE_PHASE]` markers for FETCH_PHASE,
-  QUOTA_CHECK_PHASE, SERIALIZE_PHASE, WRITE_API_PHASE
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON` shows
-  pre/post tabs filtered
-- **Debounce Context Capture** - `capturedTabId` stored at schedule time, not
-  fire time
-- **Z-Index Recycling** - Threshold lowered from 100000 to 10000
-- **Container Validation** - `_validateContainerIsolation()` added to visibility
-  operations
-- **Identity Precondition** - Write queue awaits `waitForIdentityInit()` before
-  processing
-
-### v1.6.3.11-v8 Patterns
-
-- **Transaction Tracking Wired** - `setTransactionCallbacks()` connects tracking
-- **Null originTabId Rejection** - `handleCreate()` rejects with retryable error
-- **Hydration Boundary Logging** - `[HydrationBoundary]` markers added
+- **Identity Init Logging** - `[IDENTITY_INIT]` markers for lifecycle phases
+- **Write Phase Logging** - `[WRITE_PHASE]` markers for storage operations
+- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON`
+- **Container Validation** - `_validateContainerIsolation()` added
 
 ### Previous Version Patterns (Consolidated)
 
+- **v1.6.3.11-v8:** Transaction tracking, null originTabId rejection
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods, Code Health 8.0+
 - **v1.6.3.10-v10:** tabs.sendMessage, storage.onChanged, unified barrier
 - **v1.6.3.10:** Tab ID backoff, handler deferral, adoption lock timeout
-- **v5:** Operation sequence, port viability, state gating, error telemetry
-- **v4:** Shadow DOM traversal, event debouncing, operation acknowledgment
-- **v3:** LRU Map Guard, checkpoint system, identity gating
 
-### Key Timing Constants (v1.6.3.11-v8)
+### Key Timing Constants (v1.6.3.11-v12)
 
-| Constant                | Value | Purpose                          |
-| ----------------------- | ----- | -------------------------------- |
-| `MESSAGE_TIMEOUT_MS`    | 5000  | Message timeout                  |
-| `_MAX_EARLY_QUEUE_SIZE` | 100   | Max queued messages before ready |
-| `HYDRATION_TIMEOUT_MS`  | 3000  | Storage hydration timeout        |
-| `TAB_ID_BACKOFF_DELAYS` | Array | 200, 500, 1500, 5000ms           |
-| `STORAGE_TIMEOUT_MS`    | 2000  | Storage operation timeout        |
-| `LRU_MAP_MAX_SIZE`      | 500   | Maximum map entries              |
+| Constant                  | Value   | Purpose                           |
+| ------------------------- | ------- | --------------------------------- |
+| `MESSAGE_TIMEOUT_MS`      | 5000    | Message timeout                   |
+| `_MAX_EARLY_QUEUE_SIZE`   | 100     | Max queued messages before ready  |
+| `HYDRATION_TIMEOUT_MS`    | 3000    | Storage hydration timeout         |
+| `TAB_ID_BACKOFF_DELAYS`   | Array   | 200, 500, 1500, 5000ms            |
+| `STORAGE_TIMEOUT_MS`      | 2000    | Storage operation timeout         |
+| `LRU_MAP_MAX_SIZE`        | 500     | Maximum map entries               |
+| `MANAGER_POLL_INTERVAL`   | 3000-5s | Sidebar polling interval          |
+| `STALENESS_THRESHOLD_MS`  | 5000    | State staleness tracking          |
 
 ---
 
@@ -189,8 +182,8 @@ references.
 `logStorageWrite()`, `canCurrentTabModifyQuickTab()`,
 `validateOwnershipForWrite()`, `_computeStateChecksum()`, `getFilterState()`
 
-**v1.6.3.11-v11 New Exports:** `getFilterState()` - Returns current filter state
-for diagnostics
+**v1.6.3.11-v12 Note:** Cross-session persistence removed - Quick Tabs are
+session-only
 
 **Earlier Exports:** `normalizeOriginTabId()`, `checkStorageQuota()`
 
@@ -198,23 +191,18 @@ for diagnostics
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.11-v11 (NEW):** `[IDENTITY_STATE] TRANSITION:` `[IDENTITY_ACQUIRED]`
+**v1.6.3.11-v12 (NEW):** `[VERSION_LOG_CLEANUP]` `[SCENARIO_LOG]`
+`[MANAGER_POLL]` `[STALENESS_CHECK]` `[REALTIME_SYNC]`
+
+**v1.6.3.11-v11:** `[IDENTITY_STATE] TRANSITION:` `[IDENTITY_ACQUIRED]`
 `[MSG_ROUTER]` `[MSG_HANDLER]` `[HYDRATION]` `[Manager] BUTTON_CLICKED:`
-`[Manager] MESSAGE_SENDING:` `[Manager] MESSAGE_RESPONSE:`
 
 **v1.6.3.11-v9:** `[IDENTITY_INIT]` `[WRITE_PHASE]` `[STATE_VALIDATION]`
-`[CONTAINER_VALIDATION]` `TAB_CONTEXT_CHANGED`
+`[CONTAINER_VALIDATION]`
 
-**v1.6.3.11-v8:** `[HydrationBoundary]` `[CREATE_REJECTED]`
-`[IDENTITY_NOT_READY]`
-
-**v1.6.3.11-v7:** `[QuickTabHandler]` `[CREATE_ORPHAN_WARNING]`
-
-**Previous:** `[EARLY_LISTENER_REGISTRATION]` `[MESSAGE_ROUTER_READY]`
-`[COMMAND_RECEIVED]` `[COMMAND_EXECUTED]` `[STORAGE_PROPAGATE]`
+**Previous:** `[HydrationBoundary]` `[QuickTabHandler]` `[STORAGE_PROPAGATE]`
 `[ERROR_TELEMETRY]` `[MSG_COMMAND]` `[HOVER_EVENT]` `[SHADOW_DOM_SEARCH]`
 `[INIT]` `[ADOPTION]` `[HEARTBEAT]` `[LRU_GUARD]` `[STORAGE_LATENCY]`
-`[HYDRATION_BARRIER]`
 
 ---
 
@@ -226,7 +214,8 @@ Authority, Shadow DOM traversal, operation acknowledgment, state readiness
 gating, error telemetry, originTabId resolution, tab ID pattern extraction,
 transaction tracking, null originTabId rejection, identity system gating,
 debounce context capture, container isolation, z-index recycling, container
-identity acquisition, message routing diagnostics.
+identity acquisition, message routing diagnostics, version-based log cleanup,
+scenario-aware logging, sidebar polling sync, real-time manager updates.
 
 ---
 
@@ -306,18 +295,20 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Storage
 
-**Permanent State Key:** `quick_tabs_state_v2` (storage.local)  
-**Session State Key:** `session_quick_tabs` (storage.session)  
+**Session State Key:** `quick_tabs_state_v2` (storage.session - session-only)  
 **Format:** `{ allQuickTabs: [...], originTabId, originContainerId, correlationId, timestamp, version: 2 }`
+
+**Note:** Cross-session persistence removed in v1.6.3.11-v12 - Quick Tabs cleared
+on browser close.
 
 ### Messages
 
-**MESSAGE_TYPES:** `QT_POSITION_CHANGED`, `QT_SIZE_CHANGED`, `QT_MINIMIZED`,
-`QT_RESTORED`, `QT_CLOSED`, `MANAGER_CLOSE_ALL`, `MANAGER_CLOSE_MINIMIZED`,
-`QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
+**MESSAGE_TYPES (v1.6.3.11-v12):** `QUICKTAB_MOVED`, `QUICKTAB_RESIZED`,
+`QUICKTAB_MINIMIZED`, `QUICKTAB_REMOVED`, `MANAGER_CLOSE_ALL`,
+`MANAGER_CLOSE_BY_ID`, `QT_STATE_SYNC`, `REQUEST_FULL_STATE_SYNC`
 
 **Patterns:** LOCAL (no broadcast), GLOBAL (broadcast to all), MANAGER
-(manager-initiated)
+(manager-initiated), REALTIME (sent to Manager)
 
 ---
 

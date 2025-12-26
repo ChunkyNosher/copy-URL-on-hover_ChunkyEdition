@@ -2332,6 +2332,7 @@ export class UICoordinator {
   /**
    * Extract safe visibility values from QuickTab
    * v1.6.3.4-v3 - Helper to reduce complexity
+   * v1.6.3.11-v12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute feature removed)
    * @private
    * @param {QuickTab} quickTab - QuickTab domain entity
    * @returns {Object} Safe visibility values
@@ -2339,9 +2340,7 @@ export class UICoordinator {
   _getSafeVisibility(quickTab) {
     const vis = quickTab.visibility || {};
     return {
-      minimized: vis.minimized ?? false,
-      soloedOnTabs: vis.soloedOnTabs ?? [],
-      mutedOnTabs: vis.mutedOnTabs ?? []
+      minimized: vis.minimized ?? false
     };
   }
 
@@ -2386,6 +2385,7 @@ export class UICoordinator {
     });
 
     // Create QuickTabWindow using imported factory function from window.js
+    // v1.6.3.11-v12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute feature removed)
     return createQuickTabWindow({
       id: quickTab.id,
       url: quickTab.url,
@@ -2397,10 +2397,8 @@ export class UICoordinator {
       cookieStoreId: quickTab.container,
       minimized: visibility.minimized,
       zIndex: zIndex,
-      soloedOnTabs: visibility.soloedOnTabs,
-      mutedOnTabs: visibility.mutedOnTabs,
       showDebugId: this.showDebugIdSetting, // v1.6.3.2 - Pass debug ID display setting
-      currentTabId: this.currentTabId, // v1.6.3.5-v10 - Pass for Solo/Mute
+      currentTabId: this.currentTabId,
       // v1.6.3.5-v10 - FIX Issue #1-2: Include lifecycle callbacks
       ...callbackOptions
     });

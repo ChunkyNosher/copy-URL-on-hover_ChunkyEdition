@@ -2,6 +2,11 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
+ *   - Quick Tabs are now session-only (cleared on browser restart)
+ *   - All Quick Tab state operations use storage.session
+ *   - Collapse state still uses storage.local (UI preference)
+ *
  * v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
  *   - Implemented surgical DOM update for adoption events
  *   - Only adopted Quick Tab animates, other Quick Tabs untouched
@@ -213,6 +218,10 @@ const MESSAGE_DEDUP_TTL_MS = 2000; // Dedup window: don't resend same message wi
 
 // v1.6.3.5-v7 - FIX Issue #7: Track when Manager's internal state was last updated (from any source)
 let lastLocalUpdateTime = 0;
+
+// v1.6.3.11-v12 - FIX Issue #6: Track last event received for staleness detection
+let lastEventReceivedTime = 0;
+const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
 
 // Browser tab info cache
 const browserTabInfoCache = new Map();
@@ -1755,7 +1764,12 @@ async function _performSurgicalAdoptionUpdate(adoptedQuickTabId, oldOriginTabId,
  * @returns {Promise<{success: boolean, adoptedTab?: Object}>}
  */
 async function _loadFreshAdoptionState(adoptedQuickTabId) {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    console.warn('[Manager] SURGICAL_UPDATE: storage.session unavailable');
+    return { success: false };
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   const state = result?.[STATE_KEY];
 
   if (!state?.tabs) {
@@ -2002,7 +2016,7 @@ function _createAndInsertQuickTabElement(tabData, targetContent, targetOriginTab
   }
 
   // Update group count
-  _incrementGroupCount(targetOriginTabId);
+  _adjustGroupCount(targetOriginTabId, 1);
 
   // Remove animation class after animation completes
   setTimeout(() => {
@@ -2029,7 +2043,7 @@ function _removeQuickTabFromDOM(element, sourceGroupKey) {
   element.remove();
 
   // Update source group count
-  _decrementGroupCount(sourceGroupKey);
+  _adjustGroupCount(sourceGroupKey, -1);
 
   // Clean up empty source group
   _cleanupEmptySourceGroup(parent, sourceGroupKey);
@@ -2038,22 +2052,24 @@ function _removeQuickTabFromDOM(element, sourceGroupKey) {
 /**
  * Update group counts after moving a Quick Tab
  * v1.6.3.10-v5 - FIX Bug #3: Updates count badges without re-render
+ * v1.6.4.19 - Refactored: Use unified _adjustGroupCount
  * @private
  * @param {number|string|null} oldGroupKey - Previous group key
  * @param {number} newGroupKey - New group key
  */
 function _updateGroupCountAfterMove(oldGroupKey, newGroupKey) {
-  _decrementGroupCount(oldGroupKey);
-  _incrementGroupCount(newGroupKey);
+  _adjustGroupCount(oldGroupKey, -1);
+  _adjustGroupCount(newGroupKey, 1);
 }
 
 /**
- * Decrement a group's count badge
- * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
+ * Adjust a group's count badge by delta
+ * v1.6.4.19 - Refactored: Combined _incrementGroupCount and _decrementGroupCount
  * @private
  * @param {number|string|null} groupKey - Group key
+ * @param {number} delta - Amount to adjust by (positive or negative)
  */
-function _decrementGroupCount(groupKey) {
+function _adjustGroupCount(groupKey, delta) {
   if (groupKey === null || groupKey === undefined) return;
 
   const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
@@ -2063,36 +2079,14 @@ function _decrementGroupCount(groupKey) {
   if (!countBadge) return;
 
   const currentCount = parseInt(countBadge.textContent, 10) || 0;
-  const newCount = Math.max(0, currentCount - 1);
+  const newCount = Math.max(0, currentCount + delta);
   countBadge.textContent = String(newCount);
   countBadge.dataset.count = String(newCount);
 
-  // Add visual feedback
-  countBadge.classList.add('count-decreased');
-  setTimeout(() => countBadge.classList.remove('count-decreased'), 300);
-}
-
-/**
- * Increment a group's count badge
- * v1.6.3.10-v5 - FIX Bug #3: Refactored with early returns for nesting depth compliance
- * @private
- * @param {number} groupKey - Group key
- */
-function _incrementGroupCount(groupKey) {
-  const group = containersList.querySelector(`.tab-group[data-origin-tab-id="${groupKey}"]`);
-  if (!group) return;
-
-  const countBadge = group.querySelector('.tab-group-count');
-  if (!countBadge) return;
-
-  const currentCount = parseInt(countBadge.textContent, 10) || 0;
-  const newCount = currentCount + 1;
-  countBadge.textContent = String(newCount);
-  countBadge.dataset.count = String(newCount);
-
-  // Add visual feedback
-  countBadge.classList.add('count-increased');
-  setTimeout(() => countBadge.classList.remove('count-increased'), 300);
+  // Add visual feedback based on direction
+  const feedbackClass = delta > 0 ? 'count-increased' : 'count-decreased';
+  countBadge.classList.add(feedbackClass);
+  setTimeout(() => countBadge.classList.remove(feedbackClass), 300);
 }
 
 /**
@@ -2401,44 +2395,163 @@ async function saveCollapseState(collapseState) {
   }
 }
 
+/**
+ * Dispatch incoming runtime message to appropriate handler
+ * v1.6.3.11-v12 - FIX Issue #5: Refactored from inline listener to reduce complexity
+ * @param {Object} message - Incoming message
+ * @param {Function} sendResponse - Response callback
+ * @returns {boolean} True if message was handled, false otherwise
+ */
+function _dispatchRuntimeMessage(message, sendResponse) {
+  const handlers = {
+    'QUICK_TAB_STATE_UPDATED': () => _handleStateUpdatedMessage(message, sendResponse),
+    'QUICK_TAB_DELETED': () => _handleDeletedMessage(message, sendResponse),
+    'QUICKTAB_MOVED': () => _handleMovedMessage(message, sendResponse),
+    'QUICKTAB_RESIZED': () => _handleResizedMessage(message, sendResponse),
+    'QUICKTAB_MINIMIZED': () => _handleMinimizedMessage(message, sendResponse),
+    'QUICKTAB_REMOVED': () => _handleRemovedMessage(message, sendResponse)
+  };
+
+  const handler = handlers[message.type];
+  if (handler) {
+    return handler();
+  }
+  return false;
+}
+
+/**
+ * Handle QUICK_TAB_STATE_UPDATED message
+ * @private
+ */
+function _handleStateUpdatedMessage(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
+    quickTabId: message.quickTabId,
+    changes: message.changes,
+    source: message.originalSource
+  });
+
+  if (message.changes?.deleted === true || message.originalSource === 'destroy') {
+    handleStateDeletedMessage(message.quickTabId);
+  } else if (message.quickTabId && message.changes) {
+    handleStateUpdateMessage(message.quickTabId, message.changes);
+  }
+
+  // v1.6.3.11-v12 - FIX: Route through scheduleRender for consistency
+  scheduleRender('QUICK_TAB_STATE_UPDATED');
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICK_TAB_DELETED message
+ * @private
+ */
+function _handleDeletedMessage(message, sendResponse) {
+  console.log('[Manager] Received QUICK_TAB_DELETED:', {
+    quickTabId: message.quickTabId,
+    source: message.source
+  });
+
+  handleStateDeletedMessage(message.quickTabId);
+  // v1.6.3.11-v12 - FIX: Route through scheduleRender for consistency
+  scheduleRender('QUICK_TAB_DELETED');
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Generic message dispatcher for Quick Tab state changes
+ * v1.6.4.19 - Refactored: Extracted common pattern from _handleMovedMessage, _handleResizedMessage, _handleMinimizedMessage
+ * @private
+ * @param {Object} params - Dispatch parameters
+ * @param {string} params.emoji - Log emoji
+ * @param {string} params.logLabel - Log label (e.g., 'QUICKTAB_MOVED')
+ * @param {Object} params.logFields - Fields to log
+ * @param {Function} params.handler - Handler function to call
+ * @param {Object} params.message - Original message
+ * @param {Function} params.sendResponse - Response callback
+ * @returns {boolean} True to indicate async response
+ */
+function _dispatchQuickTabMessage({ emoji, logLabel, logFields, handler, message, sendResponse }) {
+  console.log(`[Manager] ${emoji} Received ${logLabel}:`, logFields);
+  handler(message);
+  sendResponse({ received: true });
+  return true;
+}
+
+/**
+ * Handle QUICKTAB_MOVED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
+ * @private
+ */
+function _handleMovedMessage(message, sendResponse) {
+  return _dispatchQuickTabMessage({
+    emoji: '📍',
+    logLabel: 'QUICKTAB_MOVED',
+    logFields: { quickTabId: message.quickTabId, left: message.left, top: message.top, originTabId: message.originTabId },
+    handler: handleQuickTabMovedMessage,
+    message,
+    sendResponse
+  });
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
+ * @private
+ */
+function _handleResizedMessage(message, sendResponse) {
+  return _dispatchQuickTabMessage({
+    emoji: '📐',
+    logLabel: 'QUICKTAB_RESIZED',
+    logFields: { quickTabId: message.quickTabId, width: message.width, height: message.height, originTabId: message.originTabId },
+    handler: handleQuickTabResizedMessage,
+    message,
+    sendResponse
+  });
+}
+
+/**
+ * Handle QUICKTAB_MINIMIZED message
+ * v1.6.4.19 - Refactored: Use generic dispatcher
+ * @private
+ */
+function _handleMinimizedMessage(message, sendResponse) {
+  return _dispatchQuickTabMessage({
+    emoji: '🔽',
+    logLabel: 'QUICKTAB_MINIMIZED',
+    logFields: { quickTabId: message.quickTabId, minimized: message.minimized, originTabId: message.originTabId },
+    handler: handleQuickTabMinimizedMessage,
+    message,
+    sendResponse
+  });
+}
+
+/**
+ * Handle QUICKTAB_REMOVED message
+ * @private
+ */
+function _handleRemovedMessage(message, sendResponse) {
+  // v1.6.3.11-v12 - FIX Issue #6: Track event for staleness detection
+  _markEventReceived();
+
+  console.log('[Manager] ❌ Received QUICKTAB_REMOVED:', {
+    quickTabId: message.quickTabId,
+    originTabId: message.originTabId,
+    source: message.source
+  });
+
+  handleStateDeletedMessage(message.quickTabId);
+  scheduleRender('QUICKTAB_REMOVED');
+  sendResponse({ received: true });
+  return true;
+}
+
 // v1.6.3.5-v3 - FIX Architecture Phase 1: Listen for state updates from background
 // v1.6.3.5-v11 - FIX Issue #6: Handle QUICK_TAB_DELETED message and deletion via QUICK_TAB_STATE_UPDATED
+// v1.6.3.11-v12 - FIX Issue #5: Handle QUICKTAB_MOVED, QUICKTAB_RESIZED, QUICKTAB_MINIMIZED, QUICKTAB_REMOVED
 browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (message.type === 'QUICK_TAB_STATE_UPDATED') {
-    console.log('[Manager] Received QUICK_TAB_STATE_UPDATED:', {
-      quickTabId: message.quickTabId,
-      changes: message.changes,
-      source: message.originalSource
-    });
-
-    // v1.6.3.5-v11 - FIX Issue #6: Check if this is a deletion notification
-    if (message.changes?.deleted === true || message.originalSource === 'destroy') {
-      handleStateDeletedMessage(message.quickTabId);
-    } else if (message.quickTabId && message.changes) {
-      // Update local state cache
-      handleStateUpdateMessage(message.quickTabId, message.changes);
-    }
-
-    // Re-render UI
-    renderUI();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  // v1.6.3.5-v11 - FIX Issue #6: Handle explicit QUICK_TAB_DELETED message
-  if (message.type === 'QUICK_TAB_DELETED') {
-    console.log('[Manager] Received QUICK_TAB_DELETED:', {
-      quickTabId: message.quickTabId,
-      source: message.source
-    });
-
-    handleStateDeletedMessage(message.quickTabId);
-    renderUI();
-    sendResponse({ received: true });
-    return true;
-  }
-
-  return false;
+  return _dispatchRuntimeMessage(message, sendResponse);
 });
 
 /**
@@ -2476,6 +2589,103 @@ function handleStateUpdateMessage(quickTabId, changes) {
 
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive state updates
   lastLocalUpdateTime = Date.now();
+}
+
+/**
+ * Generic handler for Quick Tab property updates from content script
+ * v1.6.4.19 - Refactored: Extracted common pattern from handleQuickTab*Message functions
+ * @private
+ * @param {Object} params - Handler parameters
+ * @param {string} params.quickTabId - Quick Tab ID
+ * @param {Object} params.updates - Properties to update on the tab
+ * @param {number|null} params.originTabId - Origin tab ID (optional)
+ * @param {string} params.logLabel - Log label for this handler
+ * @param {string} params.renderReason - Reason string for scheduleRender
+ * @param {Object} params.logFields - Additional fields to log
+ */
+function _handleQuickTabPropertyUpdate({ quickTabId, updates, originTabId, logLabel, renderReason, logFields }) {
+  // Track event for staleness detection
+  _markEventReceived();
+
+  console.log(`[Manager] [${logLabel}] Processing update:`, logFields);
+
+  if (!quickTabsState.tabs) {
+    quickTabsState = { tabs: [] };
+  }
+
+  const existingIndex = quickTabsState.tabs.findIndex(t => t.id === quickTabId);
+  if (existingIndex >= 0) {
+    Object.assign(quickTabsState.tabs[existingIndex], updates);
+    console.log(`[Manager] [${logLabel}] Updated for:`, quickTabId);
+  } else {
+    console.warn(`[Manager] [${logLabel}] Tab not found in state:`, quickTabId);
+  }
+
+  // Update host info if originTabId provided
+  if (originTabId != null) {
+    _updateQuickTabHostInfo(quickTabId, { originTabId, ...updates });
+  }
+
+  // Update timestamp
+  quickTabsState.timestamp = Date.now();
+  lastLocalUpdateTime = Date.now();
+
+  // Schedule render for UI update
+  scheduleRender(renderReason);
+}
+
+/**
+ * Handle QUICKTAB_MOVED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
+ * @param {Object} message - QUICKTAB_MOVED message
+ */
+function handleQuickTabMovedMessage(message) {
+  const { quickTabId, left, top, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { left, top },
+    originTabId,
+    logLabel: 'MOVE_HANDLER',
+    renderReason: 'QUICKTAB_MOVED',
+    logFields: { quickTabId, left, top, originTabId }
+  });
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
+ * @param {Object} message - QUICKTAB_RESIZED message
+ */
+function handleQuickTabResizedMessage(message) {
+  const { quickTabId, width, height, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { width, height },
+    originTabId,
+    logLabel: 'RESIZE_HANDLER',
+    renderReason: 'QUICKTAB_RESIZED',
+    logFields: { quickTabId, width, height, originTabId }
+  });
+}
+
+/**
+ * Handle QUICKTAB_MINIMIZED message from content script
+ * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
+ * v1.6.4.19 - Refactored: Use generic property update handler
+ * @param {Object} message - QUICKTAB_MINIMIZED message
+ */
+function handleQuickTabMinimizedMessage(message) {
+  const { quickTabId, minimized, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: { minimized },
+    originTabId,
+    logLabel: 'MINIMIZE_HANDLER',
+    renderReason: 'QUICKTAB_MINIMIZED',
+    logFields: { quickTabId, minimized, originTabId }
+  });
 }
 
 /**
@@ -2883,15 +3093,75 @@ document.addEventListener('DOMContentLoaded', async () => {
   _startHostInfoMaintenance();
 
   // Auto-refresh every 2 seconds
+  // v1.6.3.11-v12 - FIX Issue #6: Enhanced with staleness detection
   setInterval(async () => {
     await loadQuickTabsState();
     renderUI();
+
+    // v1.6.3.11-v12 - FIX Issue #6: Check for staleness
+    _checkStaleness();
   }, 2000);
 
+  // v1.6.3.11-v12 - FIX Issue #6: Request immediate sync on Manager open
+  _requestImmediateSync();
+
   console.log(
-    '[Manager] v1.6.3.10-v7 Port connection + Message infrastructure + Host info maintenance initialized'
+    '[Manager] v1.6.3.11-v12 Port connection + Message infrastructure + Host info maintenance + Staleness tracking initialized'
   );
 });
+
+/**
+ * Check for staleness and log warning if no events received for threshold period
+ * v1.6.3.11-v12 - FIX Issue #6: Staleness tracking for fallback sync
+ * @private
+ */
+function _checkStaleness() {
+  if (lastEventReceivedTime === 0) {
+    // No events received yet - this is normal on startup
+    return;
+  }
+
+  const timeSinceLastEvent = Date.now() - lastEventReceivedTime;
+  if (timeSinceLastEvent > STALENESS_THRESHOLD_MS) {
+    console.warn('[Manager] ⚠️ STALENESS_WARNING: No events received for', {
+      timeSinceLastEventMs: timeSinceLastEvent,
+      thresholdMs: STALENESS_THRESHOLD_MS,
+      lastEventReceivedTime,
+      lastLocalUpdateTime,
+      recommendation: 'Consider checking content script connectivity'
+    });
+  }
+}
+
+/**
+ * Request immediate state sync from background when Manager opens
+ * v1.6.3.11-v12 - FIX Issue #6: Ensure Manager has current state on open
+ * @private
+ */
+async function _requestImmediateSync() {
+  try {
+    console.log('[Manager] [SYNC] Requesting immediate state sync on open');
+
+    await browser.runtime.sendMessage({
+      type: 'REQUEST_FULL_STATE_SYNC',
+      source: 'Manager',
+      timestamp: Date.now()
+    });
+
+    console.log('[Manager] [SYNC] Sync request sent');
+  } catch (err) {
+    console.debug('[Manager] [SYNC] Could not request sync:', err.message);
+  }
+}
+
+/**
+ * Update lastEventReceivedTime when any event is processed
+ * v1.6.3.11-v12 - FIX Issue #6: Track last event for staleness detection
+ * @private
+ */
+function _markEventReceived() {
+  lastEventReceivedTime = Date.now();
+}
 
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
@@ -3217,12 +3487,55 @@ function _updateInMemoryCache(tabs) {
 }
 
 /**
+ * Process and apply valid storage state
+ * v1.6.4.19 - Extracted from loadQuickTabsState to reduce complexity
+ * @private
+ * @param {Object} state - Valid storage state
+ * @param {number} loadStartTime - Load operation start timestamp
+ * @returns {boolean} True if state was applied, false if skipped
+ */
+function _processStorageState(state, loadStartTime) {
+  // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
+  console.log('[Manager] Storage read result:', {
+    tabCount: state.tabs?.length ?? 0,
+    saveId: state.saveId,
+    timestamp: state.timestamp,
+    source: 'storage.session',
+    durationMs: Date.now() - loadStartTime
+  });
+
+  // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
+  const newHash = computeStateHash(state);
+  if (newHash === lastRenderedStateHash) {
+    console.log('[Manager] Storage state unchanged (hash match), skipping update');
+    return false;
+  }
+
+  // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
+  if (_detectStorageStorm(state)) return false;
+
+  // v1.6.3.5-v4 - Update cache with new valid state
+  _updateInMemoryCache(state.tabs || []);
+
+  quickTabsState = state;
+  filterInvalidTabs(quickTabsState);
+
+  // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
+  lastLocalUpdateTime = Date.now();
+
+  console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
+  return true;
+}
+
+/**
  * Load Quick Tabs state from browser.storage.local
  * v1.6.3 - FIX: Changed from storage.sync to storage.local (storage location since v1.6.0.12)
  * v1.6.3.4-v6 - FIX Issue #1: Debounce reads to avoid mid-transaction reads
  * v1.6.3.5-v4 - FIX Diagnostic Issue #2: Use in-memory cache to protect against storage storms
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * Refactored: Extracted helpers to reduce complexity and nesting depth
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.4.19 - Refactored: Extracted _processStorageState to reduce CC
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
@@ -3233,47 +3546,25 @@ async function loadQuickTabsState() {
     // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read start
     console.log('[Manager] Reading Quick Tab state from storage...');
 
-    const result = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[Manager] storage.session unavailable');
+      _handleEmptyStorageState();
+      return;
+    }
+    const result = await browser.storage.session.get(STATE_KEY);
     const state = result?.[STATE_KEY];
 
     if (!state) {
       _handleEmptyStorageState();
       console.log('[Manager] Storage read complete: empty state', {
-        source: 'storage.local',
+        source: 'storage.session',
         durationMs: Date.now() - loadStartTime
       });
       return;
     }
 
-    // v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read result
-    console.log('[Manager] Storage read result:', {
-      tabCount: state.tabs?.length ?? 0,
-      saveId: state.saveId,
-      timestamp: state.timestamp,
-      source: 'storage.local',
-      durationMs: Date.now() - loadStartTime
-    });
-
-    // v1.6.3.4-v6 - FIX Issue #5: Check if state has actually changed
-    const newHash = computeStateHash(state);
-    if (newHash === lastRenderedStateHash) {
-      console.log('[Manager] Storage state unchanged (hash match), skipping update');
-      return;
-    }
-
-    // v1.6.3.5-v4 - FIX Diagnostic Issue #2: Protect against storage storms
-    if (_detectStorageStorm(state)) return;
-
-    // v1.6.3.5-v4 - Update cache with new valid state
-    _updateInMemoryCache(state.tabs || []);
-
-    quickTabsState = state;
-    filterInvalidTabs(quickTabsState);
-
-    // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
-    lastLocalUpdateTime = Date.now();
-
-    console.log('[Manager] Loaded Quick Tabs state:', quickTabsState);
+    _processStorageState(state, loadStartTime);
   } catch (err) {
     console.error('[Manager] Error loading Quick Tabs state:', err);
   }
@@ -3443,6 +3734,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
@@ -3451,7 +3743,11 @@ async function _checkAndReloadStaleState() {
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
   try {
-    const freshResult = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      return _buildStaleCheckResult(false, inMemoryHash, 0, debounceWaitTime);
+    }
+    const freshResult = await browser.storage.session.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
 
@@ -3472,11 +3768,17 @@ async function _checkAndReloadStaleState() {
 /**
  * Load fresh state from storage during debounce stale check
  * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _loadFreshStateFromStorage() {
   try {
-    const freshResult = await browser.storage.local.get(STATE_KEY);
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[Manager] storage.session unavailable');
+      return;
+    }
+    const freshResult = await browser.storage.session.get(STATE_KEY);
     const freshState = freshResult?.[STATE_KEY];
     if (freshState?.tabs) {
       quickTabsState = freshState;
@@ -4474,11 +4776,13 @@ function setupEventListeners() {
 
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
+  // v1.6.4.18 - FIX: Changed from 'local' to 'session' (Quick Tabs are now session-only)
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
   browser.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+    if (areaName !== 'session' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
 }
@@ -5204,6 +5508,7 @@ async function _processReconciliationResult(uniqueQuickTabs) {
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
  * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
  * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  *
  * ARCHITECTURE NOTE (v1.6.3.5-v6):
  * This function writes directly to storage as a RECOVERY operation.
@@ -5226,7 +5531,10 @@ async function _restoreStateFromContentScripts(quickTabs) {
     saveId: `${SAVEID_RECONCILED}-${Date.now()}`
   };
 
-  await browser.storage.local.set({ [STATE_KEY]: restoredState });
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session !== 'undefined') {
+    await browser.storage.session.set({ [STATE_KEY]: restoredState });
+  }
   console.log('[Manager] State restored from content scripts:', quickTabs.length, 'tabs');
 
   // Update local state and re-render
@@ -5318,10 +5626,15 @@ async function closeMinimizedTabs() {
 
 /**
  * Load state from storage
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _loadStorageState() {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    return null;
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   return result?.[STATE_KEY] ?? null;
 }
 
@@ -5365,13 +5678,17 @@ function _sendCloseMessageToAllTabs(browserTabs, quickTabId) {
 
 /**
  * Update storage after closing minimized tabs
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _updateStorageAfterClose(state) {
   const hasChanges = filterMinimizedFromState(state);
 
   if (hasChanges) {
-    await browser.storage.local.set({ [STATE_KEY]: state });
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session !== 'undefined') {
+      await browser.storage.session.set({ [STATE_KEY]: state });
+    }
     await _broadcastLegacyCloseMessage();
     console.log('Closed all minimized Quick Tabs');
   }
@@ -6534,10 +6851,15 @@ async function _verifyRestoreDOM(quickTabId) {
 
 /**
  * Get Quick Tab from storage by ID
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _getQuickTabFromStorage(quickTabId) {
-  const stateResult = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    return null;
+  }
+  const stateResult = await browser.storage.session.get(STATE_KEY);
   const state = stateResult?.[STATE_KEY];
   return state?.tabs?.find(t => t.id === quickTabId) || null;
 }
@@ -6845,10 +7167,16 @@ async function _performAdoption(quickTabId, targetTabId) {
 /**
  * Read storage state for adoption
  * v1.6.3.7 - FIX Issue #7: Helper for adoption with logging
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _readStorageForAdoption(quickTabId, targetTabId) {
-  const result = await browser.storage.local.get(STATE_KEY);
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    console.warn('[Manager] storage.session unavailable for adoption');
+    return { success: false };
+  }
+  const result = await browser.storage.session.get(STATE_KEY);
   const state = result?.[STATE_KEY];
 
   if (!state?.tabs?.length) {
@@ -6941,7 +7269,10 @@ async function _persistAdoption({
     saveId
   });
 
-  await browser.storage.local.set({ [STATE_KEY]: stateToWrite });
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session !== 'undefined') {
+    await browser.storage.session.set({ [STATE_KEY]: stateToWrite });
+  }
   const writeEndTime = Date.now();
 
   console.log('[Manager] ADOPTION_FLOW:', {
@@ -6965,6 +7296,7 @@ async function _persistAdoption({
 /**
  * Issue #9: Verify adoption was persisted by monitoring storage.onChanged
  * Logs time delta between write and confirmation, warns if no confirmation within 2 seconds
+ * v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
  * @private
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {string} expectedSaveId - SaveId to look for in storage change
@@ -6975,8 +7307,9 @@ function _verifyAdoptionInStorage(quickTabId, expectedSaveId, writeTimestamp) {
   const CONFIRMATION_TIMEOUT_MS = 2000;
 
   // Issue #9: Temporary listener for this specific saveId
+  // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
   const verificationListener = (changes, areaName) => {
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    if (areaName !== 'session' || !changes[STATE_KEY]) return;
 
     const newValue = changes[STATE_KEY].newValue;
     if (newValue?.saveId === expectedSaveId) {

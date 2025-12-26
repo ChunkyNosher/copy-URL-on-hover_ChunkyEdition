@@ -10,10 +10,10 @@
  * - UPDATE_QUICK_TAB_SIZE: Update size (throttled)
  * - UPDATE_QUICK_TAB_SIZE_FINAL: Final size update
  * - UPDATE_QUICK_TAB_PIN: Update pin state
- * - UPDATE_QUICK_TAB_SOLO: Update solo state
- * - UPDATE_QUICK_TAB_MUTE: Update mute state
  * - UPDATE_QUICK_TAB_MINIMIZE: Update minimize state
  * - GET_CURRENT_TAB_ID: Get current browser tab ID
+ *
+ * v1.6.3.11-v12 - Removed UPDATE_QUICK_TAB_SOLO and UPDATE_QUICK_TAB_MUTE (Solo/Mute feature removed)
  *
  * v1.6.3.10-v7 - FIX Issue #15: Storage write serialization
  *   - Add async write queue to prevent concurrent storage writes
@@ -575,26 +575,7 @@ export class QuickTabHandler {
         tab.pinnedToUrl = msg.pinnedToUrl;
       }
     },
-    solo: {
-      logName: 'Solo',
-      logProps: msg => ({
-        soloedOnTabs: msg.soloedOnTabs || [],
-        tabCount: (msg.soloedOnTabs || []).length
-      }),
-      updater: (tab, msg) => {
-        tab.soloedOnTabs = msg.soloedOnTabs || [];
-      }
-    },
-    mute: {
-      logName: 'Mute',
-      logProps: msg => ({
-        mutedOnTabs: msg.mutedOnTabs || [],
-        tabCount: (msg.mutedOnTabs || []).length
-      }),
-      updater: (tab, msg) => {
-        tab.mutedOnTabs = msg.mutedOnTabs || [];
-      }
-    },
+    // v1.6.3.11-v12 - Removed 'solo' and 'mute' handlers (Solo/Mute feature removed)
     minimize: {
       logName: 'Minimize',
       logProps: msg => ({ minimized: msg.minimized }),
@@ -653,23 +634,7 @@ export class QuickTabHandler {
     return this._handlePropertyUpdate(message, 'pin');
   }
 
-  /**
-   * Handle solo update
-   * v1.6.0.13 - Added logging
-   * v1.6.3.11-v10 - FIX Code Health: Refactored to use unified handler
-   */
-  handleSoloUpdate(message, _sender) {
-    return this._handlePropertyUpdate(message, 'solo');
-  }
-
-  /**
-   * Handle mute update
-   * v1.6.0.13 - Added logging
-   * v1.6.3.11-v10 - FIX Code Health: Refactored to use unified handler
-   */
-  handleMuteUpdate(message, _sender) {
-    return this._handlePropertyUpdate(message, 'mute');
-  }
+  // v1.6.3.11-v12 - Removed handleSoloUpdate and handleMuteUpdate methods (Solo/Mute feature removed)
 
   /**
    * Handle minimize update

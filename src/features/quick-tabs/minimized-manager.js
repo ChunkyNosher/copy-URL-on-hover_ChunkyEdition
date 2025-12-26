@@ -24,7 +24,10 @@
  *   - Defer expiration timeout if isRestoring=true when timeout fires
  *   - Cancel and reschedule timeout when restore retries occur
  *   - Add DEBUG level logging for snapshot lifecycle transitions
+ * v1.6.4 - Scenario-aware logging hooks for minimized state transitions
  */
+
+import { quickTabsMinimizedLogger } from '../../utils/structured-logger.js';
 
 // Default values for position/size when not provided
 const DEFAULT_POSITION_LEFT = 100;
@@ -493,12 +496,19 @@ export class MinimizedManager {
    * v1.6.3.4-v4 - FIX Issue #4: Store position/size as immutable snapshot to prevent corruption
    * v1.6.3.6-v8 - FIX Issue #3: Extract originTabId from ID pattern when null
    * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
+   * v1.6.4 - Scenario-aware logging for minimized state transitions
    * @param {string} id - Quick Tab ID
    * @param {Object} tabWindow - QuickTabWindow instance
+   * @param {string} [source] - Who initiated the minimize (toolbar, manager, background)
    */
-  add(id, tabWindow) {
+  add(id, tabWindow, source = 'unknown') {
     // Guard against null/undefined tabWindow
     if (!tabWindow) {
+      quickTabsMinimizedLogger.warn('ADD_REJECTED', {
+        quickTabId: id,
+        source,
+        reason: 'tabWindow is null/undefined'
+      });
       console.warn(
         '[MinimizedManager] Cannot add minimized tab - tabWindow is null/undefined:',
         id
@@ -516,6 +526,19 @@ export class MinimizedManager {
     // Build snapshot object
     const snapshot = this._buildSnapshot(tabWindow, resolvedOriginTabId, resolvedOriginContainerId);
     this.minimizedTabs.set(id, snapshot);
+
+    // v1.6.4 - Scenario-aware logging for minimized state change
+    quickTabsMinimizedLogger.info('MINIMIZED_STATE_CHANGE', {
+      event: 'ADD',
+      quickTabId: id,
+      source,
+      containerId: resolvedOriginContainerId,
+      tabId: resolvedOriginTabId,
+      previousState: { minimized: false },
+      newState: { minimized: true },
+      snapshotPosition: snapshot.savedPosition,
+      snapshotSize: snapshot.savedSize
+    });
 
     // Log snapshot capture
     this._logSnapshotCapture(id, snapshot, resolvedOriginTabId !== tabWindow.originTabId);
@@ -599,9 +622,27 @@ export class MinimizedManager {
 
   /**
    * Remove a minimized Quick Tab
+   * v1.6.4 - Scenario-aware logging for minimized state transitions
+   * @param {string} id - Quick Tab ID
+   * @param {string} [source] - Who initiated the remove (toolbar, manager, background)
    */
-  remove(id) {
+  remove(id, source = 'unknown') {
+    const snapshot = this.minimizedTabs.get(id);
+    const containerId = snapshot?.savedOriginContainerId ?? null;
+    const tabId = snapshot?.savedOriginTabId ?? null;
+
     this.minimizedTabs.delete(id);
+
+    // v1.6.4 - Scenario-aware logging for remove operation
+    quickTabsMinimizedLogger.info('MINIMIZED_STATE_CHANGE', {
+      event: 'REMOVE',
+      quickTabId: id,
+      source,
+      containerId,
+      tabId,
+      hadSnapshot: !!snapshot
+    });
+
     console.log('[MinimizedManager] Removed minimized tab:', id);
   }
 
@@ -626,10 +667,12 @@ export class MinimizedManager {
    *   Clear snapshot atomically BEFORE applying it to prevent race conditions
    *   Refactored to extract helpers to reduce complexity
    * v1.6.4.15 - FIX Issue #17: Log restore attempts with timing for diagnostics
+   * v1.6.4 - Scenario-aware logging for minimized state transitions
    * @param {string} id - Quick Tab ID
+   * @param {string} [source] - Who initiated the restore (toolbar, manager, background)
    * @returns {Object|boolean} Snapshot object with position/size, or false if not found
    */
-  restore(id) {
+  restore(id, source = 'unknown') {
     const restoreStartTime = Date.now();
     const restoreAttemptId = `restore-${id}-${restoreStartTime}`;
 
@@ -641,7 +684,7 @@ export class MinimizedManager {
     });
 
     // v1.6.3.5 - FIX Issue #3: Check restore-in-progress lock
-    const duplicateResult = this._handleDuplicateRestore(id);
+    const duplicateResult = this._handleDuplicateRestore(id, source);
     if (duplicateResult !== null) {
       console.log('[RESTORE] Attempt completed (duplicate):', {
         quickTabId: id,
@@ -655,6 +698,13 @@ export class MinimizedManager {
     // Find snapshot from available sources
     const { snapshot, snapshotSource } = this._findSnapshot(id);
     if (!snapshot) {
+      // v1.6.4 - Scenario-aware logging for failed restore
+      quickTabsMinimizedLogger.warn('MINIMIZED_STATE_CHANGE', {
+        event: 'RESTORE_FAILED',
+        quickTabId: id,
+        source,
+        reason: 'Snapshot not found'
+      });
       console.log('[RESTORE] Attempt completed (not found):', {
         quickTabId: id,
         attemptId: restoreAttemptId,
@@ -673,6 +723,20 @@ export class MinimizedManager {
     // Apply snapshot and verify
     const result = this._applyAndVerifySnapshot(id, snapshot, snapshotSource);
 
+    // v1.6.4 - Scenario-aware logging for successful restore
+    quickTabsMinimizedLogger.info('MINIMIZED_STATE_CHANGE', {
+      event: 'RESTORE',
+      quickTabId: id,
+      source,
+      containerId: snapshot.savedOriginContainerId,
+      tabId: snapshot.savedOriginTabId,
+      previousState: { minimized: true },
+      newState: { minimized: false },
+      restoredPosition: result.position,
+      restoredSize: result.size,
+      durationMs: Date.now() - restoreStartTime
+    });
+
     // v1.6.4.15 - FIX Issue #17: Log restore completion with timing
     console.log('[RESTORE] Attempt completed (success):', {
       quickTabId: id,
@@ -689,10 +753,19 @@ export class MinimizedManager {
    * Handle duplicate restore attempts
    * v1.6.3.5 - Extracted to reduce restore() complexity
    * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId in duplicate restore result
+   * v1.6.4 - Scenario-aware logging for duplicate restore attempts
    * @private
    */
-  _handleDuplicateRestore(id) {
+  _handleDuplicateRestore(id, source = 'unknown') {
     if (!this._restoreInProgress.has(id)) return null;
+
+    // v1.6.4 - Log duplicate restore attempt
+    quickTabsMinimizedLogger.debug('MINIMIZED_STATE_CHANGE', {
+      event: 'RESTORE_DUPLICATE',
+      quickTabId: id,
+      source,
+      reason: 'Restore already in progress'
+    });
 
     console.log('[MinimizedManager] Restore already in progress, rejecting duplicate:', id);
     const existingSnapshot = this.minimizedTabs.get(id) || this.pendingClearSnapshots.get(id);

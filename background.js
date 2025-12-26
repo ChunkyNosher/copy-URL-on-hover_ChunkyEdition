@@ -6,6 +6,7 @@
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
+// v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -31,6 +32,105 @@ const EXTENSION_ID = runtimeAPI?.id || null;
 // Log buffer for background script
 const BACKGROUND_LOG_BUFFER = [];
 const MAX_BACKGROUND_BUFFER_SIZE = 2000;
+
+// ==================== VERSION-BASED LOG CLEANUP ====================
+// v1.6.4 - Clear accumulated logs on version upgrade to prevent confusion
+// and reduce storage waste from old logs across version updates
+const EXTENSION_VERSION_KEY = 'extensionVersion';
+
+/**
+ * Get the storage.local API (browser or chrome)
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ * @returns {Object|null} storage.local API or null
+ */
+function _getStorageLocalAPI() {
+  if (typeof browser !== 'undefined' && browser.storage?.local) {
+    return browser.storage.local;
+  }
+  if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    return chrome.storage.local;
+  }
+  return null;
+}
+
+/**
+ * Handle first install - record version without clearing logs
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ */
+async function _handleFirstInstall(storageAPI, currentVersion) {
+  await storageAPI.set({ [EXTENSION_VERSION_KEY]: currentVersion });
+  console.log('[Background] VERSION_INIT: First install detected', {
+    version: currentVersion,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Handle version upgrade - clear logs and update version
+ * v1.6.4 - Extracted for complexity reduction
+ * @private
+ */
+async function _handleVersionUpgrade(storageAPI, storedVersion, currentVersion) {
+  const previousLogCount = BACKGROUND_LOG_BUFFER.length;
+  BACKGROUND_LOG_BUFFER.length = 0; // Clear the array
+
+  await storageAPI.set({ [EXTENSION_VERSION_KEY]: currentVersion });
+
+  console.log('[Background] VERSION_UPGRADE: Logs cleared on upgrade', {
+    previousVersion: storedVersion,
+    currentVersion: currentVersion,
+    clearedLogCount: previousLogCount,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Check if extension version changed and clear logs if needed
+ * v1.6.4 - Version-based log history cleanup
+ * This runs early in initialization to clear logs before new logging begins
+ */
+async function checkVersionAndClearLogs() {
+  try {
+    const manifest = runtimeAPI?.getManifest?.();
+    if (!manifest?.version) {
+      console.warn('[Background] Version check skipped: manifest.version unavailable');
+      return;
+    }
+
+    const currentVersion = manifest.version;
+    const storageAPI = _getStorageLocalAPI();
+
+    if (!storageAPI) {
+      console.warn('[Background] Version check skipped: storage.local unavailable');
+      return;
+    }
+
+    const result = await storageAPI.get(EXTENSION_VERSION_KEY);
+    const storedVersion = result?.[EXTENSION_VERSION_KEY];
+
+    if (storedVersion === undefined) {
+      await _handleFirstInstall(storageAPI, currentVersion);
+      return;
+    }
+
+    if (storedVersion !== currentVersion) {
+      await _handleVersionUpgrade(storageAPI, storedVersion, currentVersion);
+    } else {
+      console.log('[Background] VERSION_CHECK: No version change', {
+        version: currentVersion,
+        timestamp: new Date().toISOString()
+      });
+    }
+  } catch (err) {
+    console.error('[Background] VERSION_CHECK_ERROR:', err.message);
+  }
+}
+
+// Run version check immediately (async, non-blocking)
+// This is called early before main initialization to clear stale logs
+checkVersionAndClearLogs();
 
 function addBackgroundLog(type, ...args) {
   if (BACKGROUND_LOG_BUFFER.length >= MAX_BACKGROUND_BUFFER_SIZE) {
@@ -1052,32 +1152,38 @@ function migrateContainersToUnifiedFormat(containers) {
 }
 
 /**
- * Helper: Get storage state from local or sync storage
+ * Helper: Get storage state from session storage
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * Quick Tabs no longer persist across browser restarts
  * @private
  * @returns {Promise<Object|null>} Storage state or null
  */
 async function _getStorageState() {
-  let result = await browser.storage.local.get('quick_tabs_state_v2');
-  if (result?.quick_tabs_state_v2) {
-    return result.quick_tabs_state_v2;
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  // Quick Tabs are cleared on browser close/restart
+  if (typeof browser.storage.session === 'undefined') {
+    console.log('[Background] storage.session unavailable, returning null');
+    return null;
   }
-  result = await browser.storage.sync.get('quick_tabs_state_v2');
+  const result = await browser.storage.session.get('quick_tabs_state_v2');
   return result?.quick_tabs_state_v2 || null;
 }
 
 /**
- * Helper: Try loading from local/sync storage
+ * Helper: Try loading from session storage
  * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
  * v1.6.2.2 - Updated for unified format
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  *
  * @returns {Promise<void>}
  */
 async function tryLoadFromSyncStorage() {
   const state = await _getStorageState();
 
-  // Guard: No data
+  // Guard: No data - this is expected on fresh browser start
+  // v1.6.4.18 - Quick Tabs are now session-only, so no data is normal
   if (!state) {
-    console.log('[Background] ✓ EAGER LOAD: No saved state found, starting with empty state');
+    console.log('[Background] ✓ EAGER LOAD: No session state found, starting with empty state (session-only)');
     isInitialized = true;
     return;
   }
@@ -1086,25 +1192,20 @@ async function tryLoadFromSyncStorage() {
   if (state.tabs && Array.isArray(state.tabs)) {
     globalQuickTabState.tabs = state.tabs;
     globalQuickTabState.lastUpdate = state.timestamp || Date.now();
-    logSuccessfulLoad('storage', 'v1.6.2.2 unified');
+    logSuccessfulLoad('session', 'v1.6.2.2 unified (session-only)');
     isInitialized = true;
     return;
   }
 
-  // Backward compatibility: container format migration
-  if (state.containers) {
-    globalQuickTabState.tabs = migrateContainersToUnifiedFormat(state.containers);
-    globalQuickTabState.lastUpdate = state.timestamp || Date.now();
-    logSuccessfulLoad('storage', 'migrated from container format');
-    await saveMigratedToUnifiedFormat();
-  }
-
+  // v1.6.4.18 - No migration needed for session-only storage
+  // Container format migration removed - Quick Tabs don't persist across sessions
   isInitialized = true;
 }
 
 /**
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  *
  * @returns {Promise<void>}
  */
@@ -1112,14 +1213,19 @@ async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    await browser.storage.local.set({
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.warn('[Background] storage.session unavailable, cannot save migrated state');
+      return;
+    }
+    await browser.storage.session.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
         timestamp: Date.now()
       }
     });
-    console.log('[Background] ✓ Migrated to v1.6.2.2 unified format');
+    console.log('[Background] ✓ Migrated to v1.6.2.2 unified format (session-only)');
   } catch (err) {
     console.error('[Background] Error saving migrated state:', err);
   }
@@ -1145,86 +1251,7 @@ function logSuccessfulLoad(source, format) {
 // v1.5.8.13 - EAGER LOADING: Call initialization immediately on script load
 initializeGlobalState();
 
-/**
- * v1.5.9.13 - Migrate Quick Tab state from pinnedToUrl to soloedOnTabs/mutedOnTabs
- * v1.6.2.2 - Updated for unified format
- */
-async function migrateQuickTabState() {
-  // Guard: State not initialized
-  if (!isInitialized) {
-    console.warn('[Background Migration] State not initialized, skipping migration');
-    return;
-  }
-
-  let migrated = false;
-
-  // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of globalQuickTabState.tabs || []) {
-    if (migrateTabFromPinToSoloMute(quickTab)) {
-      migrated = true;
-    }
-  }
-
-  // Save if any tabs were migrated
-  if (migrated) {
-    await saveMigratedQuickTabState();
-  } else {
-    console.log('[Background Migration] No migration needed');
-  }
-}
-
-/**
- * Helper: Migrate individual tab from pinnedToUrl to solo/mute format
- *
- * @param {Object} quickTab - Quick Tab object to migrate
- * @returns {boolean} True if migration occurred
- */
-function migrateTabFromPinToSoloMute(quickTab) {
-  // Guard: No pinnedToUrl property
-  if (!('pinnedToUrl' in quickTab)) {
-    return false;
-  }
-
-  console.log(
-    `[Background Migration] Converting Quick Tab ${quickTab.id} from pin to solo/mute format`
-  );
-
-  // Initialize new properties
-  quickTab.soloedOnTabs = quickTab.soloedOnTabs || [];
-  quickTab.mutedOnTabs = quickTab.mutedOnTabs || [];
-
-  // Remove old property
-  delete quickTab.pinnedToUrl;
-
-  return true;
-}
-
-/**
- * Helper: Save migrated Quick Tab state to storage
- * v1.6.2.2 - Updated for unified format
- *
- * @returns {Promise<void>}
- */
-async function saveMigratedQuickTabState() {
-  console.log('[Background Migration] Saving migrated Quick Tab state');
-
-  const stateToSave = {
-    tabs: globalQuickTabState.tabs,
-    saveId: `migration-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    timestamp: Date.now()
-  };
-
-  try {
-    // v1.6.0.12 - FIX: Use local storage to avoid quota errors
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background Migration] ✓ Migration complete');
-  } catch (err) {
-    console.error('[Background Migration] Error saving migrated state:', err);
-  }
-}
-
-// Run migration after initialization
-migrateQuickTabState();
+// v1.6.3.11-v12 - Removed migration functions (Solo/Mute feature removed)
 
 // ==================== STATE COORDINATOR ====================
 // Manages canonical Quick Tab state across all tabs with conflict resolution
@@ -1308,24 +1335,26 @@ class StateCoordinator {
   }
 
   /**
-   * Helper: Try loading from local/sync storage
+   * Helper: Try loading from session storage
    * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
+   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
    *
    * @returns {Promise<void>}
    */
   async tryLoadFromSyncStorage() {
-    // v1.6.0.12 - FIX: Try local storage first (where we now save)
-    let result = await browser.storage.local.get('quick_tabs_state_v2');
-
-    // Fallback to sync storage for backward compatibility
-    if (!result || !result.quick_tabs_state_v2) {
-      result = await browser.storage.sync.get('quick_tabs_state_v2');
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      this.initialized = true;
+      console.log('[STATE COORDINATOR] storage.session unavailable, starting fresh');
+      return;
     }
 
-    // Guard: No data
+    const result = await browser.storage.session.get('quick_tabs_state_v2');
+
+    // Guard: No data - this is expected on fresh browser start
     if (!result || !result.quick_tabs_state_v2) {
       this.initialized = true;
-      console.log('[STATE COORDINATOR] No saved state, starting fresh');
+      console.log('[STATE COORDINATOR] No session state found, starting fresh (session-only)');
       return;
     }
 
@@ -1333,7 +1362,7 @@ class StateCoordinator {
     this.loadStateFromSyncData(result.quick_tabs_state_v2);
     this.initialized = true;
     console.log(
-      '[STATE COORDINATOR] Initialized from sync storage:',
+      '[STATE COORDINATOR] Initialized from session storage (session-only):',
       this.globalState.tabs.length,
       'tabs'
     );
@@ -1524,22 +1553,23 @@ class StateCoordinator {
   /**
    * Persist state to storage
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
+   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
    */
   async persistState() {
     try {
-      // v1.6.0.12 - FIX: Use local storage (much higher quota)
-      await browser.storage.local.set({
-        quick_tabs_state_v2: this.globalState
-      });
-
-      // Also save to session storage if available
+      // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+      // Quick Tabs are cleared on browser close/restart
       if (typeof browser.storage.session !== 'undefined') {
+        await browser.storage.session.set({
+          quick_tabs_state_v2: this.globalState
+        });
+        // Also save to quick_tabs_session for backward compatibility
         await browser.storage.session.set({
           quick_tabs_session: this.globalState
         });
       }
 
-      console.log('[STATE COORDINATOR] Persisted state to storage');
+      console.log('[STATE COORDINATOR] Persisted state to session storage (session-only)');
     } catch (err) {
       console.error('[STATE COORDINATOR] Error persisting state:', err);
       throw err;
@@ -1818,85 +1848,11 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, _tab) => {
   }
 });
 
-/**
- * Helper: Remove tab ID from Quick Tab's solo/mute arrays
- * v1.6.0 - PHASE 4.3: Extracted to fix max-depth (lines 886, 893)
- *
- * @param {Object} quickTab - Quick Tab object to clean up
- * @param {number} tabId - Tab ID to remove
- * @returns {boolean} True if any changes were made
- */
-function _removeTabFromQuickTab(quickTab, tabId) {
-  let changed = false;
-
-  // Remove from soloedOnTabs
-  if (quickTab.soloedOnTabs && quickTab.soloedOnTabs.includes(tabId)) {
-    quickTab.soloedOnTabs = quickTab.soloedOnTabs.filter(id => id !== tabId);
-    changed = true;
-    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} solo list`);
-  }
-
-  // Remove from mutedOnTabs
-  if (quickTab.mutedOnTabs && quickTab.mutedOnTabs.includes(tabId)) {
-    quickTab.mutedOnTabs = quickTab.mutedOnTabs.filter(id => id !== tabId);
-    changed = true;
-    console.log(`[Background] Removed tab ${tabId} from Quick Tab ${quickTab.id} mute list`);
-  }
-
-  return changed;
-}
-
-/**
- * Helper: Clean up Quick Tab state after tab closes
- * v1.6.0 - PHASE 4.3: Extracted to reduce complexity (cc=11 → cc<9)
- * v1.6.2.2 - Updated for unified format
- *
- * @param {number} tabId - Tab ID that was closed
- * @returns {Promise<boolean>} True if state was changed and saved
- */
-async function _cleanupQuickTabStateAfterTabClose(tabId) {
-  // Guard: Not initialized
-  if (!isInitialized) {
-    return false;
-  }
-
-  let stateChanged = false;
-
-  // v1.6.2.2 - Process tabs array directly (unified format)
-  for (const quickTab of globalQuickTabState.tabs || []) {
-    if (_removeTabFromQuickTab(quickTab, tabId)) {
-      stateChanged = true;
-    }
-  }
-
-  // Save if state changed
-  if (!stateChanged) {
-    return false;
-  }
-
-  const stateToSave = {
-    tabs: globalQuickTabState.tabs,
-    saveId: `cleanup-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    timestamp: Date.now()
-  };
-
-  try {
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToSave });
-    console.log('[Background] Cleaned up Quick Tab state after tab closure');
-    return true;
-  } catch (err) {
-    console.error('[Background] Error saving cleaned up state:', err);
-    return false;
-  }
-}
-
 // Clean up state when tab is closed
-// v1.5.9.13 - Also clean up solo/mute arrays when tabs close
-// v1.6.0 - PHASE 4.3: Extracted cleanup logic to fix complexity and max-depth
-chrome.tabs.onRemoved.addListener(async tabId => {
+// v1.6.3.11-v12 - Simplified: Solo/Mute cleanup removed, only clean up quickTabStates map
+chrome.tabs.onRemoved.addListener(tabId => {
   quickTabStates.delete(tabId);
-  console.log(`[Background] Tab ${tabId} closed - cleaning up Quick Tab references`);
-  await _cleanupQuickTabStateAfterTabClose(tabId);
+  console.log(`[Background] Tab ${tabId} closed - removed from quickTabStates`);
 });
 
 // ==================== MESSAGE ROUTING SETUP (v1.6.0 Phase 3.1) ====================
@@ -1956,12 +1912,7 @@ messageRouter.register(['UPDATE_QUICK_TAB_SIZE', 'UPDATE_QUICK_TAB_SIZE_FINAL'],
 messageRouter.register('UPDATE_QUICK_TAB_PIN', (msg, sender) =>
   quickTabHandler.handlePinUpdate(msg, sender)
 );
-messageRouter.register('UPDATE_QUICK_TAB_SOLO', (msg, sender) =>
-  quickTabHandler.handleSoloUpdate(msg, sender)
-);
-messageRouter.register('UPDATE_QUICK_TAB_MUTE', (msg, sender) =>
-  quickTabHandler.handleMuteUpdate(msg, sender)
-);
+// v1.6.3.11-v12 - Removed UPDATE_QUICK_TAB_SOLO and UPDATE_QUICK_TAB_MUTE registrations (Solo/Mute feature removed)
 messageRouter.register('UPDATE_QUICK_TAB_MINIMIZE', (msg, sender) =>
   quickTabHandler.handleMinimizeUpdate(msg, sender)
 );
@@ -2055,15 +2006,14 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
     consecutiveZeroTabReads = ZERO_TAB_CLEAR_THRESHOLD; // Intentionally cleared marker
     lastNonEmptyStateTimestamp = 0; // Allow immediate clear
 
-    // Step 1: Clear storage once (single write instead of N writes from N tabs)
-    await browser.storage.local.remove('quick_tabs_state_v2');
-
-    // Step 2: Clear session storage if available
+    // v1.6.4.18 - FIX: Clear session storage (Quick Tabs are now session-only)
+    // Step 1: Clear session storage (primary storage for Quick Tabs)
     if (typeof browser.storage.session !== 'undefined') {
+      await browser.storage.session.remove('quick_tabs_state_v2');
       await browser.storage.session.remove('quick_tabs_session');
     }
 
-    // Step 3: Reset background's cache
+    // Step 2: Reset background's cache
     globalQuickTabState.tabs = [];
     globalQuickTabState.lastUpdate = Date.now();
     globalQuickTabState.saveId = `cleared-${Date.now()}`;
@@ -2072,7 +2022,7 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
     // v1.6.3.5-v8 - FIX Issue #7: Clear quickTabHostTabs to prevent phantom Quick Tabs
     quickTabHostTabs.clear();
 
-    // Step 4: Broadcast to all tabs to clear LOCAL state only (no storage write)
+    // Step 3: Broadcast to all tabs to clear LOCAL state only (no storage write)
     // v1.6.3.5-v10 - FIX Issue #1: Use extracted function for per-tab logging
     const tabs = await browser.tabs.query({});
     const result = await _broadcastQuickTabsClearedToTabs(tabs);
@@ -3153,27 +3103,29 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     timestamp: Date.now()
   });
 
-  // v1.6.0.12 - FIX: Process both local (primary) and sync (fallback) storage
-  if (areaName !== 'local' && areaName !== 'sync') {
+  // v1.6.4.18 - FIX: Process session storage for Quick Tabs (session-only)
+  // Also process local for settings (which still use storage.local)
+  if (areaName !== 'session' && areaName !== 'local') {
     return;
   }
 
-  // Handle Quick Tab state changes
-  if (changes.quick_tabs_state_v2) {
+  // Handle Quick Tab state changes (now in session storage)
+  // v1.6.4.18 - Quick Tabs are now session-only
+  if (changes.quick_tabs_state_v2 && areaName === 'session') {
     console.log(
-      '[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tabs_state_v2 change'
+      '[Background][StorageListener] v1.6.4.18 PROCESSING: quick_tabs_state_v2 change (session-only)'
     );
     _handleQuickTabStateChange(changes);
   }
 
-  // Handle settings changes
-  if (changes.quick_tab_settings) {
+  // Handle settings changes (still in local storage)
+  if (changes.quick_tab_settings && areaName === 'local') {
     console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
     _handleSettingsChange(changes);
   }
 });
 
-console.log('[Background][StorageListener] v1.6.3.10-v6 Listener registered successfully', {
+console.log('[Background][StorageListener] v1.6.4.18 Listener registered successfully (session-only)', {
   timestamp: Date.now()
 });
 
@@ -4181,7 +4133,16 @@ async function _writeAndVerifyAdoptionState({
   const writeStartTime = Date.now();
 
   try {
-    await browser.storage.local.set({
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.error('[Background] storage.session unavailable for adoption write');
+      return {
+        success: false,
+        error: 'storage.session unavailable',
+        reason: 'storage-unavailable'
+      };
+    }
+    await browser.storage.session.set({
       quick_tabs_state_v2: {
         tabs: state.tabs,
         saveId,
@@ -4191,7 +4152,8 @@ async function _writeAndVerifyAdoptionState({
       }
     });
 
-    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
+    // v1.6.4.18 - FIX: Use storage.session for verification
+    const verifyResult = await browser.storage.session.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
 
     if (!verifiedState || verifiedState.saveId !== saveId) {
@@ -4265,8 +4227,12 @@ async function handleAdoptAction(payload) {
     return { success: false, error: validation.error };
   }
 
-  // Read state and find Quick Tab
-  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  if (typeof browser.storage.session === 'undefined') {
+    console.error('[Background] storage.session unavailable for adoption read');
+    return { success: false, error: 'storage.session unavailable' };
+  }
+  const result = await browser.storage.session.get('quick_tabs_state_v2');
   const state = result?.quick_tabs_state_v2;
 
   const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
@@ -4667,6 +4633,7 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
 /**
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
@@ -4679,11 +4646,16 @@ async function writeStateWithVerification() {
   };
 
   try {
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.error('[Background] storage.session unavailable for state write');
+      return { success: false, saveId, error: 'storage.session unavailable' };
+    }
     // Write
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+    await browser.storage.session.set({ quick_tabs_state_v2: stateToWrite });
 
     // v1.6.3.6-v11 - FIX Issue #14: Read-back verification
-    const result = await browser.storage.local.get('quick_tabs_state_v2');
+    const result = await browser.storage.session.get('quick_tabs_state_v2');
     const readBack = result?.quick_tabs_state_v2;
 
     const verified = readBack?.saveId === saveId;
@@ -4696,7 +4668,7 @@ async function writeStateWithVerification() {
         actualTabs: readBack?.tabs?.length
       });
     } else {
-      console.log('[Background] Storage write verified:', {
+      console.log('[Background] Storage write verified (session-only):', {
         saveId,
         tabCount: stateToWrite.tabs.length
       });
@@ -4938,6 +4910,7 @@ async function writeStateWithVerificationAndRetry(operation) {
 /**
  * Attempt a single storage write with verification
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -4953,7 +4926,12 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
   };
 
   try {
-    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
+    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+    if (typeof browser.storage.session === 'undefined') {
+      console.error('[Background] storage.session unavailable for write attempt');
+      return { success: false, verified: false, needsRetry: false };
+    }
+    await browser.storage.session.set({ quick_tabs_state_v2: stateToWrite });
     return await _verifyStorageWrite({
       operation,
       saveId,
@@ -4971,10 +4949,12 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
  * v1.6.3.10-v8 - FIX Code Health: Use options object
+ * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  */
 async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backoffMs }) {
-  const result = await browser.storage.local.get('quick_tabs_state_v2');
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  const result = await browser.storage.session.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
 
@@ -5102,16 +5082,19 @@ function handleTabRemoved(tabId, removeInfo) {
   });
 
   // v1.6.3.10-v3 - Phase 2: Save orphan status to storage
+  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
   const saveId = `orphan-${tabId}-${operationTimestamp}`;
-  browser.storage.local
-    .set({
-      quick_tabs_state_v2: {
-        tabs: globalQuickTabState.tabs,
-        saveId,
-        timestamp: operationTimestamp
-      }
-    })
-    .catch(err => console.error('[Background] Error saving orphan status:', err));
+  if (typeof browser.storage.session !== 'undefined') {
+    browser.storage.session
+      .set({
+        quick_tabs_state_v2: {
+          tabs: globalQuickTabState.tabs,
+          saveId,
+          timestamp: operationTimestamp
+        }
+      })
+      .catch(err => console.error('[Background] Error saving orphan status:', err));
+  }
 
   // Clean up ports associated with this tab
   for (const [portId, portInfo] of portRegistry.entries()) {

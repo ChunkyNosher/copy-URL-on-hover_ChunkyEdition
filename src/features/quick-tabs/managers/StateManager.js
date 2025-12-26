@@ -381,30 +381,4 @@ export class StateManager {
       durationMs: Date.now() - startTime
     });
   }
-
-  /**
-   * Clean up dead tab IDs from solo/mute arrays
-   * @param {Array<number>} activeTabIds - Array of currently active tab IDs
-   */
-  cleanupDeadTabs(activeTabIds) {
-    let cleaned = 0;
-
-    for (const quickTab of this.quickTabs.values()) {
-      const before =
-        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
-      quickTab.cleanupDeadTabs(activeTabIds);
-      const after =
-        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
-
-      if (before !== after) {
-        this.quickTabs.set(quickTab.id, quickTab);
-        cleaned++;
-      }
-    }
-
-    if (cleaned > 0) {
-      console.log(`[StateManager] Cleaned dead tabs from ${cleaned} Quick Tabs`);
-      this.eventBus?.emit('state:cleaned', { count: cleaned });
-    }
-  }
 }
