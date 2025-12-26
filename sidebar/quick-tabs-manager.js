@@ -308,53 +308,51 @@ function initializeQuickTabsPort() {
   }
 }
 
+// ==================== v1.6.3.13 PORT MESSAGE HANDLER HELPERS ====================
+/**
+ * Handle Quick Tabs state update from background
+ * v1.6.3.13 - FIX Code Health: Extract duplicate state update logic
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render scheduling
+ */
+function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
+  if (!Array.isArray(quickTabs)) return;
+  
+  _allQuickTabsFromPort = quickTabs;
+  console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
+  updateQuickTabsStateFromPort(quickTabs);
+  scheduleRender(renderReason);
+}
+
+/**
+ * Quick Tabs port message handlers lookup table
+ * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * @private
+ */
+const _portMessageHandlers = {
+  SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
+  GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
+  STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification'),
+  CLOSE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: CLOSE_QUICK_TAB_ACK', msg),
+  MINIMIZE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: MINIMIZE_QUICK_TAB_ACK', msg),
+  RESTORE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: RESTORE_QUICK_TAB_ACK', msg)
+};
+
 /**
  * Handle messages from Quick Tabs port
- * v1.6.3.12 - Option 4: Process state updates and sync messages
+ * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
   const { type } = message;
   console.log('[Sidebar] Received Quick Tabs message:', type);
 
-  switch (type) {
-    case 'SIDEBAR_STATE_SYNC':
-    case 'GET_ALL_QUICK_TABS_RESPONSE':
-      // Full state from background
-      if (Array.isArray(message.quickTabs)) {
-        _allQuickTabsFromPort = message.quickTabs;
-        console.log(`[Sidebar] Received ${message.quickTabs.length} Quick Tabs from background`);
-        
-        // Update internal state
-        updateQuickTabsStateFromPort(message.quickTabs);
-        
-        // Trigger UI re-render
-        scheduleRender('quick-tabs-port-sync');
-      }
-      break;
-
-    case 'STATE_CHANGED':
-      // Real-time state update
-      if (Array.isArray(message.quickTabs)) {
-        _allQuickTabsFromPort = message.quickTabs;
-        console.log(`[Sidebar] STATE_CHANGED: ${message.quickTabs.length} Quick Tabs`);
-        
-        // Update internal state
-        updateQuickTabsStateFromPort(message.quickTabs);
-        
-        // Trigger UI re-render
-        scheduleRender('state-changed-notification');
-      }
-      break;
-
-    case 'CLOSE_QUICK_TAB_ACK':
-    case 'MINIMIZE_QUICK_TAB_ACK':
-    case 'RESTORE_QUICK_TAB_ACK':
-      console.log(`[Sidebar] Received ACK: ${type}`, message);
-      break;
-
-    default:
-      console.log(`[Sidebar] Unknown Quick Tabs message type: ${type}`);
+  const handler = _portMessageHandlers[type];
+  if (handler) {
+    handler(message);
+  } else {
+    console.log(`[Sidebar] Unknown Quick Tabs message type: ${type}`);
   }
 }
 
@@ -399,97 +397,69 @@ function updateQuickTabsStateFromPort(quickTabs) {
  * v1.6.3.12 - Option 4: Send close command to background
  * @param {string} quickTabId - Quick Tab ID to close
  */
-function closeQuickTabViaPort(quickTabId) {
+// ==================== v1.6.3.13 SIDEBAR PORT OPERATION HELPER ====================
+/**
+ * Execute sidebar port operation with error handling
+ * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * @private
+ * @param {string} messageType - Type of message to send
+ * @param {Object} [payload={}] - Optional message payload
+ * @returns {boolean} Success status
+ */
+function _executeSidebarPortOperation(messageType, payload = {}) {
   if (!quickTabsPort) {
-    console.warn('[Sidebar] Cannot close Quick Tab - port not connected');
+    console.warn(`[Sidebar] Cannot ${messageType} - port not connected`);
     return false;
   }
 
   try {
     quickTabsPort.postMessage({
-      type: 'CLOSE_QUICK_TAB',
-      quickTabId,
+      type: messageType,
+      ...payload,
       timestamp: Date.now()
     });
-    console.log(`[Sidebar] CLOSE_QUICK_TAB sent: ${quickTabId}`);
+    const logId = payload.quickTabId || '';
+    console.log(`[Sidebar] ${messageType} sent${logId ? `: ${logId}` : ''}`);
     return true;
   } catch (err) {
-    console.error('[Sidebar] Failed to close Quick Tab via port:', err.message);
+    console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
     return false;
   }
+}
+
+/**
+ * Request Quick Tab close via port
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * @param {string} quickTabId - Quick Tab ID to close
+ */
+function closeQuickTabViaPort(quickTabId) {
+  return _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
 }
 
 /**
  * Request Quick Tab minimize via port
- * v1.6.3.12 - Option 4: Send minimize command to background
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to minimize
  */
 function minimizeQuickTabViaPort(quickTabId) {
-  if (!quickTabsPort) {
-    console.warn('[Sidebar] Cannot minimize Quick Tab - port not connected');
-    return false;
-  }
-
-  try {
-    quickTabsPort.postMessage({
-      type: 'MINIMIZE_QUICK_TAB',
-      quickTabId,
-      timestamp: Date.now()
-    });
-    console.log(`[Sidebar] MINIMIZE_QUICK_TAB sent: ${quickTabId}`);
-    return true;
-  } catch (err) {
-    console.error('[Sidebar] Failed to minimize Quick Tab via port:', err.message);
-    return false;
-  }
+  return _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
 }
 
 /**
  * Request Quick Tab restore via port
- * v1.6.3.12 - Option 4: Send restore command to background
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to restore
  */
 function restoreQuickTabViaPort(quickTabId) {
-  if (!quickTabsPort) {
-    console.warn('[Sidebar] Cannot restore Quick Tab - port not connected');
-    return false;
-  }
-
-  try {
-    quickTabsPort.postMessage({
-      type: 'RESTORE_QUICK_TAB',
-      quickTabId,
-      timestamp: Date.now()
-    });
-    console.log(`[Sidebar] RESTORE_QUICK_TAB sent: ${quickTabId}`);
-    return true;
-  } catch (err) {
-    console.error('[Sidebar] Failed to restore Quick Tab via port:', err.message);
-    return false;
-  }
+  return _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
 }
 
 /**
  * Request all Quick Tabs via port
- * v1.6.3.12 - Option 4: Query background for current state
+ * v1.6.3.13 - FIX Code Health: Use generic wrapper
  */
 function requestAllQuickTabsViaPort() {
-  if (!quickTabsPort) {
-    console.warn('[Sidebar] Cannot request Quick Tabs - port not connected');
-    return false;
-  }
-
-  try {
-    quickTabsPort.postMessage({
-      type: 'GET_ALL_QUICK_TABS',
-      timestamp: Date.now()
-    });
-    console.log('[Sidebar] GET_ALL_QUICK_TABS sent');
-    return true;
-  } catch (err) {
-    console.error('[Sidebar] Failed to request Quick Tabs via port:', err.message);
-    return false;
-  }
+  return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
 }
 
 // ==================== END v1.6.3.12 OPTION 4 QUICK TABS PORT ====================
