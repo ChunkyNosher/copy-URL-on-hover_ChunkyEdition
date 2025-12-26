@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.12-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,49 +8,37 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12 Status:** Option 4 Architecture ✅ | Port Messaging ✅ | Code
-Health 10.0 | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v2 Status:** Option 4 Architecture ✅ | Port Messaging ✅ |
+QUICKTAB_MINIMIZED Forwarding ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12
+## 🎉 What's New in v1.6.3.12-v2
 
-**🏗️ Option 4 Architecture - Background Script Memory-Based Storage ✅**
+**🔧 Critical Fixes + Port Diagnostics ✅**
 
-Complete architectural overhaul for Firefox MV2 compatibility:
-
-- ✅ **Background Script is SINGLE SOURCE OF TRUTH** - All Quick Tabs data
-  stored in-memory in background script
-- ✅ **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
-- ✅ **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
-- ✅ **Push Notifications** - Background → Sidebar via `STATE_CHANGED` messages
-- ✅ **Ephemeral Storage** - Browser restart clears all Quick Tabs automatically
-
-**✨ Code Health Improvements:**
-
-- ✅ **Factory Patterns** - Port handlers use lookup tables (reduce switch
-  complexity)
-- ✅ **Generic Wrappers** - `executeQuickTabPortOperation()`,
-  `executeSidebarPortOperation()`
-
-**Why Changes Made:**
-
-- `browser.storage.session` not supported in Firefox Manifest V2
-- Simplified architecture with single source of truth
-- Improved code maintainability with factory patterns
+- ✅ **Container ID Priority Fix** - CreateHandler._getOriginContainerId() now
+  prioritizes identity context over explicit options.cookieStoreId
+- ✅ **Storage.onChanged Fallback Fix** - Uses 'local' area (not 'session') as
+  fallback for port messaging (Firefox MV2 has no storage.session)
+- ✅ **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
+  minimize/restore events from VisibilityHandler to sidebar for immediate UI updates
+- ✅ **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map tracks
+  ACK message roundtrip times via `_handleQuickTabPortAck()`
+- ✅ **Enhanced Port Disconnect Logging** - Logs reason, timestamp, pending count
+- ✅ **Architecture Docs** - Port message ordering, state hash timing, debounce diffs
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state,
+push notifications  
 **v1.6.3.11-v12:** Solo/Mute removed, session-only Quick Tabs, version-based log
 cleanup  
-**v1.6.3.11-v11:** Container identity fix, message diagnostics, Code Health 10.0  
-**v1.6.3.11-v9:** Diagnostic report fixes, Code Health 9.0+, logging
-infrastructure  
-**v1.6.3.11-v7:** Stability restoration, orphan Quick Tabs fix
+**v1.6.3.11-v11:** Container identity fix, message diagnostics, Code Health 10.0
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -159,6 +147,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v2** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

@@ -1786,7 +1786,7 @@ function queryQuickTabsBackground(messageType, payload = {}, timeoutMs = QUICK_T
 
 /**
  * Check if message is a sidebar command
- * v1.6.3.13 - FIX Code Health: Extract predicate
+ * v1.6.3.12-v2 - FIX Code Health: Extract predicate
  * @private
  * @param {string} type - Message type
  * @returns {boolean}
@@ -1797,7 +1797,7 @@ function _isCommandMessage(type) {
 
 /**
  * Check if message is a state update notification
- * v1.6.3.13 - FIX Code Health: Extract predicate
+ * v1.6.3.12-v2 - FIX Code Health: Extract predicate
  * @private
  * @param {string} type - Message type
  * @returns {boolean}
@@ -1808,7 +1808,7 @@ function _isStateUpdateMessage(type) {
 
 /**
  * Handle pending request response
- * v1.6.3.13 - FIX Code Health: Extract handler
+ * v1.6.3.12-v2 - FIX Code Health: Extract handler
  * @private
  * @param {string} requestId - Request ID
  * @param {Object} message - Response message
@@ -1826,7 +1826,7 @@ function _handlePendingRequest(requestId, message) {
 
 /**
  * Handle response from background for pending requests
- * v1.6.3.13 - FIX Code Health: Reduced complexity using helpers
+ * v1.6.3.12-v2 - FIX Code Health: Reduced complexity using helpers
  * @param {Object} message - Response message from background
  */
 function handleQuickTabsPortResponse(message) {
@@ -1869,10 +1869,10 @@ function handleQuickTabsStateUpdate(message) {
   }
 }
 
-// ==================== v1.6.3.13 COMMAND HANDLER LOOKUP TABLE ====================
+// ==================== v1.6.3.12-v2 COMMAND HANDLER LOOKUP TABLE ====================
 /**
  * Quick Tab command handlers lookup table
- * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * @private
  */
 const _quickTabCommandHandlers = {
@@ -1883,7 +1883,7 @@ const _quickTabCommandHandlers = {
 
 /**
  * Handle command from sidebar (via background)
- * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * @param {Object} message - Command message
  */
 function handleQuickTabsCommand(message) {
@@ -1965,12 +1965,12 @@ async function initializeQuickTabsPort() {
   await _hydrateQuickTabsFromBackground();
 }
 
-// ==================== v1.6.3.13 PORT OPERATION HELPERS ====================
+// ==================== v1.6.3.12-v2 PORT OPERATION HELPERS ====================
 // These helpers reduce duplication in port messaging functions
 
 /**
  * Execute Quick Tab port operation with error handling
- * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
  * @private
  * @param {string} operationType - Type of operation (e.g., 'CREATE_QUICK_TAB')
  * @param {Object} payload - Message payload
@@ -2001,7 +2001,7 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
 
 /**
  * Create Quick Tab via port messaging
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {Object} quickTab - Quick Tab data to create
  * @returns {boolean} Success status
  */
@@ -2013,7 +2013,7 @@ function createQuickTabViaPort(quickTab) {
 
 /**
  * Update Quick Tab via port messaging
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to update
  * @param {Object} updates - Properties to update
  * @returns {boolean} Success status
@@ -2027,7 +2027,7 @@ function updateQuickTabViaPort(quickTabId, updates) {
 
 /**
  * Delete Quick Tab via port messaging
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to delete
  * @returns {boolean} Success status
  */
@@ -2039,7 +2039,7 @@ function deleteQuickTabViaPort(quickTabId) {
 
 /**
  * Minimize Quick Tab via port messaging
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to minimize
  * @returns {boolean} Success status
  */
@@ -2052,7 +2052,7 @@ function minimizeQuickTabViaPort(quickTabId) {
 
 /**
  * Restore Quick Tab via port messaging
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to restore
  * @returns {boolean} Success status
  */

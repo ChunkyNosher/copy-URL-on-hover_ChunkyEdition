@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12), memory-based state (`quickTabsSessionState`), real-time port updates,
-  per-tab port management, FIFO EventBus
+  (v1.6.3.12-v2), memory-based state (`quickTabsSessionState`), real-time port updates,
+  per-tab port management, port roundtrip tracking, QUICKTAB_MINIMIZED forwarding, FIFO EventBus
 tools: ['*']
 ---
 
@@ -37,7 +37,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v2 - Option 4 Architecture (Port Messaging + Memory State)
+
+**v1.6.3.12-v2 Features (NEW):**
+
+- **Container ID Priority Fix** - CreateHandler prioritizes identity context
+- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
+- **QUICKTAB_MINIMIZED Handler** - Forwards minimize/restore events to sidebar
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
+- **Enhanced Port Disconnect Logging** - Reason, timestamp, pending counts
+- **Port Message Ordering** - Assumed reliable within single port connection
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -70,6 +79,7 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 - `CREATE_QUICK_TAB` - Create new Quick Tab
 - `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB` - Toggle minimize
+- `QUICKTAB_MINIMIZED` - Forwarded to sidebar (v1.6.3.12-v2)
 - `UPDATE_QUICK_TAB_POSITION` / `UPDATE_QUICK_TAB_SIZE` - Update geometry
 - `DELETE_QUICK_TAB` - Remove Quick Tab
 - `QUERY_MY_QUICK_TABS` / `HYDRATE_ON_LOAD` - Query state
@@ -89,10 +99,10 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 **Deprecated:**
 
 - ❌ `browser.storage.session` - Not used for Quick Tabs
-- ❌ `storage.onChanged` - Replaced by port messaging
+- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
 - ❌ `runtime.sendMessage` - Replaced by port messaging
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12 port messaging,
-memory-based state, real-time port updates, Code Health 9.0+.**
+**Your strength: Reliable cross-tab sync with v1.6.3.12-v2 port messaging,
+memory-based state, real-time port updates, QUICKTAB_MINIMIZED forwarding.**

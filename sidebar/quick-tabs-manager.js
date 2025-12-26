@@ -2,6 +2,18 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.12-v2 ARCHITECTURE UPDATE ===
+ * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
+ *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
+ *   - All Quick Tab operations use port messaging, NOT storage APIs
+ *   - storage.onChanged listener is FALLBACK only for edge cases
+ *   - Quick Tabs are session-only (cleared on browser restart)
+ *
+ * IMPORTANT: browser.storage.session does NOT exist in Firefox Manifest V2
+ *   - Any storage.session calls will return early with "unavailable" warning
+ *   - This is expected behavior - port messaging is the primary mechanism
+ *   - Collapse state still uses storage.local (UI preference)
+ *
  * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
  *   - Quick Tabs are now session-only (cleared on browser restart)
  *   - All Quick Tab state operations use storage.session
@@ -272,6 +284,13 @@ let quickTabsPort = null;
 let _allQuickTabsFromPort = [];
 
 /**
+ * Track sent Quick Tab port operations for roundtrip time calculation
+ * v1.6.3.12-v2 - FIX Issue #16-17: Port messaging roundtrip time tracking
+ * Key: quickTabId, Value: { sentAt: number, messageType: string }
+ */
+const _quickTabPortOperationTimestamps = new Map();
+
+/**
  * Initialize Quick Tabs port connection
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  */
@@ -285,8 +304,26 @@ function initializeQuickTabsPort() {
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
 
     quickTabsPort.onDisconnect.addListener(() => {
-      console.warn('[Sidebar] Quick Tabs port disconnected from background');
+      // v1.6.3.12-v2 - FIX Issue #16-17: Log disconnect with reason
+      // NOTE: browser.runtime.lastError must be accessed immediately in the callback
+      // to capture the error context before it's cleared by the browser
+      let lastErrorMessage = 'unknown';
+      try {
+        if (browser.runtime?.lastError?.message) {
+          lastErrorMessage = browser.runtime.lastError.message;
+        }
+      } catch (_e) {
+        // Error context may have already been cleared
+      }
+      console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
+        reason: lastErrorMessage,
+        timestamp: Date.now(),
+        pendingOperations: _quickTabPortOperationTimestamps.size
+      });
       quickTabsPort = null;
+      
+      // Clear pending operation timestamps on disconnect
+      _quickTabPortOperationTimestamps.clear();
       
       // Attempt reconnection after a delay
       setTimeout(() => {
@@ -308,10 +345,10 @@ function initializeQuickTabsPort() {
   }
 }
 
-// ==================== v1.6.3.13 PORT MESSAGE HANDLER HELPERS ====================
+// ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
 /**
  * Handle Quick Tabs state update from background
- * v1.6.3.13 - FIX Code Health: Extract duplicate state update logic
+ * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -326,27 +363,66 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
 }
 
 /**
+ * Handle Quick Tab port ACK with roundtrip time calculation
+ * v1.6.3.12-v2 - FIX Issue #16-17: Log ACK with roundtrip time
+ * @private
+ * @param {Object} msg - ACK message from background
+ * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
+ */
+function _handleQuickTabPortAck(msg, ackType) {
+  const { quickTabId, success, timestamp: responseTimestamp } = msg;
+  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+  const roundtripMs = sentInfo ? Date.now() - sentInfo.sentAt : null;
+  
+  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
+    quickTabId,
+    success,
+    roundtripMs,
+    responseTimestamp,
+    sentAt: sentInfo?.sentAt || null
+  });
+  
+  // Clean up tracking
+  if (quickTabId) {
+    _quickTabPortOperationTimestamps.delete(quickTabId);
+  }
+}
+
+/**
  * Quick Tabs port message handlers lookup table
- * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
+ * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
+ *
+ * NOTE Issue #11 (Port Message Ordering): Port messages may arrive out of order
+ * with async handlers. The current implementation assumes message ordering is
+ * preserved by the browser's port messaging system. If ordering issues occur,
+ * consider adding sequence numbers to messages and buffering out-of-order messages.
  * @private
  */
 const _portMessageHandlers = {
   SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
   GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
   STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification'),
-  CLOSE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: CLOSE_QUICK_TAB_ACK', msg),
-  MINIMIZE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: MINIMIZE_QUICK_TAB_ACK', msg),
-  RESTORE_QUICK_TAB_ACK: (msg) => console.log('[Sidebar] Received ACK: RESTORE_QUICK_TAB_ACK', msg)
+  CLOSE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'CLOSE'),
+  MINIMIZE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'MINIMIZE'),
+  RESTORE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'RESTORE')
 };
 
 /**
  * Handle messages from Quick Tabs port
- * v1.6.3.13 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
-  const { type } = message;
-  console.log('[Sidebar] Received Quick Tabs message:', type);
+  const { type, timestamp: msgTimestamp } = message;
+  
+  // v1.6.3.12-v2 - FIX Issue #16-17: Log port message with timestamp
+  console.log('[Sidebar] QUICK_TABS_PORT_MESSAGE_RECEIVED:', {
+    type,
+    timestamp: Date.now(),
+    messageTimestamp: msgTimestamp || null
+  });
 
   const handler = _portMessageHandlers[type];
   if (handler) {
@@ -397,10 +473,11 @@ function updateQuickTabsStateFromPort(quickTabs) {
  * v1.6.3.12 - Option 4: Send close command to background
  * @param {string} quickTabId - Quick Tab ID to close
  */
-// ==================== v1.6.3.13 SIDEBAR PORT OPERATION HELPER ====================
+// ==================== v1.6.3.12-v2 SIDEBAR PORT OPERATION HELPER ====================
 /**
  * Execute sidebar port operation with error handling
- * v1.6.3.13 - FIX Code Health: Generic port operation wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
+ * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
@@ -412,14 +489,30 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     return false;
   }
 
+  const sentAt = Date.now();
+  
   try {
     quickTabsPort.postMessage({
       type: messageType,
       ...payload,
-      timestamp: Date.now()
+      timestamp: sentAt
     });
-    const logId = payload.quickTabId || '';
-    console.log(`[Sidebar] ${messageType} sent${logId ? `: ${logId}` : ''}`);
+    
+    // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
+    // Only track operations that have a quickTabId (for ACK correlation)
+    const quickTabId = payload.quickTabId || null;
+    if (quickTabId) {
+      _quickTabPortOperationTimestamps.set(quickTabId, {
+        sentAt,
+        messageType
+      });
+    }
+    
+    console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
+      quickTabId,
+      timestamp: sentAt,
+      hasRoundtripTracking: !!quickTabId // v1.6.3.12-v2 - Indicate if ACK will be tracked
+    });
     return true;
   } catch (err) {
     console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
@@ -429,7 +522,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
 
 /**
  * Request Quick Tab close via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to close
  */
 function closeQuickTabViaPort(quickTabId) {
@@ -438,7 +531,7 @@ function closeQuickTabViaPort(quickTabId) {
 
 /**
  * Request Quick Tab minimize via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to minimize
  */
 function minimizeQuickTabViaPort(quickTabId) {
@@ -447,7 +540,7 @@ function minimizeQuickTabViaPort(quickTabId) {
 
 /**
  * Request Quick Tab restore via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  * @param {string} quickTabId - Quick Tab ID to restore
  */
 function restoreQuickTabViaPort(quickTabId) {
@@ -456,7 +549,7 @@ function restoreQuickTabViaPort(quickTabId) {
 
 /**
  * Request all Quick Tabs via port
- * v1.6.3.13 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
  */
 function requestAllQuickTabsViaPort() {
   return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
@@ -3878,6 +3971,16 @@ async function _executeDebounceRender(debounceTime) {
  *   - Timer extends on each new change (up to RENDER_DEBOUNCE_MAX_WAIT_MS)
  *   - Compares against CURRENT storage read, not captured hash
  * v1.6.3.11-v3 - FIX CodeScene: Extract debounce callback to reduce complexity
+ *
+ * Issue #14 Note (State Hash Timing): State hash is captured at debounce scheduling
+ * (capturedStateHashAtDebounce) for debugging, but the FINAL hash is always recomputed
+ * at render time in _executeDebounceRender() to ensure fresh state comparison.
+ * This is the correct behavior - we render with the latest state, not stale captured state.
+ *
+ * Issue #18 Note (Debounce Timing): Manager uses 100ms debounce (RENDER_DEBOUNCE_MS)
+ * with 300ms max wait (RENDER_DEBOUNCE_MAX_WAIT_MS). This is intentionally faster than
+ * UpdateHandler's 200/300ms to provide responsive UI updates in the sidebar.
+ *
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
@@ -4998,9 +5101,15 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
+  // v1.6.3.12-v2 - FIX Issue #13: storage.onChanged is FALLBACK mechanism for port messaging
+  //   - PRIMARY: Port messaging ('quick-tabs-port') for real-time sync
+  //   - FALLBACK: storage.local changes caught here for edge cases
+  //   - NOTE: 'session' area does NOT exist in Firefox MV2
   browser.storage.onChanged.addListener((changes, areaName) => {
-    // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
-    if (areaName !== 'session' || !changes[STATE_KEY]) return;
+    // v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area as fallback
+    // Port messaging is the PRIMARY sync mechanism (Option 4 Architecture)
+    // storage.session does NOT exist in Firefox MV2, so listen for 'local' instead
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
 }
@@ -7514,7 +7623,7 @@ async function _persistAdoption({
 /**
  * Issue #9: Verify adoption was persisted by monitoring storage.onChanged
  * Logs time delta between write and confirmation, warns if no confirmation within 2 seconds
- * v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+ * v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area (Firefox MV2 has no storage.session)
  * @private
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {string} expectedSaveId - SaveId to look for in storage change
@@ -7525,9 +7634,9 @@ function _verifyAdoptionInStorage(quickTabId, expectedSaveId, writeTimestamp) {
   const CONFIRMATION_TIMEOUT_MS = 2000;
 
   // Issue #9: Temporary listener for this specific saveId
-  // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+  // v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area (Firefox MV2 has no storage.session)
   const verificationListener = (changes, areaName) => {
-    if (areaName !== 'session' || !changes[STATE_KEY]) return;
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
 
     const newValue = changes[STATE_KEY].newValue;
     if (newValue?.saveId === expectedSaveId) {

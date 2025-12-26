@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.11-v12.
+  documentation. Current version: v1.6.3.12-v2.
 tools: ['*']
 ---
 
@@ -69,9 +69,25 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.11-v12)
+## Current Extension State (v1.6.3.12-v2)
 
-### v1.6.3.11-v12 Features (NEW) - Solo/Mute Removal + Real-Time Updates
+### v1.6.3.12-v2 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics
+
+- **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
+  minimize/restore events from VisibilityHandler to sidebar
+- **Container ID Priority Fix** - CreateHandler prioritizes identity context
+  over explicit options.cookieStoreId
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map for ACK timing
+- **Enhanced Port Disconnect Logging** - Logs reason, timestamp, pending count
+- **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED/SENT` with timestamps
+
+### v1.6.3.12 Features - Option 4 In-Memory Architecture
+
+- **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
+- **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
+- **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
+
+### v1.6.3.11-v12 Features - Solo/Mute Removal + Real-Time Updates
 
 - **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
 - **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
@@ -99,8 +115,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.11-v12
-- [ ] **v1.6.3.11-v12:** Solo/Mute removal + real-time updates documented
+- [ ] Version numbers match 1.6.3.12-v2
+- [ ] **v1.6.3.12-v2:** Minimize/restore forwarding + port diagnostics documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -110,7 +126,7 @@ nothing.
 
 | Error                    | Fix                              |
 | ------------------------ | -------------------------------- |
-| v1.6.3.11-v11 or earlier | Update to 1.6.3.11-v12           |
+| v1.6.3.12 or earlier   | Update to 1.6.3.12-v2            |
 | "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
 | "Pin to Page"            | REMOVE - Feature DELETED in v12  |
 | Cross-session persist    | REMOVE - Session-only in v12     |
