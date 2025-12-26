@@ -5177,9 +5177,9 @@ function handleQuickTabMinimizedMessage(message, sender) {
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
   });
 
-  // v1.6.3.13 - Intentionally notify sidebar even when Quick Tab not found
-  // This helps sync stale sidebar state with actual background state
-  notifySidebarOfStateChange();
+  // v1.6.3.13 - Do NOT notify sidebar when Quick Tab not found
+  // Notifying on failure could cause unnecessary sidebar updates and
+  // potential UI flickering when the Quick Tab genuinely doesn't exist
 
   return {
     success: false,

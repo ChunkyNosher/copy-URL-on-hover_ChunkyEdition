@@ -293,9 +293,18 @@ function initializeQuickTabsPort() {
 
     quickTabsPort.onDisconnect.addListener(() => {
       // v1.6.3.13 - FIX Issue #16-17: Log disconnect with reason
-      const lastError = browser.runtime.lastError;
+      // NOTE: browser.runtime.lastError must be accessed immediately in the callback
+      // to capture the error context before it's cleared by the browser
+      let lastErrorMessage = 'unknown';
+      try {
+        if (browser.runtime?.lastError?.message) {
+          lastErrorMessage = browser.runtime.lastError.message;
+        }
+      } catch (_e) {
+        // Error context may have already been cleared
+      }
       console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
-        reason: lastError?.message || 'unknown',
+        reason: lastErrorMessage,
         timestamp: Date.now(),
         pendingOperations: _quickTabPortOperationTimestamps.size
       });
@@ -473,17 +482,19 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     });
     
     // v1.6.3.13 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
-    if (payload.quickTabId) {
-      _quickTabPortOperationTimestamps.set(payload.quickTabId, {
+    // Only track operations that have a quickTabId (for ACK correlation)
+    const quickTabId = payload.quickTabId || null;
+    if (quickTabId) {
+      _quickTabPortOperationTimestamps.set(quickTabId, {
         sentAt,
         messageType
       });
     }
     
-    const logId = payload.quickTabId || '';
     console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
-      quickTabId: logId || null,
-      timestamp: sentAt
+      quickTabId,
+      timestamp: sentAt,
+      hasRoundtripTracking: !!quickTabId // v1.6.3.13 - Indicate if ACK will be tracked
     });
     return true;
   } catch (err) {
