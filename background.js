@@ -6,7 +6,23 @@
 // v1.6.3.10-v3 - Phase 2: Tabs API Integration - TabLifecycleHandler, ORIGIN_TAB_CLOSED, Smart Adoption
 // v1.6.3.10-v5 - FIX Issues #1 & #2: Atomic operations via Scripting API fallback for timeout recovery
 // v1.6.3.10-v6 - FIX Issue #14: Storage.onChanged listener health check logging
-// v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
+//
+// === v1.6.3.13 ARCHITECTURE UPDATE ===
+// PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
+//   - quickTabsSessionState object is SINGLE SOURCE OF TRUTH (in-memory)
+//   - All content scripts and sidebar use port messaging for Quick Tab operations
+//   - On browser restart, background reloads with empty memory (session-only)
+//
+// IMPORTANT: browser.storage.session does NOT exist in Firefox Manifest V2
+//   - Any storage.session calls will return early with "unavailable" warning
+//   - This is expected behavior - port messaging is the primary mechanism
+//   - storage.local is used as FALLBACK for edge cases only
+//
+// v1.6.4.18 - (LEGACY NOTE): Claimed switch to storage.session, but storage.session
+//   is NOT available in Firefox MV2. The actual implementation uses:
+//   - Port messaging for real-time sync (PRIMARY)
+//   - In-memory quickTabsSessionState (SINGLE SOURCE OF TRUTH)
+//   - storage.local as fallback for compatibility
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';

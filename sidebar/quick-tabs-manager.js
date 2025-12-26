@@ -2,6 +2,18 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.13 ARCHITECTURE UPDATE ===
+ * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
+ *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
+ *   - All Quick Tab operations use port messaging, NOT storage APIs
+ *   - storage.onChanged listener is FALLBACK only for edge cases
+ *   - Quick Tabs are session-only (cleared on browser restart)
+ *
+ * IMPORTANT: browser.storage.session does NOT exist in Firefox Manifest V2
+ *   - Any storage.session calls will return early with "unavailable" warning
+ *   - This is expected behavior - port messaging is the primary mechanism
+ *   - Collapse state still uses storage.local (UI preference)
+ *
  * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
  *   - Quick Tabs are now session-only (cleared on browser restart)
  *   - All Quick Tab state operations use storage.session
@@ -380,6 +392,11 @@ function _handleQuickTabPortAck(msg, ackType) {
  * Quick Tabs port message handlers lookup table
  * v1.6.3.13 - FIX Code Health: Replace switch with lookup table
  * v1.6.3.13 - FIX Issue #16-17: ACK handlers now log roundtrip time
+ *
+ * NOTE Issue #11 (Port Message Ordering): Port messages may arrive out of order
+ * with async handlers. The current implementation assumes message ordering is
+ * preserved by the browser's port messaging system. If ordering issues occur,
+ * consider adding sequence numbers to messages and buffering out-of-order messages.
  * @private
  */
 const _portMessageHandlers = {
@@ -3954,6 +3971,16 @@ async function _executeDebounceRender(debounceTime) {
  *   - Timer extends on each new change (up to RENDER_DEBOUNCE_MAX_WAIT_MS)
  *   - Compares against CURRENT storage read, not captured hash
  * v1.6.3.11-v3 - FIX CodeScene: Extract debounce callback to reduce complexity
+ *
+ * Issue #14 Note (State Hash Timing): State hash is captured at debounce scheduling
+ * (capturedStateHashAtDebounce) for debugging, but the FINAL hash is always recomputed
+ * at render time in _executeDebounceRender() to ensure fresh state comparison.
+ * This is the correct behavior - we render with the latest state, not stale captured state.
+ *
+ * Issue #18 Note (Debounce Timing): Manager uses 100ms debounce (RENDER_DEBOUNCE_MS)
+ * with 300ms max wait (RENDER_DEBOUNCE_MAX_WAIT_MS). This is intentionally faster than
+ * UpdateHandler's 200/300ms to provide responsive UI updates in the sidebar.
+ *
  * This is the public API - all callers should use this function.
  */
 function renderUI() {
@@ -5074,9 +5101,15 @@ function setupEventListeners() {
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
+  // v1.6.3.13 - FIX Issue #13: storage.onChanged is FALLBACK mechanism for port messaging
+  //   - PRIMARY: Port messaging ('quick-tabs-port') for real-time sync
+  //   - FALLBACK: storage.local changes caught here for edge cases
+  //   - NOTE: 'session' area does NOT exist in Firefox MV2
   browser.storage.onChanged.addListener((changes, areaName) => {
-    // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
-    if (areaName !== 'session' || !changes[STATE_KEY]) return;
+    // v1.6.3.13 - FIX Issue #13: Listen for 'local' area as fallback
+    // Port messaging is the PRIMARY sync mechanism (Option 4 Architecture)
+    // storage.session does NOT exist in Firefox MV2, so listen for 'local' instead
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
     _handleStorageChange(changes[STATE_KEY]);
   });
 }
