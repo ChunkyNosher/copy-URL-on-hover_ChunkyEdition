@@ -7623,7 +7623,7 @@ async function _persistAdoption({
 /**
  * Issue #9: Verify adoption was persisted by monitoring storage.onChanged
  * Logs time delta between write and confirmation, warns if no confirmation within 2 seconds
- * v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+ * v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area (Firefox MV2 has no storage.session)
  * @private
  * @param {string} quickTabId - Quick Tab ID that was adopted
  * @param {string} expectedSaveId - SaveId to look for in storage change
@@ -7634,9 +7634,9 @@ function _verifyAdoptionInStorage(quickTabId, expectedSaveId, writeTimestamp) {
   const CONFIRMATION_TIMEOUT_MS = 2000;
 
   // Issue #9: Temporary listener for this specific saveId
-  // v1.6.4.18 - FIX: Listen for 'session' area changes for Quick Tabs state
+  // v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area (Firefox MV2 has no storage.session)
   const verificationListener = (changes, areaName) => {
-    if (areaName !== 'session' || !changes[STATE_KEY]) return;
+    if (areaName !== 'local' || !changes[STATE_KEY]) return;
 
     const newValue = changes[STATE_KEY].newValue;
     if (newValue?.saveId === expectedSaveId) {
