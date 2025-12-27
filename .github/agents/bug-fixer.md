@@ -37,15 +37,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v3 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v4 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
+**v1.6.3.12-v4 Features (NEW) - storage.session Removal + Cache Staleness:**
+
+- **storage.session API Removal** - All `browser.storage.session` calls replaced
+  with `browser.storage.local` for Firefox MV2 compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **Port Disconnect Fix** - Captures `lastError` immediately on first line of handler
+- **Cache Staleness Detection** - 30s warning, 60s auto-sync
+- **SyncStorageAdapter 10.0** - Refactored from 8.91 to 10.0 Code Health
+
+**v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps:**
 
 - **Container ID Resolution** - CreateHandler queries Identity system via
   `getWritingContainerId()` at creation time (not stale constructor values)
-- **storage.session API Fix** - Properly guards MV2 incompatible code
 - **Context Detection Fix** - `setWritingTabId()` receives proper context
 - **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
 - **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
@@ -206,14 +214,18 @@ port.postMessage({
 });
 ```
 
-### Storage Routing Pattern
+### Storage Routing Pattern (v1.6.3.12-v4+)
 
 ```javascript
-// Session vs Permanent routing
-const storage =
-  quickTab.permanent === false
-    ? browser.storage.session
-    : browser.storage.local;
+// v1.6.3.12-v4: browser.storage.session REMOVED - use storage.local only
+// Session-only behavior via startup cleanup: _clearQuickTabsOnStartup()
+await browser.storage.local.set(data);  // Only storage API used
+
+// Port disconnect: capture lastError IMMEDIATELY on first line
+quickTabsPort.onDisconnect.addListener(() => {
+  const disconnectError = browser.runtime?.lastError?.message || 'unknown';
+  // ... rest of handler
+});
 ```
 
 ### Prior Version Fix Patterns (Summary)

@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v3** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.3.12-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,38 +8,37 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v3 Status:** Option 4 Architecture ✅ | Critical Bug Fixes ✅ |
-Logging Gaps Fixed ✅ | Code Health 9.0+ ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v4 Status:** Option 4 Architecture ✅ | storage.local Only ✅ |
+Cache Staleness Detection ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v3
+## 🎉 What's New in v1.6.3.12-v4
 
-**🔧 Critical Bug Fixes + Logging Gaps ✅**
+**🔧 storage.session Removal + Cache Staleness Detection ✅**
 
-- ✅ **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (fixes container mismatch)
-- ✅ **storage.session API Fix** - Properly guards MV2 incompatible code
-- ✅ **Context Detection Fix** - `setWritingTabId()` receives proper context
-- ✅ **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- ✅ **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring,
-  write queue state, debounce timing, end-to-end sync paths
-- ✅ **Test Bridge API** - Container verification methods for E2E testing
-- ✅ **Code Health 9.0+** - background.js, quick-tabs-manager.js, index.js
+- ✅ **storage.session API Removal** - All `browser.storage.session` calls replaced
+  with `browser.storage.local` for full Firefox MV2 compatibility
+- ✅ **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior (clears Quick Tabs on browser restart)
+- ✅ **Port Disconnect Fix** - Captures `lastError` immediately for debugging
+- ✅ **Cache Staleness Detection** - 30s warning, 60s auto-sync for reliable state
+- ✅ **Comprehensive Logging** - Hydration, debounce timing, ownership filter logs
+- ✅ **Code Health 10.0** - SyncStorageAdapter refactored from 8.91 to 10.0
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager refresh fix  
 **v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port roundtrip
 tracking  
 **v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state,
 push notifications  
 **v1.6.3.11-v12:** Solo/Mute removed, session-only Quick Tabs, version-based log
-cleanup  
-**v1.6.3.11-v11:** Container identity fix, message diagnostics, Code Health 10.0
+cleanup
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -137,10 +136,11 @@ npm run lint                    # Lint
 
 ## 📝 Notes
 
-- Quick Tabs are session-only and cleared on browser close (in-memory storage)
+- Quick Tabs are session-only and cleared on browser restart (`storage.local` + startup cleanup)
 - Container isolation prevents cross-container state leaks
 - Port messaging ensures reliable Quick Tabs sync across tabs
 - Background script is single source of truth for all Quick Tabs data
+- Cache staleness detection auto-syncs if no updates for 60s
 
 ## 📄 License
 
@@ -148,6 +148,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v3** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
