@@ -46,11 +46,17 @@
  *   - All Quick Tab state operations use storage.local exclusively
  *   - Session-only behavior achieved via explicit startup cleanup (_clearQuickTabsOnStartup)
  *   - z-index counter, heartbeat, settings all use storage.local
+ * v1.6.4 - FIX Storage Transaction Timeout Issue #5:
+ *   - Self-write confirmation now uses storage.local.set() promise resolution (not storage.onChanged)
+ *   - Per MDN: storage.onChanged should only detect EXTERNAL writes, not confirm self-writes
+ *   - Transaction cleanup moved to _handleSuccessfulWrite() for immediate cleanup
+ *   - Eliminates false "TRANSACTION TIMEOUT" warnings for normal self-writes
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
  * - Self-write detection via writingInstanceId/writingTabId
- * - Transaction IDs tracked until storage.onChanged confirms processing
+ * - Transaction IDs cleaned up immediately on storage.local.set() promise resolution
+ * - storage.onChanged is used ONLY for detecting EXTERNAL writes (cross-tab sync)
  * - Content scripts must call waitForIdentityInit() before storage operations
  *
  * @module storage-utils
@@ -3111,6 +3117,9 @@ function _clearExistingTimeout(timeoutMap, transactionId) {
 /**
  * Handle escalation warning for stale transaction
  * v1.6.3.12-v7 - FIX CodeScene: Extract from scheduleFallbackCleanup
+ * v1.6.4 - FIX Issue #5: This warning should now be rare since successful writes
+ *   are cleaned up immediately on promise resolution. If this fires, it likely
+ *   indicates the storage write itself is slow or failed.
  * @private
  * @param {string} transactionId - Transaction ID
  * @param {number} scheduleTime - When cleanup was scheduled
@@ -3119,11 +3128,13 @@ function _handleEscalationWarning(transactionId, scheduleTime) {
   if (!IN_PROGRESS_TRANSACTIONS.has(transactionId)) return;
 
   const elapsedMs = Date.now() - scheduleTime;
-  console.warn('[StorageUtils] ⚠️ TRANSACTION STALE WARNING:', {
+  // v1.6.4 - FIX Issue #5: Changed from error to debug - this is now informational
+  // since successful writes are cleaned up before this timer fires
+  console.log('[StorageUtils] v1.6.4 TRANSACTION_PENDING_INFO:', {
     transactionId,
     elapsedMs,
-    warning: `storage.onChanged has not fired in ${ESCALATION_WARNING_MS}ms`,
-    suggestion: 'Transaction may be stuck - monitoring for timeout'
+    info: `Transaction still pending after ${ESCALATION_WARNING_MS}ms`,
+    note: 'v1.6.4: Storage write may still be in progress (this is informational)'
   });
 }
 
@@ -3131,6 +3142,8 @@ function _handleEscalationWarning(transactionId, scheduleTime) {
  * Handle transaction timeout - cleanup and log error
  * v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging with recent storage events
  * v1.6.3.12-v7 - FIX CodeScene: Extract from scheduleFallbackCleanup
+ * v1.6.4 - FIX Issue #5: This should now only fire if storage.local.set() itself failed
+ *   (which is rare). Normal self-writes are cleaned up immediately on promise resolution.
  * @private
  * @param {string} transactionId - Transaction ID
  * @param {number} scheduleTime - When cleanup was scheduled
@@ -3145,35 +3158,22 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
   if (IN_PROGRESS_TRANSACTIONS.has(transactionId)) {
     const elapsedMs = Date.now() - scheduleTime;
 
-    // v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging
-    console.error('[StorageUtils] ⚠️ TRANSACTION TIMEOUT - possible infinite loop:', {
+    // v1.6.4 - FIX Issue #5: This is now only expected if storage.local.set() itself failed.
+    // Normal self-writes are cleaned up immediately in _handleSuccessfulWrite() when the
+    // storage.local.set() promise resolves. If we reach here, it means either:
+    // 1. The storage write failed and the error wasn't properly caught
+    // 2. The transaction was created but never executed (code path issue)
+    // 3. There's a genuinely stuck storage operation (very rare)
+    console.warn('[StorageUtils] v1.6.4 TRANSACTION_TIMEOUT (fallback cleanup):', {
       transactionId,
-      expectedEvent: 'storage.onChanged never fired',
       elapsedMs,
       triggerModule: 'storage-utils (fallback timer)',
       pendingTransactions: IN_PROGRESS_TRANSACTIONS.size,
       pendingTransactionIds: [...IN_PROGRESS_TRANSACTIONS],
       pendingWriteCount,
       lastCompletedTransactionId,
-      recentWriteCount: saveIdWriteTracker.size,
-      // v1.6.3.7 - FIX Issue #6: List recent storage events for diagnosis
-      diagnosticHint: 'Check browser devtools Network tab for storage.local operations',
-      suggestion:
-        'If this repeats, self-write detection may be broken. Check isSelfWrite() function.'
-    });
-
-    // v1.6.3.7 - FIX Issue #6: Log whether transaction should have matched
-    console.warn('[StorageUtils] TRANSACTION_TIMEOUT diagnostic:', {
-      transactionId,
-      timeoutThresholdMs: TRANSACTION_FALLBACK_CLEANUP_MS,
-      actualDelayMs: elapsedMs,
-      expectedBehavior: 'storage.onChanged should fire within 100-200ms of write',
-      possibleCauses: [
-        'Firefox extension storage delay (normal: 50-100ms)',
-        'Self-write detection failed in storage.onChanged handler',
-        'Storage write never completed',
-        'storage.onChanged listener not registered'
-      ]
+      note: 'v1.6.4: Normal writes should be cleaned up on promise resolution',
+      likelyCause: 'Storage write failed or was never executed'
     });
 
     IN_PROGRESS_TRANSACTIONS.delete(transactionId);
@@ -4143,6 +4143,21 @@ function _handleSuccessfulWrite({
 
   // v1.6.3.6-v2 - FIX Issue #1: Update lastWrittenTransactionId for self-write detection
   lastWrittenTransactionId = transactionId;
+
+  // v1.6.4 - FIX Issue #5: Clean up transaction immediately on storage.local.set() success
+  // Per MDN documentation, storage.local.set() promise resolution IS the confirmation
+  // that the write completed successfully. We should NOT wait for storage.onChanged
+  // to confirm our own writes - that event is only useful for detecting EXTERNAL writes.
+  // This prevents the "TRANSACTION TIMEOUT" warning that occurred when storage.onChanged
+  // never fired for self-writes (which is correct behavior per browser API).
+  cleanupTransactionId(transactionId);
+  console.log('[StorageUtils] v1.6.4 TRANSACTION_CONFIRMED_ON_PROMISE:', {
+    transactionId,
+    durationMs,
+    tabCount,
+    confirmationMethod: 'storage.local.set() promise resolution',
+    note: 'storage.onChanged is for EXTERNAL writes only'
+  });
 
   pendingWriteCount = Math.max(0, pendingWriteCount - 1);
 
@@ -6026,6 +6041,7 @@ const QUEUE_MAX_WAIT_MS = 5000;
  * 2. Write requests are queued and processed by priority
  * 3. Stalled operations are evicted instead of blocking the queue
  * 4. Queue status is logged for debugging
+ * v1.6.4 - FIX Issue #6: Added concurrency tracking for latency diagnosis
  *
  * @class StorageCoordinator
  */
@@ -6037,6 +6053,10 @@ class StorageCoordinator {
     this._currentHandler = null;
     this._currentOperationStartTime = null;
     this._evictedCount = 0;
+    // v1.6.4 - FIX Issue #6: Track concurrent operation attempts for latency diagnosis
+    this._peakQueueSize = 0;
+    this._totalQueueTime = 0;
+    this._operationsProcessed = 0;
   }
 
   /**
@@ -6065,6 +6085,17 @@ class StorageCoordinator {
       // v1.6.3.12-v5 - FIX Issue #16: Insert based on priority (lower number = higher priority)
       this._insertByPriority(queueEntry);
 
+      // v1.6.4 - FIX Issue #6: Track peak queue size for latency diagnosis
+      if (this._writeQueue.length > this._peakQueueSize) {
+        this._peakQueueSize = this._writeQueue.length;
+        console.log('[WRITE_QUEUE] v1.6.4 CONCURRENCY_PEAK:', {
+          newPeakSize: this._peakQueueSize,
+          handler: handlerName,
+          isWriting: this._isWriting,
+          note: 'High queue depth indicates potential storage latency'
+        });
+      }
+
       console.log('[WRITE_QUEUE] ENQUEUED:', {
         handler: handlerName,
         priority,
@@ -6072,6 +6103,12 @@ class StorageCoordinator {
         isWriting: this._isWriting,
         currentHandler: this._currentHandler,
         entryId: queueEntry.id,
+        // v1.6.4 - FIX Issue #6: Add concurrency stats
+        peakQueueSize: this._peakQueueSize,
+        avgQueueTimeMs:
+          this._operationsProcessed > 0
+            ? Math.round(this._totalQueueTime / this._operationsProcessed)
+            : 0,
         timestamp: new Date().toISOString()
       });
 
@@ -6202,16 +6239,27 @@ class StorageCoordinator {
   /**
    * Handle operation success
    * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * v1.6.4 - FIX Issue #6: Track queue time for latency diagnosis
    * @private
    */
   _handleOperationSuccess(entry, result) {
+    const operationDuration = Date.now() - this._currentOperationStartTime;
+    const queueWaitTime = this._currentOperationStartTime - entry.queuedAt;
+
+    // v1.6.4 - FIX Issue #6: Track queue times for latency analysis
+    this._totalQueueTime += queueWaitTime;
+    this._operationsProcessed++;
+
     console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
       handler: entry.handlerName,
       entryId: entry.id,
       priority: entry.priority,
       writeNumber: this._writeCount,
       queueSize: this._writeQueue.length,
-      durationMs: Date.now() - this._currentOperationStartTime,
+      durationMs: operationDuration,
+      // v1.6.4 - FIX Issue #6: Add queue wait time for latency diagnosis
+      queueWaitTimeMs: queueWaitTime,
+      avgQueueWaitMs: Math.round(this._totalQueueTime / this._operationsProcessed),
       timestamp: new Date().toISOString()
     });
     entry.resolve(result);
@@ -6300,6 +6348,7 @@ class StorageCoordinator {
   /**
    * Get current queue status
    * v1.6.3.12-v5 - FIX Issue #16: Added priority and eviction stats
+   * v1.6.4 - FIX Issue #6: Added concurrency tracking stats
    * @returns {Object} Queue status information
    */
   getStatus() {
@@ -6309,6 +6358,13 @@ class StorageCoordinator {
       currentHandler: this._currentHandler,
       totalWrites: this._writeCount,
       totalEvicted: this._evictedCount,
+      // v1.6.4 - FIX Issue #6: Concurrency tracking stats
+      peakQueueSize: this._peakQueueSize,
+      operationsProcessed: this._operationsProcessed,
+      avgQueueWaitMs:
+        this._operationsProcessed > 0
+          ? Math.round(this._totalQueueTime / this._operationsProcessed)
+          : 0,
       pendingHandlers: this._writeQueue.map(w => ({
         handler: w.handlerName,
         priority: w.priority,

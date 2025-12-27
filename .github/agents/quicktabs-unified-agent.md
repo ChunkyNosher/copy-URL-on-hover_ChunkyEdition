@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v7), memory-based state (`quickTabsSessionState`),
-  circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler
+  sync with Single Writer Authority (v1.6.3.12-v9), memory-based state (`quickTabsSessionState`),
+  circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v9 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,22 +47,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v7 Features (NEW):**
+**v1.6.3.12-v9 Features (NEW):**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`,
-  `minimizeQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
+- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
+- **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
+- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
+- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
+- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
+- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
 
-**v1.6.3.12-v6 Features:**
+**v1.6.3.12-v8 Features:**
 
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer
 
-**Key Timing Constants (v1.6.3.12-v7+):**
+**Key Timing Constants (v1.6.3.12-v9+):**
 
 | Constant                                | Value | Purpose                            |
 | --------------------------------------- | ----- | ---------------------------------- |
@@ -70,6 +72,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
 | `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
 | `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
+| `MAX_CONSECUTIVE_RERENDERS`             | 3     | Prevent infinite render loops      |
 
 **Key Architecture Components:**
 
@@ -79,6 +82,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 | `contentScriptPorts`           | Tab ID → Port mapping            |
 | `sidebarPort`                  | Manager sidebar port             |
 | `notifySidebarOfStateChange()` | Push updates to sidebar          |
+| `_isRenderInProgress`          | Render lock flag                 |
+| `_stateVersion`                | State version for consistency    |
 
 **Key Modules:**
 
@@ -103,11 +108,11 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
-- [ ] Circuit breaker trips after 5 failures
-- [ ] Timeout backoff works (1s → 3s → 5s)
+- [ ] Optimistic UI updates work
+- [ ] Render lock prevents concurrent renders (max 3)
+- [ ] Orphan Quick Tab UI displays correctly
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] Memory state works (`quickTabsSessionState`)
-- [ ] Priority queue orders writes correctly
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
@@ -118,5 +123,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v5 circuit breaker,
-priority queue, timeout backoff, and rolling heartbeat window.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v9 optimistic UI,
+render lock, orphan recovery UI, and comprehensive validation.**

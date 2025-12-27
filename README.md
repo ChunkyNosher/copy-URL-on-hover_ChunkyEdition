@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v8** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.12-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Per-Tab
 Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,34 +8,36 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v8 Status:** Bulk Close ✅ | Circuit Breaker Auto-Reset ✅ | Code
-Health 10.0 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v9 Status:** Comprehensive Logging ✅ | Optimistic UI ✅ | Code
+Health 8.54 ✅ | Orphan Recovery UI ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v8
+## 🎉 What's New in v1.6.3.12-v9
 
-**🔧 Bulk Close Operations + Circuit Breaker Auto-Reset ✅**
+**🔧 Comprehensive Logging + Optimistic UI ✅**
 
-- ✅ **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- ✅ **Circuit Breaker Auto-Reset** - 60-second timer auto-resets tripped
-  circuit breaker
-- ✅ **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
-  RESET_GLOBAL_QUICK_TAB_STATE
-- ✅ **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
-  timeout
-- ✅ **Listener Registration Guard** - `_messageListenerRegistered` prevents
-  duplicates
-- ✅ **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
-  settings.js: 10.0
+- ✅ **Button Click Logging** - All Manager buttons logged with
+  `[Manager] BUTTON_CLICKED:` prefix
+- ✅ **Optimistic UI Updates** - Instant feedback via
+  `_applyOptimisticUIUpdate()`
+- ✅ **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
+- ✅ **Cross-Tab Aggregation Logging** - `_computeOriginTabStats()` with
+  `STATE_SYNC_CROSS_TAB_AGGREGATION`
+- ✅ **Orphan Quick Tab Recovery UI** - Orange background + badge for orphaned
+  tabs
+- ✅ **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
+- ✅ **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Code Health
+10.0  
 **v1.6.3.12-v7:** Message Routing Fixes, VALID_MESSAGE_ACTIONS, Code Health
 10.0  
 **v1.6.3.12-v6:** Manager Sync, Port Resilience, Sequence Tracking, Circuit
@@ -161,6 +163,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v8** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v9** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

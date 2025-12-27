@@ -6,13 +6,18 @@ const browserAPI =
 
 // Verify browser API is available
 if (!browserAPI) {
-  console.error('[Popup] Browser API not available. Extension may not work properly.');
+  console.error('[Settings] Browser API not available. Extension may not work properly.');
 }
 
 // ==================== v1.6.4 FIX ISSUE 10: LISTENER REGISTRATION GUARD ====================
 // Prevent duplicate message listener registration when sidebar reloads
 let _messageListenerRegistered = false;
 // ==================== END LISTENER REGISTRATION GUARD ====================
+
+// ==================== v1.6.4 FIX ISSUE 7 & 18: FAILED BUTTON TRACKING ====================
+// Track buttons that failed to initialize for user feedback
+const _failedButtonInitializations = [];
+// ==================== END FAILED BUTTON TRACKING ====================
 
 // ==================== v1.6.4 FIX ISSUE 9: TIMEOUT PROTECTION ====================
 // Default timeout for async browser.runtime.sendMessage operations
@@ -51,16 +56,20 @@ function sendMessageWithTimeout(message, timeoutMs = MESSAGE_TIMEOUT_MS) {
 /**
  * Request logs from background script
  * v1.6.4 - FIX Issue 9: Added timeout protection
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  * @returns {Promise<Array>} Array of log entries
  */
 async function getBackgroundLogs() {
+  console.log('[Settings] getBackgroundLogs: Requesting logs from background script...');
   try {
     const response = await sendMessageWithTimeout({
       action: 'GET_BACKGROUND_LOGS'
     });
+    const logCount = response && response.logs ? response.logs.length : 0;
+    console.log(`[Settings] getBackgroundLogs: Received ${logCount} logs from background`);
     return response && response.logs ? response.logs : [];
   } catch (error) {
-    console.warn('[Popup] Could not retrieve background logs:', error);
+    console.warn('[Settings] getBackgroundLogs: Could not retrieve background logs:', error);
     return [];
   }
 }
@@ -72,7 +81,7 @@ async function getBackgroundLogs() {
 async function _getActiveTab() {
   const tabs = await browserAPI.tabs.query({ active: true, currentWindow: true });
   if (tabs.length === 0) {
-    console.warn('[Popup] No active tab found');
+    console.warn('[Settings] No active tab found');
     return null;
   }
   return tabs[0];
@@ -86,22 +95,27 @@ function _logContentScriptError(error) {
   if (!error.message) return;
 
   if (error.message.includes('Could not establish connection')) {
-    console.error('[Popup] Content script not loaded in active tab');
+    console.error('[Settings] Content script not loaded in active tab');
   } else if (error.message.includes('No active tab')) {
-    console.error('[Popup] No active tab found - try clicking on a webpage first');
+    console.error('[Settings] No active tab found - try clicking on a webpage first');
   }
 }
 
 /**
  * Request logs from active content script
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  * @returns {Promise<Array>} Array of log entries
  */
 async function getContentScriptLogs() {
+  console.log('[Settings] getContentScriptLogs: Starting content script log collection...');
   try {
     const activeTab = await _getActiveTab();
-    if (!activeTab) return [];
+    if (!activeTab) {
+      console.warn('[Settings] getContentScriptLogs: No active tab available');
+      return [];
+    }
 
-    console.log(`[Popup] Requesting logs from tab ${activeTab.id}`);
+    console.log(`[Settings] getContentScriptLogs: Requesting logs from tab ${activeTab.id}`);
 
     // Request logs from content script
     const response = await browserAPI.tabs.sendMessage(activeTab.id, {
@@ -109,20 +123,20 @@ async function getContentScriptLogs() {
     });
 
     if (!response || !response.logs) {
-      console.warn('[Popup] Content script returned no logs');
+      console.warn('[Settings] getContentScriptLogs: Content script returned no logs');
       return [];
     }
 
-    console.log(`[Popup] Received ${response.logs.length} logs from content script`);
+    console.log(`[Settings] getContentScriptLogs: Received ${response.logs.length} logs`);
 
     // Log buffer stats for debugging
     if (response.stats) {
-      console.log('[Popup] Content script buffer stats:', response.stats);
+      console.log('[Settings] Content script buffer stats:', response.stats);
     }
 
     return response.logs;
   } catch (error) {
-    console.warn('[Popup] Could not retrieve content script logs:', error);
+    console.warn('[Settings] getContentScriptLogs: Could not retrieve content script logs:', error);
     _logContentScriptError(error);
     return [];
   }
@@ -185,8 +199,8 @@ function generateLogFilename(version) {
  * @param {Array} contentLogs - Content script logs
  */
 function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
-  console.log(`[Popup] Collected ${backgroundLogs.length} background logs`);
-  console.log(`[Popup] Collected ${contentLogs.length} content logs`);
+  console.log(`[Settings] Collected ${backgroundLogs.length} background logs`);
+  console.log(`[Settings] Collected ${contentLogs.length} content logs`);
 
   // Show breakdown by log type
   const backgroundTypes = {};
@@ -200,8 +214,8 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
     contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
   });
 
-  console.log('[Popup] Background log types:', backgroundTypes);
-  console.log('[Popup] Content log types:', contentTypes);
+  console.log('[Settings] Background log types:', backgroundTypes);
+  console.log('[Settings] Content log types:', contentTypes);
 }
 
 /**
@@ -241,9 +255,12 @@ const LOG_VALIDATION_RULES = [
  * @throws {Error} If validation fails
  */
 function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab) {
-  if (allLogs.length > 0) return;
+  if (allLogs.length > 0) {
+    console.log('[Settings] Log validation passed:', allLogs.length, 'logs collected');
+    return;
+  }
 
-  console.warn('[Popup] No logs to export');
+  console.warn('[Settings] No logs to export');
 
   // Find first matching validation rule and throw appropriate error
   for (const rule of LOG_VALIDATION_RULES) {
@@ -262,11 +279,14 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
 /**
  * Delegate log export to background script
  * v1.6.4 - FIX Issue 9: Added timeout protection
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  * @param {string} logText - Formatted log text
  * @param {string} filename - Export filename
  */
 async function _delegateLogExport(logText, filename) {
-  console.log('[Popup] Delegating export to background script (v1.5.9.7 fix)');
+  console.log('[Settings] _delegateLogExport: Sending export request to background script...');
+  console.log(`[Settings] _delegateLogExport: Filename: ${filename}`);
+  console.log(`[Settings] _delegateLogExport: Log text size: ${logText.length} chars`);
 
   const response = await sendMessageWithTimeout({
     action: 'EXPORT_LOGS',
@@ -276,10 +296,11 @@ async function _delegateLogExport(logText, filename) {
 
   if (!response || !response.success) {
     const errorMessage = response?.error || 'Background script did not acknowledge export request';
+    console.error('[Settings] _delegateLogExport: Export failed:', errorMessage);
     throw new Error(errorMessage);
   }
 
-  console.log('✓ [Popup] Background script accepted log export request');
+  console.log('[Settings] _delegateLogExport: Background script accepted log export request ✓');
 }
 
 /**
@@ -356,18 +377,25 @@ function extractCategoryFromLogEntry(logEntry) {
 /**
  * Get export filter settings from storage
  * v1.6.0.9 - Added export filter support
+ * v1.6.4 - FIX Issue 7: Added logging
  */
 async function getExportFilterSettings() {
+  console.log('[Settings] getExportFilterSettings: Loading filter settings...');
   try {
     const result = await browserAPI.storage.local.get('exportLogCategoriesEnabled');
     if (result.exportLogCategoriesEnabled) {
+      console.log('[Settings] getExportFilterSettings: Loaded custom filter settings');
       return result.exportLogCategoriesEnabled;
     }
   } catch (error) {
-    console.error('[Popup] Failed to load export filter settings:', error);
+    console.error(
+      '[Settings] getExportFilterSettings: Failed to load export filter settings:',
+      error
+    );
   }
 
   // Default: all categories enabled
+  console.log('[Settings] getExportFilterSettings: Using default filter settings (all enabled)');
   return {
     'url-detection': true,
     hover: true,
@@ -417,22 +445,26 @@ function filterLogsByExportSettings(allLogs, exportSettings) {
  * Export all logs as downloadable .txt file
  * Uses Blob URLs for Firefox compatibility (data: URLs are blocked)
  * v1.6.0.9 - Added export filter support
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  *
  * @param {string} version - Extension version
  * @returns {Promise<void>}
  */
 async function exportAllLogs(version) {
+  console.log('[Settings] exportAllLogs: ========== STARTING LOG EXPORT ==========');
+  console.log(`[Settings] exportAllLogs: Extension version: ${version}`);
   try {
-    console.log('[Popup] Starting log export...');
-
     // Get active tab for debugging
     const activeTab = await _getActiveTab();
     if (activeTab) {
-      console.log('[Popup] Active tab:', activeTab.url);
-      console.log('[Popup] Active tab ID:', activeTab.id);
+      console.log('[Settings] exportAllLogs: Active tab URL:', activeTab.url);
+      console.log('[Settings] exportAllLogs: Active tab ID:', activeTab.id);
+    } else {
+      console.warn('[Settings] exportAllLogs: No active tab found');
     }
 
     // Collect logs from all sources
+    console.log('[Settings] exportAllLogs: Collecting logs from all sources...');
     const backgroundLogs = await getBackgroundLogs();
     const contentLogs = await getContentScriptLogs();
 
@@ -443,19 +475,19 @@ async function exportAllLogs(version) {
     const allLogs = [...backgroundLogs, ...contentLogs];
     allLogs.sort((a, b) => a.timestamp - b.timestamp);
 
-    console.log(`[Popup] Total logs captured: ${allLogs.length}`);
+    console.log(`[Settings] exportAllLogs: Total logs captured: ${allLogs.length}`);
 
     // ==================== EXPORT FILTER (v1.6.0.9) ====================
     // Apply export filter settings
     const exportSettings = await getExportFilterSettings();
-    console.log('[Popup] Export filter settings:', exportSettings);
+    console.log('[Settings] exportAllLogs: Export filter settings:', exportSettings);
 
     const filteredLogs = filterLogsByExportSettings(allLogs, exportSettings);
-    console.log(`[Popup] Logs after export filter: ${filteredLogs.length}`);
+    console.log(`[Settings] exportAllLogs: Logs after export filter: ${filteredLogs.length}`);
 
     const percentage =
       allLogs.length > 0 ? ((filteredLogs.length / allLogs.length) * 100).toFixed(1) : '0.0';
-    console.log(`[Popup] Export filter: ${percentage}% of logs included`);
+    console.log(`[Settings] exportAllLogs: Export filter: ${percentage}% of logs included`);
     // ==================== END EXPORT FILTER ====================
 
     // Validate logs were collected
@@ -467,9 +499,9 @@ async function exportAllLogs(version) {
     // Generate filename with timestamp
     const filename = generateLogFilename(version);
 
-    console.log(`[Popup] Exporting to: ${filename}`);
+    console.log(`[Settings] exportAllLogs: Exporting to: ${filename}`);
     console.log(
-      `[Popup] Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
+      `[Settings] exportAllLogs: Log text size: ${logText.length} characters (${(logText.length / 1024).toFixed(2)} KB)`
     );
 
     // ==================== BACKGROUND HANDOFF (v1.5.9.7) ====================
@@ -477,17 +509,14 @@ async function exportAllLogs(version) {
     // which destroys popup event listeners mid-download. Delegating the
     // downloads API work to the persistent background script ensures the
     // listener survives regardless of popup focus.
-    //
-    // References:
-    // - Diagnostic report: docs/manual/1.5.9 docs/popup-close-background-v1597.md
-    // - Stack Overflow 58412084: Save As dialog closes browserAction popup
-    // - Firefox Bug 1658694: Popup closes when file picker opens
 
     await _delegateLogExport(logText, filename);
+    console.log('[Settings] exportAllLogs: ========== LOG EXPORT COMPLETE ==========');
 
     // ==================== END BACKGROUND HANDOFF ====================
   } catch (error) {
-    console.error('[Popup] Export failed:', error);
+    console.error('[Settings] exportAllLogs: ========== EXPORT FAILED ==========');
+    console.error('[Settings] exportAllLogs: Error:', error);
     throw error;
   }
 }
@@ -868,101 +897,132 @@ function gatherFilterSettings() {
 /**
  * Save settings from form to storage
  * v1.6.0.11 - Now also saves filter settings and notifies content scripts
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  */
 async function saveSettings() {
+  console.log('[Settings] saveSettings: ========== STARTING SAVE ==========');
   try {
     const settings = gatherSettingsFromForm();
     const { liveSettings, exportSettings } = gatherFilterSettings();
 
+    console.log('[Settings] saveSettings: Gathered settings from form');
+
     // Save main settings
     await browserAPI.storage.local.set(settings);
+    console.log('[Settings] saveSettings: Main settings saved to storage.local');
 
     // Save filter settings
     await browserAPI.storage.local.set({
       liveConsoleCategoriesEnabled: liveSettings,
       exportLogCategoriesEnabled: exportSettings
     });
+    console.log('[Settings] saveSettings: Filter settings saved to storage.local');
 
     // Notify all tabs to refresh live console filter cache
     await refreshLiveConsoleFiltersInAllTabs();
+    console.log('[Settings] saveSettings: Notified all tabs to refresh filters');
 
     showStatus('✓ Settings saved! Reload tabs to apply changes.');
     applyTheme(settings.darkMode);
     applyMenuSize(settings.menuSize);
+    console.log('[Settings] saveSettings: ========== SAVE COMPLETE ==========');
   } catch (error) {
-    console.error('[Popup] Failed to save settings:', error);
+    console.error('[Settings] saveSettings: Failed to save settings:', error);
     showStatus('✗ Failed to save settings', false);
   }
 }
 
 // Save settings
-document.getElementById('saveBtn').addEventListener('click', saveSettings);
+// v1.6.4 - FIX Issue 7: Added button click logging
+document.getElementById('saveBtn').addEventListener('click', () => {
+  console.log('[Settings] BUTTON_CLICKED: saveBtn');
+  saveSettings();
+});
 
 // Reset to defaults
 // v1.6.0.11 - Now also resets filter settings
+// v1.6.4 - FIX Issue 7: Added comprehensive logging
 document.getElementById('resetBtn').addEventListener('click', async () => {
+  console.log('[Settings] Reset button clicked');
   if (confirm('Reset all settings to defaults?')) {
+    console.log('[Settings] Reset confirmed by user');
     try {
       // Reset main settings
       await browserAPI.storage.local.set(DEFAULT_SETTINGS);
+      console.log('[Settings] Main settings reset to defaults');
 
       // Reset filter settings
       await browserAPI.storage.local.set({
         liveConsoleCategoriesEnabled: getDefaultLiveConsoleSettings(),
         exportLogCategoriesEnabled: getDefaultExportSettings()
       });
+      console.log('[Settings] Filter settings reset to defaults');
 
       // Notify all tabs to refresh live console filter cache
       await refreshLiveConsoleFiltersInAllTabs();
+      console.log('[Settings] Notified all tabs to refresh filters');
 
       // Reload UI
       loadSettings();
       loadFilterSettings();
       showStatus('✓ Settings reset to defaults!');
+      console.log('[Settings] Reset complete');
     } catch (error) {
-      console.error('[Popup] Failed to reset settings:', error);
+      console.error('[Settings] Failed to reset settings:', error);
       showStatus('✗ Failed to reset settings', false);
     }
+  } else {
+    console.log('[Settings] Reset cancelled by user');
   }
 });
 
 /**
  * v1.6.3.4 - FIX Bug #5: Helper to handle coordinated clear response
  * Extracted to reduce max-depth
+ * v1.6.4 - FIX Issue 7: Added logging
  * @param {Object} response - Response from background script
  */
 function _handleClearResponse(response) {
   if (response && response.success) {
+    console.log('[Settings] Clear storage: Success');
     showStatus('✓ Quick Tab storage cleared! Settings preserved.');
   } else {
-    showStatus('✗ Error clearing storage: ' + (response?.error || 'Unknown error'));
+    const errorMsg = response?.error || 'Unknown error';
+    console.error('[Settings] Clear storage: Failed -', errorMsg);
+    showStatus('✗ Error clearing storage: ' + errorMsg);
   }
 }
 
 // Clear Quick Tab storage button
 // v1.6.3.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
 // v1.6.4 - FIX Issue 9: Added timeout protection
+// v1.6.4 - FIX Issue 7: Added comprehensive logging
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
+  console.log('[Settings] BUTTON_CLICKED: clearStorageBtn');
   const confirmed = confirm(
     'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
   );
 
   if (!confirmed) {
+    console.log('[Settings] Clear storage cancelled by user');
     return;
   }
 
+  console.log('[Settings] Clear storage confirmed by user');
   try {
     // v1.6.3.4 - FIX Bug #5: Send coordinated clear to background script
     // Background will: 1) Clear storage once 2) Broadcast QUICK_TABS_CLEARED to all tabs
     // This prevents N tabs from all trying to clear storage simultaneously
     // v1.6.4 - FIX Issue 9: Use timeout-protected message sending
+    console.log('[Settings] Sending COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
     const response = await sendMessageWithTimeout({
       action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
     });
+    console.log('[Settings] Clear storage response:', response);
     _handleClearResponse(response);
   } catch (err) {
+    console.error('[Settings] Clear storage error:', err);
     showStatus('✗ Error clearing storage: ' + err.message);
-    console.error('Error clearing Quick Tab storage:', err);
   }
 });
 
@@ -1201,48 +1261,66 @@ function setupColorInputSync(textInput, pickerInput) {
 /**
  * Handle export logs button click
  * v1.6.1.4 - Extracted from DOMContentLoaded
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  */
 async function handleExportAllLogs() {
+  console.log('[Settings] BUTTON_CLICKED: exportLogsBtn');
+  console.log('[Settings] handleExportAllLogs: Starting export process...');
   const manifest = browserAPI.runtime.getManifest();
+  console.log('[Settings] handleExportAllLogs: Extension version:', manifest.version);
   await exportAllLogs(manifest.version);
+  console.log('[Settings] handleExportAllLogs: Export complete');
 }
 
 /**
  * Handle clear logs button click
  * v1.6.1.4 - Extracted from DOMContentLoaded
  * v1.6.4 - FIX Issue 9: Added timeout protection
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  */
 async function handleClearLogHistory() {
+  console.log('[Settings] BUTTON_CLICKED: clearLogsBtn');
+  console.log('[Settings] handleClearLogHistory: Sending CLEAR_CONSOLE_LOGS to background...');
+
   const response = await sendMessageWithTimeout({
     action: 'CLEAR_CONSOLE_LOGS'
   });
+
+  console.log('[Settings] handleClearLogHistory: Response received:', response);
 
   const clearedTabs = response?.clearedTabs || 0;
   const backgroundEntries = response?.clearedBackgroundEntries || 0;
 
   const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-  showStatus(
-    `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
-    true
-  );
+  const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
+  console.log('[Settings] handleClearLogHistory:', statusMsg);
+  showStatus(statusMsg, true);
 }
 
 /**
  * Setup button with async handler that shows loading/success/error states
  * v1.6.1.4 - Extracted from DOMContentLoaded
- * v1.6.4 - FIX Issue 8: Added defensive null checks and initialization logging
+ * v1.6.4 - FIX Issue 7 & 18: Added defensive null checks, initialization logging,
+ *          and user-facing feedback for failed button initialization
  * @param {string} buttonId - Button element ID
  * @param {Function} handler - Async handler function
  * @param {Object} options - Configuration options
+ * @returns {boolean} True if button was found and initialized, false otherwise
  */
 function setupButtonHandler(buttonId, handler, options = {}) {
+  console.log(`[Settings][INIT] Button initialization: ${buttonId} - checking...`);
   const button = document.getElementById(buttonId);
 
-  // v1.6.4 - FIX Issue 8: Defensive null check with logging
+  // v1.6.4 - FIX Issue 7 & 18: Defensive null check with logging and tracking
   if (!button) {
-    console.warn(`[Settings][INIT] Button element not found: ${buttonId}. Listener not attached.`);
-    return;
+    console.warn(`[Settings][INIT] Button initialization: ${buttonId} - NOT FOUND`);
+    console.warn(`[Settings][INIT] Listener NOT attached for: ${buttonId}`);
+    // Track failed initialization for user feedback
+    _failedButtonInitializations.push(buttonId);
+    return false;
   }
+
+  console.log(`[Settings][INIT] Button initialization: ${buttonId} - FOUND`);
 
   const {
     loadingText = '⏳ Loading...',
@@ -1253,6 +1331,7 @@ function setupButtonHandler(buttonId, handler, options = {}) {
   } = options;
 
   button.addEventListener('click', async () => {
+    console.log(`[Settings] BUTTON_CLICKED: ${buttonId}`);
     const originalText = button.textContent;
     const originalBg = button.style.backgroundColor;
 
@@ -1260,9 +1339,12 @@ function setupButtonHandler(buttonId, handler, options = {}) {
       // Show loading state
       button.disabled = true;
       button.textContent = loadingText;
+      console.log(`[Settings] ${buttonId}: Handler starting...`);
 
       // Execute handler
       await handler();
+
+      console.log(`[Settings] ${buttonId}: Handler completed successfully`);
 
       // Show success state
       button.textContent = successText;
@@ -1276,6 +1358,8 @@ function setupButtonHandler(buttonId, handler, options = {}) {
         button.disabled = false;
       }, successDuration);
     } catch (error) {
+      console.error(`[Settings] ${buttonId}: Handler failed:`, error);
+
       // Show error state
       button.textContent = errorText;
       button.classList.add('error');
@@ -1293,8 +1377,9 @@ function setupButtonHandler(buttonId, handler, options = {}) {
     }
   });
 
-  // v1.6.4 - FIX Issue 8: Log successful listener attachment
-  console.log(`[Settings][INIT] Button listener attached: ${buttonId}`);
+  // v1.6.4 - FIX Issue 7: Log successful listener attachment
+  console.log(`[Settings][INIT] Event listener attached: ${buttonId}`);
+  return true;
 }
 
 /**
@@ -1304,10 +1389,13 @@ function setupButtonHandler(buttonId, handler, options = {}) {
  * v1.6.4 - FIX Issue 10: Added listener registration guard to prevent duplicates
  */
 function initializeTabSwitching() {
+  console.log('[Settings][INIT] Initializing tab switching...');
+
   // Primary tab switching
   document.querySelectorAll('.primary-tab-button').forEach(btn => {
     btn.addEventListener('click', event => {
       const primaryTab = event.currentTarget.dataset.primaryTab;
+      console.log(`[Settings] Primary tab clicked: ${primaryTab}`);
       handlePrimaryTabSwitch(primaryTab);
     });
   });
@@ -1316,6 +1404,7 @@ function initializeTabSwitching() {
   document.querySelectorAll('.secondary-tab-button').forEach(btn => {
     btn.addEventListener('click', event => {
       const secondaryTab = event.currentTarget.dataset.tab;
+      console.log(`[Settings] Secondary tab clicked: ${secondaryTab}`);
       showSecondaryTab(secondaryTab);
     });
   });
@@ -1349,13 +1438,55 @@ function initializeTabSwitching() {
 
   // v1.6.4 - FIX Issue 10: Mark listener as registered
   _messageListenerRegistered = true;
-  console.debug('[Settings] Tab switching initialized, message listener registered');
+  console.debug('[Settings][INIT] Tab switching initialized, message listener registered');
+}
+
+/**
+ * Display a banner for failed button initializations
+ * v1.6.4 - FIX Issue 18: User-facing feedback for initialization failures
+ */
+function displayFailedButtonBanner() {
+  if (_failedButtonInitializations.length === 0) {
+    console.log('[Settings][INIT] All buttons initialized successfully');
+    return;
+  }
+
+  console.warn(
+    `[Settings][INIT] ${_failedButtonInitializations.length} button(s) failed to initialize:`,
+    _failedButtonInitializations
+  );
+
+  // Create and insert a warning banner
+  const banner = document.createElement('div');
+  banner.id = 'failed-buttons-banner';
+  banner.style.cssText = `
+    background: #4a2a2a;
+    border: 1px solid #f44336;
+    border-radius: 4px;
+    padding: 12px;
+    margin: 8px 16px;
+    color: #f44336;
+    font-size: 12px;
+    line-height: 1.4;
+  `;
+  banner.innerHTML = `
+    <strong>⚠️ Initialization Warning:</strong><br>
+    The following buttons could not be initialized: <code>${_failedButtonInitializations.join(', ')}</code><br>
+    <small style="color: #888;">Try reloading the extension or refreshing this page.</small>
+  `;
+
+  // Insert after the secondary tabs
+  const secondaryTabs = document.getElementById('settings-subtabs');
+  if (secondaryTabs && secondaryTabs.parentNode) {
+    secondaryTabs.parentNode.insertBefore(banner, secondaryTabs.nextSibling);
+  }
 }
 
 // Tab switching logic
-// v1.6.4 - FIX Issue 8: Added initialization logging
+// v1.6.4 - FIX Issue 7 & 18: Added initialization logging and failed button banner
 document.addEventListener('DOMContentLoaded', () => {
-  console.log('[Settings][INIT] DOMContentLoaded fired, starting initialization');
+  console.log('[Settings][INIT] ========== DOMContentLoaded fired ==========');
+  console.log('[Settings][INIT] Starting settings page initialization...');
 
   // Initialize two-layer tab system
   initializeTabSwitching();
@@ -1365,20 +1496,26 @@ document.addEventListener('DOMContentLoaded', () => {
   const footerElement = document.getElementById('footerVersion');
   if (footerElement) {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
+    console.log(`[Settings][INIT] Footer version set: ${manifest.version}`);
   }
 
   // Add color input event listeners to sync text and picker inputs
+  console.log('[Settings][INIT] Setting up color input sync...');
   COLOR_INPUTS.forEach(({ textId, pickerId }) => {
     const textInput = document.getElementById(textId);
     const pickerInput = document.getElementById(pickerId);
 
     if (textInput && pickerInput) {
       setupColorInputSync(textInput, pickerInput);
+      console.log(`[Settings][INIT] Color sync setup: ${textId} <-> ${pickerId}`);
+    } else {
+      console.warn(`[Settings][INIT] Color input not found: ${textId} or ${pickerId}`);
     }
   });
 
   // ==================== EXPORT LOGS BUTTON ====================
   // Export logs button event listener
+  console.log('[Settings][INIT] Setting up Export Logs button...');
   setupButtonHandler('exportLogsBtn', handleExportAllLogs, {
     loadingText: '⏳ Exporting...',
     successText: '✓ Logs Exported!',
@@ -1387,6 +1524,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==================== END EXPORT LOGS BUTTON ====================
 
   // ==================== CLEAR LOGS BUTTON ====================
+  console.log('[Settings][INIT] Setting up Clear Logs button...');
   setupButtonHandler('clearLogsBtn', handleClearLogHistory, {
     loadingText: '⏳ Clearing...',
     successText: '✓ Logs Cleared',
@@ -1396,11 +1534,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ==================== COLLAPSIBLE FILTER GROUPS ====================
   // v1.6.0.11 - Removed separate save/reset buttons; filters now save with main "Save Settings"
+  console.log('[Settings][INIT] Initializing collapsible groups...');
   initCollapsibleGroups();
+  console.log('[Settings][INIT] Loading filter settings...');
   loadFilterSettings();
   // ==================== END COLLAPSIBLE FILTER GROUPS ====================
 
-  console.log('[Settings][INIT] DOMContentLoaded initialization complete');
+  // v1.6.4 - FIX Issue 18: Display banner if any buttons failed to initialize
+  displayFailedButtonBanner();
+
+  console.log('[Settings][INIT] ========== DOMContentLoaded initialization complete ==========');
 });
 
 // ==================== FILTER SETTINGS FUNCTIONS ====================
@@ -1561,8 +1704,10 @@ function initCollapsibleGroups() {
 
 /**
  * Load filter settings from storage
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  */
 async function loadFilterSettings() {
+  console.log('[Settings] loadFilterSettings: Loading filter settings from storage...');
   try {
     const result = await browserAPI.storage.local.get([
       'liveConsoleCategoriesEnabled',
@@ -1572,22 +1717,32 @@ async function loadFilterSettings() {
     const liveSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
     const exportSettings = result.exportLogCategoriesEnabled || getDefaultExportSettings();
 
+    console.log('[Settings] loadFilterSettings: Live settings loaded');
+    console.log('[Settings] loadFilterSettings: Export settings loaded');
+
     // Apply to live filter checkboxes
+    let liveCount = 0;
     document.querySelectorAll('.category-checkbox[data-filter="live"]').forEach(cb => {
       const category = cb.dataset.category;
       cb.checked = liveSettings[category] === true;
+      liveCount++;
     });
+    console.log(`[Settings] loadFilterSettings: Applied ${liveCount} live filter checkboxes`);
 
     // Apply to export filter checkboxes
+    let exportCount = 0;
     document.querySelectorAll('.category-checkbox[data-filter="export"]').forEach(cb => {
       const category = cb.dataset.category;
       cb.checked = exportSettings[category] === true;
+      exportCount++;
     });
+    console.log(`[Settings] loadFilterSettings: Applied ${exportCount} export filter checkboxes`);
 
     // v1.6.0.12 - Update all counters and button colors after loading
     updateAllGroupStates();
+    console.log('[Settings] loadFilterSettings: Filter settings loaded successfully');
   } catch (error) {
-    console.error('[Popup] Failed to load filter settings:', error);
+    console.error('[Settings] loadFilterSettings: Failed to load filter settings:', error);
   }
 }
 
@@ -1597,22 +1752,36 @@ async function loadFilterSettings() {
 
 /**
  * Notify all tabs to refresh live console filter cache
+ * v1.6.4 - FIX Issue 7: Added comprehensive logging
  */
 async function refreshLiveConsoleFiltersInAllTabs() {
+  console.log('[Settings] refreshLiveConsoleFiltersInAllTabs: Starting...');
   try {
     const tabs = await browserAPI.tabs.query({});
+    console.log(`[Settings] refreshLiveConsoleFiltersInAllTabs: Found ${tabs.length} tabs`);
+
+    let successCount = 0;
+    let failCount = 0;
+
     const messagePromises = tabs.map(tab =>
       browserAPI.tabs
         .sendMessage(tab.id, {
           action: 'REFRESH_LIVE_CONSOLE_FILTERS'
         })
+        .then(() => {
+          successCount++;
+        })
         .catch(() => {
           // Tab might not have content script loaded - silently ignore
+          failCount++;
         })
     );
     await Promise.all(messagePromises);
+    console.log(
+      `[Settings] refreshLiveConsoleFiltersInAllTabs: Notified ${successCount} tabs (${failCount} without content script)`
+    );
   } catch (error) {
-    console.error('[Popup] Failed to refresh live console filters:', error);
+    console.error('[Settings] refreshLiveConsoleFiltersInAllTabs: Failed:', error);
   }
 }
 

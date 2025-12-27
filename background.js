@@ -5360,12 +5360,29 @@ console.log('[Background] v1.6.3.6-v11 Port lifecycle management initialized');
  */
 function getAllQuickTabsFromMemory() {
   const allTabs = [];
+  const originTabStats = {}; // v1.6.4 - FIX Issue #11/#14: Track tabs per origin for logging
+
   for (const tabId in quickTabsSessionState.quickTabsByTab) {
     const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
     if (Array.isArray(tabQuickTabs)) {
       allTabs.push(...tabQuickTabs);
+      // v1.6.4 - FIX Issue #11/#14: Count Quick Tabs per origin tab
+      originTabStats[tabId] = tabQuickTabs.length;
     }
   }
+
+  // v1.6.4 - FIX Issue #11/#14: Log cross-tab aggregation for diagnostics
+  const originTabCount = Object.keys(originTabStats).length;
+  if (allTabs.length > 0 || originTabCount > 0) {
+    console.log('[Background] GET_ALL_QUICK_TABS_AGGREGATION:', {
+      timestamp: Date.now(),
+      totalQuickTabs: allTabs.length,
+      originTabCount,
+      quickTabsPerOriginTab: originTabStats,
+      message: `Aggregated ${allTabs.length} Quick Tabs from ${originTabCount} browser tabs`
+    });
+  }
+
   return allTabs;
 }
 
@@ -5927,10 +5944,32 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
 /**
  * Handle GET_ALL_QUICK_TABS message from sidebar
  * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
+ * v1.6.4 - FIX Issue #11/#14: Enhanced logging showing cross-tab aggregation
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleGetAllQuickTabs(port) {
   const allTabs = getAllQuickTabsFromMemory();
+
+  // v1.6.4 - FIX Issue #11/#14: Compute origin tab grouping for logging
+  const originTabGroups = {};
+  for (const tab of allTabs) {
+    const originKey = tab.originTabId || 'orphaned';
+    if (!originTabGroups[originKey]) {
+      originTabGroups[originKey] = [];
+    }
+    originTabGroups[originKey].push(tab.id);
+  }
+
+  // v1.6.4 - FIX Issue #11/#14: Log detailed response showing ALL tabs from ALL browser tabs
+  console.log('[Background] GET_ALL_QUICK_TABS_RESPONSE_DETAIL:', {
+    timestamp: Date.now(),
+    totalQuickTabs: allTabs.length,
+    originTabCount: Object.keys(originTabGroups).length,
+    groupedByOriginTab: originTabGroups,
+    sessionId: quickTabsSessionState.sessionId,
+    message: `Returning ${allTabs.length} Quick Tabs from ${Object.keys(originTabGroups).length} origin tabs to Manager`
+  });
+
   console.log('[Background] GET_ALL_QUICK_TABS for sidebar:', {
     count: allTabs.length,
     sessionId: quickTabsSessionState.sessionId

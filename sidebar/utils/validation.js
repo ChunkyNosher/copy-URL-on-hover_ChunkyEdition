@@ -7,9 +7,87 @@
  * - Tab data validation
  * - Host info validation
  * - State validation
+ * - Quick Tab object validation (v1.6.4-v2)
  *
- * @version 1.6.4.11
+ * @version 1.6.4-v2
  */
+
+// ==================== Quick Tab Field Validators (v1.6.4-v2) ====================
+
+/**
+ * Validate Quick Tab id field is a non-empty string
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @param {string[]} errors - Array to push errors to
+ */
+function _validateQuickTabId(qt, errors) {
+  if (typeof qt.id !== 'string' || qt.id.length === 0) {
+    errors.push(`id must be a non-empty string (got ${typeof qt.id})`);
+  }
+}
+
+/**
+ * Validate Quick Tab originTabId field is a number
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @param {string[]} errors - Array to push errors to
+ */
+function _validateQuickTabOriginTabId(qt, errors) {
+  if (typeof qt.originTabId !== 'number') {
+    errors.push(`originTabId must be a number (got ${typeof qt.originTabId})`);
+  }
+}
+
+/**
+ * Validate Quick Tab url field is a string
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @param {string[]} errors - Array to push errors to
+ */
+function _validateQuickTabUrl(qt, errors) {
+  if (typeof qt.url !== 'string') {
+    errors.push(`url must be a string (got ${typeof qt.url})`);
+  }
+}
+
+/**
+ * Validate Quick Tab minimized field is boolean or undefined
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @param {string[]} errors - Array to push errors to
+ */
+function _validateQuickTabMinimized(qt, errors) {
+  if (qt.minimized !== undefined && typeof qt.minimized !== 'boolean') {
+    errors.push(`minimized must be boolean or undefined (got ${typeof qt.minimized})`);
+  }
+}
+
+/**
+ * Validate individual Quick Tab object has required fields
+ * v1.6.4 - FIX Issue #15: Add Quick Tab object validation
+ * v1.6.4-v2 - Refactored to reduce cyclomatic complexity by extracting field validators
+ * @param {*} qt - Quick Tab object to validate
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+export function validateQuickTabObject(qt) {
+  if (!qt || typeof qt !== 'object') {
+    return { valid: false, errors: ['Quick Tab is not an object'] };
+  }
+
+  const errors = [];
+  _validateQuickTabId(qt, errors);
+  _validateQuickTabOriginTabId(qt, errors);
+  _validateQuickTabUrl(qt, errors);
+  _validateQuickTabMinimized(qt, errors);
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ==================== URL Validation ====================
 
 /**
  * Check if a URL is valid for Quick Tab

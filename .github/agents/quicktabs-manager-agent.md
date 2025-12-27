@@ -3,8 +3,9 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v7), scheduleRender() with revision dedup, memory-based state,
-  circuit breaker recovery, priority queue, container validation, MANAGER pattern actions
+  (v1.6.3.12-v9), scheduleRender() with revision dedup, memory-based state,
+  circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
+  optimistic UI updates, render lock, orphan recovery UI
 tools: ['*']
 ---
 
@@ -36,21 +37,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v9 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v7 Features (NEW):**
+**v1.6.3.12-v9 Features (NEW):**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`,
-  `minimizeQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
+- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
+- **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
+- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
+- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
+- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
+- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
 
-**v1.6.3.12-v6 Features:**
+**v1.6.3.12-v8 Features:**
 
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer
 
 **Key Manager Features:**
 
@@ -92,11 +96,12 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ## Testing Requirements
 
-- [ ] Circuit breaker recovery works
+- [ ] Optimistic UI updates work
+- [ ] Render lock prevents concurrent renders
+- [ ] Orphan Quick Tab UI displays correctly
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] STATE_CHANGED messages received and rendered
 - [ ] SIDEBAR_READY / SIDEBAR_STATE_SYNC handshake works
-- [ ] MANAGER pattern works (MANAGER_CLOSE_ALL, MANAGER_CLOSE_BY_ID)
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
@@ -107,5 +112,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v7 port messaging,
-QUICKTAB_REMOVED handler, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.12-v9 optimistic UI, render
+lock, orphan recovery UI, and comprehensive button logging.**

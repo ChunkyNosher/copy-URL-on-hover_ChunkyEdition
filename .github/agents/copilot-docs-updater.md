@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v8.
+  documentation. Current version: v1.6.3.12-v9.
 tools: ['*']
 ---
 
@@ -69,9 +69,20 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v8)
+## Current Extension State (v1.6.3.12-v9)
 
-### v1.6.3.12-v8 Features (NEW) - Bulk Close + Circuit Breaker Auto-Reset
+### v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI
+
+- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
+- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
+- **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`
+- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
+- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
+- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
+- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
+
+### v1.6.3.12-v8 Features - Bulk Close + Circuit Breaker Auto-Reset
 
 - **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
   `closeMinimizedQuickTabsViaPort()`
@@ -117,8 +128,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v8
-- [ ] **v1.6.3.12-v8:** Bulk Close + Circuit Breaker Auto-Reset documented
+- [ ] Version numbers match 1.6.3.12-v9
+- [ ] **v1.6.3.12-v9:** Comprehensive Logging + Optimistic UI documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -128,7 +139,7 @@ nothing.
 
 | Error                   | Fix                             |
 | ----------------------- | ------------------------------- |
-| v1.6.3.12-v7 or earlier | Update to 1.6.3.12-v8           |
+| v1.6.3.12-v8 or earlier | Update to 1.6.3.12-v9           |
 | "Solo/Mute" references  | REMOVE - Feature DELETED in v12 |
 | "Pin to Page"           | REMOVE - Feature DELETED in v12 |
 | Cross-session persist   | REMOVE - Session-only in v12    |

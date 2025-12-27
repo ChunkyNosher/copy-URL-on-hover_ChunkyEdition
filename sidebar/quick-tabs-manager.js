@@ -2,6 +2,32 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4 PORT VALIDATION & RENDER ROBUSTNESS ===
+ * v1.6.4 - FIX Issues from continuation-analysis.md:
+ *   - Issue #15: Port message input validation - validates Quick Tab objects
+ *     - Added _validateQuickTabObject() to check required fields (id, originTabId, url)
+ *     - Added _filterValidQuickTabs() to filter invalid objects with logging
+ *     - Added _isValidSequenceNumber() for sequence number validation
+ *     - _createStateUpdateHandler() now filters invalid Quick Tab objects
+ *   - Issue #19: Render debounce race conditions
+ *     - Added _isRenderInProgress and _pendingRerenderRequested flags
+ *     - renderUI() now uses render lock to prevent concurrent execution
+ *     - Pending re-renders are scheduled after current render completes
+ *   - Issue #20: Circuit breaker auto-reset state corruption
+ *     - initializeQuickTabsPort() now clears auto-reset timer on success
+ *     - _executeCircuitBreakerAutoReset() already checks if still tripped
+ *     - Enhanced logging in _clearCircuitBreakerAutoResetTimer()
+ *
+ * === v1.6.3.12-v9 COMPREHENSIVE LOGGING & OPTIMISTIC UI ===
+ * v1.6.3.12-v9 - FIX Issues from log-analysis-bugs-v1.6.3.12.md:
+ *   - Issue #1: Manager buttons now have comprehensive click logging
+ *   - Issue #2: Close All button has detailed logging via closeAllQuickTabsViaPort()
+ *   - Issue #3: Close Minimized button has detailed logging via closeMinimizedQuickTabsViaPort()
+ *   - Issue #4: Manager updates logged via enhanced scheduleRender() and STATE_CHANGED handling
+ *   - Issue #8: Button DOM creation logged in _createTabActions()
+ *   - Issue #10: Minimize/restore operations logged in *ViaPort() functions
+ *   - Button Architecture: Implemented optimistic UI updates for instant feedback
+ *
  * === v1.6.3.12-v5 PORT MESSAGING ARCHITECTURE ===
  * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
  *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
@@ -117,7 +143,7 @@ import {
   determineRestoreSource,
   STATE_KEY
 } from './utils/tab-operations.js';
-import { filterInvalidTabs } from './utils/validation.js';
+import { filterInvalidTabs, validateQuickTabObject } from './utils/validation.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -167,6 +193,10 @@ const PORT_VIABILITY_MIN_TIMEOUT_MS = 700; // Minimum timeout (increased from 50
 const PORT_VIABILITY_MAX_TIMEOUT_MS = 3000; // Maximum adaptive timeout
 const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th percentile
 
+// ==================== v1.6.4 FIX Issue #17 CONSTANTS ====================
+// Browser tab info cache audit interval
+const BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 // ==================== v1.6.3.12-v7 FIX Issue #30 CONSTANTS ====================
 // Port reconnection circuit breaker for Quick Tabs port
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
@@ -209,6 +239,11 @@ let previousBrowserTabId = null;
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
 
+// v1.6.4 - FIX Issue #21: State version tracking for render transaction boundaries
+// Tracks the state version when a render is scheduled vs when it executes
+let _stateVersion = 0; // Incremented on every state change
+let _stateVersionAtSchedule = 0; // Version when render was scheduled
+
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
 // v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
 //   This cache exists as a FALLBACK to protect against storage storms/corruption.
@@ -243,6 +278,9 @@ let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
 const quickTabHostInfo = new Map();
 let hostInfoMaintenanceIntervalId = null;
 
+// v1.6.4 - FIX Issue #17: Browser tab info cache audit interval ID
+let browserTabCacheAuditIntervalId = null;
+
 // v1.6.3.10-v7 - FIX Bug #3: Adaptive port timeout tracking
 // Track recent heartbeat latencies for 95th percentile calculation
 const recentLatencySamples = [];
@@ -262,6 +300,22 @@ const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
 
 // Browser tab info cache
 const browserTabInfoCache = new Map();
+
+/**
+ * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
+ * Call this when state is updated from external sources (port messages, storage.onChanged)
+ * This allows scheduleRender to detect if state changed between scheduling and rendering.
+ * @private
+ * @param {string} source - Source of state update for logging
+ */
+function _incrementStateVersion(source) {
+  _stateVersion++;
+  console.log('[Manager] v1.6.4 STATE_VERSION_INCREMENT:', {
+    newVersion: _stateVersion,
+    source,
+    timestamp: Date.now()
+  });
+}
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -366,12 +420,16 @@ function initializeQuickTabsPort() {
     _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
     _quickTabsPortCircuitBreakerTripped = false;
 
+    // v1.6.4 - FIX Issue #20: Clear any pending auto-reset timer on successful connection
+    _clearCircuitBreakerAutoResetTimer();
+
     // v1.6.3.12 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
       success: true,
-      circuitBreakerReset: true
+      circuitBreakerReset: true,
+      autoResetTimerCleared: true
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
@@ -642,21 +700,74 @@ function _scheduleCircuitBreakerAutoReset() {
 /**
  * Clear the circuit breaker auto-reset timer
  * v1.6.4 - FIX Issue #5: Helper to cancel pending auto-reset
+ * v1.6.4 - FIX Issue #20: Add logging when timer is cleared
  * @private
  */
 function _clearCircuitBreakerAutoResetTimer() {
   if (_quickTabsPortCircuitBreakerAutoResetTimerId !== null) {
     clearTimeout(_quickTabsPortCircuitBreakerAutoResetTimerId);
+
+    console.log('[Sidebar] CIRCUIT_BREAKER_AUTO_RESET_TIMER_CLEARED:', {
+      timestamp: Date.now(),
+      reason: 'manual_reconnect_or_successful_connection'
+    });
+
     _quickTabsPortCircuitBreakerAutoResetTimerId = null;
   }
 }
 
 // ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
 /**
+ * Compute per-origin-tab statistics for cross-tab visibility logging
+ * v1.6.4 - FIX Issue #11/#14: Extracted to reduce _handleQuickTabsStateUpdate complexity
+ * v1.6.4 - Code Review: Added defensive validation for tab.originTabId
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @returns {{ originTabStats: Object, originTabCount: number }}
+ */
+function _computeOriginTabStats(quickTabs) {
+  // Use Object.create(null) to avoid prototype pollution
+  const originTabStats = Object.create(null);
+  for (const tab of quickTabs) {
+    // Defensive: handle missing or invalid originTabId
+    const originTabId = typeof tab?.originTabId === 'number' ? tab.originTabId : 'unknown';
+    const originKey = `tab-${originTabId}`;
+    if (!originTabStats[originKey]) {
+      originTabStats[originKey] = 0;
+    }
+    originTabStats[originKey]++;
+  }
+  return {
+    originTabStats,
+    originTabCount: Object.keys(originTabStats).length
+  };
+}
+
+/**
+ * Log cross-tab aggregation statistics
+ * v1.6.4 - FIX Issue #11/#14: Extracted to reduce _handleQuickTabsStateUpdate complexity
+ * @private
+ */
+function _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId) {
+  const { originTabStats, originTabCount } = _computeOriginTabStats(quickTabs);
+
+  console.log('[Sidebar] STATE_SYNC_CROSS_TAB_AGGREGATION:', {
+    timestamp: receiveTime,
+    source: renderReason,
+    correlationId: correlationId || null,
+    totalQuickTabs: quickTabs.length,
+    originTabCount,
+    quickTabsPerOriginTab: originTabStats,
+    message: `Received ${quickTabs.length} Quick Tabs from ${originTabCount} browser tabs`
+  });
+}
+
+/**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
+ * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -685,6 +796,9 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     });
     return;
   }
+
+  // v1.6.4 - FIX Issue #11/#14: Log per-origin-tab breakdown for cross-tab visibility
+  _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId);
 
   _allQuickTabsFromPort = quickTabs;
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
@@ -767,9 +881,98 @@ function _isValidQuickTabsField(quickTabs) {
 }
 
 /**
+ * Validate individual Quick Tab object has required fields
+ * v1.6.4 - FIX Issue #15: Add Quick Tab object validation
+ * v1.6.4-v2 - Delegates to utils/validation.js to reduce function count
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+function _validateQuickTabObject(qt) {
+  return validateQuickTabObject(qt);
+}
+
+/**
+ * Filter and validate Quick Tab objects array, logging invalid entries
+ * v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects before processing
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array to validate
+ * @param {string} messageType - Message type for logging
+ * @returns {Array} Filtered array containing only valid Quick Tab objects
+ */
+function _filterValidQuickTabs(quickTabs, messageType) {
+  if (!Array.isArray(quickTabs)) {
+    return [];
+  }
+
+  const validTabs = [];
+  const invalidCount = { total: 0, reasons: {} };
+
+  for (let i = 0; i < quickTabs.length; i++) {
+    const qt = quickTabs[i];
+    const validation = _validateQuickTabObject(qt);
+
+    if (validation.valid) {
+      validTabs.push(qt);
+    } else {
+      invalidCount.total++;
+      _aggregateValidationErrors(validation.errors, invalidCount.reasons);
+    }
+  }
+
+  // Log validation failures for debugging
+  if (invalidCount.total > 0) {
+    _logQuickTabValidationFailures(quickTabs.length, validTabs.length, invalidCount, messageType);
+  }
+
+  return validTabs;
+}
+
+/**
+ * Aggregate validation errors into a reasons object
+ * v1.6.4 - FIX Issue #15: Extracted to reduce nesting depth
+ * @private
+ * @param {string[]} errors - Array of error messages
+ * @param {Object} reasons - Object to aggregate error counts into
+ */
+function _aggregateValidationErrors(errors, reasons) {
+  for (const error of errors) {
+    reasons[error] = (reasons[error] || 0) + 1;
+  }
+}
+
+/**
+ * Log Quick Tab validation failures
+ * v1.6.4 - FIX Issue #15: Extracted to reduce function length
+ * @private
+ */
+function _logQuickTabValidationFailures(totalReceived, validCount, invalidCount, messageType) {
+  console.warn('[Sidebar] PORT_MESSAGE_QUICKTAB_VALIDATION_FAILURES:', {
+    timestamp: Date.now(),
+    messageType,
+    totalReceived,
+    validCount,
+    invalidCount: invalidCount.total,
+    invalidReasons: invalidCount.reasons
+  });
+}
+
+/**
+ * Validate sequence number field
+ * v1.6.4 - FIX Issue #15: Add sequence number validation
+ * @private
+ * @param {*} sequence - Sequence number to validate
+ * @returns {boolean} True if sequence is valid (undefined/null or number)
+ */
+function _isValidSequenceNumber(sequence) {
+  return sequence === undefined || sequence === null || typeof sequence === 'number';
+}
+
+/**
  * Validate message has required fields for state update handlers
  * v1.6.3.12-v7 - FIX Issue #9: Defensive input validation for port message handlers
  * v1.6.3.12-v7 - FIX Code Health: Extracted complex conditionals to helpers
+ * v1.6.4 - FIX Issue #15: Add sequence number validation
  * @private
  * @param {Object} msg - Message to validate
  * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
@@ -783,6 +986,10 @@ function _validateStateUpdateMessage(msg, _handlerName) {
   // but if present, it should be an array
   if (!_isValidQuickTabsField(msg.quickTabs)) {
     return { valid: false, error: `quickTabs field is not an array (got ${typeof msg.quickTabs})` };
+  }
+  // v1.6.4 - FIX Issue #15: Validate sequence number
+  if (!_isValidSequenceNumber(msg.sequence)) {
+    return { valid: false, error: `sequence field is not a number (got ${typeof msg.sequence})` };
   }
   return { valid: true };
 }
@@ -828,6 +1035,7 @@ function _logPortMessageValidationError(type, msg, error) {
 /**
  * Create a state update handler with validation
  * v1.6.3.12-v7 - FIX Code Health: Generic factory for state update handlers
+ * v1.6.4 - FIX Issue #15: Filter invalid Quick Tab objects before processing
  * @private
  * @param {string} messageType - The message type for logging
  * @param {string} renderReason - The reason to pass to scheduleRender
@@ -840,7 +1048,10 @@ function _createStateUpdateHandler(messageType, renderReason) {
       _logPortMessageValidationError(messageType, msg, validation.error);
       return;
     }
-    _handleQuickTabsStateUpdate(msg.quickTabs, renderReason, msg.correlationId);
+
+    // v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects
+    const validatedQuickTabs = _filterValidQuickTabs(msg.quickTabs, messageType);
+    _handleQuickTabsStateUpdate(validatedQuickTabs, renderReason, msg.correlationId);
   };
 }
 
@@ -1008,6 +1219,7 @@ function _logOriginTabClosed(msg, timestamp) {
  * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
  * v1.6.3.12-v7 - FIX Code Review: Added input validation
  * v1.6.3.12-v7 - FIX Code Health: Extracted validation and logging helpers
+ * v1.6.4 - FIX Issue #17: Invalidate browserTabInfoCache when origin tab closes
  * @private
  * @param {Object} msg - Message from background
  */
@@ -1018,6 +1230,20 @@ function _handleOriginTabClosed(msg) {
 
   const timestamp = msg.timestamp || Date.now();
   _logOriginTabClosed(msg, timestamp);
+
+  // v1.6.4 - FIX Issue #17: Invalidate cache for the closed tab
+  if (typeof msg.originTabId === 'number') {
+    const cacheHadEntry = browserTabInfoCache.has(msg.originTabId);
+    browserTabInfoCache.delete(msg.originTabId);
+
+    console.log('[Sidebar] BROWSER_TAB_CACHE_INVALIDATED:', {
+      timestamp,
+      originTabId: msg.originTabId,
+      reason: 'ORIGIN_TAB_CLOSED received',
+      cacheHadEntry,
+      remainingCacheSize: browserTabInfoCache.size
+    });
+  }
 
   // Mark affected Quick Tabs as orphaned in local state
   _markQuickTabsAsOrphaned(msg.orphanedQuickTabIds, timestamp);
@@ -1367,64 +1593,174 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
 /**
  * Request Quick Tab close via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #1: Add comprehensive logging for button operations
  * @param {string} quickTabId - Quick Tab ID to close
  */
 function closeQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] CLOSE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] CLOSE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request Quick Tab minimize via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #10: Add comprehensive logging for minimize operations
  * @param {string} quickTabId - Quick Tab ID to minimize
  */
 function minimizeQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] MINIMIZE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] MINIMIZE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request Quick Tab restore via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #10: Add comprehensive logging for restore operations
  * @param {string} quickTabId - Quick Tab ID to restore
  */
 function restoreQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] RESTORE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] RESTORE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request all Quick Tabs via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.4 - FIX Issue #14: Add comprehensive logging for cross-tab state request
  */
 function requestAllQuickTabsViaPort() {
-  return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+  const timestamp = Date.now();
+
+  // v1.6.4 - FIX Issue #14: Log request for cross-tab state
+  console.log('[Sidebar] GET_ALL_QUICK_TABS_REQUEST:', {
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    currentCachedTabCount: _allQuickTabsFromPort.length,
+    message: 'Requesting ALL Quick Tabs from ALL browser tabs'
+  });
+
+  const result = _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+
+  // v1.6.4 - FIX Issue #14: Log request result
+  console.log('[Sidebar] GET_ALL_QUICK_TABS_REQUEST_RESULT:', {
+    timestamp: Date.now(),
+    success: result,
+    roundtripStarted: result,
+    message: result ? 'Request sent, awaiting GET_ALL_QUICK_TABS_RESPONSE' : 'Request failed'
+  });
+
+  return result;
 }
 
 /**
  * Request close all Quick Tabs via port
  * v1.6.4 - FIX Issue #2: Implement bulk close operation for Manager header button
+ * v1.6.3.12-v9 - FIX Issue #2: Add comprehensive logging for Close All operation
  * @returns {boolean} Success status
  */
 function closeAllQuickTabsViaPort() {
-  console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_SENT:', {
-    timestamp: Date.now(),
-    currentQuickTabCount: _allQuickTabsFromPort.length
+  const timestamp = Date.now();
+  const quickTabCount = _allQuickTabsFromPort.length;
+
+  console.log('[Manager] CLOSE_ALL_QUICK_TABS_VIA_PORT_CALLED:', {
+    timestamp,
+    currentQuickTabCount: quickTabCount,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id)
   });
-  return _executeSidebarPortOperation('CLOSE_ALL_QUICK_TABS');
+
+  const result = _executeSidebarPortOperation('CLOSE_ALL_QUICK_TABS');
+
+  console.log('[Manager] CLOSE_ALL_QUICK_TABS_VIA_PORT_RESULT:', {
+    success: result,
+    timestamp: Date.now(),
+    quickTabsToClose: quickTabCount,
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request close only minimized Quick Tabs via port
  * v1.6.4 - FIX Issue #2: Implement bulk close minimized operation for Manager header button
+ * v1.6.3.12-v9 - FIX Issue #3: Add comprehensive logging for Close Minimized operation
  * @returns {boolean} Success status
  */
 function closeMinimizedQuickTabsViaPort() {
-  const minimizedCount = _allQuickTabsFromPort.filter(qt => qt.minimized).length;
-  console.log('[Sidebar] CLOSE_MINIMIZED_QUICK_TABS_SENT:', {
-    timestamp: Date.now(),
+  const timestamp = Date.now();
+  const minimizedTabs = _allQuickTabsFromPort.filter(qt => qt.minimized);
+  const minimizedCount = minimizedTabs.length;
+
+  console.log('[Manager] CLOSE_MINIMIZED_QUICK_TABS_VIA_PORT_CALLED:', {
+    timestamp,
     minimizedCount,
-    totalQuickTabCount: _allQuickTabsFromPort.length
+    totalQuickTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    minimizedQuickTabIds: minimizedTabs.map(qt => qt.id)
   });
-  return _executeSidebarPortOperation('CLOSE_MINIMIZED_QUICK_TABS');
+
+  const result = _executeSidebarPortOperation('CLOSE_MINIMIZED_QUICK_TABS');
+
+  console.log('[Manager] CLOSE_MINIMIZED_QUICK_TABS_VIA_PORT_RESULT:', {
+    success: result,
+    timestamp: Date.now(),
+    minimizedTabsToClose: minimizedCount,
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 // ==================== END v1.6.3.12 OPTION 4 QUICK TABS PORT ====================
@@ -1541,6 +1877,13 @@ let pendingRenderUI = false;
 // v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce tracking
 let debounceStartTimestamp = 0; // When the debounce window started
 let debounceExtensionCount = 0; // How many times we've extended the debounce
+
+// v1.6.4 - FIX Issue #19: Render lock to prevent concurrent render calls
+let _isRenderInProgress = false;
+let _pendingRerenderRequested = false;
+// v1.6.4 - Code Review: Add counter to prevent infinite re-render loops
+let _consecutiveRerenderCount = 0;
+const MAX_CONSECUTIVE_RERENDERS = 3; // Limit re-renders to prevent infinite loops
 
 /**
  * Generate correlation ID for message acknowledgment
@@ -2592,12 +2935,44 @@ function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId
 }
 
 /**
- * Log when render is scheduled
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * Count Quick Tabs and minimized tabs from state
+ * v1.6.4-v2 - Extracted for complexity reduction
  * @private
+ * @returns {{ tabCount: number, minimizedCount: number }}
  */
-function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
+function _computeTabCounts() {
+  const tabCount = quickTabsState?.tabs?.length ?? 0;
+  const minimizedCount = quickTabsState?.tabs?.filter(t => t.minimized)?.length ?? 0;
+  return { tabCount, minimizedCount };
+}
+
+/**
+ * Log render scheduled box header to console
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {string} source - Source of render request
+ * @param {number} tabCount - Total tab count
+ * @param {number} minimizedCount - Minimized tab count
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logRenderScheduledBox(source, tabCount, minimizedCount, correlationId) {
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ RENDER_SCHEDULED');
+  console.log('[Manager] │ Source:', source);
+  console.log('[Manager] │ TabCount:', tabCount, '(minimized:', minimizedCount + ')');
+  console.log('[Manager] │ CorrelationId:', correlationId || 'none');
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+}
+
+/**
+ * Log debounce scheduled event
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {number} scheduleTimestamp - Timestamp when render was scheduled
+ * @param {string} source - Source of render request
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logDebounceScheduled(scheduleTimestamp, source, correlationId) {
   console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
     timestamp: scheduleTimestamp,
     source,
@@ -2606,18 +2981,55 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
     delayMs: RENDER_DEBOUNCE_MS,
     reason: 'hash_changed'
   });
+}
+
+/**
+ * @typedef {Object} RenderLogContext
+ * @property {string} source - Source of render request
+ * @property {string|null} currentHash - Current state hash
+ * @property {number} tabCount - Total tab count
+ * @property {number} minimizedCount - Minimized tab count
+ * @property {string|null} correlationId - Correlation ID for tracing
+ */
+
+/**
+ * Log render scheduled structured event
+ * v1.6.4-v2 - Extracted for complexity reduction, uses options object
+ * @private
+ * @param {RenderLogContext} context - Render log context
+ */
+function _logRenderScheduledStructured(context) {
+  const { source, currentHash, tabCount, minimizedCount, correlationId } = context;
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     correlationId: correlationId || null,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
+    tabCount,
+    minimizedCount,
     timestamp: Date.now()
   });
 }
 
 /**
+ * Log when render is scheduled
+ * v1.6.3.12-v7 - Extracted for complexity reduction
+ * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * v1.6.3.12-v9 - FIX Issue #4: Enhanced logging for Manager update tracking
+ * v1.6.4-v2 - Refactored to reduce cyclomatic complexity by extracting log helpers
+ * @private
+ */
+function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
+  const { tabCount, minimizedCount } = _computeTabCounts();
+  _logRenderScheduledBox(source, tabCount, minimizedCount, correlationId);
+  _logDebounceScheduled(scheduleTimestamp, source, correlationId);
+  _logRenderScheduledStructured({ source, currentHash, tabCount, minimizedCount, correlationId });
+}
+
+/**
  * Schedule UI render with deduplication
  * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
+ * v1.6.4 - FIX Issue #21: Track state version for render transaction boundaries
  * @param {string} [source='unknown'] - Source of render request
  * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
@@ -2632,8 +3044,27 @@ function scheduleRender(source = 'unknown', correlationId = null) {
     return;
   }
 
+  // v1.6.4 - FIX Issue #21: Capture state version at schedule time
+  // This allows us to detect if state changed between scheduling and rendering
+  _stateVersionAtSchedule = _stateVersion;
+
   _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
-  renderUI();
+
+  // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
+  // This ensures DOM mutations are batched efficiently and prevents layout thrashing
+  requestAnimationFrame(() => {
+    // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
+    if (_stateVersion !== _stateVersionAtSchedule) {
+      console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
+        scheduledVersion: _stateVersionAtSchedule,
+        currentVersion: _stateVersion,
+        versionDrift: _stateVersion - _stateVersionAtSchedule,
+        source,
+        note: 'State changed between schedule and render - rendering latest state'
+      });
+    }
+    renderUI();
+  });
 }
 
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
@@ -4238,6 +4669,118 @@ function _stopHostInfoMaintenance() {
   }
 }
 
+// ==================== v1.6.4 FIX Issue #17: Browser Tab Cache Audit ====================
+
+/**
+ * Start periodic browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Remove expired entries and validate remaining entries
+ */
+function _startBrowserTabCacheAudit() {
+  // Clear any existing interval
+  if (browserTabCacheAuditIntervalId) {
+    clearInterval(browserTabCacheAuditIntervalId);
+  }
+
+  // Run audit every 5 minutes
+  browserTabCacheAuditIntervalId = setInterval(() => {
+    _performBrowserTabCacheAudit();
+  }, BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS);
+
+  console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_STARTED:', {
+    intervalMs: BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS,
+    currentCacheSize: browserTabInfoCache.size
+  });
+}
+
+/**
+ * Stop periodic browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Cleanup on unload
+ */
+function _stopBrowserTabCacheAudit() {
+  if (browserTabCacheAuditIntervalId) {
+    clearInterval(browserTabCacheAuditIntervalId);
+    browserTabCacheAuditIntervalId = null;
+    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_STOPPED');
+  }
+}
+
+/**
+ * Perform browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Check if cached entries are still valid
+ * Removes expired entries and verifies remaining entries exist
+ */
+async function _performBrowserTabCacheAudit() {
+  const auditStartTime = Date.now();
+  const cacheSize = browserTabInfoCache.size;
+
+  if (cacheSize === 0) {
+    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT: Cache is empty, skipping');
+    return;
+  }
+
+  const expiredEntries = [];
+  const invalidatedEntries = [];
+  const validEntries = [];
+
+  // Iterate through all cached entries
+  for (const [tabId, cached] of browserTabInfoCache.entries()) {
+    // Check if entry is expired (TTL exceeded)
+    if (Date.now() - cached.timestamp > BROWSER_TAB_CACHE_TTL_MS) {
+      expiredEntries.push(tabId);
+      continue;
+    }
+
+    // If cache indicates tab is closed (data === null), skip validation
+    if (cached.data === null) {
+      validEntries.push(tabId);
+      continue;
+    }
+
+    // Verify tab still exists
+    try {
+      await browser.tabs.get(tabId);
+      validEntries.push(tabId);
+    } catch (_err) {
+      // Tab no longer exists - mark cache entry as closed
+      browserTabInfoCache.set(tabId, {
+        data: null,
+        timestamp: Date.now()
+      });
+      invalidatedEntries.push(tabId);
+    }
+  }
+
+  // Remove expired entries
+  for (const tabId of expiredEntries) {
+    browserTabInfoCache.delete(tabId);
+  }
+
+  const auditDurationMs = Date.now() - auditStartTime;
+
+  console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_COMPLETE:', {
+    timestamp: Date.now(),
+    originalCacheSize: cacheSize,
+    expiredEntriesRemoved: expiredEntries.length,
+    entriesInvalidated: invalidatedEntries.length,
+    validEntries: validEntries.length,
+    finalCacheSize: browserTabInfoCache.size,
+    auditDurationMs
+  });
+
+  // If entries were invalidated (tabs closed), trigger re-render for orphan detection
+  if (invalidatedEntries.length > 0) {
+    console.log(
+      '[Manager] BROWSER_TAB_CACHE_AUDIT: Tabs closed, scheduling render for orphan detection',
+      {
+        closedTabIds: invalidatedEntries
+      }
+    );
+    scheduleRender('cache-audit-invalidation');
+  }
+}
+
+// ==================== END v1.6.4 FIX Issue #17 ====================
+
 /**
  * Get set of valid Quick Tab IDs from current state
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
@@ -4369,6 +4912,19 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  const initStartTimestamp = Date.now();
+
+  // v1.6.4 - FIX Issue #22: Register storage.onChanged listener FIRST
+  // This must happen BEFORE any async operations to ensure we don't miss
+  // any storage changes that occur during initialization.
+  // CRITICAL: The order is important - listener registration must be synchronous
+  // and happen before connectToBackground() or loadQuickTabsState()
+  _setupStorageOnChangedListener();
+  console.log('[Manager] v1.6.4 STORAGE_LISTENER_REGISTERED_FIRST:', {
+    timestamp: initStartTimestamp,
+    note: 'Registered before any async operations'
+  });
+
   // Cache DOM elements
   containersList = document.getElementById('containersList');
   emptyState = document.getElementById('emptyState');
@@ -4386,6 +4942,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('[Manager] Could not get current tab ID:', err);
   }
 
+  // v1.6.4 - FIX Issue #22: Log hydration request timestamp for comparison with listener
+  const hydrationRequestTimestamp = Date.now();
+  console.log('[Manager] v1.6.4 HYDRATION_REQUEST_TIMING:', {
+    listenerRegisteredAt: initStartTimestamp,
+    hydrationRequestAt: hydrationRequestTimestamp,
+    deltaMs: hydrationRequestTimestamp - initStartTimestamp,
+    note: 'Listener was registered before this point'
+  });
+
   // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
   connectToBackground();
 
@@ -4401,7 +4966,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Render initial UI
   renderUI();
 
-  // Setup event listeners
+  // Setup event listeners (NOTE: storage.onChanged already registered above)
   setupEventListeners();
 
   // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
@@ -4410,6 +4975,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // v1.6.3.10-v7 - FIX Bug #1: Start periodic maintenance for quickTabHostInfo
   _startHostInfoMaintenance();
+
+  // v1.6.4 - FIX Issue #17: Start periodic browser tab cache audit
+  _startBrowserTabCacheAudit();
 
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
@@ -4428,7 +4996,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.3.12-v4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor initialized'
+    '[Manager] v1.6.4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit initialized'
   );
 });
 
@@ -4974,6 +5542,9 @@ function _processStorageState(state, loadStartTime) {
   quickTabsState = state;
   filterInvalidTabs(quickTabsState);
 
+  // v1.6.4 - FIX Issue #21: Increment state version for render transaction tracking
+  _incrementStateVersion('loadQuickTabsState');
+
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
   lastLocalUpdateTime = Date.now();
 
@@ -5291,6 +5862,76 @@ function _renderUIImmediate_force() {
  * v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging with [RENDER_PERF] prefix
  */
 async function _renderUIImmediate() {
+  // v1.6.4 - FIX Issue #19: Check if render is already in progress
+  if (_isRenderInProgress) {
+    _pendingRerenderRequested = true;
+    console.log(
+      '[Manager] RENDER_SKIPPED: Render already in progress, scheduling re-render after completion',
+      {
+        timestamp: Date.now(),
+        consecutiveRerenderCount: _consecutiveRerenderCount
+      }
+    );
+    return;
+  }
+
+  // v1.6.4 - FIX Issue #19: Set render lock
+  _isRenderInProgress = true;
+
+  try {
+    await _executeRenderUIInternal();
+    // Reset consecutive counter on successful render completion
+    _consecutiveRerenderCount = 0;
+  } finally {
+    // v1.6.4 - FIX Issue #19: Release render lock
+    _isRenderInProgress = false;
+
+    // v1.6.4 - FIX Issue #19: Check if re-render was requested while we were rendering
+    _handlePendingRerender();
+  }
+}
+
+/**
+ * Handle pending re-render after render completes
+ * v1.6.4 - Code Review: Extracted to avoid return in finally and reduce nesting
+ * @private
+ */
+function _handlePendingRerender() {
+  if (!_pendingRerenderRequested) {
+    return;
+  }
+
+  _pendingRerenderRequested = false;
+  _consecutiveRerenderCount++;
+
+  // v1.6.4 - Code Review: Prevent infinite re-render loops
+  if (_consecutiveRerenderCount > MAX_CONSECUTIVE_RERENDERS) {
+    console.warn(
+      '[Manager] RENDER_RERENDER_LIMIT_REACHED: Stopping re-renders to prevent infinite loop',
+      {
+        timestamp: Date.now(),
+        consecutiveRerenderCount: _consecutiveRerenderCount,
+        maxAllowed: MAX_CONSECUTIVE_RERENDERS
+      }
+    );
+    _consecutiveRerenderCount = 0;
+    return;
+  }
+
+  console.log('[Manager] RENDER_RERENDER: Re-rendering due to pending request', {
+    timestamp: Date.now(),
+    consecutiveRerenderCount: _consecutiveRerenderCount
+  });
+  // Schedule re-render through normal debounce mechanism
+  renderUI();
+}
+
+/**
+ * Internal render implementation (extracted from _renderUIImmediate)
+ * v1.6.4 - FIX Issue #19: Extracted to separate function for render lock pattern
+ * @private
+ */
+async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
 
@@ -5937,6 +6578,7 @@ function _createTabInfo(tab, isMinimized) {
 /**
  * Create tab action buttons
  * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
+ * v1.6.3.12-v9 - FIX Issue #8: Add comprehensive logging for button DOM creation
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLElement} Actions container
@@ -5947,19 +6589,41 @@ function _createTabActions(tab, isMinimized) {
 
   const context = _buildTabActionContext(tab, isMinimized);
 
+  // v1.6.3.12-v9 - FIX Issue #8: Log button creation for this Quick Tab
+  console.log('[Manager] BUTTON_DOM_CREATION:', {
+    quickTabId: tab.id,
+    isMinimized,
+    isOrphaned: context.isOrphaned,
+    isRestorePending: context.isRestorePending,
+    timestamp: Date.now()
+  });
+
+  const buttonsCreated = [];
+
   if (!isMinimized) {
     _appendActiveTabActions(actions, tab, context);
+    buttonsCreated.push('goToTab', 'minimize');
   } else {
     _appendMinimizedTabActions(actions, tab, context);
+    buttonsCreated.push('restore');
   }
 
   // Adopt button for orphaned tabs
   if (context.isOrphaned && currentBrowserTabId) {
     _appendAdoptButton(actions, tab);
+    buttonsCreated.push('adopt');
   }
 
   // Close button (always available)
   _appendCloseButton(actions, tab);
+  buttonsCreated.push('close');
+
+  // v1.6.3.12-v9 - FIX Issue #8: Log which buttons were created
+  console.log('[Manager] BUTTONS_CREATED:', {
+    quickTabId: tab.id,
+    buttons: buttonsCreated,
+    buttonCount: buttonsCreated.length
+  });
 
   return actions;
 }
@@ -6071,11 +6735,18 @@ function _createActionButton(text, title, dataset) {
 /**
  * Check if a Quick Tab is orphaned (no valid browser tab to restore to)
  * v1.6.3.7-v1 - FIX ISSUE #8: Detect orphaned tabs
+ * v1.6.4 - FIX Issue #16: Also check isOrphaned flag set by background
  * @private
  * @param {Object} tab - Quick Tab data
  * @returns {boolean} True if orphaned
  */
 function _isOrphanedQuickTab(tab) {
+  // v1.6.4 - FIX Issue #16: Check isOrphaned flag from background (highest priority)
+  // Background sets this flag when ORIGIN_TAB_CLOSED is detected
+  if (tab.isOrphaned === true) {
+    return true;
+  }
+
   // No originTabId means definitely orphaned
   if (tab.originTabId == null) {
     return true;
@@ -6122,6 +6793,13 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   item.dataset.tabId = tab.id;
   item.dataset.containerId = cookieStoreId;
 
+  // v1.6.4 - FIX Issue #16: Add 'orphaned' class for visual indicator
+  const isOrphaned = _isOrphanedQuickTab(tab);
+  if (isOrphaned) {
+    item.classList.add('orphaned');
+    item.dataset.orphaned = 'true';
+  }
+
   // Status indicator
   // v1.6.3.4-v10 - FIX Issue #4: Use helper function for indicator class
   const indicator = document.createElement('span');
@@ -6131,6 +6809,15 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   // v1.6.3.4-v10 - FIX Issue #4: Add tooltip for warning state
   if (indicatorClass === 'orange') {
     indicator.title = 'Warning: Window may not be visible. Try restoring again.';
+  }
+
+  // v1.6.4 - FIX Issue #16: Add orphan badge if tab is orphaned
+  if (isOrphaned) {
+    const orphanBadge = document.createElement('span');
+    orphanBadge.className = 'orphan-badge';
+    orphanBadge.textContent = '⚠️';
+    orphanBadge.title = 'Orphaned: Browser tab was closed. Use "Adopt to Current Tab" to recover.';
+    item.appendChild(orphanBadge);
   }
 
   // Create components - using imported createFavicon
@@ -6148,88 +6835,338 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
 }
 
 /**
- * Setup event listeners for user interactions
+ * Apply optimistic UI update for immediate visual feedback
+ * v1.6.3.12-v9 - FIX Button Architecture: Implement Phase 1 of two-phase architecture
+ *   - Phase 1: Update DOM immediately (this function)
+ *   - Phase 2: Send port message to background (done by caller)
+ *
+ * This provides instant visual feedback while port message is in flight.
+ * If port message fails, the next STATE_CHANGED will reconcile.
+ *
+ * @private
+ * @param {string} action - The action being performed (minimize, restore, close)
+ * @param {string} quickTabId - The Quick Tab ID being acted upon
+ * @param {HTMLButtonElement} button - The button element clicked
  */
-function setupEventListeners() {
-  // Close Minimized button
-  document.getElementById('closeMinimized').addEventListener('click', async () => {
-    console.log('[Manager] BUTTON_CLICKED: closeMinimized button');
-    await closeMinimizedTabs();
+function _applyOptimisticUIUpdate(action, quickTabId, button) {
+  const timestamp = Date.now();
+
+  console.log('[Manager] OPTIMISTIC_UI_UPDATE:', {
+    action,
+    quickTabId,
+    timestamp,
+    phase: 'applying_immediate_visual_feedback'
   });
 
-  // Close All button
-  document.getElementById('closeAll').addEventListener('click', async () => {
-    console.log('[Manager] BUTTON_CLICKED: closeAll button');
-    await closeAllTabs();
-  });
+  // Find the Quick Tab item in the DOM
+  const quickTabItem = button.closest('.quick-tab-item');
+  if (!quickTabItem) {
+    console.warn('[Manager] OPTIMISTIC_UI_UPDATE_FAILED: Could not find quick-tab-item parent', {
+      action,
+      quickTabId
+    });
+    return;
+  }
 
-  // Delegated event listener for Quick Tab actions
-  // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Add detailed logging for button clicks
-  containersList.addEventListener('click', async e => {
-    const button = e.target.closest('button[data-action]');
-    if (!button) {
-      // v1.6.3.11-v11 - FIX Issue #47: Log when click doesn't match a button
-      console.log('[Manager] CLICK_NOT_BUTTON:', {
-        tagName: e.target.tagName,
-        className: e.target.className,
-        id: e.target.id
-      });
-      return;
+  try {
+    switch (action) {
+      case 'minimize':
+        // Add visual indicator that minimize is in progress
+        quickTabItem.classList.add('minimizing');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Minimizing...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', {
+          quickTabId,
+          classes: 'minimizing, operation-pending'
+        });
+        break;
+
+      case 'restore':
+        // Add visual indicator that restore is in progress
+        quickTabItem.classList.add('restoring');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Restoring...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', {
+          quickTabId,
+          classes: 'restoring, operation-pending'
+        });
+        break;
+
+      case 'close':
+        // Add fade-out animation for close
+        quickTabItem.classList.add('closing');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Closing...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', {
+          quickTabId,
+          classes: 'closing, operation-pending'
+        });
+        break;
+
+      default:
+        // No optimistic update for other actions
+        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', {
+          action,
+          quickTabId
+        });
+        break;
     }
-
-    const action = button.dataset.action;
-    const quickTabId = button.dataset.quickTabId;
-    const tabId = button.dataset.tabId;
-
-    // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Log button click with all relevant data
-    console.log('[Manager] BUTTON_CLICKED:', {
+  } catch (err) {
+    console.error('[Manager] OPTIMISTIC_UI_UPDATE_ERROR:', {
       action,
       quickTabId,
-      tabId,
-      buttonText: button.textContent,
-      buttonTitle: button.title,
-      timestamp: new Date().toISOString()
+      error: err.message
     });
+  }
+}
 
-    // v1.6.3.12-v7 - FIX Bug #2: Use port-based messaging for Quick Tab operations
-    // The old functions (minimizeQuickTab, restoreQuickTab, closeQuickTab) used
-    // _sendMessageWithRetry() which sends messages to content scripts via tabs.sendMessage.
-    // This doesn't work because Manager is a sidebar, not a content script.
-    // The correct approach is to use port messaging to background, which then
-    // coordinates with the appropriate content script.
-    // Note: ViaPort functions return boolean synchronously (fire-and-forget pattern)
-    // The actual response comes via port message handlers asynchronously.
-    switch (action) {
-      case 'goToTab':
-        await goToTab(parseInt(tabId));
-        break;
-      case 'minimize':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        minimizeQuickTabViaPort(quickTabId);
-        break;
-      case 'restore':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        restoreQuickTabViaPort(quickTabId);
-        break;
-      case 'close':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        closeQuickTabViaPort(quickTabId);
-        break;
-      // v1.6.3.7-v1 - FIX ISSUE #8: Handle adopt to current tab action
-      case 'adoptToCurrentTab':
-        await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-        break;
-      default:
-        // v1.6.3.11-v11 - FIX Issue #47: Log unknown actions
-        console.warn('[Manager] UNKNOWN_ACTION:', {
-          action,
-          quickTabId,
-          tabId
-        });
-    }
+/**
+ * Handle Close Minimized button click
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+async function _handleCloseMinimizedButtonClick() {
+  const clickTimestamp = Date.now();
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ HEADER_BUTTON_CLICKED: closeMinimized');
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_MINIMIZED_BUTTON_CLICK:', {
+    buttonId: 'closeMinimized',
+    timestamp: clickTimestamp,
+    minimizedTabCount: _allQuickTabsFromPort.filter(qt => qt.minimized).length,
+    totalTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
   });
 
-  // v1.6.3.11-v11 - FIX Issue #47: Log event listener setup completion
+  await closeMinimizedTabs();
+
+  console.log('[Manager] CLOSE_MINIMIZED_BUTTON_CLICK_COMPLETE:', {
+    timestamp: Date.now(),
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+/**
+ * Handle Close All button click
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+async function _handleCloseAllButtonClick() {
+  const clickTimestamp = Date.now();
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ HEADER_BUTTON_CLICKED: closeAll');
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_ALL_BUTTON_CLICK:', {
+    buttonId: 'closeAll',
+    timestamp: clickTimestamp,
+    totalTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
+  });
+
+  await closeAllTabs();
+
+  console.log('[Manager] CLOSE_ALL_BUTTON_CLICK_COMPLETE:', {
+    timestamp: Date.now(),
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+/**
+ * Setup header buttons (Close Minimized, Close All)
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+function _setupHeaderButtons() {
+  const closeMinimizedBtn = document.getElementById('closeMinimized');
+  if (closeMinimizedBtn) {
+    closeMinimizedBtn.addEventListener('click', _handleCloseMinimizedButtonClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: closeMinimized button');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: closeMinimized button not found in DOM');
+  }
+
+  const closeAllBtn = document.getElementById('closeAll');
+  if (closeAllBtn) {
+    closeAllBtn.addEventListener('click', _handleCloseAllButtonClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: closeAll button');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: closeAll button not found in DOM');
+  }
+}
+
+/**
+ * @typedef {Object} QuickTabActionOptions
+ * @property {string} action - The action type (goToTab, minimize, restore, close, adoptToCurrentTab)
+ * @property {string} quickTabId - The Quick Tab ID
+ * @property {string} tabId - The browser tab ID (for goToTab action)
+ * @property {HTMLButtonElement} button - The clicked button element
+ * @property {number} clickTimestamp - When the click occurred
+ */
+
+/**
+ * Dispatch Quick Tab action based on button action type
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4-v2 - Refactored to use options object to reduce argument count
+ * @private
+ * @param {QuickTabActionOptions} options - Action options
+ */
+async function _dispatchQuickTabAction(options) {
+  const { action, quickTabId, tabId, button, clickTimestamp } = options;
+  switch (action) {
+    case 'goToTab':
+      console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
+      await goToTab(parseInt(tabId));
+      console.log('[Manager] ACTION_COMPLETE: goToTab', {
+        tabId,
+        durationMs: Date.now() - clickTimestamp
+      });
+      break;
+    case 'minimize':
+      console.log('[Manager] ACTION_DISPATCH: minimize via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
+      minimizeQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: minimize', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
+      break;
+    case 'restore':
+      console.log('[Manager] ACTION_DISPATCH: restore via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
+      restoreQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: restore', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
+      break;
+    case 'close':
+      console.log('[Manager] ACTION_DISPATCH: close via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
+      closeQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: close', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
+      break;
+    case 'adoptToCurrentTab':
+      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
+        quickTabId,
+        targetTabId: button.dataset.targetTabId,
+        timestamp: Date.now()
+      });
+      await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
+      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
+      break;
+    default:
+      console.warn('[Manager] UNKNOWN_ACTION:', {
+        action,
+        quickTabId,
+        tabId,
+        timestamp: Date.now()
+      });
+  }
+}
+
+/**
+ * Handle delegated click on Quick Tab action buttons
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ * @param {Event} e - Click event
+ */
+async function _handleQuickTabActionClick(e) {
+  const button = e.target.closest('button[data-action]');
+  if (!button) {
+    // Only log if clicked element was a button without data-action (for debugging)
+    const clickedButton = e.target.closest('button');
+    if (clickedButton) {
+      console.log('[Manager] CLICK_NOT_ACTION_BUTTON:', {
+        tagName: e.target.tagName,
+        className: e.target.className,
+        id: e.target.id,
+        hasDataAction: !!clickedButton.dataset?.action
+      });
+    }
+    return;
+  }
+
+  const action = button.dataset.action;
+  const quickTabId = button.dataset.quickTabId;
+  const tabId = button.dataset.tabId;
+  const clickTimestamp = Date.now();
+
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ QUICK_TAB_ACTION_BUTTON_CLICKED');
+  console.log('[Manager] │ Action:', action);
+  console.log('[Manager] │ QuickTabId:', quickTabId);
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] QUICK_TAB_BUTTON_CLICKED:', {
+    action,
+    quickTabId,
+    tabId,
+    buttonText: button.textContent,
+    buttonTitle: button.title,
+    buttonDisabled: button.disabled,
+    timestamp: clickTimestamp,
+    portConnected: !!quickTabsPort,
+    currentBrowserTabId
+  });
+
+  _applyOptimisticUIUpdate(action, quickTabId, button);
+  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp });
+}
+
+/**
+ * Setup delegated click handler for Quick Tab action buttons
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+function _setupQuickTabActionHandler() {
+  if (containersList) {
+    containersList.addEventListener('click', _handleQuickTabActionClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: containersList delegated click handler');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: containersList element not found');
+  }
+}
+
+/**
+ * Setup event listeners for user interactions
+ * v1.6.3.12-v9 - FIX Issue #1-3, #8: Add comprehensive logging for all button operations
+ *   - Log when header buttons (Close Minimized, Close All) are clicked
+ *   - Log before and after port operations are invoked
+ *   - Add optimistic UI updates for immediate visual feedback
+ */
+function setupEventListeners() {
+  const setupTimestamp = Date.now();
+
+  console.log('[Manager] SETUP_EVENT_LISTENERS_ENTRY:', {
+    timestamp: setupTimestamp,
+    containersListExists: !!containersList,
+    closeMinimizedBtnExists: !!document.getElementById('closeMinimized'),
+    closeAllBtnExists: !!document.getElementById('closeAll')
+  });
+
+  _setupHeaderButtons();
+  _setupQuickTabActionHandler();
+
   console.log('[Manager] EVENT_LISTENERS_SETUP_COMPLETE:', {
     timestamp: new Date().toISOString(),
     containersListElement: !!containersList,
@@ -6237,13 +7174,21 @@ function setupEventListeners() {
     closeAllElement: !!document.getElementById('closeAll')
   });
 
-  // v1.6.3.12 - Extracted to reduce setupEventListeners line count
-  _setupStorageOnChangedListener();
+  // v1.6.4 - FIX Issue #22: storage.onChanged listener is now registered at the
+  // start of DOMContentLoaded BEFORE any async operations. This ensures we don't
+  // miss storage changes that occur during initialization.
+  // _setupStorageOnChangedListener() is now called from DOMContentLoaded directly.
 }
 
 /**
  * Setup storage.onChanged listener as fallback mechanism
  * v1.6.3.12 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4 - FIX Issue #22: NOW CALLED AT START OF DOMContentLoaded
+ *   CRITICAL: This listener MUST be registered BEFORE any async operations
+ *   to ensure we don't miss storage changes that occur during initialization.
+ *   The background script may send state updates via storage.local while
+ *   the manager is still initializing, and missing these updates causes
+ *   state divergence.
  * @private
  */
 function _setupStorageOnChangedListener() {
@@ -6660,6 +7605,7 @@ function _checkTabChanges(oldTabs, newTabs) {
 /**
  * Update local state cache without triggering renderUI()
  * v1.6.3.7 - FIX Issue #3: Keep local state in sync during metadata-only updates
+ * v1.6.4 - FIX Issue #21: Increment state version for render transaction tracking
  * @private
  * @param {Object} newValue - New storage value
  */
@@ -6667,6 +7613,8 @@ function _updateLocalStateCache(newValue) {
   if (newValue?.tabs) {
     quickTabsState = newValue;
     _updateInMemoryCache(newValue.tabs);
+    // v1.6.4 - FIX Issue #21: Increment state version
+    _incrementStateVersion('_updateLocalStateCache');
   }
 }
 
@@ -7113,7 +8061,21 @@ function _isCloseMinimizedSuccessful(response) {
 }
 
 function closeMinimizedTabs() {
-  console.log('[Manager] Close Minimized Tabs requested');
+  const timestamp = Date.now();
+  const minimizedTabs = _allQuickTabsFromPort.filter(qt => qt.minimized);
+
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ CLOSE_MINIMIZED_TABS function invoked');
+  console.log('[Manager] │ Minimized tabs count:', minimizedTabs.length);
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_MINIMIZED_TABS_INITIATED:', {
+    timestamp,
+    minimizedCount: minimizedTabs.length,
+    minimizedQuickTabIds: minimizedTabs.map(qt => qt.id),
+    totalQuickTabs: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
+  });
 
   try {
     // v1.6.3.12-v8 - FIX Issue #1: Use port messaging via closeMinimizedQuickTabsViaPort()
@@ -7220,7 +8182,7 @@ async function closeAllTabs() {
   const startTime = Date.now();
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
-  console.log('[Manager] │ Close All button clicked');
+  console.log('[Manager] │ CLOSE_ALL_TABS function invoked');
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
   try {
