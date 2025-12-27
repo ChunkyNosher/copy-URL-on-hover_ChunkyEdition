@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.12-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Per-Tab
 Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,34 +8,36 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v5 Status:** Circuit Breaker ✅ | Priority Queue ✅ | Timeout
-Backoff ✅ | Rolling Heartbeat ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v6 Status:** Manager Sync ✅ | Port Resilience ✅ | Sequence
+Tracking ✅ | Circuit Breaker ✅ | Code Health 9.09 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v5
+## 🎉 What's New in v1.6.3.12-v6
 
-**🔧 Circuit Breaker Pattern + Priority Queue + Comprehensive Logging ✅**
+**🔧 Manager Sync + Port Resilience + Code Health Improvements ✅**
 
-- ✅ **Circuit Breaker** - Trips after 5 consecutive failed transactions
-- ✅ **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- ✅ **Post-Failure Delay** - 5 seconds before next queue dequeue
-- ✅ **Fallback Mode** - Bypasses storage writes when circuit trips
-- ✅ **Test Write Recovery** - Probes every 30s for recovery detection
-- ✅ **Priority Queue** - HIGH/MEDIUM/LOW priority for write ordering
-- ✅ **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- ✅ **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- ✅ **Storage Backend Tracking** - `currentStorageBackend` state tracking
-- ✅ **Error Discrimination** - API unavailable vs quota vs transient errors
-- ✅ **Container Validation** - Unified `_validateContainerForOperation()`
-  helper
+- ✅ **storage.onChanged Fix** - Checks `'local'` area for Firefox MV2
+- ✅ **Close Minimized Fix** - Properly triggers state sync to Manager
+- ✅ **Close All Handler** - `CLOSE_ALL_QUICK_TABS` message implemented
+- ✅ **Tab Closure Detection** - Manager receives `ORIGIN_TAB_CLOSED` messages
+- ✅ **Defensive Port Handlers** - Input validation in all handlers
+- ✅ **Initial State Request** - Sidebar requests state on first load
+- ✅ **Sidebar Cleanup** - Explicit port/timer cleanup on unload
+- ✅ **Heartbeat Restart** - Properly restarts after reconnection
+- ✅ **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- ✅ **Message Validation** - MessageRouter centralized schema validation
+- ✅ **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
+- ✅ **Code Health** - quick-tabs-manager.js improved from 7.62 to 9.09
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v5:** Circuit Breaker pattern, Priority Queue, Timeout Backoff,
+Rolling Heartbeat  
 **v1.6.3.12-v4:** storage.session API removal, cache staleness detection,
 startup cleanup  
 **v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager
@@ -145,8 +147,8 @@ npm run lint                    # Lint
 - Container isolation prevents cross-container state leaks
 - Port messaging ensures reliable Quick Tabs sync across tabs
 - Background script is single source of truth for all Quick Tabs data
-- Circuit breaker trips after 5 failures, recovers via test write every 30s
-- Priority queue ensures critical writes (HIGH) are processed first
+- Port circuit breaker limits reconnection attempts to max 10 with backoff
+- Sequence tracking ensures FIFO ordering resilience for messages
 
 ## 📄 License
 
@@ -154,6 +156,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v5** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v6** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
