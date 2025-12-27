@@ -28,14 +28,16 @@ window.addEventListener('unload', () => {
  * Check if session storage is available
  */
 function checkSessionStorageAvailability() {
-  const hasSessionStorage =
+  // v1.6.3.12-v5 - storage.session does NOT exist in Firefox MV2
+  // Session-only behavior is achieved via explicit startup cleanup
+  const hasLocalStorage =
     typeof browser !== 'undefined' &&
     browser.storage &&
-    typeof browser.storage.session !== 'undefined';
+    typeof browser.storage.local !== 'undefined';
 
   const statusElement = document.getElementById('sessionStatus');
-  if (hasSessionStorage) {
-    statusElement.textContent = '✓ Available';
+  if (hasLocalStorage) {
+    statusElement.textContent = '✓ Available (storage.local)';
     statusElement.style.color = '#155724';
   } else {
     statusElement.textContent = '✗ Not Available';
@@ -47,15 +49,13 @@ function checkSessionStorageAvailability() {
  * Display all Quick Tabs from storage
  */
 /**
- * Load state from session storage
+ * Load state from local storage (session-scoped via explicit startup cleanup)
+ * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
  * @returns {Promise<Object|null>} State or null
  */
 async function _loadFromSessionStorage() {
-  if (typeof browser.storage.session === 'undefined') {
-    return null;
-  }
-
-  const sessionResult = await browser.storage.session.get(SESSION_KEY);
+  // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+  const sessionResult = await browser.storage.local.get(SESSION_KEY);
   return sessionResult && sessionResult[SESSION_KEY] ? sessionResult[SESSION_KEY] : null;
 }
 
@@ -186,10 +186,9 @@ async function clearAllQuickTabs() {
     // Clear from sync storage
     await browser.storage.sync.remove(STATE_KEY);
 
-    // Clear from session storage if available
-    if (typeof browser.storage.session !== 'undefined') {
-      await browser.storage.session.remove(SESSION_KEY);
-    }
+    // Clear from local storage (session-scoped via explicit startup cleanup)
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    await browser.storage.local.remove(SESSION_KEY);
 
     showStatus('All Quick Tabs cleared!', 'success');
     await displayAllQuickTabs();

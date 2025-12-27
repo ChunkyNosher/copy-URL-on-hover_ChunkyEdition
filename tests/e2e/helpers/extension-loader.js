@@ -77,9 +77,7 @@ export async function clearExtensionStorage(page) {
     if (typeof browser !== 'undefined') {
       await browser.storage.sync.clear();
       await browser.storage.local.clear();
-      if (browser.storage.session) {
-        await browser.storage.session.clear();
-      }
+      // v1.6.3.12-v5 - storage.session does NOT exist in Firefox MV2, removed
     }
   });
 }

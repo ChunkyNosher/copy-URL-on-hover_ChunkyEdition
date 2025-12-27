@@ -38,9 +38,9 @@ describe('Storage Error Handling', () => {
   let sessionAdapter;
 
   /**
-   * v1.6.3.11-v3 - Helper to mock storage.session with write verification
+   * v1.6.3.11-v3 - Helper to mock storage.local with write verification
    * The save method now reads back data to verify write succeeded
-   * v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+   * v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
    */
   function mockStorageWithVerification() {
     let savedData = null;
@@ -80,7 +80,7 @@ describe('Storage Error Handling', () => {
     it('should handle storage quota exceeded error in SyncStorageAdapter', async () => {
       const quotaError = new Error('QUOTA_BYTES quota exceeded');
       quotaError.name = 'QuotaExceededError';
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(quotaError);
 
       const quickTab = QuickTab.create({
@@ -108,7 +108,7 @@ describe('Storage Error Handling', () => {
     it('should handle DOM exception for quota in SyncStorageAdapter', async () => {
       // Simulate DOMException which doesn't serialize properly
       const domException = new DOMException('Quota exceeded', 'QuotaExceededError');
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(domException);
 
       const quickTab = QuickTab.create({
@@ -122,7 +122,7 @@ describe('Storage Error Handling', () => {
     it('should propagate quota error with original error properties', async () => {
       const quotaError = new Error('Storage quota exceeded');
       quotaError.code = 22; // DOMException QUOTA_EXCEEDED_ERR
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(quotaError);
 
       const quickTab = QuickTab.create({
@@ -144,7 +144,7 @@ describe('Storage Error Handling', () => {
   describe('Corruption Recovery', () => {
     it('should handle corrupted data structure in load', async () => {
       // Corrupted: tabs is not an array
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: 'not-an-array',
@@ -160,7 +160,7 @@ describe('Storage Error Handling', () => {
 
     it('should handle corrupted container format', async () => {
       // Corrupted: containers value is not an object
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: 'invalid',
@@ -175,7 +175,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle null storage key value', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: null
       });
@@ -186,7 +186,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle undefined storage key value', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: undefined
       });
@@ -217,7 +217,7 @@ describe('Storage Error Handling', () => {
       };
 
       let savedData = null;
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockImplementation(async () => {
         if (savedData) return savedData;
         return containerData;
@@ -239,7 +239,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle empty containers object in migration', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {}
@@ -252,7 +252,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle container with empty tabs array in migration', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
@@ -273,7 +273,7 @@ describe('Storage Error Handling', () => {
 
   describe('Network/API Errors', () => {
     it('should handle network error during load in SyncStorageAdapter', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockRejectedValue(new Error('Network error'));
 
       const result = await syncAdapter.load();
@@ -294,7 +294,7 @@ describe('Storage Error Handling', () => {
     it('should handle timeout error during save', async () => {
       const timeoutError = new Error('Operation timed out');
       timeoutError.name = 'TimeoutError';
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(timeoutError);
 
       const quickTab = QuickTab.create({
@@ -308,7 +308,7 @@ describe('Storage Error Handling', () => {
     it('should handle permission denied error', async () => {
       const permError = new Error('Permission denied');
       permError.name = 'SecurityError';
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(permError);
 
       const quickTab = QuickTab.create({
@@ -385,7 +385,7 @@ describe('Storage Error Handling', () => {
     it('should handle save with empty tabs array', async () => {
       const saveId = await syncAdapter.save([]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: [],
@@ -397,7 +397,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle delete on non-existent Quick Tab', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-existing', url: 'https://example.com' }],
@@ -416,7 +416,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle delete when storage is empty', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({});
 
       // Clear the mock call count from setup
@@ -429,7 +429,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle clear when storage is already empty', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({});
 
       // Clear should not throw
@@ -439,7 +439,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle clear error gracefully', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.remove.mockRejectedValue(new Error('Clear failed'));
 
       await expect(syncAdapter.clear()).rejects.toThrow('Clear failed');
@@ -449,7 +449,7 @@ describe('Storage Error Handling', () => {
   describe('Data Integrity', () => {
     it('should preserve all Quick Tab properties during save/load cycle', async () => {
       // v1.6.3.11-v3 - Updated for write verification
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       let savedData = null;
       browser.storage.local.set.mockImplementation(async data => {
         savedData = data;
@@ -514,7 +514,7 @@ describe('Storage Error Handling', () => {
       await syncAdapter.save([quickTab]);
       const afterSave = Date.now();
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       const savedData = browser.storage.local.set.mock.calls[0][0];
       const savedTimestamp = savedData.quick_tabs_state_v2.timestamp;
 
@@ -527,7 +527,7 @@ describe('Storage Error Handling', () => {
     it('should migrate from legacy sync storage', async () => {
       // v1.6.4.17 - NOTE: With session storage, this migration is no longer applicable
       // Session storage empty, but sync storage has data
-      // However, SyncStorageAdapter now uses storage.session and doesn't fallback to sync
+      // However, SyncStorageAdapter now uses storage.local and doesn't fallback to sync
       browser.storage.local.get.mockResolvedValue({});
       browser.storage.sync.get.mockResolvedValue({
         quick_tabs_state_v2: {
@@ -545,7 +545,7 @@ describe('Storage Error Handling', () => {
 
     it('should migrate container format to unified format', async () => {
       // v1.6.3.11-v3 - Updated for atomic migration with verification
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       const containerData = {
         quick_tabs_state_v2: {
           containers: {
@@ -594,7 +594,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should save migrated format after container migration', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
@@ -619,7 +619,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should handle delete with container format migration', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
@@ -759,7 +759,7 @@ describe('Storage Error Handling', () => {
 
   describe('SyncStorageAdapter loadAll', () => {
     it('should call load method (alias)', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-loadall', url: 'https://example.com' }],
@@ -775,7 +775,7 @@ describe('Storage Error Handling', () => {
     });
 
     it('should return null when load returns null', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({});
       browser.storage.sync.get.mockResolvedValue({});
 

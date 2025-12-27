@@ -81,7 +81,7 @@ describe('SyncStorageAdapter', () => {
 
       const saveId = await adapter.save([quickTab]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
@@ -110,13 +110,13 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save([quickTab]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.sync.set).not.toHaveBeenCalled();
     });
 
     test('should throw error when session storage fails', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(new Error('Session storage failed'));
 
       const quickTab = QuickTab.create({
@@ -148,7 +148,7 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save([quickTab1, quickTab2]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
@@ -162,7 +162,7 @@ describe('SyncStorageAdapter', () => {
     test('should handle storage errors gracefully', async () => {
       // v1.6.3.11-v7 - Restored to v1.6.3.10-v10 behavior: save() throws on storage errors
       // Write verification was added in v1.6.3.11-v3 but removed in restoration
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(new Error('Storage quota exceeded'));
 
       const quickTab = QuickTab.create({
@@ -178,7 +178,7 @@ describe('SyncStorageAdapter', () => {
 
   describe('load()', () => {
     test('should load Quick Tabs from unified format', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-1', url: 'https://example.com' }],
@@ -198,7 +198,7 @@ describe('SyncStorageAdapter', () => {
       // v1.6.3.11-v3 - Updated test for atomic migration with verification
       // The migration reads state twice (first in load, then in _executeMigration)
       // and writes the migrated data, then verifies by reading again
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
 
       const containerData = {
         quick_tabs_state_v2: {
@@ -254,7 +254,7 @@ describe('SyncStorageAdapter', () => {
     });
 
     test('should return null when no data', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({});
       browser.storage.sync.get.mockResolvedValue({});
 
@@ -266,7 +266,7 @@ describe('SyncStorageAdapter', () => {
 
   describe('delete()', () => {
     test('should delete Quick Tab from unified format', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [
@@ -291,7 +291,7 @@ describe('SyncStorageAdapter', () => {
     test('should clear all Quick Tabs', async () => {
       await adapter.clear();
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
     });
   });
