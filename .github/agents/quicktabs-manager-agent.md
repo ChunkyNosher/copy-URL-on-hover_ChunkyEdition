@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v3), scheduleRender() with revision dedup, memory-based state,
-  real-time port updates, container labeling, correlation IDs, scenario logging, MANAGER pattern actions
+  (v1.6.3.12-v5), scheduleRender() with revision dedup, memory-based state,
+  circuit breaker recovery, priority queue, container validation, MANAGER pattern actions
 tools: ['*']
 ---
 
@@ -36,39 +36,29 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v3 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v5 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v3 Features (NEW):**
+**v1.6.3.12-v5 Features (NEW):**
 
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Container Labeling** - Container ID/label logging in Manager
-- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs
-- **Test Bridge API** - `getManagerState()` for E2E testing
-- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
-- **Code Health 9.09** - quick-tabs-manager.js refactored
+- **Circuit Breaker** - Trips after 5 failures, recovers via test write every 30s
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **Container Validation** - Unified `_validateContainerForOperation()` helper
 
-**v1.6.3.12-v2 Features (Port Diagnostics):**
+**v1.6.3.12-v4 Features:**
 
-- **QUICKTAB_MINIMIZED Reception** - Receives minimize/restore events from background
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
-- **State Hash Timing** - Hash recomputed at render time, not on message receipt
+- **storage.session API Removal** - Uses `storage.local` only
+- **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **Key Manager Features:**
 
 - **Global Display** - All Quick Tabs shown (no container grouping)
-- **Port Messaging** - Connects via `'quick-tabs-port'`, receives STATE_CHANGED,
-  QUICKTAB_MINIMIZED
+- **Port Messaging** - Connects via `'quick-tabs-port'`, receives STATE_CHANGED
 - **Single Writer Authority** - Manager sends commands, never writes state
 - **MANAGER Pattern Actions** - MANAGER_CLOSE_ALL, MANAGER_CLOSE_BY_ID
-- **Manager Filtering Contract** - Shows ALL Quick Tabs globally (not filtered)
 - **Real-Time Port Updates** - Receives STATE_CHANGED from background
-
-**v1.6.3.12 Architecture (Option 4):**
-
-- **Sidebar Port** - `browser.runtime.connect({ name: 'quick-tabs-port' })`
-- **State Push** - Background calls `notifySidebarOfStateChange()`
-- **Memory-Based State** - No storage API, all state in background memory
-- **SIDEBAR_READY** - Manager sends on connect, gets SIDEBAR_STATE_SYNC response
 
 **Port Message Flow:**
 
@@ -102,10 +92,10 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ## Testing Requirements
 
+- [ ] Circuit breaker recovery works
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] STATE_CHANGED messages received and rendered
 - [ ] SIDEBAR_READY / SIDEBAR_STATE_SYNC handshake works
-- [ ] scheduleRender() works with revision dedup
 - [ ] MANAGER pattern works (MANAGER_CLOSE_ALL, MANAGER_CLOSE_BY_ID)
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
@@ -113,10 +103,9 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Deprecated:**
 
-- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
-- ❌ Polling sync - Replaced by real-time port updates
+- ❌ `browser.storage.session` - COMPLETELY REMOVED
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v3 port messaging,
-real-time state push, container labeling, scenario logging, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.12-v5 circuit breaker,
+priority queue, timeout backoff, MANAGER pattern actions.**

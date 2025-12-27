@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v3.
+  documentation. Current version: v1.6.3.12-v5.
 tools: ['*']
 ---
 
@@ -69,54 +69,32 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v3)
+## Current Extension State (v1.6.3.12-v5)
 
-### v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps
+### v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue
 
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **storage.session API Fix** - Properly guards MV2 incompatible code
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Post-Failure Delay** - 5s delay before next queue dequeue
+- **Fallback Mode** - Bypasses storage writes when circuit trips
+- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **Storage Backend Tracking** - `currentStorageBackend` state tracking
+- **Container Validation** - Unified `_validateContainerForOperation()` helper
+
+### v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness
+
+- **storage.session API Removal** - All calls replaced with `browser.storage.local`
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **Cache Staleness Detection** - 30s warning, 60s auto-sync
+
+### v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps
+
+- **Container ID Resolution** - CreateHandler queries Identity system
 - **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs,
-  health monitoring, write queue, debounce timing, end-to-end sync
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`,
-  `getContainerLabel()`, `verifyCrossTabIsolation()`
-- **Scenario Logging** - `enableScenarioLogging()`, `disableScenarioLogging()`
-- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09, index.js 10.0
-
-### v1.6.3.12-v2 Features - Port Diagnostics
-
-- **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
-  minimize/restore events from VisibilityHandler to sidebar
-- **Container ID Priority Fix** - CreateHandler prioritizes identity context
-  over explicit options.cookieStoreId
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map for ACK timing
-- **Enhanced Port Disconnect Logging** - Logs reason, timestamp, pending count
-- **Port Message Logging** - `QUICK_TAB_PORT_MESSAGE_RECEIVED/SENT` with timestamps
-
-### v1.6.3.12 Features - Option 4 In-Memory Architecture
-
-- **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
-- **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
-- **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
-
-### v1.6.3.11-v12 Features - Solo/Mute Removal + Real-Time Updates
-
-- **Solo/Mute REMOVED** - Solo (🎯) and Mute (🔇) features completely removed
-- **Cross-Session Persistence REMOVED** - Quick Tabs are session-only now
-- **Version-Based Log Cleanup** - Logs auto-cleared on extension version change
-- **Real-Time Manager Updates** - QUICKTAB_MOVED, QUICKTAB_RESIZED,
-  QUICKTAB_MINIMIZED, QUICKTAB_REMOVED message types
-- **Sidebar Polling Sync** - Manager polls every 3-5s with staleness tracking
-- **Scenario-Aware Logging** - Source, container ID, state changes tracked
-
-### v1.6.3.11-v11 Features - Container Identity + Message Diagnostics
-
-- **Container Identity Fix** - GET_CURRENT_TAB_ID returns `tabId` AND
-  `cookieStoreId`
-- **Message Routing Diagnostics** - `[MSG_ROUTER]`/`[MSG_HANDLER]` logging
-- **Code Health 10.0** - QuickTabHandler.js fully refactored
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
 
 ### Architecture
 
@@ -129,8 +107,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v3
-- [ ] **v1.6.3.12-v3:** Critical bug fixes + logging gaps documented
+- [ ] Version numbers match 1.6.3.12-v5
+- [ ] **v1.6.3.12-v5:** Circuit Breaker + Priority Queue documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -140,7 +118,7 @@ nothing.
 
 | Error                    | Fix                              |
 | ------------------------ | -------------------------------- |
-| v1.6.3.12-v2 or earlier  | Update to 1.6.3.12-v3            |
+| v1.6.3.12-v4 or earlier  | Update to 1.6.3.12-v5            |
 | "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
 | "Pin to Page"            | REMOVE - Feature DELETED in v12  |
 | Cross-session persist    | REMOVE - Session-only in v12     |

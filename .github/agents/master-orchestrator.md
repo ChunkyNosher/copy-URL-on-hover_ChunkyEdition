@@ -60,20 +60,23 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
+**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
 
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **storage.session API Fix** - Properly guards MV2 incompatible code
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+
+**v1.6.3.12-v4 Features:**
+
+- **storage.session API Removal** - Uses `storage.local` only for MV2 compatibility
+- **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **Storage Format:**
 
@@ -82,26 +85,6 @@ UI)
 ```
 
 **CRITICAL:** Use port messaging (`'quick-tabs-port'`) for Quick Tab state sync
-
-**v1.6.3.6 Fixes:**
-
-1. **Cross-Tab Filtering** -
-   `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check
-   quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and
-   `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action
-   state, dispatch, response, cleanup, timing
-
-**v1.6.3.6 Architecture:**
-
-- **QuickTabStateMachine** - State tracking and validation
-- **QuickTabMediator** - Operation coordination with rollback
-- **MapTransactionManager** - Atomic Map operations (2000ms timeout)
-- **Content.js** - Cross-tab filtering in
-  `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `setHandlers()`
-- **QuickTabWindow** - `__quickTabWindow` property, `_logIfStateDesync()`
 
 ---
 

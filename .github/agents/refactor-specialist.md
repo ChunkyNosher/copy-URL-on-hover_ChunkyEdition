@@ -60,22 +60,24 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
-- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Post-Failure Delay** - 5s delay before next queue dequeue
+- **Fallback Mode** - Bypasses storage writes when circuit trips
+- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
-identity gating, storage quota monitoring, code health 9.0+, render queue
-priority, dead code removal
+**v1.6.3.12-v4 Features:**
+
+- **storage.session API Removal** - Uses `storage.local` only for MV2 compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
 
 **v1.6.3.6 Fixes:**
 
