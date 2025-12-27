@@ -350,12 +350,12 @@ function initializeQuickTabsPort() {
 
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
-    
+
     // v1.6.4.0 - FIX Issue #30: Reset circuit breaker on successful connection
     _quickTabsPortReconnectAttempts = 0;
     _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
     _quickTabsPortCircuitBreakerTripped = false;
-    
+
     // v1.6.4 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
@@ -418,7 +418,7 @@ function initializeQuickTabsPort() {
       success: false,
       reconnectAttempt: _quickTabsPortReconnectAttempts
     });
-    
+
     // v1.6.4.0 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
     _scheduleQuickTabsPortReconnect(Date.now());
   }
@@ -433,11 +433,11 @@ function initializeQuickTabsPort() {
 function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
   // Increment reconnect attempts
   _quickTabsPortReconnectAttempts++;
-  
+
   // Check if we've exceeded max attempts
   if (_quickTabsPortReconnectAttempts >= QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS) {
     _quickTabsPortCircuitBreakerTripped = true;
-    
+
     console.error('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_TRIPPED:', {
       timestamp: Date.now(),
       attempts: _quickTabsPortReconnectAttempts,
@@ -445,15 +445,15 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
       message: 'Max reconnection attempts reached. Background may be unavailable.',
       recoveryAction: 'manual_reconnect_required'
     });
-    
+
     // v1.6.4.0 - FIX Issue #30: Show error notification to user
     _showQuickTabsPortConnectionError();
     return;
   }
-  
+
   // Calculate backoff delay with exponential increase
   const backoffDelay = _quickTabsPortReconnectBackoffMs;
-  
+
   console.log('[Sidebar] QUICK_TABS_PORT_RECONNECT_SCHEDULED:', {
     timestamp: Date.now(),
     attempt: _quickTabsPortReconnectAttempts,
@@ -462,7 +462,7 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
     timeSinceDisconnect: Date.now() - disconnectTimestamp,
     nextBackoffMs: Math.min(backoffDelay * 2, QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS)
   });
-  
+
   // Schedule reconnect with current backoff
   setTimeout(() => {
     if (!quickTabsPort && !_quickTabsPortCircuitBreakerTripped) {
@@ -474,7 +474,7 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
       initializeQuickTabsPort();
     }
   }, backoffDelay);
-  
+
   // Increase backoff for next attempt (capped at max)
   _quickTabsPortReconnectBackoffMs = Math.min(
     _quickTabsPortReconnectBackoffMs * 2,
@@ -489,7 +489,7 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
  */
 function _showQuickTabsPortConnectionError() {
   const errorMessage = 'Connection to background lost. Click to reconnect.';
-  
+
   // Create error notification element
   const notification = document.createElement('div');
   notification.id = 'quick-tabs-port-error-notification';
@@ -509,21 +509,21 @@ function _showQuickTabsPortConnectionError() {
     cursor: pointer;
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   `;
-  
+
   // v1.6.4.0 - FIX Issue #30: Add click handler for manual reconnect
   notification.addEventListener('click', () => {
     manualQuickTabsPortReconnect();
     notification.remove();
   });
-  
+
   // Remove any existing notification first
   const existing = document.getElementById('quick-tabs-port-error-notification');
   if (existing) {
     existing.remove();
   }
-  
+
   document.body.appendChild(notification);
-  
+
   console.log('[Sidebar] QUICK_TABS_PORT_ERROR_NOTIFICATION_SHOWN:', {
     timestamp: Date.now(),
     message: errorMessage,
@@ -541,12 +541,12 @@ function manualQuickTabsPortReconnect() {
     previousAttempts: _quickTabsPortReconnectAttempts,
     wasCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
   });
-  
+
   // Reset circuit breaker state
   _quickTabsPortReconnectAttempts = 0;
   _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
   _quickTabsPortCircuitBreakerTripped = false;
-  
+
   // Attempt connection
   initializeQuickTabsPort();
 }
@@ -702,7 +702,9 @@ function _validateAckMessage(msg, handlerName) {
   // ACK messages should have success field (boolean)
   if (typeof msg.success !== 'boolean') {
     // Not a hard error - some ACKs may not have success field
-    console.warn(`[Sidebar] PORT_MESSAGE_VALIDATION_WARN: ${handlerName} - success field missing or not boolean (got ${typeof msg.success})`);
+    console.warn(
+      `[Sidebar] PORT_MESSAGE_VALIDATION_WARN: ${handlerName} - success field missing or not boolean (got ${typeof msg.success})`
+    );
   }
   return { valid: true };
 }
@@ -788,14 +790,17 @@ function _createAckHandler(messageType, ackType) {
 const _portMessageHandlers = {
   // State update handlers - use factory pattern
   SIDEBAR_STATE_SYNC: _createStateUpdateHandler('SIDEBAR_STATE_SYNC', 'quick-tabs-port-sync'),
-  GET_ALL_QUICK_TABS_RESPONSE: _createStateUpdateHandler('GET_ALL_QUICK_TABS_RESPONSE', 'quick-tabs-port-sync'),
+  GET_ALL_QUICK_TABS_RESPONSE: _createStateUpdateHandler(
+    'GET_ALL_QUICK_TABS_RESPONSE',
+    'quick-tabs-port-sync'
+  ),
   STATE_CHANGED: _createStateUpdateHandler('STATE_CHANGED', 'state-changed-notification'),
-  
+
   // ACK handlers - use factory pattern
   CLOSE_QUICK_TAB_ACK: _createAckHandler('CLOSE_QUICK_TAB_ACK', 'CLOSE'),
   MINIMIZE_QUICK_TAB_ACK: _createAckHandler('MINIMIZE_QUICK_TAB_ACK', 'MINIMIZE'),
   RESTORE_QUICK_TAB_ACK: _createAckHandler('RESTORE_QUICK_TAB_ACK', 'RESTORE'),
-  
+
   // Close All ACK - special handler with additional logging
   CLOSE_ALL_QUICK_TABS_ACK: msg => {
     const validation = _validateAckMessage(msg, 'CLOSE_ALL_QUICK_TABS_ACK');
@@ -863,7 +868,7 @@ function _validateOriginTabClosedMessage(msg) {
       received: typeof msg.originTabId
     });
   }
-  
+
   return true;
 }
 
@@ -916,7 +921,15 @@ function _handleOriginTabClosed(msg) {
  * @private
  * @param {Object} params - Entry log parameters
  */
-function _logPortHandlerEntry({ type, correlationId, entryTimestamp, msgTimestamp, payloadSize, sequence, sequenceStatus }) {
+function _logPortHandlerEntry({
+  type,
+  correlationId,
+  entryTimestamp,
+  msgTimestamp,
+  payloadSize,
+  sequence,
+  sequenceStatus
+}) {
   console.log(
     `[PORT_HANDLER_ENTRY] type=${type}, correlationId=${correlationId || 'none'}, timestamp=${entryTimestamp}`,
     {
@@ -1039,14 +1052,14 @@ function _checkMessageSequence(sequence, type, correlationId) {
 
   const expectedSequence = _lastReceivedSequence + 1;
   const isOutOfOrder = sequence !== expectedSequence && _lastReceivedSequence > 0;
-  
+
   if (isOutOfOrder) {
     return _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
   }
-  
+
   // Update last received sequence
   _updateLastReceivedSequence(sequence);
-  
+
   return { status: 'in_order', isOutOfOrder: false };
 }
 
@@ -1062,15 +1075,15 @@ function _checkMessageSequence(sequence, type, correlationId) {
  */
 function _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId) {
   _sequenceGapsDetected++;
-  
+
   _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
-  
+
   // Only trigger sync for significant gaps (not just duplicate messages)
   if (sequence > expectedSequence) {
     _lastReceivedSequence = sequence;
     _triggerSequenceGapRecovery(type, correlationId);
   }
-  
+
   return { status: 'out_of_order', isOutOfOrder: true };
 }
 
@@ -1087,7 +1100,7 @@ function _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId)
   if (!SEQUENCE_GAP_WARNING_ENABLED) {
     return;
   }
-  
+
   console.warn('[Sidebar] PORT_MESSAGE_OUT_OF_ORDER:', {
     timestamp: Date.now(),
     type,
@@ -1128,7 +1141,7 @@ function _triggerSequenceGapRecovery(type, correlationId) {
     totalGapsDetected: _sequenceGapsDetected,
     action: 'requesting_full_state_sync'
   });
-  
+
   // Request full state sync to ensure we have consistent state
   requestAllQuickTabsViaPort();
 }
@@ -4462,7 +4475,9 @@ window.addEventListener('unload', () => {
     } catch (_err) {
       // Expected: Port may already be disconnected if background unloaded first
       // This is normal during browser shutdown or extension reload
-      console.log('[Sidebar] PORT_CLEANUP: quickTabsPort already disconnected (expected during shutdown)');
+      console.log(
+        '[Sidebar] PORT_CLEANUP: quickTabsPort already disconnected (expected during shutdown)'
+      );
     }
     quickTabsPort = null;
   }

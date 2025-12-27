@@ -164,7 +164,12 @@ export class MessageRouter {
    */
   _checkMessageIsObject(message, sender) {
     if (!message || typeof message !== 'object') {
-      this._logValidationFailure('INVALID_MESSAGE_OBJECT', message, sender, 'Message is not an object');
+      this._logValidationFailure(
+        'INVALID_MESSAGE_OBJECT',
+        message,
+        sender,
+        'Message is not an object'
+      );
       return {
         valid: false,
         error: 'Message must be an object',
@@ -206,14 +211,22 @@ export class MessageRouter {
   _validateActionProperty(message, sender) {
     if (!VALID_MESSAGE_ACTIONS.has(message.action)) {
       if (VALID_MESSAGE_TYPES.has(message.action)) {
-        console.warn('[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: action property contains a type value', {
-          action: message.action,
-          suggestion: 'Use type property instead of action for this message',
-          senderTabId: sender?.tab?.id ?? 'unknown'
-        });
+        console.warn(
+          '[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: action property contains a type value',
+          {
+            action: message.action,
+            suggestion: 'Use type property instead of action for this message',
+            senderTabId: sender?.tab?.id ?? 'unknown'
+          }
+        );
         return null; // Allow but log warning
       }
-      this._logValidationFailure('UNKNOWN_ACTION', message, sender, `Unknown action: ${message.action}`);
+      this._logValidationFailure(
+        'UNKNOWN_ACTION',
+        message,
+        sender,
+        `Unknown action: ${message.action}`
+      );
       return {
         valid: false,
         action: message.action,
@@ -235,11 +248,14 @@ export class MessageRouter {
   _validateTypeProperty(message, sender) {
     if (!VALID_MESSAGE_TYPES.has(message.type)) {
       if (VALID_MESSAGE_ACTIONS.has(message.type)) {
-        console.warn('[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: type property contains an action value', {
-          type: message.type,
-          suggestion: 'Use action property instead of type for this message',
-          senderTabId: sender?.tab?.id ?? 'unknown'
-        });
+        console.warn(
+          '[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: type property contains an action value',
+          {
+            type: message.type,
+            suggestion: 'Use action property instead of type for this message',
+            senderTabId: sender?.tab?.id ?? 'unknown'
+          }
+        );
         return null; // Allow but log warning
       }
       this._logValidationFailure('UNKNOWN_TYPE', message, sender, `Unknown type: ${message.type}`);
@@ -265,7 +281,12 @@ export class MessageRouter {
    */
   _checkMissingActionAndType(hasAction, hasType, message, sender) {
     if (!hasAction && !hasType) {
-      this._logValidationFailure('MISSING_ACTION_AND_TYPE', message, sender, 'Message missing both action and type properties');
+      this._logValidationFailure(
+        'MISSING_ACTION_AND_TYPE',
+        message,
+        sender,
+        'Message missing both action and type properties'
+      );
       return {
         valid: false,
         error: 'Message must have either action or type property',
@@ -555,7 +576,7 @@ export class MessageRouter {
 
     // v1.6.4.0 - FIX Issue #24: Use centralized schema validation
     const schemaValidation = this.validateMessageSchema(message, sender);
-    
+
     if (!schemaValidation.valid) {
       sendResponse({
         success: false,
