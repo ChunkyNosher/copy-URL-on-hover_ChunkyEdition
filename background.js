@@ -19,6 +19,12 @@
 //   - Session-only behavior is achieved via explicit startup cleanup (_clearQuickTabsOnStartup)
 //   - Port messaging is the primary mechanism for real-time sync
 //   - storage.local is used for persistence between page reloads (during browser session)
+//
+// === v1.6.3.12-v7 FIX Bug #3 ===
+// Added QUICKTAB_REMOVED handler for content script UI close notifications
+//   - When content script closes Quick Tab via its own close button (not Manager)
+//   - DestroyHandler sends QUICKTAB_REMOVED message to background
+//   - Background updates session state and notifies sidebar for Manager UI update
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -5487,6 +5493,58 @@ function handleQuickTabMinimizedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_REMOVED message from content script
+ * v1.6.3.12-v7 - FIX Bug #3: When content script closes Quick Tab via UI button,
+ * DestroyHandler sends this message to notify background for state sync.
+ * This ensures the Manager sidebar gets updated when Quick Tabs are closed
+ * from their own close buttons, not just from Manager buttons.
+ *
+ * @param {Object} message - Message containing quickTabId, originTabId, source
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabRemovedMessage(message, sender) {
+  const { quickTabId, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v7 QUICKTAB_REMOVED received:', {
+    quickTabId,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Remove the Quick Tab from session state
+  const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
+
+  // Also remove from globalQuickTabState for backward compatibility
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs.splice(globalIndex, 1);
+    globalQuickTabState.lastUpdate = Date.now();
+  }
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v7 Quick Tab removed from session state:', {
+      quickTabId,
+      ownerTabId,
+      source,
+      remainingTabsInOwner: quickTabsSessionState.quickTabsByTab[ownerTabId]?.length || 0,
+      totalGlobalTabs: globalQuickTabState.tabs.length
+    });
+
+    // Notify sidebar of state change for immediate UI update
+    notifySidebarOfStateChange();
+  } else {
+    console.warn('[Background] v1.6.3.12-v7 Quick Tab not found for QUICKTAB_REMOVED:', {
+      quickTabId,
+      senderTabId,
+      availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+    });
+  }
+}
+
+/**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
  * v1.6.4 - J5: Enhanced broadcast error handling with per-target logging
@@ -7566,6 +7624,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'QUICKTAB_MINIMIZED') {
     const result = handleQuickTabMinimizedMessage(message, sender);
     sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v7 - FIX Bug #3: Handle QUICKTAB_REMOVED message from content scripts
+  // When content script's DestroyHandler closes a Quick Tab, it sends this message
+  // to notify background, which then updates session state and notifies sidebar
+  if (message.type === 'QUICKTAB_REMOVED') {
+    handleQuickTabRemovedMessage(message, sender);
+    sendResponse({ success: true });
     return false; // Synchronous response
   }
 

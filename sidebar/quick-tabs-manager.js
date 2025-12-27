@@ -15,6 +15,11 @@
  *   - Collapse state uses storage.local (UI preference)
  *   - v1.6.3.12-v5: All storage.session references removed
  *
+ * v1.6.3.12-v7 - FIX Bug #2: Manager buttons use port messaging
+ *   - Button handlers (minimize, restore, close) now use *ViaPort() functions
+ *   - This fixes Manager buttons not working because old functions sent
+ *     messages to content scripts via tabs.sendMessage (Manager is not a content script)
+ *
  * v1.6.3.12-v4 - FIX Diagnostic Gaps #1-8:
  *   - Gap #4: browser.runtime.lastError captured IMMEDIATELY in disconnect handler
  *   - Gap #5: CorrelationId propagation through entire handler → render chain
@@ -6049,18 +6054,29 @@ function setupEventListeners() {
       timestamp: new Date().toISOString()
     });
 
+    // v1.6.3.12-v7 - FIX Bug #2: Use port-based messaging for Quick Tab operations
+    // The old functions (minimizeQuickTab, restoreQuickTab, closeQuickTab) used
+    // _sendMessageWithRetry() which sends messages to content scripts via tabs.sendMessage.
+    // This doesn't work because Manager is a sidebar, not a content script.
+    // The correct approach is to use port messaging to background, which then
+    // coordinates with the appropriate content script.
+    // Note: ViaPort functions return boolean synchronously (fire-and-forget pattern)
+    // The actual response comes via port message handlers asynchronously.
     switch (action) {
       case 'goToTab':
         await goToTab(parseInt(tabId));
         break;
       case 'minimize':
-        await minimizeQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        minimizeQuickTabViaPort(quickTabId);
         break;
       case 'restore':
-        await restoreQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        restoreQuickTabViaPort(quickTabId);
         break;
       case 'close':
-        await closeQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        closeQuickTabViaPort(quickTabId);
         break;
       // v1.6.3.7-v1 - FIX ISSUE #8: Handle adopt to current tab action
       case 'adoptToCurrentTab':
