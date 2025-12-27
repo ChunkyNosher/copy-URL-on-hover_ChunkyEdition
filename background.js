@@ -3328,22 +3328,23 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     timestamp: Date.now()
   });
 
-  // v1.6.4.18 - FIX: Process session storage for Quick Tabs (session-only)
-  // Also process local for settings (which still use storage.local)
-  if (areaName !== 'session' && areaName !== 'local') {
+  // v1.6.3.12-v6 - FIX: Process local storage for Quick Tabs (Firefox MV2 - storage.session NOT available)
+  // Quick Tabs use storage.local with explicit startup cleanup for session-scoped behavior
+  if (areaName !== 'local') {
     return;
   }
 
-  // Handle Quick Tab state changes (now in session storage)
-  // v1.6.4.18 - Quick Tabs are now session-only
-  if (changes.quick_tabs_state_v2 && areaName === 'session') {
+  // v1.6.3.12-v6 - FIX Issue #1, #4: Handle Quick Tab state changes (storage.local - NOT session)
+  // BUG FIX: Previous code checked for areaName === 'session' which never fires in Firefox MV2
+  // because browser.storage.session API does not exist. Changed to 'local' to match actual storage usage.
+  if (changes.quick_tabs_state_v2 && areaName === 'local') {
     console.log(
-      '[Background][StorageListener] v1.6.4.18 PROCESSING: quick_tabs_state_v2 change (session-only)'
+      '[Background][StorageListener] v1.6.3.12-v6 PROCESSING: quick_tabs_state_v2 change (storage.local)'
     );
     _handleQuickTabStateChange(changes);
   }
 
-  // Handle settings changes (still in local storage)
+  // Handle settings changes (also in local storage)
   if (changes.quick_tab_settings && areaName === 'local') {
     console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
     _handleSettingsChange(changes);
@@ -3351,7 +3352,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 });
 
 console.log(
-  '[Background][StorageListener] v1.6.4.18 Listener registered successfully (session-only)',
+  '[Background][StorageListener] v1.6.3.12-v6 Listener registered successfully (storage.local - Firefox MV2 compatible)',
   {
     timestamp: Date.now()
   }
