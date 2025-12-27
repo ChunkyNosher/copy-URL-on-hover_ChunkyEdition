@@ -172,6 +172,8 @@ const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th per
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
 const QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS = 1000; // Start at 1 second
 const QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS = 30000; // Max 30 seconds between attempts
+// v1.6.4 - FIX Issue #5: Auto-reset circuit breaker after timeout period
+const QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS = 60000; // 60 seconds before auto-reset
 
 // ==================== v1.6.3.12-v7 FIX Issue #13 CONSTANTS ====================
 // Port messaging FIFO ordering - sequence number tracking
@@ -320,6 +322,9 @@ const _quickTabPortOperationTimestamps = new Map();
 let _quickTabsPortReconnectAttempts = 0;
 let _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
 let _quickTabsPortCircuitBreakerTripped = false;
+// v1.6.4 - FIX Issue #5: Track when circuit breaker was tripped for auto-reset
+let _quickTabsPortCircuitBreakerTrippedAt = 0;
+let _quickTabsPortCircuitBreakerAutoResetTimerId = null;
 
 /**
  * v1.6.3.12-v7 - FIX Issue #13: Port message sequence number tracking
@@ -442,17 +447,23 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
   // Check if we've exceeded max attempts
   if (_quickTabsPortReconnectAttempts >= QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS) {
     _quickTabsPortCircuitBreakerTripped = true;
+    // v1.6.4 - FIX Issue #5: Record when circuit breaker was tripped for auto-reset
+    _quickTabsPortCircuitBreakerTrippedAt = Date.now();
 
     console.error('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_TRIPPED:', {
       timestamp: Date.now(),
       attempts: _quickTabsPortReconnectAttempts,
       maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
       message: 'Max reconnection attempts reached. Background may be unavailable.',
-      recoveryAction: 'manual_reconnect_required'
+      recoveryAction: 'manual_reconnect_required',
+      autoResetAfterMs: QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS
     });
 
     // v1.6.3.12-v7 - FIX Issue #30: Show error notification to user
     _showQuickTabsPortConnectionError();
+
+    // v1.6.4 - FIX Issue #5: Schedule automatic circuit breaker reset
+    _scheduleCircuitBreakerAutoReset();
     return;
   }
 
@@ -547,13 +558,97 @@ function manualQuickTabsPortReconnect() {
     wasCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
   });
 
+  // v1.6.4 - FIX Issue #5: Clear any pending auto-reset timer
+  _clearCircuitBreakerAutoResetTimer();
+
   // Reset circuit breaker state
   _quickTabsPortReconnectAttempts = 0;
   _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
   _quickTabsPortCircuitBreakerTripped = false;
+  _quickTabsPortCircuitBreakerTrippedAt = 0;
 
   // Attempt connection
   initializeQuickTabsPort();
+}
+
+/**
+ * Remove Quick Tabs port error notification from DOM
+ * v1.6.4 - FIX Issue #5: Extracted helper for notification removal
+ * @private
+ */
+function _removeQuickTabsPortErrorNotification() {
+  const notification = document.getElementById('quick-tabs-port-error-notification');
+  if (notification) {
+    notification.remove();
+  }
+}
+
+/**
+ * Execute circuit breaker auto-reset logic
+ * v1.6.4 - FIX Issue #5: Extracted callback logic for clarity and testability
+ * @private
+ */
+function _executeCircuitBreakerAutoReset() {
+  // Clear the timer ID first to prevent race conditions
+  _quickTabsPortCircuitBreakerAutoResetTimerId = null;
+
+  // Check if still tripped (could have been manually reset)
+  if (!_quickTabsPortCircuitBreakerTripped) {
+    console.log('[Sidebar] CIRCUIT_BREAKER_AUTO_RESET_SKIPPED: Already reset');
+    return;
+  }
+
+  console.log('[Sidebar] CIRCUIT_BREAKER_AUTO_RESET_TRIGGERED:', {
+    timestamp: Date.now(),
+    trippedDurationMs: Date.now() - _quickTabsPortCircuitBreakerTrippedAt,
+    previousAttempts: _quickTabsPortReconnectAttempts
+  });
+
+  // Reset circuit breaker state
+  _quickTabsPortReconnectAttempts = 0;
+  _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+  _quickTabsPortCircuitBreakerTripped = false;
+  _quickTabsPortCircuitBreakerTrippedAt = 0;
+
+  // Remove error notification if present
+  _removeQuickTabsPortErrorNotification();
+
+  // Attempt reconnection
+  initializeQuickTabsPort();
+}
+
+/**
+ * Schedule automatic circuit breaker reset after timeout period
+ * v1.6.4 - FIX Issue #5: Implement timeout-based reset for circuit breaker
+ * After 60 seconds, allow one more reconnection attempt automatically
+ * @private
+ */
+function _scheduleCircuitBreakerAutoReset() {
+  // Clear any existing timer
+  _clearCircuitBreakerAutoResetTimer();
+
+  console.log('[Sidebar] CIRCUIT_BREAKER_AUTO_RESET_SCHEDULED:', {
+    timestamp: Date.now(),
+    resetAfterMs: QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS,
+    trippedAt: _quickTabsPortCircuitBreakerTrippedAt
+  });
+
+  _quickTabsPortCircuitBreakerAutoResetTimerId = setTimeout(
+    _executeCircuitBreakerAutoReset,
+    QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS
+  );
+}
+
+/**
+ * Clear the circuit breaker auto-reset timer
+ * v1.6.4 - FIX Issue #5: Helper to cancel pending auto-reset
+ * @private
+ */
+function _clearCircuitBreakerAutoResetTimer() {
+  if (_quickTabsPortCircuitBreakerAutoResetTimerId !== null) {
+    clearTimeout(_quickTabsPortCircuitBreakerAutoResetTimerId);
+    _quickTabsPortCircuitBreakerAutoResetTimerId = null;
+  }
 }
 
 // ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
@@ -814,6 +909,20 @@ const _portMessageHandlers = {
       return;
     }
     console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_ACK received:', {
+      success: msg.success,
+      closedCount: msg.closedCount || 0,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+  },
+  // v1.6.4 - FIX Issue #2: Handle CLOSE_MINIMIZED_QUICK_TABS_ACK from background
+  CLOSE_MINIMIZED_QUICK_TABS_ACK: msg => {
+    const validation = _validateAckMessage(msg, 'CLOSE_MINIMIZED_QUICK_TABS_ACK');
+    if (!validation.valid) {
+      _logPortMessageValidationError('CLOSE_MINIMIZED_QUICK_TABS_ACK', msg, validation.error);
+      return;
+    }
+    console.log('[Sidebar] CLOSE_MINIMIZED_QUICK_TABS_ACK received:', {
       success: msg.success,
       closedCount: msg.closedCount || 0,
       correlationId: msg.correlationId || null,
@@ -1288,6 +1397,34 @@ function restoreQuickTabViaPort(quickTabId) {
  */
 function requestAllQuickTabsViaPort() {
   return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+}
+
+/**
+ * Request close all Quick Tabs via port
+ * v1.6.4 - FIX Issue #2: Implement bulk close operation for Manager header button
+ * @returns {boolean} Success status
+ */
+function closeAllQuickTabsViaPort() {
+  console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_SENT:', {
+    timestamp: Date.now(),
+    currentQuickTabCount: _allQuickTabsFromPort.length
+  });
+  return _executeSidebarPortOperation('CLOSE_ALL_QUICK_TABS');
+}
+
+/**
+ * Request close only minimized Quick Tabs via port
+ * v1.6.4 - FIX Issue #2: Implement bulk close minimized operation for Manager header button
+ * @returns {boolean} Success status
+ */
+function closeMinimizedQuickTabsViaPort() {
+  const minimizedCount = _allQuickTabsFromPort.filter(qt => qt.minimized).length;
+  console.log('[Sidebar] CLOSE_MINIMIZED_QUICK_TABS_SENT:', {
+    timestamp: Date.now(),
+    minimizedCount,
+    totalQuickTabCount: _allQuickTabsFromPort.length
+  });
+  return _executeSidebarPortOperation('CLOSE_MINIMIZED_QUICK_TABS');
 }
 
 // ==================== END v1.6.3.12 OPTION 4 QUICK TABS PORT ====================

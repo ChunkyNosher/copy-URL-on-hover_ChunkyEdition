@@ -5982,7 +5982,9 @@ const _sidebarMessageHandlers = {
   MINIMIZE_QUICK_TAB: (msg, port) => handleSidebarMinimizeQuickTab(msg.quickTabId, port),
   RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port),
   // v1.6.3.12-v7 - FIX Issue #15: Add Close All Quick Tabs handler
-  CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port)
+  CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port),
+  // v1.6.4 - FIX Issue #12: Add Close Minimized Quick Tabs handler
+  CLOSE_MINIMIZED_QUICK_TABS: (msg, port) => handleSidebarCloseMinimizedQuickTabs(msg, port)
 };
 
 /**
@@ -6374,6 +6376,85 @@ function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   // Log completion
   const durationMs = performance.now() - handlerStartTime;
   console.log('[Background] CLOSE_ALL_QUICK_TABS completed:', {
+    correlationId,
+    closedCount,
+    durationMs: durationMs.toFixed(2),
+    globalTabsRemaining: globalQuickTabState.tabs.length
+  });
+}
+
+/**
+ * Handle sidebar request to close only minimized Quick Tabs
+ * v1.6.4 - FIX Issue #12: Implement Close Minimized button via port messaging
+ * @param {Object} msg - Message from sidebar
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
+  const handlerStartTime = performance.now();
+  // Use msg.correlationId if available, otherwise generate a new one
+  const correlationId = msg.correlationId || `close-minimized-${Date.now()}`;
+
+  const allQuickTabs = getAllQuickTabsFromMemory();
+  const minimizedQuickTabs = allQuickTabs.filter(qt => qt.minimized === true);
+
+  console.log('[Background] SIDEBAR_CLOSE_MINIMIZED_QUICK_TABS:', {
+    correlationId,
+    timestamp: Date.now(),
+    totalQuickTabs: allQuickTabs.length,
+    minimizedCount: minimizedQuickTabs.length
+  });
+
+  const closedCount = minimizedQuickTabs.length;
+  const quickTabIds = minimizedQuickTabs.map(qt => qt.id);
+  // v1.6.4 - Create Set for O(1) lookup when filtering
+  const minimizedIdSet = new Set(quickTabIds);
+
+  // Notify all content scripts to close their minimized Quick Tabs
+  for (const quickTab of minimizedQuickTabs) {
+    const ownerTabId = quickTab.originTabId;
+    if (ownerTabId) {
+      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+    }
+  }
+
+  // v1.6.4 - Remove minimized Quick Tabs from session state (optimized with Set)
+  for (const tabId of Object.keys(quickTabsSessionState.quickTabsByTab)) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    if (Array.isArray(tabQuickTabs)) {
+      quickTabsSessionState.quickTabsByTab[tabId] = tabQuickTabs.filter(
+        qt => !minimizedIdSet.has(qt.id)
+      );
+    }
+  }
+
+  // Remove minimized Quick Tabs from global state
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => !minimizedIdSet.has(qt.id));
+  globalQuickTabState.lastUpdate = Date.now();
+  globalQuickTabState.saveId = `close-minimized-${Date.now()}`;
+
+  // Remove from host tracking
+  for (const id of quickTabIds) {
+    quickTabHostTabs.delete(id);
+  }
+
+  // Send ACK to sidebar
+  if (sidebarPort) {
+    sidebarPort.postMessage({
+      type: 'CLOSE_MINIMIZED_QUICK_TABS_ACK',
+      success: true,
+      closedCount,
+      quickTabIds,
+      correlationId,
+      timestamp: Date.now()
+    });
+  }
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  // Log completion
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] CLOSE_MINIMIZED_QUICK_TABS completed:', {
     correlationId,
     closedCount,
     durationMs: durationMs.toFixed(2),
