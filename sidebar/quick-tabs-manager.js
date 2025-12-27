@@ -2,6 +2,22 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4 PORT VALIDATION & RENDER ROBUSTNESS ===
+ * v1.6.4 - FIX Issues from continuation-analysis.md:
+ *   - Issue #15: Port message input validation - validates Quick Tab objects
+ *     - Added _validateQuickTabObject() to check required fields (id, originTabId, url)
+ *     - Added _filterValidQuickTabs() to filter invalid objects with logging
+ *     - Added _isValidSequenceNumber() for sequence number validation
+ *     - _createStateUpdateHandler() now filters invalid Quick Tab objects
+ *   - Issue #19: Render debounce race conditions
+ *     - Added _isRenderInProgress and _pendingRerenderRequested flags
+ *     - renderUI() now uses render lock to prevent concurrent execution
+ *     - Pending re-renders are scheduled after current render completes
+ *   - Issue #20: Circuit breaker auto-reset state corruption
+ *     - initializeQuickTabsPort() now clears auto-reset timer on success
+ *     - _executeCircuitBreakerAutoReset() already checks if still tripped
+ *     - Enhanced logging in _clearCircuitBreakerAutoResetTimer()
+ *
  * === v1.6.3.12-v9 COMPREHENSIVE LOGGING & OPTIMISTIC UI ===
  * v1.6.3.12-v9 - FIX Issues from log-analysis-bugs-v1.6.3.12.md:
  *   - Issue #1: Manager buttons now have comprehensive click logging
@@ -383,12 +399,16 @@ function initializeQuickTabsPort() {
     _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
     _quickTabsPortCircuitBreakerTripped = false;
 
+    // v1.6.4 - FIX Issue #20: Clear any pending auto-reset timer on successful connection
+    _clearCircuitBreakerAutoResetTimer();
+
     // v1.6.3.12 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
       success: true,
-      circuitBreakerReset: true
+      circuitBreakerReset: true,
+      autoResetTimerCleared: true
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
@@ -659,11 +679,18 @@ function _scheduleCircuitBreakerAutoReset() {
 /**
  * Clear the circuit breaker auto-reset timer
  * v1.6.4 - FIX Issue #5: Helper to cancel pending auto-reset
+ * v1.6.4 - FIX Issue #20: Add logging when timer is cleared
  * @private
  */
 function _clearCircuitBreakerAutoResetTimer() {
   if (_quickTabsPortCircuitBreakerAutoResetTimerId !== null) {
     clearTimeout(_quickTabsPortCircuitBreakerAutoResetTimerId);
+
+    console.log('[Sidebar] CIRCUIT_BREAKER_AUTO_RESET_TIMER_CLEARED:', {
+      timestamp: Date.now(),
+      reason: 'manual_reconnect_or_successful_connection'
+    });
+
     _quickTabsPortCircuitBreakerAutoResetTimerId = null;
   }
 }
@@ -672,6 +699,7 @@ function _clearCircuitBreakerAutoResetTimer() {
 /**
  * Compute per-origin-tab statistics for cross-tab visibility logging
  * v1.6.4 - FIX Issue #11/#14: Extracted to reduce _handleQuickTabsStateUpdate complexity
+ * v1.6.4 - Code Review: Added defensive validation for tab.originTabId
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @returns {{ originTabStats: Object, originTabCount: number }}
@@ -680,7 +708,9 @@ function _computeOriginTabStats(quickTabs) {
   // Use Object.create(null) to avoid prototype pollution
   const originTabStats = Object.create(null);
   for (const tab of quickTabs) {
-    const originKey = `tab-${tab.originTabId || 'unknown'}`;
+    // Defensive: handle missing or invalid originTabId
+    const originTabId = typeof tab?.originTabId === 'number' ? tab.originTabId : 'unknown';
+    const originKey = `tab-${originTabId}`;
     if (!originTabStats[originKey]) {
       originTabStats[originKey] = 0;
     }
@@ -830,9 +860,123 @@ function _isValidQuickTabsField(quickTabs) {
 }
 
 /**
+ * Validate individual Quick Tab object has required fields
+ * v1.6.4 - FIX Issue #15: Add Quick Tab object validation
+ * @private
+ * @param {*} qt - Quick Tab object to validate
+ * @returns {{ valid: boolean, errors: string[] }}
+ */
+function _validateQuickTabObject(qt) {
+  const errors = [];
+
+  if (!qt || typeof qt !== 'object') {
+    return { valid: false, errors: ['Quick Tab is not an object'] };
+  }
+
+  // Required field: id (string)
+  if (typeof qt.id !== 'string' || qt.id.length === 0) {
+    errors.push(`id must be a non-empty string (got ${typeof qt.id})`);
+  }
+
+  // Required field: originTabId (number)
+  if (typeof qt.originTabId !== 'number') {
+    errors.push(`originTabId must be a number (got ${typeof qt.originTabId})`);
+  }
+
+  // Required field: url (string)
+  if (typeof qt.url !== 'string') {
+    errors.push(`url must be a string (got ${typeof qt.url})`);
+  }
+
+  // Optional field: minimized (boolean or undefined)
+  if (qt.minimized !== undefined && typeof qt.minimized !== 'boolean') {
+    errors.push(`minimized must be boolean or undefined (got ${typeof qt.minimized})`);
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Filter and validate Quick Tab objects array, logging invalid entries
+ * v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects before processing
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array to validate
+ * @param {string} messageType - Message type for logging
+ * @returns {Array} Filtered array containing only valid Quick Tab objects
+ */
+function _filterValidQuickTabs(quickTabs, messageType) {
+  if (!Array.isArray(quickTabs)) {
+    return [];
+  }
+
+  const validTabs = [];
+  const invalidCount = { total: 0, reasons: {} };
+
+  for (let i = 0; i < quickTabs.length; i++) {
+    const qt = quickTabs[i];
+    const validation = _validateQuickTabObject(qt);
+
+    if (validation.valid) {
+      validTabs.push(qt);
+    } else {
+      invalidCount.total++;
+      _aggregateValidationErrors(validation.errors, invalidCount.reasons);
+    }
+  }
+
+  // Log validation failures for debugging
+  if (invalidCount.total > 0) {
+    _logQuickTabValidationFailures(quickTabs.length, validTabs.length, invalidCount, messageType);
+  }
+
+  return validTabs;
+}
+
+/**
+ * Aggregate validation errors into a reasons object
+ * v1.6.4 - FIX Issue #15: Extracted to reduce nesting depth
+ * @private
+ * @param {string[]} errors - Array of error messages
+ * @param {Object} reasons - Object to aggregate error counts into
+ */
+function _aggregateValidationErrors(errors, reasons) {
+  for (const error of errors) {
+    reasons[error] = (reasons[error] || 0) + 1;
+  }
+}
+
+/**
+ * Log Quick Tab validation failures
+ * v1.6.4 - FIX Issue #15: Extracted to reduce function length
+ * @private
+ */
+function _logQuickTabValidationFailures(totalReceived, validCount, invalidCount, messageType) {
+  console.warn('[Sidebar] PORT_MESSAGE_QUICKTAB_VALIDATION_FAILURES:', {
+    timestamp: Date.now(),
+    messageType,
+    totalReceived,
+    validCount,
+    invalidCount: invalidCount.total,
+    invalidReasons: invalidCount.reasons
+  });
+}
+
+/**
+ * Validate sequence number field
+ * v1.6.4 - FIX Issue #15: Add sequence number validation
+ * @private
+ * @param {*} sequence - Sequence number to validate
+ * @returns {boolean} True if sequence is valid (undefined/null or number)
+ */
+function _isValidSequenceNumber(sequence) {
+  return sequence === undefined || sequence === null || typeof sequence === 'number';
+}
+
+/**
  * Validate message has required fields for state update handlers
  * v1.6.3.12-v7 - FIX Issue #9: Defensive input validation for port message handlers
  * v1.6.3.12-v7 - FIX Code Health: Extracted complex conditionals to helpers
+ * v1.6.4 - FIX Issue #15: Add sequence number validation
  * @private
  * @param {Object} msg - Message to validate
  * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
@@ -846,6 +990,10 @@ function _validateStateUpdateMessage(msg, _handlerName) {
   // but if present, it should be an array
   if (!_isValidQuickTabsField(msg.quickTabs)) {
     return { valid: false, error: `quickTabs field is not an array (got ${typeof msg.quickTabs})` };
+  }
+  // v1.6.4 - FIX Issue #15: Validate sequence number
+  if (!_isValidSequenceNumber(msg.sequence)) {
+    return { valid: false, error: `sequence field is not a number (got ${typeof msg.sequence})` };
   }
   return { valid: true };
 }
@@ -891,6 +1039,7 @@ function _logPortMessageValidationError(type, msg, error) {
 /**
  * Create a state update handler with validation
  * v1.6.3.12-v7 - FIX Code Health: Generic factory for state update handlers
+ * v1.6.4 - FIX Issue #15: Filter invalid Quick Tab objects before processing
  * @private
  * @param {string} messageType - The message type for logging
  * @param {string} renderReason - The reason to pass to scheduleRender
@@ -903,7 +1052,10 @@ function _createStateUpdateHandler(messageType, renderReason) {
       _logPortMessageValidationError(messageType, msg, validation.error);
       return;
     }
-    _handleQuickTabsStateUpdate(msg.quickTabs, renderReason, msg.correlationId);
+
+    // v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects
+    const validatedQuickTabs = _filterValidQuickTabs(msg.quickTabs, messageType);
+    _handleQuickTabsStateUpdate(validatedQuickTabs, renderReason, msg.correlationId);
   };
 }
 
@@ -1729,6 +1881,13 @@ let pendingRenderUI = false;
 // v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce tracking
 let debounceStartTimestamp = 0; // When the debounce window started
 let debounceExtensionCount = 0; // How many times we've extended the debounce
+
+// v1.6.4 - FIX Issue #19: Render lock to prevent concurrent render calls
+let _isRenderInProgress = false;
+let _pendingRerenderRequested = false;
+// v1.6.4 - Code Review: Add counter to prevent infinite re-render loops
+let _consecutiveRerenderCount = 0;
+const MAX_CONSECUTIVE_RERENDERS = 3; // Limit re-renders to prevent infinite loops
 
 /**
  * Generate correlation ID for message acknowledgment
@@ -5604,6 +5763,70 @@ function _renderUIImmediate_force() {
  * v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging with [RENDER_PERF] prefix
  */
 async function _renderUIImmediate() {
+  // v1.6.4 - FIX Issue #19: Check if render is already in progress
+  if (_isRenderInProgress) {
+    _pendingRerenderRequested = true;
+    console.log('[Manager] RENDER_SKIPPED: Render already in progress, scheduling re-render after completion', {
+      timestamp: Date.now(),
+      consecutiveRerenderCount: _consecutiveRerenderCount
+    });
+    return;
+  }
+
+  // v1.6.4 - FIX Issue #19: Set render lock
+  _isRenderInProgress = true;
+
+  try {
+    await _executeRenderUIInternal();
+    // Reset consecutive counter on successful render completion
+    _consecutiveRerenderCount = 0;
+  } finally {
+    // v1.6.4 - FIX Issue #19: Release render lock
+    _isRenderInProgress = false;
+
+    // v1.6.4 - FIX Issue #19: Check if re-render was requested while we were rendering
+    _handlePendingRerender();
+  }
+}
+
+/**
+ * Handle pending re-render after render completes
+ * v1.6.4 - Code Review: Extracted to avoid return in finally and reduce nesting
+ * @private
+ */
+function _handlePendingRerender() {
+  if (!_pendingRerenderRequested) {
+    return;
+  }
+
+  _pendingRerenderRequested = false;
+  _consecutiveRerenderCount++;
+
+  // v1.6.4 - Code Review: Prevent infinite re-render loops
+  if (_consecutiveRerenderCount > MAX_CONSECUTIVE_RERENDERS) {
+    console.warn('[Manager] RENDER_RERENDER_LIMIT_REACHED: Stopping re-renders to prevent infinite loop', {
+      timestamp: Date.now(),
+      consecutiveRerenderCount: _consecutiveRerenderCount,
+      maxAllowed: MAX_CONSECUTIVE_RERENDERS
+    });
+    _consecutiveRerenderCount = 0;
+    return;
+  }
+
+  console.log('[Manager] RENDER_RERENDER: Re-rendering due to pending request', {
+    timestamp: Date.now(),
+    consecutiveRerenderCount: _consecutiveRerenderCount
+  });
+  // Schedule re-render through normal debounce mechanism
+  renderUI();
+}
+
+/**
+ * Internal render implementation (extracted from _renderUIImmediate)
+ * v1.6.4 - FIX Issue #19: Extracted to separate function for render lock pattern
+ * @private
+ */
+async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
   const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
 
