@@ -362,6 +362,15 @@ function initializeQuickTabsPort() {
       timestamp: Date.now()
     });
     console.log('[Sidebar] SIDEBAR_READY sent to background');
+
+    // v1.6.4.0 - FIX Issue #10: Explicitly request initial state after port connection
+    // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
+    // even if that message is delayed, lost, or the port was reconnected
+    console.log('[Sidebar] Sidebar requesting initial state after port connection', {
+      timestamp: Date.now(),
+      portConnected: !!quickTabsPort
+    });
+    requestAllQuickTabsViaPort();
   } catch (err) {
     // v1.6.4 - Gap #1: Log port connection failure
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
@@ -970,6 +979,12 @@ function connectToBackground() {
     currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
+    // v1.6.4.0 - FIX Issue #14: Explicitly restart heartbeat after reconnection
+    console.log('[Manager] Starting heartbeat after reconnection', {
+      timestamp: Date.now(),
+      previousHeartbeatState: heartbeatIntervalId ? 'running' : 'stopped',
+      interval: currentHeartbeatInterval
+    });
     startHeartbeat();
 
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
@@ -3861,7 +3876,14 @@ function _markEventReceived() {
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
+// v1.6.4.0 - FIX Issue #11: Also disconnect quickTabsPort on unload
 window.addEventListener('unload', () => {
+  console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
+    timestamp: Date.now(),
+    hasBackgroundPort: !!backgroundPort,
+    hasQuickTabsPort: !!quickTabsPort
+  });
+
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
 
@@ -3870,6 +3892,19 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
   _stopCacheStalenessMonitor();
+
+  // v1.6.4.0 - FIX Issue #11: Disconnect quickTabsPort on unload
+  if (quickTabsPort) {
+    console.log('[Sidebar] PORT_CLEANUP: Disconnecting quickTabsPort');
+    try {
+      quickTabsPort.disconnect();
+    } catch (_err) {
+      // Expected: Port may already be disconnected if background unloaded first
+      // This is normal during browser shutdown or extension reload
+      console.log('[Sidebar] PORT_CLEANUP: quickTabsPort already disconnected (expected during shutdown)');
+    }
+    quickTabsPort = null;
+  }
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -3882,6 +3917,9 @@ window.addEventListener('unload', () => {
     clearTimeout(pending.timeout);
   }
   pendingAcks.clear();
+
+  // v1.6.4.0 - FIX Issue #11: Clear pending operation timestamps
+  _quickTabPortOperationTimestamps.clear();
 });
 
 /**
