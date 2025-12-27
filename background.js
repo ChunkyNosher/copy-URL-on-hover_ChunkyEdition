@@ -5702,41 +5702,68 @@ function _sendQuickTabAck(port, ackType, success, quickTabId) {
 }
 
 /**
+ * Generic Quick Tab property update handler
+ * v1.6.3.12-v8 - FIX Code Health: Unified helper to reduce duplication
+ * @private
+ * @param {Object} options - Handler options
+ * @param {number} options.tabId - Origin tab ID
+ * @param {string} options.quickTabId - Quick Tab ID to update
+ * @param {browser.runtime.Port} options.port - Source port for response
+ * @param {string} options.operation - Operation name for logging
+ * @param {string} options.ackType - ACK message type to send
+ * @param {Function} options.updateFn - Function to apply updates to Quick Tab
+ */
+function _handleQuickTabUpdate({ tabId, quickTabId, port, operation, ackType, updateFn }) {
+  console.log(`[Background] ${operation} from tab ${tabId}:`, { quickTabId });
+
+  const found = _updateQuickTabProperty(tabId, quickTabId, updateFn);
+
+  _sendQuickTabAck(port, ackType, found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
  * Handle MINIMIZE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to minimize
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
-  console.log(`[Background] MINIMIZE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
-
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    qt.minimized = true;
-    qt.minimizedAt = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'MINIMIZE_QUICK_TAB',
+    ackType: 'MINIMIZE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      qt.minimized = true;
+      qt.minimizedAt = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'MINIMIZE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
  * Handle RESTORE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleRestoreQuickTabPort(tabId, quickTabId, port) {
-  console.log(`[Background] RESTORE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
-
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    qt.minimized = false;
-    qt.restoredAt = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'RESTORE_QUICK_TAB',
+    ackType: 'RESTORE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      qt.minimized = false;
+      qt.restoredAt = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'RESTORE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
@@ -5849,21 +5876,27 @@ function handleHydrateOnLoad(tabId, port) {
 /**
  * Handle UPDATE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {Object} msg - Message with quickTabId and updates
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
+  // v1.6.3.12-v8 - Log updates object separately for diagnostics
   console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
 
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    Object.assign(qt, updates);
-    qt.lastUpdate = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'UPDATE_QUICK_TAB',
+    ackType: 'UPDATE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      Object.assign(qt, updates);
+      qt.lastUpdate = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'UPDATE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
@@ -5967,102 +6000,145 @@ function _sendUnknownMessageError(port, source, msgType) {
 }
 
 /**
+ * Log port handler entry
+ * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce duplication
+ * v1.6.3.12-v8 - FIX Code Health: Converted to options object (5 args -> 1)
+ * @private
+ * @param {Object} options - Logging options
+ * @param {string} options.msgType - Message type
+ * @param {string} options.correlationId - Correlation ID for tracing
+ * @param {string} options.source - Source identifier
+ * @param {number} [options.tabId] - Tab ID (optional)
+ * @param {string[]} options.payloadKeys - Keys in the message payload
+ */
+function _logPortHandlerEntry({ msgType, correlationId, source, tabId, payloadKeys }) {
+  const logData = {
+    type: msgType,
+    correlationId,
+    source,
+    payloadKeys
+  };
+  if (tabId !== undefined) {
+    logData.tabId = tabId;
+  }
+  console.log(
+    `[PORT_HANDLER_ENTRY] type=${msgType}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    logData
+  );
+}
+
+/**
+ * Log port handler exit
+ * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce duplication
+ * v1.6.3.12-v8 - FIX Code Health: Converted to options object (5 args -> 1)
+ * @private
+ * @param {Object} options - Logging options
+ * @param {string} options.msgType - Message type
+ * @param {string} options.outcome - Handler outcome
+ * @param {string} options.durationMs - Duration in milliseconds (formatted string)
+ * @param {string} options.correlationId - Correlation ID for tracing
+ * @param {number} [options.tabId] - Tab ID (optional)
+ */
+function _logPortHandlerExit({ msgType, outcome, durationMs, correlationId, tabId }) {
+  const logData = {
+    type: msgType,
+    outcome,
+    durationMs,
+    correlationId
+  };
+  if (tabId !== undefined) {
+    logData.tabId = tabId;
+  }
+  console.log(
+    `[PORT_HANDLER_EXIT] type=${msgType}, outcome=${outcome}, durationMs=${durationMs}`,
+    logData
+  );
+}
+
+/**
+ * Generic port message handler
+ * v1.6.3.12-v8 - FIX Code Health: Unified helper to reduce duplication between
+ * handleContentScriptPortMessage and handleSidebarPortMessage
+ * @private
+ * @param {Object} options - Handler options
+ * @param {Object} options.msg - Message object
+ * @param {browser.runtime.Port} options.port - Port to respond on
+ * @param {string} options.source - Source identifier for logging
+ * @param {string} options.correlationPrefix - Prefix for auto-generated correlation IDs
+ * @param {Object} options.handlers - Lookup table of message handlers
+ * @param {Function} options.invokeHandler - Function to invoke the handler
+ * @param {number} [options.tabId] - Tab ID (optional, for content script messages)
+ */
+function _handlePortMessage({ msg, port, source, correlationPrefix, handlers, invokeHandler, tabId }) {
+  const handlerStartTime = performance.now();
+  const correlationId = msg.correlationId || `${correlationPrefix}-${msg.type}-${Date.now()}`;
+
+  // v1.6.3.12-v8 - Use options object for logging
+  _logPortHandlerEntry({
+    msgType: msg.type,
+    correlationId,
+    source,
+    tabId,
+    payloadKeys: Object.keys(msg)
+  });
+
+  // Store correlationId on port for downstream handlers
+  port._lastCorrelationId = correlationId;
+
+  const handler = handlers[msg.type];
+  let outcome = 'unknown_type';
+
+  if (handler) {
+    invokeHandler(handler, msg, port);
+    outcome = 'success';
+  } else {
+    const sourceLabel = tabId !== undefined ? `tab ${tabId}` : source;
+    _sendUnknownMessageError(port, sourceLabel, msg.type);
+  }
+
+  const durationMs = (performance.now() - handlerStartTime).toFixed(2);
+  // v1.6.3.12-v8 - Use options object for logging
+  _logPortHandlerExit({ msgType: msg.type, outcome, durationMs, correlationId, tabId });
+}
+
+/**
  * Handle content script port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Tab ID of the content script
  * @param {Object} msg - Message from content script
  * @param {browser.runtime.Port} port - Source port
  */
 function handleContentScriptPortMessage(tabId, msg, port) {
-  const handlerStartTime = performance.now();
-  const correlationId = msg.correlationId || `cs-${msg.type}-${Date.now()}`;
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(
-    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
-    {
-      type: msg.type,
-      tabId,
-      correlationId,
-      source: 'content-script',
-      payloadKeys: Object.keys(msg)
-    }
-  );
-
-  // Store correlationId on port for downstream handlers
-  port._lastCorrelationId = correlationId;
-
-  const handler = _contentScriptMessageHandlers[msg.type];
-  let outcome = 'unknown_type';
-
-  if (handler) {
-    handler(tabId, msg, port);
-    outcome = 'success';
-  } else {
-    _sendUnknownMessageError(port, `tab ${tabId}`, msg.type);
-  }
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
-  const durationMs = performance.now() - handlerStartTime;
-  console.log(
-    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
-    {
-      type: msg.type,
-      tabId,
-      outcome,
-      durationMs: durationMs.toFixed(2),
-      correlationId
-    }
-  );
+  _handlePortMessage({
+    msg,
+    port,
+    source: 'content-script',
+    correlationPrefix: 'cs',
+    handlers: _contentScriptMessageHandlers,
+    invokeHandler: (handler, message, p) => handler(tabId, message, p),
+    tabId
+  });
 }
 
 /**
  * Handle sidebar port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarPortMessage(msg, port) {
-  const handlerStartTime = performance.now();
-  const correlationId = msg.correlationId || `sidebar-${msg.type}-${Date.now()}`;
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(
-    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
-    {
-      type: msg.type,
-      correlationId,
-      source: 'sidebar',
-      payloadKeys: Object.keys(msg)
-    }
-  );
-
-  // Store correlationId on port for downstream handlers
-  port._lastCorrelationId = correlationId;
-
-  const handler = _sidebarMessageHandlers[msg.type];
-  let outcome = 'unknown_type';
-
-  if (handler) {
-    handler(msg, port);
-    outcome = 'success';
-  } else {
-    _sendUnknownMessageError(port, 'sidebar', msg.type);
-  }
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
-  const durationMs = performance.now() - handlerStartTime;
-  console.log(
-    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
-    {
-      type: msg.type,
-      outcome,
-      durationMs: durationMs.toFixed(2),
-      correlationId
-    }
-  );
+  _handlePortMessage({
+    msg,
+    port,
+    source: 'sidebar',
+    correlationPrefix: 'sidebar',
+    handlers: _sidebarMessageHandlers,
+    invokeHandler: (handler, message, p) => handler(message, p)
+  });
 }
 
 /**
@@ -6503,9 +6579,78 @@ console.log('[Background] v1.6.3.12 Quick Tabs port messaging initialized');
 // v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with ORIGIN_TAB_CLOSED broadcast
 
 /**
+ * Mark Quick Tabs as orphaned in cache
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {Array} orphanedQuickTabs - Array of Quick Tabs to mark as orphaned
+ * @param {number} operationTimestamp - Timestamp for orphaned marking
+ */
+function _markQuickTabsAsOrphaned(orphanedQuickTabs, operationTimestamp) {
+  for (const qt of orphanedQuickTabs) {
+    qt.isOrphaned = true;
+    qt.orphanedAt = operationTimestamp;
+    quickTabHostTabs.delete(qt.id);
+  }
+}
+
+/**
+ * Notify sidebar of tab closed via quick-tabs-port
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {Object} originTabClosedMessage - Message to send
+ */
+function _notifySidebarOfTabClosed(originTabClosedMessage) {
+  if (!quickTabsSessionState.sidebarPort) return;
+
+  try {
+    quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
+    console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
+  } catch (err) {
+    console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
+  }
+}
+
+/**
+ * Save orphan status to storage
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {number} tabId - Closed tab ID
+ * @param {number} operationTimestamp - Timestamp for save operation
+ */
+function _saveOrphanStatusToStorage(tabId, operationTimestamp) {
+  if (typeof browser.storage.local === 'undefined') return;
+
+  const saveId = `orphan-${tabId}-${operationTimestamp}`;
+  browser.storage.local
+    .set({
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        saveId,
+        timestamp: operationTimestamp
+      }
+    })
+    .catch(err => console.error('[Background] Error saving orphan status:', err));
+}
+
+/**
+ * Clean up ports associated with removed tab
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {number} tabId - Closed tab ID
+ */
+function _cleanupPortsForTab(tabId) {
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      unregisterPort(portId, 'tab-removed');
+    }
+  }
+}
+
+/**
  * Handle browser tab removal
  * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
  * v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with isOrphaned flag and ORIGIN_TAB_CLOSED broadcast
+ * v1.6.3.12-v8 - FIX Code Health: Reduced cc from 10 to <9 via extraction
  * @param {number} tabId - ID of the removed tab
  * @param {Object} removeInfo - Removal info
  */
@@ -6521,7 +6666,6 @@ function handleTabRemoved(tabId, removeInfo) {
   }
 
   const orphanedIds = orphanedQuickTabs.map(t => t.id);
-  // Use single timestamp for consistency across all operations
   const operationTimestamp = Date.now();
 
   console.log('[Background] ORIGIN_TAB_CLOSED - Found orphaned Quick Tabs:', {
@@ -6530,18 +6674,10 @@ function handleTabRemoved(tabId, removeInfo) {
     orphanedIds
   });
 
-  // v1.6.3.10-v3 - Phase 2: Mark them as orphaned in cache
-  for (const qt of orphanedQuickTabs) {
-    qt.isOrphaned = true;
-    qt.orphanedAt = operationTimestamp;
-  }
+  // v1.6.3.12-v8 - Mark orphaned and remove from host tracking
+  _markQuickTabsAsOrphaned(orphanedQuickTabs, operationTimestamp);
 
-  // Remove from host tracking
-  for (const qt of orphanedQuickTabs) {
-    quickTabHostTabs.delete(qt.id);
-  }
-
-  // v1.6.3.12-v7 - FIX Issue #12: Build message object once to reduce duplication
+  // v1.6.3.12-v7 - FIX Issue #12: Build message object once
   const originTabClosedMessage = {
     type: 'ORIGIN_TAB_CLOSED',
     originTabId: tabId,
@@ -6550,23 +6686,11 @@ function handleTabRemoved(tabId, removeInfo) {
     timestamp: operationTimestamp
   };
 
-  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
-  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
+  // Broadcast to all ports and sidebar
   broadcastToAllPorts(originTabClosedMessage);
+  _notifySidebarOfTabClosed(originTabClosedMessage);
 
-  // v1.6.3.12-v7 - FIX Issue #12: Also notify sidebar via quickTabsSessionState.sidebarPort
-  // The broadcastToAllPorts function only sends to ports in portRegistry,
-  // but the sidebar's quick-tabs-port is stored separately in quickTabsSessionState
-  if (quickTabsSessionState.sidebarPort) {
-    try {
-      quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
-      console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
-    } catch (err) {
-      console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
-    }
-  }
-
-  // Also broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
+  // Broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
   broadcastToAllPorts({
     type: 'BROADCAST',
     action: 'TAB_LIFECYCLE_CHANGE',
@@ -6576,27 +6700,9 @@ function handleTabRemoved(tabId, removeInfo) {
     timestamp: operationTimestamp
   });
 
-  // v1.6.3.10-v3 - Phase 2: Save orphan status to storage
-  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
-  const saveId = `orphan-${tabId}-${operationTimestamp}`;
-  if (typeof browser.storage.local !== 'undefined') {
-    browser.storage.local
-      .set({
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          saveId,
-          timestamp: operationTimestamp
-        }
-      })
-      .catch(err => console.error('[Background] Error saving orphan status:', err));
-  }
-
-  // Clean up ports associated with this tab
-  for (const [portId, portInfo] of portRegistry.entries()) {
-    if (portInfo.tabId === tabId) {
-      unregisterPort(portId, 'tab-removed');
-    }
-  }
+  // Save to storage and cleanup ports
+  _saveOrphanStatusToStorage(tabId, operationTimestamp);
+  _cleanupPortsForTab(tabId);
 }
 
 // Register tab removal listener
