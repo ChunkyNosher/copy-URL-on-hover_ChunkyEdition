@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4  
+**Version:** 1.6.3.12-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,35 +20,24 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4 Features (NEW) - Storage Transaction Fixes:**
+**v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI:**
 
-- **Issue #5 Fix** - Self-write confirmation now uses storage.local.set() promise
-  resolution (not storage.onChanged). Per MDN: storage.onChanged is for EXTERNAL
-  writes only. Transaction cleanup moved to `_handleSuccessfulWrite()`.
-- **Issue #6 Fix** - StorageCoordinator tracks concurrency metrics: peak queue
-  size, average queue wait time, operations processed count.
-- **Issue #21 Fix** - State version tracking for render transaction boundaries.
-  `_stateVersion` incremented on external state updates. `scheduleRender()` uses
-  `requestAnimationFrame()` for DOM mutation batching.
-- **Issue #22 Fix** - Storage.onChanged listener now registered FIRST in
-  DOMContentLoaded, BEFORE any async operations. Prevents missing early state
-  updates.
-
-**v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI:**
-
-- **Button Click Logging** - Comprehensive logging for all Manager buttons
-  (Close, Minimize, Restore, Close All, Close Minimized)
-- **Optimistic UI Updates** - Immediate visual feedback via
-  `_applyOptimisticUIUpdate()` before port message sent
-- **Port Operation Logging** - Enhanced logging in `closeQuickTabViaPort()`,
-  `minimizeQuickTabViaPort()`, `restoreQuickTabViaPort()`
-- **Bulk Operation Logging** - Detailed logging in `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Button DOM Creation Logging** - `_createTabActions()` logs which buttons are
-  created
-- **Render Scheduling Logging** - Enhanced `scheduleRender()` with tab counts
-- **Refactored Event Handlers** - `setupEventListeners()` extracted to helper
-  functions
+- **Button Click Logging** - Logging for Manager buttons (Close, Minimize,
+  Restore, Close All, Close Minimized) with `[Manager] BUTTON_CLICKED:` prefix
+- **Optimistic UI Updates** - Instant feedback via `_applyOptimisticUIUpdate()`
+- **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
+- **Cross-Tab Aggregation** - `_computeOriginTabStats()` for per-origin-tab
+  counts with `STATE_SYNC_CROSS_TAB_AGGREGATION` logging
+- **Orphan Quick Tab UI** - Visual indicator (orange background, badge) for
+  orphaned tabs with `.quick-tab-item.orphaned` CSS class
+- **Render Lock** - `_isRenderInProgress`, `_pendingRerenderRequested`, max 3
+  consecutive re-renders
+- **Storage Transaction** - Self-write uses promise resolution,
+  `requestAnimationFrame()` for DOM batching, `_stateVersion` tracking
+- **Settings Logging** - `[Settings][INIT]` prefix, button initialization
+  tracking
+- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
 
 **v1.6.3.12-v8 Features - Bulk Close + Circuit Breaker Auto-Reset:**
 
@@ -88,19 +77,17 @@
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
 - **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
 
-**v1.6.3.12-v4:** storage.session Removal, Cache Staleness (30s/60s)  
-**v1.6.3.12-v3:** Container ID Resolution, Manager Refresh, Test Bridge API  
-**v1.6.3.12-v2:** QUICKTAB_MINIMIZED Handler, Port Roundtrip Tracking  
+**v1.6.3.12-v4 to v1.6.3.12-v7:** storage.session Removal, Container ID,
+QUICKTAB_MINIMIZED, Port Roundtrip Tracking, Message Routing Fixes  
 **v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
-**v1.6.3.11-v12:** Solo/Mute REMOVED, Version-Based Log Cleanup  
-**v1.6.3.12-v7:** Message Routing Fixes, Code Health 10.0
+**v1.6.3.11-v12:** Solo/Mute REMOVED
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-`browser.storage.session` (REMOVED in v1.6.3.12-v4), `runtime.sendMessage` for
-Quick Tabs sync (v1.6.3.12), Solo/Mute (v12)
+`browser.storage.session` (v4), `runtime.sendMessage` for Quick Tabs (v1.6.3.12),
+Solo/Mute (v12)
 
 ---
 
@@ -154,18 +141,18 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4 Patterns (Current)
+### v1.6.3.12-v9 Patterns (Current)
 
-- **Self-Write Confirmation** - Uses storage.local.set() promise resolution, NOT
-  storage.onChanged. Transaction cleanup in `_handleSuccessfulWrite()`.
-- **Concurrency Tracking** - StorageCoordinator tracks `_peakQueueSize`,
-  `_totalQueueTime`, `_operationsProcessed` for latency diagnosis.
-- **State Version Tracking** - `_stateVersion` incremented on external updates,
-  `_stateVersionAtSchedule` for render drift detection.
-- **Listener Registration Order** - storage.onChanged registered FIRST in
-  DOMContentLoaded, BEFORE async operations.
-- **requestAnimationFrame Rendering** - `scheduleRender()` uses rAF for DOM
-  mutation batching.
+- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all button
+  actions
+- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant visual
+  feedback
+- **Port Message Validation** - `_validateQuickTabObject()`,
+  `_filterValidQuickTabs()`
+- **Orphan Quick Tab UI** - `.quick-tab-item.orphaned` CSS class, orange badge
+- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
+- **State Version Tracking** - `_stateVersion` for render consistency
+- **Code Health** - quick-tabs-manager.js: 8.54
 
 ### v1.6.3.12-v8 Patterns
 
@@ -194,51 +181,35 @@ const quickTabsSessionState = {
 - **Defensive Handlers** - Input validation in all port message handlers
 - **Close All Handler** - `CLOSE_ALL_QUICK_TABS` in background port handler
 
-### v1.6.3.12-v5 Patterns
+### v1.6.3.12-v5 to v1.6.3.12-v6 Patterns (Consolidated)
 
 - **Circuit Breaker** - Trips after 5 failures, recovers via test write (30s)
 - **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW)
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
 
-### v1.6.3.12-v4 Patterns
+### v1.6.3.12-v2 to v1.6.3.12-v4 Patterns (Consolidated)
 
-- **storage.local Only** - `browser.storage.session` REMOVED
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` for session-only behavior
-- **Cache Staleness** - 30s warning, 60s auto-sync
-
-### v1.6.3.12-v2 to v1.6.3.12 Patterns (Consolidated)
-
-- **Option 4 Architecture** - Background script in-memory storage (v1.6.3.12)
+- **Option 4 Architecture** - Background in-memory storage (v1.6.3.12)
 - **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
-- **Container ID Resolution** - Identity system via `getWritingContainerId()`
-  (v3)
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK (v2)
+- **storage.local Only** - `browser.storage.session` REMOVED (v4)
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` (v4)
 
-### Previous Version Patterns (Consolidated)
+### Previous Version Patterns
 
-- **v1.6.3.11-v12:** Solo/Mute REMOVED, version-based log cleanup
+- **v1.6.3.11-v12:** Solo/Mute REMOVED
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix
-- **v1.6.3.10:** tabs.sendMessage, storage.onChanged
 
-### Key Timing Constants (v1.6.3.12-v8+)
+### Key Timing Constants
 
-| Constant                                        | Value | Purpose                            |
-| ----------------------------------------------- | ----- | ---------------------------------- |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5     | Failures before circuit trips      |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000 | Test write interval for recovery   |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000 | Auto-reset circuit breaker (v8)    |
-| `SETTINGS_MESSAGE_TIMEOUT_MS`                   | 5000  | Timeout for settings operations    |
-| `POST_FAILURE_MIN_DELAY_MS`                     | 5000  | Delay after failure before dequeue |
-| `TIMEOUT_BACKOFF_DELAYS`                        | Array | [1000, 3000, 5000]ms               |
-| `QUEUE_PRIORITY.HIGH`                           | 1     | Highest priority writes            |
-| `QUEUE_PRIORITY.MEDIUM`                         | 2     | Normal priority writes             |
-| `QUEUE_PRIORITY.LOW`                            | 3     | Lowest priority writes             |
-| `MESSAGE_TIMEOUT_MS`                            | 5000  | Message timeout                    |
-| `CACHE_STALENESS_ALERT_MS`                      | 30000 | Warn if no sync for 30s            |
-| `CACHE_STALENESS_EMERGENCY_MS`                  | 60000 | Auto-request sync after 60s        |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10    | Max port reconnection attempts     |
+| Constant                                        | Value | Purpose                          |
+| ----------------------------------------------- | ----- | -------------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5     | Failures before circuit trips    |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000 | Test write interval for recovery |
+| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000 | Auto-reset circuit breaker       |
+| `TIMEOUT_BACKOFF_DELAYS`                        | Array | [1000, 3000, 5000]ms             |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10    | Max port reconnection attempts   |
 
 ---
 
@@ -276,39 +247,14 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:` `[Manager] QUICK_TAB_BUTTON_CLICKED:`
-`[Manager] ACTION_DISPATCH:` `[Manager] ACTION_SENT:` `[Manager] ACTION_COMPLETE:`
-`[Manager] OPTIMISTIC_UI_UPDATE:` `[Manager] OPTIMISTIC_UI_APPLIED:`
-`[Manager] BUTTON_DOM_CREATION:` `[Manager] BUTTONS_CREATED:`
-`[Manager] SETUP_EVENT_LISTENERS_ENTRY:` `[Manager] EVENT_LISTENER_ATTACHED:`
-`[Manager] CLOSE_MINIMIZED_BUTTON_CLICK:` `[Manager] CLOSE_ALL_BUTTON_CLICK:`
-`[Manager] RENDER_SCHEDULED:` `[Manager] *_VIA_PORT_CALLED:` `[Manager] *_VIA_PORT_RESULT:`
+**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:`, `[Manager] OPTIMISTIC_UI_*:`,
+`[Manager] VALIDATE_QUICK_TAB:`, `[Manager] ORPHAN_DETECTED:`,
+`[Manager] RENDER_LOCK:`, `[Manager] STATE_VERSION:`, `[Settings][INIT]`
 
-**v1.6.3.12-v8:** `[CIRCUIT_BREAKER_AUTO_RESET_SCHEDULED]`
-`[CIRCUIT_BREAKER_AUTO_RESET]` `[Settings][INIT]`
+**v1.6.3.12-v5 to v8:** `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`,
+`[SEQUENCE_TRACKING]`, `[TIMEOUT_BACKOFF_*]`, `[FALLBACK_*]`
 
-**v1.6.3.12-v7:** `[VALID_MESSAGE_ACTIONS]` `[QUICKTAB_REMOVED_HANDLER]`
-`[PORT_BASED_MANAGER]`
-
-**v1.6.3.12-v6:** `[PORT_RECONNECT_ATTEMPT]` `[PORT_CIRCUIT_BREAKER]`
-`[SEQUENCE_TRACKING]` `[CLOSE_ALL_HANDLER]` `[TAB_CLOSED_NOTIFY]`
-`[SIDEBAR_CLEANUP]` `[HEARTBEAT_RESTART]` `[MESSAGE_VALIDATION]`
-
-**v1.6.3.12-v5:** `[CIRCUITBREAKER_TRIPPED]` `[CIRCUITBREAKER_RECOVERED]`
-`[CIRCUITBREAKER_TEST_WRITE]` `[TIMEOUT_BACKOFF_APPLIED]` `[FALLBACK_ACTIVATED]`
-`[FALLBACK_DEACTIVATED]` `[TIMEOUT_COUNTER_RESET]` `[STORAGE_RECOVERY]`
-`[QUEUE_ENTRY_EVICTED]` `[HEARTBEAT_STATUS_CHECK]` `[Z_INDEX_PERSIST_FAILED]`
-`[STORAGE_BACKEND_SWITCH]` `[EVENT_ORDERING_VIOLATION]`
-`[FEATURE_AVAILABILITY_CHANGED]` `[QUICKTABREMOVED_HANDLER_ENTRY/EXIT]`
-`[SELF_WRITE_CHECK]` `[PORT_HANDLER_ENTRY/EXIT]`
-
-**v1.6.3.12-v4:** `[HYDRATION][*]` `[DEBOUNCE][*]` `[OWNERSHIP_FILTER][*]`
-`[DRAG][*]` `[CACHE_STALENESS]`
-
-**Previous:** `[SIDEBAR_PORT_LIFECYCLE]` `[STORAGE_ONCHANGED]`
-`[STORAGE_HEALTH]` `[WRITE_QUEUE]` `[STATE_SYNC]` `[CORRELATION_ID]`
-`[SCENARIO_LOG]` `[MSG_ROUTER]` `[MSG_HANDLER]` `[HYDRATION]`
-`[QuickTabHandler]`
+**Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`
 
 ---
 
@@ -322,7 +268,7 @@ in-memory state, push notifications, port roundtrip tracking, circuit breaker,
 priority queue, timeout backoff, rolling heartbeat window, sequence number
 tracking, port reconnection circuit breaker, defensive input validation, circuit
 breaker auto-reset, listener registration guards, message timeout protection,
-optimistic UI updates.
+optimistic UI updates, render lock, orphan recovery UI, state version tracking.
 
 ---
 
