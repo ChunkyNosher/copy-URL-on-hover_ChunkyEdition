@@ -12,6 +12,7 @@
  * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
  * v1.6.4.15 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
  * v1.6.4.15 - FIX Issue #22: Add response format validation and normalization
+ * v1.6.4.0 - FIX Issue #24: Add centralized message schema validation
  */
 
 // v1.6.4.15 - FIX Issue #18: Allowlist of valid command types for validation
@@ -48,6 +49,37 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'KEEPALIVE_PING'
 ]);
 
+// v1.6.4.0 - FIX Issue #24: Valid type-based message types (handled by separate listeners)
+// These are NOT handled by MessageRouter but are valid extension messages
+export const VALID_MESSAGE_TYPES = new Set([
+  // Port-based messages (handled via runtime.connect ports)
+  'SIDEBAR_READY',
+  'SIDEBAR_STATE_SYNC',
+  'GET_ALL_QUICK_TABS',
+  'GET_ALL_QUICK_TABS_RESPONSE',
+  'STATE_CHANGED',
+  'CLOSE_QUICK_TAB',
+  'MINIMIZE_QUICK_TAB',
+  'RESTORE_QUICK_TAB',
+  'CLOSE_ALL_QUICK_TABS',
+  'CLOSE_QUICK_TAB_ACK',
+  'MINIMIZE_QUICK_TAB_ACK',
+  'RESTORE_QUICK_TAB_ACK',
+  'CLOSE_ALL_QUICK_TABS_ACK',
+  'ORIGIN_TAB_CLOSED',
+  'QUICKTAB_MINIMIZED',
+  'HYDRATE_ON_LOAD',
+  'QUERY_MY_QUICK_TABS',
+  'CREATE_QUICK_TAB',
+  'DELETE_QUICK_TAB',
+  'UPDATE_QUICK_TAB',
+  // Legacy runtime.sendMessage types (handled by other listeners)
+  'QUICK_TAB_STATE_CHANGE',
+  'MANAGER_COMMAND',
+  'REQUEST_FULL_STATE_SYNC',
+  'ADOPT_TAB'
+]);
+
 // v1.6.4.15 - FIX Issue #22: Standard response envelope format
 // All handlers should return responses in this format for consistency
 export const RESPONSE_ENVELOPE = {
@@ -58,6 +90,16 @@ export const RESPONSE_ENVELOPE = {
 // v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
 
+// v1.6.4.0 - FIX Issue #24: Message schema validation error codes
+export const VALIDATION_ERROR_CODES = {
+  INVALID_MESSAGE_FORMAT: 'INVALID_MESSAGE_FORMAT',
+  MISSING_ACTION_AND_TYPE: 'MISSING_ACTION_AND_TYPE',
+  AMBIGUOUS_MESSAGE: 'AMBIGUOUS_MESSAGE',
+  UNKNOWN_ACTION: 'UNKNOWN_ACTION',
+  UNKNOWN_TYPE: 'UNKNOWN_TYPE',
+  INVALID_MESSAGE_OBJECT: 'INVALID_MESSAGE_OBJECT'
+};
+
 export class MessageRouter {
   constructor() {
     this.handlers = new Map();
@@ -65,6 +107,9 @@ export class MessageRouter {
     // v1.6.4.15 - FIX Issue #18: Track rejected commands for diagnostics
     this._rejectedCommandCount = 0;
     this._lastRejectedCommand = null;
+    // v1.6.4.0 - FIX Issue #24: Track validation failures for diagnostics
+    this._validationFailureCount = 0;
+    this._lastValidationFailure = null;
   }
 
   /**
@@ -107,6 +152,210 @@ export class MessageRouter {
     }
 
     return sender.id === this.extensionId;
+  }
+
+  /**
+   * Check if message is a valid object
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {*} message - Message to check
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, error?: string, code?: string }|null} Error result or null if valid
+   */
+  _checkMessageIsObject(message, sender) {
+    if (!message || typeof message !== 'object') {
+      this._logValidationFailure('INVALID_MESSAGE_OBJECT', message, sender, 'Message is not an object');
+      return {
+        valid: false,
+        error: 'Message must be an object',
+        code: VALIDATION_ERROR_CODES.INVALID_MESSAGE_OBJECT
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Check for ambiguous messages with both action and type
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {boolean} hasAction - Whether message has action property
+   * @param {boolean} hasType - Whether message has type property
+   * @param {Object} message - The message
+   * @param {Object} sender - Message sender for logging
+   */
+  _checkAmbiguousMessage(hasAction, hasType, message, sender) {
+    if (hasAction && hasType) {
+      console.warn('[MSG_SCHEMA][MessageRouter] AMBIGUOUS_MESSAGE: Both action and type present', {
+        action: message.action,
+        type: message.type,
+        senderTabId: sender?.tab?.id ?? 'unknown',
+        resolution: 'Using action property',
+        timestamp: Date.now()
+      });
+    }
+  }
+
+  /**
+   * Validate action property value against allowlist
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {Object} message - The message
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, error?: string, code?: string }|null} Error result or null if valid
+   */
+  _validateActionProperty(message, sender) {
+    if (!VALID_MESSAGE_ACTIONS.has(message.action)) {
+      if (VALID_MESSAGE_TYPES.has(message.action)) {
+        console.warn('[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: action property contains a type value', {
+          action: message.action,
+          suggestion: 'Use type property instead of action for this message',
+          senderTabId: sender?.tab?.id ?? 'unknown'
+        });
+        return null; // Allow but log warning
+      }
+      this._logValidationFailure('UNKNOWN_ACTION', message, sender, `Unknown action: ${message.action}`);
+      return {
+        valid: false,
+        action: message.action,
+        error: `Unknown action: ${message.action}`,
+        code: VALIDATION_ERROR_CODES.UNKNOWN_ACTION
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate type property value against allowlist
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {Object} message - The message
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, error?: string, code?: string }|null} Error result or null if valid
+   */
+  _validateTypeProperty(message, sender) {
+    if (!VALID_MESSAGE_TYPES.has(message.type)) {
+      if (VALID_MESSAGE_ACTIONS.has(message.type)) {
+        console.warn('[MSG_SCHEMA][MessageRouter] PROPERTY_MISMATCH: type property contains an action value', {
+          type: message.type,
+          suggestion: 'Use action property instead of type for this message',
+          senderTabId: sender?.tab?.id ?? 'unknown'
+        });
+        return null; // Allow but log warning
+      }
+      this._logValidationFailure('UNKNOWN_TYPE', message, sender, `Unknown type: ${message.type}`);
+      return {
+        valid: false,
+        action: message.type,
+        error: `Unknown type: ${message.type}`,
+        code: VALIDATION_ERROR_CODES.UNKNOWN_TYPE
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Check if neither action nor type present and return error
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {boolean} hasAction - Whether message has action property
+   * @param {boolean} hasType - Whether message has type property
+   * @param {Object} message - The message
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, error: string, code: string }|null} Error result or null if valid
+   */
+  _checkMissingActionAndType(hasAction, hasType, message, sender) {
+    if (!hasAction && !hasType) {
+      this._logValidationFailure('MISSING_ACTION_AND_TYPE', message, sender, 'Message missing both action and type properties');
+      return {
+        valid: false,
+        error: 'Message must have either action or type property',
+        code: VALIDATION_ERROR_CODES.MISSING_ACTION_AND_TYPE
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Validate action or type property and return error if invalid
+   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * @private
+   * @param {boolean} hasAction - Whether message has action property
+   * @param {boolean} hasType - Whether message has type property
+   * @param {Object} message - The message
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, action?: string, error?: string, code?: string }|null} Error result or null if valid
+   */
+  _validateActionOrType(hasAction, hasType, message, sender) {
+    if (hasAction) {
+      const actionError = this._validateActionProperty(message, sender);
+      if (actionError) return actionError;
+    } else if (hasType) {
+      const typeError = this._validateTypeProperty(message, sender);
+      if (typeError) return typeError;
+    }
+    return null;
+  }
+
+  /**
+   * Validate message schema - centralized validation for both action and type properties
+   * v1.6.4.0 - FIX Issue #24: Centralized message schema validation
+   * v1.6.4.0 - FIX Code Health: Refactored to reduce complexity
+   * @param {Object} message - Message to validate
+   * @param {Object} sender - Message sender for logging
+   * @returns {{ valid: boolean, action?: string, error?: string, code?: string }}
+   */
+  validateMessageSchema(message, sender) {
+    // Check if message is a valid object
+    const objectError = this._checkMessageIsObject(message, sender);
+    if (objectError) return objectError;
+
+    const hasAction = typeof message.action === 'string' && message.action.length > 0;
+    const hasType = typeof message.type === 'string' && message.type.length > 0;
+
+    // Check for ambiguous messages (both action AND type present)
+    this._checkAmbiguousMessage(hasAction, hasType, message, sender);
+
+    // Neither action nor type present
+    const missingError = this._checkMissingActionAndType(hasAction, hasType, message, sender);
+    if (missingError) return missingError;
+
+    // Validate action or type against allowlist
+    const propertyError = this._validateActionOrType(hasAction, hasType, message, sender);
+    if (propertyError) return propertyError;
+
+    // Determine which property to use (action takes precedence)
+    return {
+      valid: true,
+      action: hasAction ? message.action : message.type,
+      propertyUsed: hasAction ? 'action' : 'type'
+    };
+  }
+
+  /**
+   * Log validation failure with details
+   * v1.6.4.0 - FIX Issue #24: Centralized validation failure logging
+   * @private
+   * @param {string} errorType - Type of validation error
+   * @param {Object} message - The invalid message
+   * @param {Object} sender - Message sender
+   * @param {string} reason - Human-readable reason
+   */
+  _logValidationFailure(errorType, message, sender, reason) {
+    this._validationFailureCount++;
+    this._lastValidationFailure = { errorType, timestamp: Date.now() };
+
+    console.error('[MSG_SCHEMA][MessageRouter] VALIDATION_FAILURE:', {
+      errorType,
+      reason,
+      messageKeys: message ? Object.keys(message) : [],
+      messageAction: message?.action ?? 'undefined',
+      messageType: message?.type ?? 'undefined',
+      senderTabId: sender?.tab?.id ?? 'unknown',
+      senderFrameId: sender?.frameId ?? 'unknown',
+      senderUrl: sender?.url ?? 'unknown',
+      totalValidationFailures: this._validationFailureCount,
+      timestamp: Date.now()
+    });
   }
 
   /**
@@ -295,32 +544,36 @@ export class MessageRouter {
    * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
    * v1.6.4.15 - FIX Issue #22: Normalize response format
    * v1.6.3.11-v11 - FIX Issue 48 #3: Enhanced message routing diagnostics
+   * v1.6.4.0 - FIX Issue #24: Use centralized schema validation
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
    * @returns {boolean} True if async response expected
    */
   async route(message, sender, sendResponse) {
-    // v1.6.4.14 - Extract action from either `action` or `type` property
-    const action = this._extractAction(message);
     const routeStartTime = Date.now();
 
-    // Validate message format - must have either action or type
-    if (!action) {
-      console.error('[MSG][MessageRouter] Invalid message format (missing action/type):', message);
+    // v1.6.4.0 - FIX Issue #24: Use centralized schema validation
+    const schemaValidation = this.validateMessageSchema(message, sender);
+    
+    if (!schemaValidation.valid) {
       sendResponse({
         success: false,
-        error: 'Invalid message format',
-        code: 'INVALID_MESSAGE_FORMAT'
+        error: schemaValidation.error,
+        code: schemaValidation.code,
+        version: MESSAGE_PROTOCOL_VERSION
       });
       return false;
     }
+
+    const action = schemaValidation.action;
 
     // v1.6.3.11-v11 - FIX Issue 48 #3: Log message received after validation
     console.log(`[MSG_ROUTER] Message received: action=${action}`, {
       senderTabId: sender?.tab?.id ?? 'unknown',
       senderFrameId: sender?.frameId ?? 'unknown',
       hasHandler: this.handlers.has(action),
+      propertyUsed: schemaValidation.propertyUsed,
       timestamp: new Date().toISOString()
     });
 
