@@ -2,7 +2,7 @@
  * Port Communication Simulator
  * Provides utilities for simulating Chrome port API for handler testing
  *
- * v1.6.4 - New test helper for comprehensive Jest testing infrastructure
+ * v1.6.3.12 - New test helper for comprehensive Jest testing infrastructure
  *
  * Features:
  * - Mock Chrome port API

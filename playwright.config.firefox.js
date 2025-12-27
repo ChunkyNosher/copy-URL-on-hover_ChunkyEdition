@@ -10,7 +10,7 @@ const __dirname = path.dirname(__filename);
  * This config loads the extension from the dist/ directory and runs tests
  * in a real Firefox browser with the extension installed.
  *
- * v1.6.4 - J8: Added multi-container project for container isolation testing
+ * v1.6.3.12 - J8: Added multi-container project for container isolation testing
  *
  * To run container isolation tests:
  *   npx playwright test --project=firefox-multicontainer
@@ -72,7 +72,7 @@ export default {
       }
     },
     /**
-     * v1.6.4 - J8: Multi-container project for container isolation testing
+     * v1.6.3.12 - J8: Multi-container project for container isolation testing
      *
      * This project enables Firefox Multi-Account Containers support for testing:
      * - Container isolation (Scenarios 14, 18, 20 from issue-47-revised.md)
@@ -98,7 +98,7 @@ export default {
             'devtools.chrome.enabled': true,
             'devtools.debugger.remote-enabled': true,
             'dom.events.testing.asyncClipboard': true,
-            // v1.6.4 - J8: Enable Firefox Multi-Account Containers
+            // v1.6.3.12 - J8: Enable Firefox Multi-Account Containers
             // Required for contextualIdentities API
             'privacy.userContext.enabled': true,
             // Enable UI for containers in tabs

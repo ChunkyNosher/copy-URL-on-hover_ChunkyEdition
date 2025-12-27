@@ -325,7 +325,7 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
   });
 
-  // v1.6.4 - Solo/Mute Console Logging tests removed (functionality removed)
+  // v1.6.3.12 - Solo/Mute Console Logging tests removed (functionality removed)
 
   describe('Additional Edge Cases', () => {
     test('should handle concurrent iframe load events', async () => {

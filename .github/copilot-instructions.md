@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v6  
+**Version:** 1.6.3.12-v7  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,59 +20,32 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v6 Features (NEW) - Manager Sync + Port Resilience:**
+**v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health:**
+
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`, `minimizeQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+
+**v1.6.3.12-v6 Features - Manager Sync + Port Resilience:**
 
 - **storage.onChanged Fix** - Checks `'local'` area instead of `'session'` (MV2)
-- **Close Minimized Fix** - Properly triggers state sync to Manager
 - **Close All Handler** - `CLOSE_ALL_QUICK_TABS` message type implemented
-- **Tab Closure Detection** - Manager receives `ORIGIN_TAB_CLOSED` messages
-- **Defensive Port Handlers** - All handlers have input validation
-- **Initial State Request** - Sidebar requests state on first load
-- **Sidebar Cleanup** - Explicit port/timer cleanup on unload
-- **Heartbeat Restart** - Properly restarts after reconnection
+- **Defensive Port Handlers** - Input validation in all handlers
 - **Sequence Tracking** - `_lastReceivedSequence` for FIFO ordering resilience
-- **Message Validation** - MessageRouter has centralized schema validation
 - **Port Circuit Breaker** - Max 10 reconnect attempts with exponential backoff
-- **Code Health** - quick-tabs-manager.js improved from 7.62 to 9.09
 
 **v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue:**
 
-- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Post-Failure Delay** - 5s delay before next queue dequeue
-- **Fallback Mode** - Bypasses storage writes when circuit trips
-- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Circuit Breaker** - Trips after 5 failures, test write every 30s
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Storage Backend Tracking** - `currentStorageBackend` state tracking
-- **Error Type Discrimination** - API unavailable vs quota vs transient
-- **Unified Container Validation** - `_validateContainerForOperation()` helper
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
 
-**v1.6.3.12-v4 Features - storage.session Removal:**
-
-- **storage.session Removal** - Uses `storage.local` + startup cleanup for MV2
-- **Cache Staleness** - 30s warning, 60s auto-sync
-
-**v1.6.3.12-v3 Features - Critical Bug Fixes:**
-
-- **Container ID Resolution** - CreateHandler queries Identity system
-- **Manager Refresh** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-
-**v1.6.3.12-v2 Features - Port Diagnostics:**
-
-- **QUICKTAB_MINIMIZED Handler** - Forwards minimize/restore events to sidebar
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK
-  timing
-
-**v1.6.3.12 Features - Option 4 In-Memory Architecture:**
-
-- **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
-- **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
-- **browser.storage.local Only** - Uses `storage.local` + startup cleanup (MV2)
-
-**v1.6.3.11-v12 Features:** Solo/Mute REMOVED, Version-Based Log Cleanup
+**v1.6.3.12-v4:** storage.session Removal, Cache Staleness (30s/60s)  
+**v1.6.3.12-v3:** Container ID Resolution, Manager Refresh, Test Bridge API  
+**v1.6.3.12-v2:** QUICKTAB_MINIMIZED Handler, Port Roundtrip Tracking  
+**v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
+**v1.6.3.11-v12:** Solo/Mute REMOVED, Version-Based Log Cleanup
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
@@ -133,15 +106,19 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v6 Patterns (Current)
+### v1.6.3.12-v7 Patterns (Current)
+
+- **VALID_MESSAGE_ACTIONS** - Complete allowlist (EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS)
+- **Port-Based Manager Buttons** - `closeQuickTabViaPort`, `minimizeQuickTabViaPort`, `restoreQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab closed from UI
+- **Code Health 10.0** - MessageRouter.js at perfect score
+
+### v1.6.3.12-v6 Patterns
 
 - **Sequence Tracking** - `_lastReceivedSequence` tracks message order
 - **Port Circuit Breaker** - `_quickTabsPortCircuitBreakerTripped` flag
-- **Factory Patterns** - `_createStateUpdateHandler()`, `_createAckHandler()`
 - **Defensive Handlers** - Input validation in all port message handlers
 - **Close All Handler** - `CLOSE_ALL_QUICK_TABS` in background port handler
-- **Tab Closure Notify** - `ORIGIN_TAB_CLOSED` sent to sidebar on tab close
-- **storage.onChanged** - Checks `'local'` area (not `'session'`) for MV2
 
 ### v1.6.3.12-v5 Patterns
 
@@ -179,7 +156,7 @@ const quickTabsSessionState = {
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods
 - **v1.6.3.10:** tabs.sendMessage, storage.onChanged, unified barrier
 
-### Key Timing Constants (v1.6.3.12-v6+)
+### Key Timing Constants (v1.6.3.12-v7+)
 
 | Constant                                | Value | Purpose                            |
 | --------------------------------------- | ----- | ---------------------------------- |
@@ -231,7 +208,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v6 (NEW):** `[PORT_RECONNECT_ATTEMPT]` `[PORT_CIRCUIT_BREAKER]`
+**v1.6.3.12-v7 (NEW):** `[VALID_MESSAGE_ACTIONS]` `[QUICKTAB_REMOVED_HANDLER]`
+`[PORT_BASED_MANAGER]`
+
+**v1.6.3.12-v6:** `[PORT_RECONNECT_ATTEMPT]` `[PORT_CIRCUIT_BREAKER]`
 `[SEQUENCE_TRACKING]` `[CLOSE_ALL_HANDLER]` `[TAB_CLOSED_NOTIFY]`
 `[SIDEBAR_CLEANUP]` `[HEARTBEAT_RESTART]` `[MESSAGE_VALIDATION]`
 
@@ -335,7 +315,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/quick-tabs-manager.js`   | Port-based queries to background     |
 | `src/content.js`                  | Port messaging for Quick Tabs        |
 
-### Storage (v1.6.3.12-v6+)
+### Storage (v1.6.3.12-v7+)
 
 **In-Memory State:** `quickTabsSessionState` in background.js  
 **Persistence:** `browser.storage.local` with startup cleanup

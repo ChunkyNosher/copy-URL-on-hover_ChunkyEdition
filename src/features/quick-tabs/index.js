@@ -8,7 +8,7 @@
  * v1.6.3.4-v7 - FIX Issue #1: Hydration creates real QuickTabWindow instances
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
- * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
+ * v1.6.3.12-v7 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
  * v1.6.3.12-v4 - FIX Issue #4: Enhanced hydration lifecycle logging with timing metrics
  *
  * Architecture (Single-Tab Model v1.6.3+):
@@ -17,7 +17,7 @@
  * - Maintains backward compatibility with legacy API (with deprecation warnings)
  * - Delegates all business logic to specialized components
  * - No cross-tab broadcasting - storage used for persistence and hydration only
- * - v1.6.4.18: Quick Tabs now use storage.session (cleared on browser restart)
+ * - v1.6.3.12-v7: Quick Tabs now use storage.session (cleared on browser restart)
  */
 
 import { EventEmitter } from 'eventemitter3';
@@ -167,7 +167,7 @@ class QuickTabsManager {
    */
   /**
    * Initialize container context
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * @private
    */
   async _initContainerContext() {
@@ -187,7 +187,7 @@ class QuickTabsManager {
 
   /**
    * Initialize tab ID
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * @private
    */
   async _initTabId() {
@@ -204,7 +204,7 @@ class QuickTabsManager {
 
   /**
    * Initialize z-index counter
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * @private
    */
   async _initZIndexCounter() {
@@ -222,7 +222,7 @@ class QuickTabsManager {
 
   /**
    * Initialize storage health monitor
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * @private
    */
   _initStorageHealthMonitor() {
@@ -416,7 +416,7 @@ class QuickTabsManager {
    */
   /**
    * Log hydration rejection
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * v1.6.3.12-v4 - FIX Issue #4: Pass details for enhanced logging
    * @private
    */
@@ -437,7 +437,7 @@ class QuickTabsManager {
 
   /**
    * Validate tab data and check preconditions for hydration
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * @private
    * @returns {Object|null} Rejection result or null if valid
    */
@@ -582,7 +582,7 @@ class QuickTabsManager {
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
    * v1.6.3.6-v10 - Refactored: Extracted helpers to reduce cc from 9 to 6
-   * v1.6.4.15 - FIX Issue #21: Detect and log domain changes during hydration
+   * v1.6.3.12-v7 - FIX Issue #21: Detect and log domain changes during hydration
    * v1.6.3.11-v11 - FIX Issue 48 #4: Enhanced hydration lifecycle logging
    * @private
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
@@ -591,7 +591,7 @@ class QuickTabsManager {
     // v1.6.3.12-v4 - FIX Issue #4: Enhanced hydration lifecycle logging with timing metrics
     const hydrationStartTime = Date.now();
 
-    // v1.6.4.15 - FIX Issue #21: Detect domain change at hydration time
+    // v1.6.3.12-v7 - FIX Issue #21: Detect domain change at hydration time
     const currentDomain = this._getCurrentDomain();
     console.log('[HYDRATION_DOMAIN_CHECK] Current page domain:', {
       domain: currentDomain,
@@ -697,7 +697,7 @@ class QuickTabsManager {
    */
   /**
    * Read from storage.local if available (session-scoped via explicit cleanup)
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    * @private
    */
@@ -722,7 +722,7 @@ class QuickTabsManager {
 
   /**
    * Log storage unavailable
-   * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v7 - Extracted for complexity reduction
    * v1.6.3.12-v4 - FIX: Updated for storage.local (storage.session not available in Firefox MV2)
    * @private
    */
@@ -757,7 +757,7 @@ class QuickTabsManager {
   /**
    * Default values for tab hydration
    * v1.6.3.4-v11 - Extracted to reduce _buildHydrationOptions complexity
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @type {Object}
    */
@@ -790,7 +790,7 @@ class QuickTabsManager {
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.4-v11 - Refactored: extracted HYDRATION_DEFAULTS and _getWithDefault to reduce cc from 10 to ≤9
    * v1.6.3.10-v4 - FIX Issue #13: Include originTabId and originContainerId for container isolation
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @param {Object} tabData - Tab data from storage
    * @returns {Object} Options for createQuickTab
@@ -819,7 +819,7 @@ class QuickTabsManager {
    * Add callbacks to hydration options
    * v1.6.3.4 - Helper to reduce complexity
    * v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    * @private
    * @param {Object} options - Base options
    * @returns {Object} Options with callbacks
@@ -856,7 +856,7 @@ class QuickTabsManager {
 
   /**
    * Get current page domain for navigation detection
-   * v1.6.4.15 - FIX Issue #21: Helper for domain change detection during hydration
+   * v1.6.3.12-v7 - FIX Issue #21: Helper for domain change detection during hydration
    * @private
    * @returns {string} Current domain or 'unknown' if not available
    */
@@ -873,7 +873,7 @@ class QuickTabsManager {
 
   /**
    * Extract domain from URL string
-   * v1.6.4.15 - FIX Issue #21: Helper for URL domain extraction
+   * v1.6.3.12-v7 - FIX Issue #21: Helper for URL domain extraction
    * @private
    * @param {string} url - URL string
    * @returns {string} Domain or 'unknown'
@@ -890,7 +890,7 @@ class QuickTabsManager {
 
   /**
    * Detect and log domain change between stored Quick Tab and current page
-   * v1.6.4.15 - FIX Issue #21: Cross-domain navigation detection
+   * v1.6.3.12-v7 - FIX Issue #21: Cross-domain navigation detection
    * @private
    * @param {Object} tabData - Stored tab data
    * @returns {{domainChanged: boolean, oldDomain: string, newDomain: string}}
@@ -1125,7 +1125,7 @@ class QuickTabsManager {
    * Determine if a Quick Tab should render on this tab
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Cross-tab filtering logic
    * v1.6.3.10-v4 - FIX Issue #13: Add container isolation check
-   * v1.6.4 - Simplified: Solo/Mute removed, only check originTabId and container
+   * v1.6.3.12 - Simplified: Solo/Mute removed, only check originTabId and container
    * @private
    * @param {Object} tabData - Quick Tab data
    * @returns {boolean} True if should render
@@ -1197,7 +1197,7 @@ class QuickTabsManager {
       // NOTE: We use `new QuickTabWindow()` directly instead of `createQuickTabWindow()` factory
       // because the factory calls render() which we DON'T want for minimized tabs.
       // The instance exists with all methods but no DOM attached (minimized=true)
-      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+      // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
       const tabWindow = new QuickTabWindow({
         id: options.id,
         url: options.url,
@@ -1214,7 +1214,7 @@ class QuickTabsManager {
         originTabId: options.originTabId ?? this.currentTabId,
         originContainerId: options.originContainerId ?? this.cookieStoreId,
         // Wire up callbacks - these persist through restore cycles
-        // v1.6.4 - Removed Solo/Mute callbacks
+        // v1.6.3.12 - Removed Solo/Mute callbacks
         onDestroy: tabId => this.handleDestroy(tabId, 'UI'),
         onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
         onFocus: tabId => this.handleFocus(tabId),
@@ -1572,7 +1572,7 @@ class QuickTabsManager {
    * Delegates to CreateHandler
    * v1.6.3.4 - FIX Issue #4: Wire UI close button to DestroyHandler via onDestroy callback
    * v1.6.3.4 - FIX Issue #6: Add source tracking for logs
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    */
   createQuickTab(options) {
     console.log('[QuickTabsManager] createQuickTab called with:', options);
@@ -1582,7 +1582,7 @@ class QuickTabsManager {
     // v1.6.3.4 - FIX Issue #6: Source defaults to 'UI' for window callbacks
     // v1.6.3.5-v2 - FIX Report 1 Issue #2: Set originTabId for cross-tab filtering
     // v1.6.3.5-v5 - FIX Issue #2: Pass currentTabId for decoupled tab ID access
-    // v1.6.4 - Removed Solo/Mute callbacks
+    // v1.6.3.12 - Removed Solo/Mute callbacks
     const optionsWithCallbacks = {
       ...options,
       originTabId: options.originTabId ?? this.currentTabId, // v1.6.3.5-v2

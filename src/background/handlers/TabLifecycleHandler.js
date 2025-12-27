@@ -7,10 +7,10 @@
  * - Validates adoption targets
  * - Updates tab metadata (favicon, title)
  *
- * v1.6.4.15 - FIX Issue #19: Container context updated during tab adoption
- * v1.6.4.15 - FIX Issue #20: triggerPostAdoptionPersistence() hook called after adoption
+ * v1.6.3.12-v7 - FIX Issue #19: Container context updated during tab adoption
+ * v1.6.3.12-v7 - FIX Issue #20: triggerPostAdoptionPersistence() hook called after adoption
  *
- * v1.6.4.16 - FIX Issue #23: Tab cleanup handler with storage cleanup callback
+ * v1.6.3.12-v7 - FIX Issue #23: Tab cleanup handler with storage cleanup callback
  * - Added onTabRemovedCallback for external cleanup notifications
  * - Enhanced cleanup with [TAB_CLEANUP] logging prefix
  * - Track registered listeners for proper cleanup
@@ -29,17 +29,17 @@ export class TabLifecycleHandler {
       onActivated: null,
       onRemoved: null
     };
-    // v1.6.4.15 - FIX Issue #20: Post-adoption persistence callback
+    // v1.6.3.12-v7 - FIX Issue #20: Post-adoption persistence callback
     this._postAdoptionPersistCallback = null;
-    // v1.6.4.16 - FIX Issue #23: Tab removal cleanup callback
+    // v1.6.3.12-v7 - FIX Issue #23: Tab removal cleanup callback
     this._onTabRemovedCallback = null;
-    // v1.6.4.16 - FIX Issue C: Track registered listener count for cleanup verification
+    // v1.6.3.12-v7 - FIX Issue C: Track registered listener count for cleanup verification
     this._registeredListenerCount = 0;
   }
 
   /**
    * Initialize and start listening to tab events
-   * v1.6.4.16 - FIX Issue C: Track listener count for cleanup verification
+   * v1.6.3.12-v7 - FIX Issue C: Track listener count for cleanup verification
    */
   async start() {
     console.log('[TAB_LIFECYCLE] Handler starting...');
@@ -59,7 +59,7 @@ export class TabLifecycleHandler {
     browser.tabs.onActivated.addListener(this._boundHandlers.onActivated);
     browser.tabs.onRemoved.addListener(this._boundHandlers.onRemoved);
 
-    // v1.6.4.16 - FIX Issue C: Track registered listeners
+    // v1.6.3.12-v7 - FIX Issue C: Track registered listeners
     this._registeredListenerCount = 4;
     console.log('[LISTENER_CLEANUP] Registered 4 tab event listeners');
 
@@ -68,7 +68,7 @@ export class TabLifecycleHandler {
 
   /**
    * Stop listening to tab events and cleanup
-   * v1.6.4.16 - FIX Issue C: Enhanced listener cleanup logging
+   * v1.6.3.12-v7 - FIX Issue C: Enhanced listener cleanup logging
    */
   stop() {
     console.log('[TAB_LIFECYCLE] Handler stopping...');
@@ -93,7 +93,7 @@ export class TabLifecycleHandler {
       removedCount++;
     }
 
-    // v1.6.4.16 - FIX Issue C: Log listener cleanup
+    // v1.6.3.12-v7 - FIX Issue C: Log listener cleanup
     console.log(
       '[LISTENER_CLEANUP] Removed',
       removedCount,
@@ -133,7 +133,7 @@ export class TabLifecycleHandler {
 
   /**
    * Populate openTabs map from tabs array
-   * v1.6.4.15 - FIX Issue #19: Include cookieStoreId for container tracking
+   * v1.6.3.12-v7 - FIX Issue #19: Include cookieStoreId for container tracking
    * @param {Array} tabs - Array of browser tabs
    * @private
    */
@@ -146,7 +146,7 @@ export class TabLifecycleHandler {
         favIconUrl: tab.favIconUrl,
         active: tab.active,
         status: tab.status,
-        // v1.6.4.15 - FIX Issue #19: Track container ID for adoption
+        // v1.6.3.12-v7 - FIX Issue #19: Track container ID for adoption
         cookieStoreId: tab.cookieStoreId || 'firefox-default'
       });
       // Track the active tab
@@ -158,7 +158,7 @@ export class TabLifecycleHandler {
 
   /**
    * Handle new tab created
-   * v1.6.4.15 - FIX Issue #19: Include cookieStoreId for container tracking
+   * v1.6.3.12-v7 - FIX Issue #19: Include cookieStoreId for container tracking
    * @param {Object} tab - Browser tab object
    */
   handleTabCreated(tab) {
@@ -171,14 +171,14 @@ export class TabLifecycleHandler {
       favIconUrl: tab.favIconUrl,
       active: tab.active || false,
       status: tab.status,
-      // v1.6.4.15 - FIX Issue #19: Track container ID
+      // v1.6.3.12-v7 - FIX Issue #19: Track container ID
       cookieStoreId: tab.cookieStoreId || 'firefox-default'
     });
   }
 
   /**
    * Handle tab updated (title, favicon, URL changes)
-   * v1.6.4.15 - FIX Issue #19: Track container ID changes
+   * v1.6.3.12-v7 - FIX Issue #19: Track container ID changes
    * @param {number} tabId - Tab ID
    * @param {Object} changeInfo - Changed properties
    * @param {Object} tab - Full tab object
@@ -192,7 +192,7 @@ export class TabLifecycleHandler {
         url: tab.url,
         favIconUrl: tab.favIconUrl,
         status: tab.status,
-        // v1.6.4.15 - FIX Issue #19: Update container ID if changed
+        // v1.6.3.12-v7 - FIX Issue #19: Update container ID if changed
         cookieStoreId: tab.cookieStoreId || existing.cookieStoreId
       });
     }
@@ -238,7 +238,7 @@ export class TabLifecycleHandler {
 
   /**
    * Handle tab removed - updates internal state tracking and triggers cleanup
-   * v1.6.4.16 - FIX Issue #23: Enhanced with cleanup callback and logging
+   * v1.6.3.12-v7 - FIX Issue #23: Enhanced with cleanup callback and logging
    * Note: Orphan detection is handled by background.js handleTabRemoved
    * This method keeps the TabLifecycleHandler's internal state in sync
    * @param {number} tabId - ID of closed tab
@@ -258,7 +258,7 @@ export class TabLifecycleHandler {
       this.activeTabId = null;
     }
 
-    // v1.6.4.16 - FIX Issue #23: Invoke cleanup callback if registered
+    // v1.6.3.12-v7 - FIX Issue #23: Invoke cleanup callback if registered
     if (typeof this._onTabRemovedCallback === 'function') {
       console.log('[TAB_CLEANUP] Invoking tab removal cleanup callback:', {
         tabId,
@@ -280,7 +280,7 @@ export class TabLifecycleHandler {
 
   /**
    * Set callback for tab removal cleanup
-   * v1.6.4.16 - FIX Issue #23: Allow external cleanup logic registration
+   * v1.6.3.12-v7 - FIX Issue #23: Allow external cleanup logic registration
    * @param {Function} callback - Callback to invoke when tab is removed
    *   Signature: (tabId, removeInfo, closedTabInfo) => void
    */
@@ -311,7 +311,7 @@ export class TabLifecycleHandler {
 
   /**
    * Validate if a tab is valid for adoption
-   * v1.6.4.15 - FIX Issue #19: Include container context in validation
+   * v1.6.3.12-v7 - FIX Issue #19: Include container context in validation
    * @param {number} targetTabId - Target tab ID
    * @returns {Object} { valid: boolean, reason?: string, containerContext?: Object }
    */
@@ -323,7 +323,7 @@ export class TabLifecycleHandler {
       };
     }
 
-    // v1.6.4.15 - FIX Issue #19: Include container context for adoption
+    // v1.6.3.12-v7 - FIX Issue #19: Include container context for adoption
     const targetTab = this.openTabs.get(targetTabId);
     return {
       valid: true,
@@ -352,7 +352,7 @@ export class TabLifecycleHandler {
 
   /**
    * Get container ID for a specific tab
-   * v1.6.4.15 - FIX Issue #19: Helper for container adoption
+   * v1.6.3.12-v7 - FIX Issue #19: Helper for container adoption
    * @param {number} tabId - Tab ID
    * @returns {string|null} Cookie store ID or null if tab not found
    */
@@ -363,7 +363,7 @@ export class TabLifecycleHandler {
 
   /**
    * Update container context during adoption
-   * v1.6.4.15 - FIX Issue #19: Detect container change during adoption
+   * v1.6.3.12-v7 - FIX Issue #19: Detect container change during adoption
    * @param {string} quickTabId - Quick Tab ID being adopted
    * @param {number} oldOriginTabId - Previous origin tab ID
    * @param {number} newOriginTabId - New origin tab ID
@@ -397,7 +397,7 @@ export class TabLifecycleHandler {
 
   /**
    * Set callback for post-adoption persistence
-   * v1.6.4.15 - FIX Issue #20: Allow setting callback from outside
+   * v1.6.3.12-v7 - FIX Issue #20: Allow setting callback from outside
    * @param {Function} callback - Callback to invoke after adoption completes
    */
   setPostAdoptionPersistCallback(callback) {
@@ -410,8 +410,8 @@ export class TabLifecycleHandler {
   /**
    * Trigger state persistence after adoption completes
    * v1.6.3.10-v7 - FIX Diagnostic Issue #5: Re-attempt blocked writes after adoption fixes originTabId
-   * v1.6.4.15 - FIX Issue #19: Include container context update
-   * v1.6.4.15 - FIX Issue #20: Invoke registered callback
+   * v1.6.3.12-v7 - FIX Issue #19: Include container context update
+   * v1.6.3.12-v7 - FIX Issue #20: Invoke registered callback
    *
    * This method should be called by background.js after a Quick Tab adoption completes.
    * After adoption, the originTabId is updated on the Quick Tab, which may unblock
@@ -442,7 +442,7 @@ export class TabLifecycleHandler {
       return;
     }
 
-    // v1.6.4.15 - FIX Issue #20: Call registered callback first (if any)
+    // v1.6.3.12-v7 - FIX Issue #20: Call registered callback first (if any)
     if (typeof this._postAdoptionPersistCallback === 'function') {
       try {
         await this._postAdoptionPersistCallback(quickTabId, newOriginTabId);

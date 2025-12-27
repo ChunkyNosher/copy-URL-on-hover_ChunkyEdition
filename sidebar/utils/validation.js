@@ -22,7 +22,7 @@ export function isValidTabUrl(url) {
 
 /**
  * Filter invalid tabs from state
- * v1.6.4.0 - FIX Issue C: Added comprehensive hydration logging
+ * v1.6.3.12-v7 - FIX Issue C: Added comprehensive hydration logging
  *   - Logs HYDRATION_STARTED with initial tab count
  *   - Logs HYDRATION_VALIDATION for each tab (valid/blocked)
  *   - Logs HYDRATION_BLOCKED_TABS summary if any blocked
@@ -35,7 +35,7 @@ export function filterInvalidTabs(state) {
 
   const originalCount = state.tabs.length;
 
-  // v1.6.4.0 - FIX Issue C: HYDRATION_STARTED logging
+  // v1.6.3.12-v7 - FIX Issue C: HYDRATION_STARTED logging
   console.log('[Manager] HYDRATION_STARTED:', {
     tabsFromStorage: originalCount,
     tabIds: state.tabs.map(t => t.id),
@@ -50,7 +50,7 @@ export function filterInvalidTabs(state) {
     _processTabForHydration(tab, validTabs, blockedTabs, blockedReasons);
   }
 
-  // v1.6.4.0 - FIX Issue C: HYDRATION_BLOCKED_TABS summary
+  // v1.6.3.12-v7 - FIX Issue C: HYDRATION_BLOCKED_TABS summary
   if (blockedTabs.length > 0) {
     console.warn('[Manager] HYDRATION_BLOCKED_TABS:', {
       count: blockedTabs.length,
@@ -66,7 +66,7 @@ export function filterInvalidTabs(state) {
   const orphanedCount = validTabs.filter(t => _isOrphanedTab(t)).length;
   const healthyCount = validTabs.length - orphanedCount;
 
-  // v1.6.4.0 - FIX Issue C: HYDRATION_COMPLETE logging
+  // v1.6.3.12-v7 - FIX Issue C: HYDRATION_COMPLETE logging
   console.log('[Manager] HYDRATION_COMPLETE:', {
     originalCount,
     resultingCount: validTabs.length,
@@ -80,7 +80,7 @@ export function filterInvalidTabs(state) {
 
 /**
  * Process a single tab for hydration - extracted to reduce nesting depth
- * v1.6.4.0 - FIX Issue C: Extracted to comply with max-depth rule
+ * v1.6.3.12-v7 - FIX Issue C: Extracted to comply with max-depth rule
  * @private
  * @param {Object} tab - Tab to process
  * @param {Array} validTabs - Array to add valid tabs to
@@ -108,7 +108,7 @@ function _processTabForHydration(tab, validTabs, blockedTabs, blockedReasons) {
 
 /**
  * Log hydration status for a valid tab
- * v1.6.4.0 - FIX Issue C: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue C: Extracted to reduce nesting depth
  * @private
  * @param {Object} tab - Valid tab
  */
@@ -130,7 +130,7 @@ function _logValidTabHydration(tab) {
 
 /**
  * Validate a tab for hydration
- * v1.6.4.0 - FIX Issue C: Extracted validation logic with detailed results
+ * v1.6.3.12-v7 - FIX Issue C: Extracted validation logic with detailed results
  * @private
  * @param {Object} tab - Tab to validate
  * @returns {{ valid: boolean, reason?: string }}
@@ -150,7 +150,7 @@ function _validateTabForHydration(tab) {
 
 /**
  * Check if a tab is orphaned (no valid originTabId)
- * v1.6.4.0 - FIX Issue C: Helper for hydration logging
+ * v1.6.3.12-v7 - FIX Issue C: Helper for hydration logging
  * @private
  * @param {Object} tab - Tab to check
  * @returns {boolean} True if orphaned

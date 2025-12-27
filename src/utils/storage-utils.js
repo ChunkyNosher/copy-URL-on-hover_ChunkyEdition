@@ -69,7 +69,7 @@ const UNKNOWN_TAB_ID_LABEL = 'UNKNOWN';
 // v1.6.3.6 - FIX Issue #2: Reduced from 5000ms to 2000ms to prevent transaction backlog
 const STORAGE_TIMEOUT_MS = 2000;
 
-// v1.6.4.16 - FIX Area B: Default message timeout (5 seconds)
+// v1.6.3.12-v7 - FIX Area B: Default message timeout (5 seconds)
 const MESSAGE_TIMEOUT_MS = 5000;
 
 // v1.6.3.10-v6 - FIX Issue A20: Retry configuration for storage write failures
@@ -878,7 +878,7 @@ export function getWritingTabId() {
 
 /**
  * Check if tabId is a valid positive integer
- * v1.6.4.8 - FIX CodeScene: Extract complex conditional from setWritingTabId
+ * v1.6.3.12-v7 - FIX CodeScene: Extract complex conditional from setWritingTabId
  * @private
  * @param {*} tabId - Value to validate
  * @returns {boolean} True if valid positive integer
@@ -2219,7 +2219,7 @@ export function setOwnershipValidationEnabled(enabled) {
 
 /**
  * Process successful snapshot capture result
- * v1.6.4.8 - FIX CodeScene: Extract from captureStateSnapshot to reduce complexity
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from captureStateSnapshot to reduce complexity
  * @private
  * @param {Object} result - Storage read result
  * @param {string} operationId - Operation ID for logging
@@ -2250,7 +2250,7 @@ function _processSnapshotResult(result, operationId, startTime, logPrefix) {
 
 /**
  * Handle snapshot capture error
- * v1.6.4.8 - FIX CodeScene: Extract from captureStateSnapshot to reduce complexity
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from captureStateSnapshot to reduce complexity
  * @private
  * @param {Error} err - Error that occurred
  * @param {string} operationId - Operation ID for logging
@@ -2273,7 +2273,7 @@ function _handleSnapshotError(err, operationId, startTime, logPrefix) {
  * Capture current storage state as a snapshot for potential rollback
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage read logging
- * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce complexity by extracting helpers
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
  *
  * @param {string} logPrefix - Prefix for log messages
@@ -2554,7 +2554,7 @@ export function generateTransactionId() {
 
 /**
  * Wrap a promise with timeout protection
- * v1.6.4.16 - FIX Area B: No timeout protection on messages
+ * v1.6.3.12-v7 - FIX Area B: No timeout protection on messages
  * @param {Promise} promise - Promise to wrap
  * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
  * @param {string} operation - Operation name for error message
@@ -2583,7 +2583,7 @@ export function withTimeout(promise, timeoutMs = MESSAGE_TIMEOUT_MS, operation =
 
 /**
  * Send a message with timeout protection
- * v1.6.4.16 - FIX Area B: Wrapper for browser.runtime.sendMessage with timeout
+ * v1.6.3.12-v7 - FIX Area B: Wrapper for browser.runtime.sendMessage with timeout
  * @param {Object} message - Message to send
  * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
  * @returns {Promise} Response from message handler or timeout error
@@ -2696,7 +2696,7 @@ export function isValidQuickTabUrl(url) {
 
 /**
  * Check if stored state has required structure
- * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * v1.6.3.12-v7 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
  * @private
  */
 function _checkStoredStateStructure(storedState, transactionId, errors) {
@@ -2717,7 +2717,7 @@ function _checkStoredStateStructure(storedState, transactionId, errors) {
 
 /**
  * Check tab count consistency between expected and stored
- * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * v1.6.3.12-v7 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
  * @private
  */
 function _checkTabCountConsistency(expectedState, storedState, transactionId, errors) {
@@ -2741,7 +2741,7 @@ function _checkTabCountConsistency(expectedState, storedState, transactionId, er
 
 /**
  * Check tabs have required fields
- * v1.6.4.16 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
+ * v1.6.3.12-v7 - FIX Area F: Helper to reduce validateStorageIntegrity complexity
  * @private
  */
 function _checkTabsRequiredFields(storedState, transactionId, errors) {
@@ -2757,7 +2757,7 @@ function _checkTabsRequiredFields(storedState, transactionId, errors) {
 
 /**
  * Validate storage integrity after write operation
- * v1.6.4.16 - FIX Area F: No recovery from partially written storage
+ * v1.6.3.12-v7 - FIX Area F: No recovery from partially written storage
  * Verifies that storage contains expected data structure after write
  * Refactored to reduce complexity
  *
@@ -2821,7 +2821,7 @@ export async function validateStorageIntegrity(expectedState, transactionId = 'u
   }
 }
 
-// v1.6.4.16 - FIX Area A: Error classification patterns
+// v1.6.3.12-v7 - FIX Area A: Error classification patterns
 // Using a lookup map reduces complexity below the threshold
 const STORAGE_ERROR_PATTERNS = [
   {
@@ -2858,7 +2858,7 @@ const STORAGE_ERROR_PATTERNS = [
 
 /**
  * Check if message matches any patterns
- * v1.6.4.16 - FIX Area A: Helper to reduce classifyStorageError complexity
+ * v1.6.3.12-v7 - FIX Area A: Helper to reduce classifyStorageError complexity
  * @private
  */
 function _matchesPatterns(message, patterns) {
@@ -2867,7 +2867,7 @@ function _matchesPatterns(message, patterns) {
 
 /**
  * Classify storage error type for appropriate recovery action
- * v1.6.4.16 - FIX Area A: Minimal error handling in storage operations
+ * v1.6.3.12-v7 - FIX Area A: Minimal error handling in storage operations
  * Refactored to use pattern lookup for reduced complexity
  * @param {Error} error - Error to classify
  * @returns {{ type: string, recoverable: boolean, action: string }}
@@ -2894,13 +2894,13 @@ export function classifyStorageError(error) {
   };
 }
 
-// v1.6.4.16 - FIX Area D: Checkpoint system for long operations
+// v1.6.3.12-v7 - FIX Area D: Checkpoint system for long operations
 // Map of operation ID -> checkpoint data
 const operationCheckpoints = new Map();
 
 /**
  * Create a checkpoint for a long-running operation
- * v1.6.4.16 - FIX Area D: No checkpoint/savepoint system for long operations
+ * v1.6.3.12-v7 - FIX Area D: No checkpoint/savepoint system for long operations
  *
  * @param {string} operationId - Unique operation identifier
  * @param {string} stepName - Name of the current step
@@ -2952,7 +2952,7 @@ function _hasValidCheckpointSteps(operation) {
 
 /**
  * Get the last checkpoint for an operation
- * v1.6.4.16 - FIX Area D: Retrieve checkpoint for recovery
+ * v1.6.3.12-v7 - FIX Area D: Retrieve checkpoint for recovery
  * v1.6.3.11-v3 - FIX CodeScene: Simplify complex conditional
  *
  * @param {string} operationId - Operation identifier
@@ -2968,7 +2968,7 @@ export function getLastCheckpoint(operationId) {
 
 /**
  * Mark operation as completed
- * v1.6.4.16 - FIX Area D: Complete checkpoint tracking
+ * v1.6.3.12-v7 - FIX Area D: Complete checkpoint tracking
  *
  * @param {string} operationId - Operation identifier
  * @param {boolean} success - Whether operation succeeded
@@ -3000,7 +3000,7 @@ export function completeCheckpoint(operationId, success = true) {
 
 /**
  * Rollback to a checkpoint
- * v1.6.4.16 - FIX Area D: Basic recovery mechanism
+ * v1.6.3.12-v7 - FIX Area D: Basic recovery mechanism
  *
  * @param {string} operationId - Operation identifier
  * @param {number} stepIndex - Step index to rollback to (0 for latest)
@@ -3096,7 +3096,7 @@ export function cleanupTransactionId(transactionId) {
 
 /**
  * Clear existing timeout if present
- * v1.6.4.8 - FIX CodeScene: Extract from scheduleFallbackCleanup
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from scheduleFallbackCleanup
  * @private
  * @param {Map} timeoutMap - Map containing timeouts
  * @param {string} transactionId - Transaction ID to clear
@@ -3110,7 +3110,7 @@ function _clearExistingTimeout(timeoutMap, transactionId) {
 
 /**
  * Handle escalation warning for stale transaction
- * v1.6.4.8 - FIX CodeScene: Extract from scheduleFallbackCleanup
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from scheduleFallbackCleanup
  * @private
  * @param {string} transactionId - Transaction ID
  * @param {number} scheduleTime - When cleanup was scheduled
@@ -3130,7 +3130,7 @@ function _handleEscalationWarning(transactionId, scheduleTime) {
 /**
  * Handle transaction timeout - cleanup and log error
  * v1.6.3.7 - FIX Issue #6: Enhanced diagnostic logging with recent storage events
- * v1.6.4.8 - FIX CodeScene: Extract from scheduleFallbackCleanup
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from scheduleFallbackCleanup
  * @private
  * @param {string} transactionId - Transaction ID
  * @param {number} scheduleTime - When cleanup was scheduled
@@ -3185,7 +3185,7 @@ function _handleTransactionTimeout(transactionId, scheduleTime) {
  * Schedule fallback cleanup for a transaction ID
  * v1.6.3.5-v5 - FIX Issue #7: Fallback if storage.onChanged never fires
  * v1.6.3.6-v3 - FIX Issue #3: Add intermediate escalation warning at 250ms
- * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting handlers
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce complexity by extracting handlers
  * @param {string} transactionId - Transaction ID to schedule cleanup for
  */
 function scheduleFallbackCleanup(transactionId) {
@@ -3226,7 +3226,7 @@ function scheduleFallbackCleanup(transactionId) {
 
 /**
  * Serialize a single tab to hash-friendly format
- * v1.6.4.8 - FIX CodeScene: Extract from computeStateHash
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from computeStateHash
  * @private
  * @param {Object} tab - Tab to serialize
  * @returns {Object} Serialized tab data for hashing
@@ -3246,7 +3246,7 @@ function _serializeTabForHash(tab) {
 
 /**
  * Compute 32-bit hash from string using djb2 algorithm
- * v1.6.4.8 - FIX CodeScene: Extract from computeStateHash
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from computeStateHash
  * @private
  * @param {string} str - String to hash
  * @returns {number} 32-bit hash
@@ -3263,7 +3263,7 @@ function _computeStringHash(str) {
 /**
  * Compute hash of state for deduplication
  * v1.6.3.4-v6 - FIX Issue #5: Prevent duplicate writes
- * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce complexity by extracting helpers
  *
  * @param {Object} state - State object to hash
  * @returns {number} 32-bit hash
@@ -3297,7 +3297,7 @@ export function hasStateChanged(state) {
 
 /**
  * Check if Firefox browser API is available
- * v1.6.4.8 - FIX CodeScene: Extract from getBrowserStorageAPI
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from getBrowserStorageAPI
  * @private
  * @returns {boolean} True if Firefox browser API is available
  */
@@ -3307,7 +3307,7 @@ function _hasFirefoxBrowserAPI() {
 
 /**
  * Check if Chrome browser API is available
- * v1.6.4.8 - FIX CodeScene: Extract from getBrowserStorageAPI
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from getBrowserStorageAPI
  * @private
  * @returns {boolean} True if Chrome browser API is available
  */
@@ -3318,7 +3318,7 @@ function _hasChromeBrowserAPI() {
 /**
  * Get browser storage API (browser or chrome)
  * Returns null if not available (e.g., in unit tests)
- * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting environment checks
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce complexity by extracting environment checks
  *
  * @returns {Object|null} Browser storage API or null
  */
@@ -3344,7 +3344,7 @@ export function getBrowserStorageAPI() {
 /**
  * Get numeric value from flat or nested tab property
  * v1.6.3.4-v3 - Helper to reduce complexity
- * v1.6.4.8 - FIX CodeScene: Reduce arguments from 5 to 2 using options object
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce arguments from 5 to 2 using options object
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {NumericValueOptions} options - Options for value resolution
@@ -3372,7 +3372,7 @@ function _getNumericValue(tab, options) {
  * v1.6.3.7 - FIX Issue #2, #7: Enhanced originTabId preservation with logging
  *   - Issue #2: Preserve originTabId during ALL state changes (minimize, resize, move)
  *   - Issue #7: Log originTabId extraction for debugging adoption data flow
- * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
+ * v1.6.3.12-v7 - FIX CodeScene: Updated to use options object for _getNumericValue
  * v1.6.3.11-v12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute feature removed)
  * @private
  * @param {Object} tab - Quick Tab instance
@@ -3586,7 +3586,7 @@ function _logSerializationResult(tab, extractedOriginTabId, extractedOriginConta
  * v1.6.3.10-v4 - FIX Issue #13: Include originContainerId for Firefox Multi-Account Container isolation
  * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Add logging showing originTabId source and type
  *   - Extract _logSerializationResult to reduce cyclomatic complexity
- * v1.6.4.8 - FIX CodeScene: Updated to use options object for _getNumericValue
+ * v1.6.3.12-v7 - FIX CodeScene: Updated to use options object for _getNumericValue
  * @private
  * @param {Object} tab - Quick Tab instance
  * @param {boolean} isMinimized - Whether tab is minimized
@@ -3708,7 +3708,7 @@ function _hasValidPosition(tab) {
 
 /**
  * Check if a dimension value is valid (positive number)
- * v1.6.4.8 - FIX CodeScene: Extract from _hasValidSize to reduce complex conditionals
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from _hasValidSize to reduce complex conditionals
  * @private
  * @param {*} value - Dimension value to check
  * @returns {boolean} True if valid positive number
@@ -3720,7 +3720,7 @@ function _isValidDimension(value) {
 /**
  * Check if tab has valid size
  * v1.6.3.4-v6 - Extracted to reduce validateTab complexity
- * v1.6.4.8 - FIX CodeScene: Extract dimension validation to reduce complex conditionals
+ * v1.6.3.12-v7 - FIX CodeScene: Extract dimension validation to reduce complex conditionals
  * @private
  * @param {Object} tab - Tab to validate
  * @returns {boolean} True if size is valid
@@ -3966,7 +3966,7 @@ function _shouldRejectEmptyWrite(tabCount, forceEmpty, logPrefix, transactionId)
 
 /**
  * Clean up expired entries from saveId tracker
- * v1.6.4.8 - FIX CodeScene: Extract from _trackDuplicateSaveIdWrite to flatten bumpy road
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from _trackDuplicateSaveIdWrite to flatten bumpy road
  * @private
  * @param {number} now - Current timestamp
  */
@@ -3980,7 +3980,7 @@ function _cleanupExpiredSaveIdEntries(now) {
 
 /**
  * Log duplicate write warning
- * v1.6.4.8 - FIX CodeScene: Extract from _trackDuplicateSaveIdWrite to flatten bumpy road
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from _trackDuplicateSaveIdWrite to flatten bumpy road
  * v1.6.3.10-v10 - FIX Issue I: Enhanced logging with timing correlation
  * @private
  * @param {string} saveId - Save ID
@@ -4027,7 +4027,7 @@ function _logDuplicateWriteWarning(saveId, existing, transactionId, now) {
 /**
  * Track duplicate saveId writes to detect storage write loops
  * v1.6.3.6-v2 - FIX Issue #2: Log warning when same saveId is written multiple times
- * v1.6.4.8 - FIX CodeScene: Flatten bumpy road by extracting nested conditions
+ * v1.6.3.12-v7 - FIX CodeScene: Flatten bumpy road by extracting nested conditions
  * @private
  * @param {string} saveId - Save ID being written
  * @param {string} transactionId - Transaction ID for logging
@@ -5650,7 +5650,7 @@ function _checkWriteCoalescing(state, logPrefix, transactionId) {
 
 /**
  * Validate state structure for persistence
- * v1.6.4.8 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
  * @private
  * @param {Object} state - State to validate
  * @param {string} logPrefix - Log prefix
@@ -5672,7 +5672,7 @@ function _validateStateStructure(state, logPrefix) {
 
 /**
  * Prepare state with transaction metadata for persistence
- * v1.6.4.8 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
  * @private
  * @param {Object} state - State to prepare
  * @param {string} transactionId - Transaction ID
@@ -5699,8 +5699,8 @@ function _prepareStateForWrite(state, transactionId) {
 
 /**
  * Log persistence initiation details
- * v1.6.4.8 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
- * v1.6.4.8 - FIX CodeScene: Reduce arguments using options object
+ * v1.6.3.12-v7 - FIX CodeScene: Extract from persistStateToStorage to reduce complexity
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce arguments using options object
  * @private
  * @param {PersistInitiationOptions} options - Logging options
  */
@@ -5822,7 +5822,7 @@ function _runPersistValidationPhases({ state, tabCount, forceEmpty, logPrefix, t
  * v1.6.3.4-v6 - FIX Issue #1, #5: Transaction tracking and deduplication
  * v1.6.3.4-v8 - FIX Issues #1, #7: Empty write protection, storage write queue
  * v1.6.3.5-v4 - FIX Diagnostic Issue #1: Ownership validation extracted
- * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting phases
+ * v1.6.3.12-v7 - FIX CodeScene: Reduce complexity by extracting phases
  * v1.6.3.10-v5 - FIX Diagnostic Issue #3: Enhanced phase logging with correlation ID
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity to cc≤8 by extracting validation phases
  * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce function size

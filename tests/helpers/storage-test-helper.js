@@ -2,7 +2,7 @@
  * Storage Test Helper
  * Provides utilities for validating storage operations and consistency
  *
- * v1.6.4 - New test helper for comprehensive Jest testing infrastructure
+ * v1.6.3.12 - New test helper for comprehensive Jest testing infrastructure
  *
  * Features:
  * - Mock browser.storage with full tracking

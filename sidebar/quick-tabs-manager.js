@@ -15,6 +15,11 @@
  *   - Collapse state uses storage.local (UI preference)
  *   - v1.6.3.12-v5: All storage.session references removed
  *
+ * v1.6.3.12-v7 - FIX Bug #2: Manager buttons use port messaging
+ *   - Button handlers (minimize, restore, close) now use *ViaPort() functions
+ *   - This fixes Manager buttons not working because old functions sent
+ *     messages to content scripts via tabs.sendMessage (Manager is not a content script)
+ *
  * v1.6.3.12-v4 - FIX Diagnostic Gaps #1-8:
  *   - Gap #4: browser.runtime.lastError captured IMMEDIATELY in disconnect handler
  *   - Gap #5: CorrelationId propagation through entire handler → render chain
@@ -67,7 +72,7 @@
  *   - FIX Issue #17: Port cleanup on window unload
  *   - FIX Issue #20: Count badge diff-based animation
  *
- * v1.6.4.12 - REFACTOR: Major refactoring for code health improvement
+ * v1.6.3.12-v7 - REFACTOR: Major refactoring for code health improvement
  *   - Code Health: 5.34 → 9.09 (+70% improvement)
  *   - Extracted utilities to sidebar/utils/ modules
  *   - Reduced cyclomatic complexity: max CC 17 → no functions over CC 9
@@ -75,7 +80,7 @@
  *   - All complex methods refactored with helper functions
  *
  * Previous versions:
- * v1.6.4.10 - FIX Issues #1-12: Comprehensive UI/UX improvements
+ * v1.6.3.12-v7 - FIX Issues #1-12: Comprehensive UI/UX improvements
  * v1.6.3.6 - FIX Issue #3: Added comprehensive logging
  * v1.6.3.5-v11 - FIX Issue #6: Manager list updates when last Quick Tab closed
  */
@@ -162,13 +167,13 @@ const PORT_VIABILITY_MIN_TIMEOUT_MS = 700; // Minimum timeout (increased from 50
 const PORT_VIABILITY_MAX_TIMEOUT_MS = 3000; // Maximum adaptive timeout
 const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th percentile
 
-// ==================== v1.6.4.0 FIX Issue #30 CONSTANTS ====================
+// ==================== v1.6.3.12-v7 FIX Issue #30 CONSTANTS ====================
 // Port reconnection circuit breaker for Quick Tabs port
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
 const QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS = 1000; // Start at 1 second
 const QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS = 30000; // Max 30 seconds between attempts
 
-// ==================== v1.6.4.0 FIX Issue #13 CONSTANTS ====================
+// ==================== v1.6.3.12-v7 FIX Issue #13 CONSTANTS ====================
 // Port messaging FIFO ordering - sequence number tracking
 const SEQUENCE_GAP_WARNING_ENABLED = true; // Enable/disable out-of-order detection logging
 
@@ -309,7 +314,7 @@ let _allQuickTabsFromPort = [];
 const _quickTabPortOperationTimestamps = new Map();
 
 /**
- * v1.6.4.0 - FIX Issue #30: Quick Tabs port reconnection circuit breaker state
+ * v1.6.3.12-v7 - FIX Issue #30: Quick Tabs port reconnection circuit breaker state
  * Tracks consecutive reconnection attempts to prevent infinite reconnection loops
  */
 let _quickTabsPortReconnectAttempts = 0;
@@ -317,7 +322,7 @@ let _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL
 let _quickTabsPortCircuitBreakerTripped = false;
 
 /**
- * v1.6.4.0 - FIX Issue #13: Port message sequence number tracking
+ * v1.6.3.12-v7 - FIX Issue #13: Port message sequence number tracking
  * Tracks last received sequence number for out-of-order detection
  */
 let _lastReceivedSequence = 0;
@@ -326,10 +331,10 @@ let _sequenceGapsDetected = 0;
 /**
  * Initialize Quick Tabs port connection
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
- * v1.6.4.0 - FIX Issue #30: Add circuit breaker with max reconnection attempts
+ * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
  */
 function initializeQuickTabsPort() {
-  // v1.6.4.0 - FIX Issue #30: Check circuit breaker state
+  // v1.6.3.12-v7 - FIX Issue #30: Check circuit breaker state
   if (_quickTabsPortCircuitBreakerTripped) {
     console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
       timestamp: Date.now(),
@@ -340,7 +345,7 @@ function initializeQuickTabsPort() {
     return;
   }
 
-  // v1.6.4 - Gap #1: Log port connection attempt
+  // v1.6.3.12 - Gap #1: Log port connection attempt
   console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
     timestamp: Date.now(),
     portName: 'quick-tabs-port',
@@ -351,12 +356,12 @@ function initializeQuickTabsPort() {
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
 
-    // v1.6.4.0 - FIX Issue #30: Reset circuit breaker on successful connection
+    // v1.6.3.12-v7 - FIX Issue #30: Reset circuit breaker on successful connection
     _quickTabsPortReconnectAttempts = 0;
     _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
     _quickTabsPortCircuitBreakerTripped = false;
 
-    // v1.6.4 - Gap #1: Log port connection success
+    // v1.6.3.12 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
@@ -390,7 +395,7 @@ function initializeQuickTabsPort() {
       // Clear pending operation timestamps on disconnect
       _quickTabPortOperationTimestamps.clear();
 
-      // v1.6.4.0 - FIX Issue #30: Schedule reconnection with circuit breaker
+      // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker
       _scheduleQuickTabsPortReconnect(disconnectTimestamp);
     });
 
@@ -401,7 +406,7 @@ function initializeQuickTabsPort() {
     });
     console.log('[Sidebar] SIDEBAR_READY sent to background');
 
-    // v1.6.4.0 - FIX Issue #10: Explicitly request initial state after port connection
+    // v1.6.3.12-v7 - FIX Issue #10: Explicitly request initial state after port connection
     // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
     // even if that message is delayed, lost, or the port was reconnected
     console.log('[Sidebar] Sidebar requesting initial state after port connection', {
@@ -410,7 +415,7 @@ function initializeQuickTabsPort() {
     });
     requestAllQuickTabsViaPort();
   } catch (err) {
-    // v1.6.4 - Gap #1: Log port connection failure
+    // v1.6.3.12 - Gap #1: Log port connection failure
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
@@ -419,14 +424,14 @@ function initializeQuickTabsPort() {
       reconnectAttempt: _quickTabsPortReconnectAttempts
     });
 
-    // v1.6.4.0 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
+    // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
     _scheduleQuickTabsPortReconnect(Date.now());
   }
 }
 
 /**
  * Schedule Quick Tabs port reconnection with exponential backoff and circuit breaker
- * v1.6.4.0 - FIX Issue #30: Implement max reconnection attempts with exponential backoff
+ * v1.6.3.12-v7 - FIX Issue #30: Implement max reconnection attempts with exponential backoff
  * @private
  * @param {number} disconnectTimestamp - When the disconnect occurred
  */
@@ -446,7 +451,7 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
       recoveryAction: 'manual_reconnect_required'
     });
 
-    // v1.6.4.0 - FIX Issue #30: Show error notification to user
+    // v1.6.3.12-v7 - FIX Issue #30: Show error notification to user
     _showQuickTabsPortConnectionError();
     return;
   }
@@ -484,7 +489,7 @@ function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
 
 /**
  * Show error notification when Quick Tabs port connection fails
- * v1.6.4.0 - FIX Issue #30: User feedback after max reconnection attempts
+ * v1.6.3.12-v7 - FIX Issue #30: User feedback after max reconnection attempts
  * @private
  */
 function _showQuickTabsPortConnectionError() {
@@ -510,7 +515,7 @@ function _showQuickTabsPortConnectionError() {
     box-shadow: 0 2px 8px rgba(0,0,0,0.3);
   `;
 
-  // v1.6.4.0 - FIX Issue #30: Add click handler for manual reconnect
+  // v1.6.3.12-v7 - FIX Issue #30: Add click handler for manual reconnect
   notification.addEventListener('click', () => {
     manualQuickTabsPortReconnect();
     notification.remove();
@@ -533,7 +538,7 @@ function _showQuickTabsPortConnectionError() {
 
 /**
  * Manual reconnection triggered by user
- * v1.6.4.0 - FIX Issue #30: Provide manual reconnect mechanism
+ * v1.6.3.12-v7 - FIX Issue #30: Provide manual reconnect mechanism
  */
 function manualQuickTabsPortReconnect() {
   console.log('[Sidebar] QUICK_TABS_PORT_MANUAL_RECONNECT:', {
@@ -555,7 +560,7 @@ function manualQuickTabsPortReconnect() {
 /**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
- * v1.6.4 - Gap #7: End-to-end state sync path logging
+ * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
  * @private
  * @param {Array} quickTabs - Quick Tabs array
@@ -565,7 +570,7 @@ function manualQuickTabsPortReconnect() {
 function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
   const receiveTime = Date.now();
 
-  // v1.6.4 - Gap #7: Log Manager received update with correlationId
+  // v1.6.3.12 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
     source: renderReason,
@@ -590,7 +595,7 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
 
-  // v1.6.4 - Gap #7: Log Manager render triggered with correlationId
+  // v1.6.3.12 - Gap #7: Log Manager render triggered with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_RENDER_TRIGGERED:', {
     timestamp: Date.now(),
     source: renderReason,
@@ -606,14 +611,14 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
 /**
  * Handle Quick Tab port ACK with roundtrip time calculation
  * v1.6.3.12-v2 - FIX Issue #16-17: Log ACK with roundtrip time
- * v1.6.4 - Gap #8: Log correlation ID match for async tracing
+ * v1.6.3.12 - Gap #8: Log correlation ID match for async tracing
  * @private
  * @param {Object} msg - ACK message from background
  * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
  */
 /**
  * Build ACK log data
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _buildAckLogData(msg, sentInfo) {
@@ -646,7 +651,7 @@ function _handleQuickTabPortAck(msg, ackType) {
 
 /**
  * Check if message is a valid object
- * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from _validateStateUpdateMessage
  * @private
  * @param {*} msg - Message to validate
  * @returns {boolean} True if message is a valid object
@@ -657,7 +662,7 @@ function _isValidMessageObject(msg) {
 
 /**
  * Check if quickTabs field is valid when present
- * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from _validateStateUpdateMessage
  * @private
  * @param {*} quickTabs - quickTabs field to validate
  * @returns {boolean} True if quickTabs is valid (undefined, null, or array)
@@ -668,8 +673,8 @@ function _isValidQuickTabsField(quickTabs) {
 
 /**
  * Validate message has required fields for state update handlers
- * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
- * v1.6.4.21 - FIX Code Health: Extracted complex conditionals to helpers
+ * v1.6.3.12-v7 - FIX Issue #9: Defensive input validation for port message handlers
+ * v1.6.3.12-v7 - FIX Code Health: Extracted complex conditionals to helpers
  * @private
  * @param {Object} msg - Message to validate
  * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
@@ -689,7 +694,7 @@ function _validateStateUpdateMessage(msg, _handlerName) {
 
 /**
  * Validate message has required fields for ACK handlers
- * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * v1.6.3.12-v7 - FIX Issue #9: Defensive input validation for port message handlers
  * @private
  * @param {Object} msg - Message to validate
  * @param {string} handlerName - Handler name for logging
@@ -711,7 +716,7 @@ function _validateAckMessage(msg, handlerName) {
 
 /**
  * Log validation error for port message handlers
- * v1.6.4.21 - FIX Code Health: Extracted from duplicate handler code
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from duplicate handler code
  * @private
  * @param {string} type - Message type
  * @param {Object} msg - Original message
@@ -727,7 +732,7 @@ function _logPortMessageValidationError(type, msg, error) {
 
 /**
  * Create a state update handler with validation
- * v1.6.4.21 - FIX Code Health: Generic factory for state update handlers
+ * v1.6.3.12-v7 - FIX Code Health: Generic factory for state update handlers
  * @private
  * @param {string} messageType - The message type for logging
  * @param {string} renderReason - The reason to pass to scheduleRender
@@ -746,7 +751,7 @@ function _createStateUpdateHandler(messageType, renderReason) {
 
 /**
  * Create an ACK handler with validation
- * v1.6.4.21 - FIX Code Health: Generic factory for ACK handlers
+ * v1.6.3.12-v7 - FIX Code Health: Generic factory for ACK handlers
  * @private
  * @param {string} messageType - The message type for logging
  * @param {string} ackType - The ACK type to pass to _handleQuickTabPortAck
@@ -769,8 +774,8 @@ function _createAckHandler(messageType, ackType) {
  * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
  * v1.6.3.12-v4 - Gap #5: Pass correlationId through handler chain
  * v1.6.3.12-v4 - Gap #6: Document FIFO ordering assumption
- * v1.6.4.0 - FIX Issue #9: Handlers now include input validation
- * v1.6.4.21 - FIX Code Health: Use factory functions to reduce duplication
+ * v1.6.3.12-v7 - FIX Issue #9: Handlers now include input validation
+ * v1.6.3.12-v7 - FIX Code Health: Use factory functions to reduce duplication
  *
  * IMPORTANT - MESSAGE ORDERING ASSUMPTION (Gap #6):
  * This handler assumes that port messages arrive in FIFO (First-In-First-Out) order.
@@ -815,7 +820,7 @@ const _portMessageHandlers = {
       timestamp: Date.now()
     });
   },
-  // v1.6.4.20 - FIX Issue #12: Handle ORIGIN_TAB_CLOSED message when a browser tab with Quick Tabs is closed
+  // v1.6.3.12-v7 - FIX Issue #12: Handle ORIGIN_TAB_CLOSED message when a browser tab with Quick Tabs is closed
   // This allows the Manager to detect orphaned Quick Tabs and update its UI accordingly
   ORIGIN_TAB_CLOSED: msg => {
     _handleOriginTabClosed(msg);
@@ -824,7 +829,7 @@ const _portMessageHandlers = {
 
 /**
  * Mark Quick Tabs as orphaned in local state
- * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity of ORIGIN_TAB_CLOSED handler
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity of ORIGIN_TAB_CLOSED handler
  * @private
  * @param {Array<string>} orphanedQuickTabIds - IDs of orphaned Quick Tabs
  * @param {number} timestamp - Timestamp when tab was closed
@@ -845,14 +850,14 @@ function _markQuickTabsAsOrphaned(orphanedQuickTabIds, timestamp) {
 
 /**
  * Handle ORIGIN_TAB_CLOSED message
- * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
- * v1.6.4.20 - FIX Code Review: Added input validation
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.12-v7 - FIX Code Review: Added input validation
  * @private
  * @param {Object} msg - Message from background
  */
 /**
  * Validate origin tab closed message
- * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
  * @private
  * @param {Object} msg - Message to validate
  * @returns {boolean} True if message is valid
@@ -874,7 +879,7 @@ function _validateOriginTabClosedMessage(msg) {
 
 /**
  * Log origin tab closed message
- * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
  * @private
  * @param {Object} msg - Message to log
  * @param {number} timestamp - Timestamp
@@ -891,9 +896,9 @@ function _logOriginTabClosed(msg, timestamp) {
 
 /**
  * Handle ORIGIN_TAB_CLOSED message
- * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
- * v1.6.4.20 - FIX Code Review: Added input validation
- * v1.6.4.21 - FIX Code Health: Extracted validation and logging helpers
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.3.12-v7 - FIX Code Review: Added input validation
+ * v1.6.3.12-v7 - FIX Code Health: Extracted validation and logging helpers
  * @private
  * @param {Object} msg - Message from background
  */
@@ -917,7 +922,7 @@ function _handleOriginTabClosed(msg) {
 
 /**
  * Log port handler entry with all context
- * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
  * @private
  * @param {Object} params - Entry log parameters
  */
@@ -948,7 +953,7 @@ function _logPortHandlerEntry({
 
 /**
  * Log port handler exit with outcome and timing
- * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
  * @private
  * @param {Object} params - Exit log parameters
  */
@@ -970,7 +975,7 @@ function _logPortHandlerExit({ type, correlationId, outcome, durationMs, errorMe
 
 /**
  * Execute port message handler with error handling
- * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
  * @private
  * @param {Function|undefined} handler - Handler function
  * @param {Object} message - Port message
@@ -1000,10 +1005,10 @@ function _executePortHandler(handler, message, type, correlationId) {
  * Handle messages from Quick Tabs port
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
- * v1.6.4 - Gap #3: Port message handler entry/exit logging
+ * v1.6.3.12 - Gap #3: Port message handler entry/exit logging
  * v1.6.3.12-v5 - FIX Issue #7: Use performance.now() for accurate duration
- * v1.6.4.0 - FIX Issue #13: Add sequence number tracking for FIFO ordering detection
- * v1.6.4.0 - FIX Code Health: Refactored to reduce complexity
+ * v1.6.3.12-v7 - FIX Issue #13: Add sequence number tracking for FIFO ordering detection
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce complexity
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
@@ -1011,10 +1016,10 @@ function handleQuickTabsPortMessage(message) {
   const handlerStartTime = performance.now();
   const entryTimestamp = Date.now();
 
-  // v1.6.4.0 - FIX Issue #13: Check message sequence for out-of-order detection
+  // v1.6.3.12-v7 - FIX Issue #13: Check message sequence for out-of-order detection
   const sequenceCheckResult = _checkMessageSequence(sequence, type, correlationId);
 
-  // v1.6.4.0 - FIX Code Health: Extracted entry logging
+  // v1.6.3.12-v7 - FIX Code Health: Extracted entry logging
   _logPortHandlerEntry({
     type,
     correlationId,
@@ -1025,19 +1030,19 @@ function handleQuickTabsPortMessage(message) {
     sequenceStatus: sequenceCheckResult.status
   });
 
-  // v1.6.4.0 - FIX Code Health: Extracted handler execution
+  // v1.6.3.12-v7 - FIX Code Health: Extracted handler execution
   const handler = _portMessageHandlers[type];
   const { outcome, errorMessage } = _executePortHandler(handler, message, type, correlationId);
 
-  // v1.6.4.0 - FIX Code Health: Extracted exit logging
+  // v1.6.3.12-v7 - FIX Code Health: Extracted exit logging
   const durationMs = performance.now() - handlerStartTime;
   _logPortHandlerExit({ type, correlationId, outcome, durationMs, errorMessage });
 }
 
 /**
  * Check message sequence number for FIFO ordering detection
- * v1.6.4.0 - FIX Issue #13: Detect out-of-order messages and request state sync
- * v1.6.4.21 - FIX Code Health: Extracted helpers to reduce complexity
+ * v1.6.3.12-v7 - FIX Issue #13: Detect out-of-order messages and request state sync
+ * v1.6.3.12-v7 - FIX Code Health: Extracted helpers to reduce complexity
  * @private
  * @param {number|undefined} sequence - Message sequence number from background
  * @param {string} type - Message type for logging
@@ -1065,7 +1070,7 @@ function _checkMessageSequence(sequence, type, correlationId) {
 
 /**
  * Handle out-of-order sequence detection
- * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from _checkMessageSequence
  * @private
  * @param {number} sequence - Received sequence
  * @param {number} expectedSequence - Expected sequence
@@ -1089,7 +1094,7 @@ function _handleOutOfOrderSequence(sequence, expectedSequence, type, correlation
 
 /**
  * Log out-of-order sequence warning
- * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from _checkMessageSequence
  * @private
  * @param {number} sequence - Received sequence
  * @param {number} expectedSequence - Expected sequence
@@ -1116,7 +1121,7 @@ function _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId)
 
 /**
  * Update last received sequence number
- * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * v1.6.3.12-v7 - FIX Code Health: Extracted from _checkMessageSequence
  * @private
  * @param {number} sequence - New sequence number
  */
@@ -1128,7 +1133,7 @@ function _updateLastReceivedSequence(sequence) {
 
 /**
  * Trigger recovery from sequence gap by requesting full state sync
- * v1.6.4.0 - FIX Issue #13: Request full state sync to recover from sequence gaps
+ * v1.6.3.12-v7 - FIX Issue #13: Request full state sync to recover from sequence gaps
  * @private
  * @param {string} type - Message type that triggered gap detection
  * @param {string|null} correlationId - Correlation ID for logging
@@ -1190,7 +1195,7 @@ function updateQuickTabsStateFromPort(quickTabs) {
 // ==================== v1.6.3.12-v2 SIDEBAR PORT OPERATION HELPER ====================
 /**
  * Generate correlation ID for port operations
- * v1.6.4 - Gap #8: Correlation IDs for async operations
+ * v1.6.3.12 - Gap #8: Correlation IDs for async operations
  * @private
  * @returns {string} Unique correlation ID
  */
@@ -1202,7 +1207,7 @@ function _generatePortCorrelationId() {
  * Execute sidebar port operation with error handling
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
  * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
- * v1.6.4 - Gap #8: Add correlation IDs to port messages
+ * v1.6.3.12 - Gap #8: Add correlation IDs to port messages
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
@@ -1215,11 +1220,11 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
   }
 
   const sentAt = Date.now();
-  // v1.6.4 - Gap #8: Generate correlation ID for tracking
+  // v1.6.3.12 - Gap #8: Generate correlation ID for tracking
   const correlationId = _generatePortCorrelationId();
 
   try {
-    // v1.6.4 - Gap #8: Include correlationId in message
+    // v1.6.3.12 - Gap #8: Include correlationId in message
     quickTabsPort.postMessage({
       type: messageType,
       ...payload,
@@ -1234,7 +1239,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
       _quickTabPortOperationTimestamps.set(quickTabId, {
         sentAt,
         messageType,
-        correlationId // v1.6.4 - Gap #8: Store correlationId for matching
+        correlationId // v1.6.3.12 - Gap #8: Store correlationId for matching
       });
     }
 
@@ -1411,7 +1416,7 @@ function generateCorrelationId() {
 
 /**
  * Generate correlation ID for Manager operations
- * v1.6.4.15 - FIX Code Review: Centralized correlation ID generation for operations
+ * v1.6.3.12-v7 - FIX Code Review: Centralized correlation ID generation for operations
  * @param {string} operation - Operation type (e.g., 'min', 'restore', 'close', 'adopt')
  * @param {string} quickTabId - Quick Tab ID
  * @returns {string} Correlation ID for the operation
@@ -1553,7 +1558,7 @@ function connectToBackground() {
     currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
-    // v1.6.4.0 - FIX Issue #14: Explicitly restart heartbeat after reconnection
+    // v1.6.3.12-v7 - FIX Issue #14: Explicitly restart heartbeat after reconnection
     console.log('[Manager] Starting heartbeat after reconnection', {
       timestamp: Date.now(),
       previousHeartbeatState: heartbeatIntervalId ? 'running' : 'stopped',
@@ -1561,7 +1566,7 @@ function connectToBackground() {
     });
     startHeartbeat();
 
-    // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
+    // v1.6.3.12-v7 - FIX Issue E: Request full state sync after reconnection
     // This ensures Manager has latest state after any disconnection
     _requestFullStateSync();
 
@@ -2270,26 +2275,26 @@ function _cleanupSentMessageDedup() {
 
 // ==================== END HEARTBEAT FUNCTIONS ====================
 
-// ==================== v1.6.4.0 STATE SYNC & UNIFIED RENDER ====================
+// ==================== v1.6.3.12-v7 STATE SYNC & UNIFIED RENDER ====================
 // FIX Issue E: State sync on port reconnection
 // FIX Issue B: Unified render entry point
 // FIX Issue D: Hash-based state staleness detection
 
 /**
  * State hash captured when debounce timer was set
- * v1.6.4.0 - FIX Issue D: Detect state staleness during debounce
+ * v1.6.3.12-v7 - FIX Issue D: Detect state staleness during debounce
  */
 let capturedStateHashAtDebounce = 0;
 
 /**
  * Timestamp when debounce was set
- * v1.6.4.0 - FIX Issue D: Track debounce timing
+ * v1.6.3.12-v7 - FIX Issue D: Track debounce timing
  */
 let debounceSetTimestamp = 0;
 
 /**
  * State sync timeout (5 seconds)
- * v1.6.4.0 - FIX Issue E: Timeout for state sync request
+ * v1.6.3.12-v7 - FIX Issue E: Timeout for state sync request
  */
 const STATE_SYNC_TIMEOUT_MS = 5000;
 
@@ -2310,7 +2315,7 @@ function _buildStateSyncRequest() {
 
 /**
  * Request full state sync from background after port reconnection
- * v1.6.4.0 - FIX Issue E: Ensure Manager has latest state after reconnection
+ * v1.6.3.12-v7 - FIX Issue E: Ensure Manager has latest state after reconnection
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @private
  */
@@ -2345,7 +2350,7 @@ async function _requestFullStateSync() {
 
 /**
  * Handle state sync response from background
- * v1.6.4.0 - FIX Issue E: Compare and update state
+ * v1.6.3.12-v7 - FIX Issue E: Compare and update state
  * @private
  * @param {Object} response - Response from background with state
  */
@@ -2390,12 +2395,12 @@ function _handleStateSyncResponse(response) {
 
 /**
  * Unified render entry point - ALL render triggers go through here
- * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
+ * v1.6.3.12-v7 - FIX Issue B: Single entry point prevents cascading render triggers
  * @param {string} source - Source of render trigger for logging
  */
 /**
  * Log hash computation for render scheduling
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _logHashComputation(scheduleTimestamp, source, currentHash) {
@@ -2412,12 +2417,12 @@ function _logHashComputation(scheduleTimestamp, source, currentHash) {
 
 /**
  * Log when render is skipped due to hash match
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 /**
  * Build state summary for logging
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _buildStateSummary() {
@@ -2451,7 +2456,7 @@ function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId
 
 /**
  * Log when render is scheduled
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
  * @private
  */
@@ -2500,7 +2505,7 @@ function scheduleRender(source = 'unknown', correlationId = null) {
  * Handle messages received via port
  * v1.6.3.6-v11 - FIX Issue #10: Process acknowledgments
  * v1.6.3.6-v12 - FIX Issue #4: Handle HEARTBEAT_ACK
- * v1.6.4.0 - FIX Issue E: Handle FULL_STATE_SYNC response
+ * v1.6.3.12-v7 - FIX Issue E: Handle FULL_STATE_SYNC response
  * @param {Object} message - Message from background
  */
 function handlePortMessage(message) {
@@ -2530,13 +2535,13 @@ function handlePortMessage(message) {
 
   // Handle state updates
   if (message.type === 'STATE_UPDATE') {
-    // v1.6.4.0 - FIX Issue B: Route through unified render entry point
+    // v1.6.3.12-v7 - FIX Issue B: Route through unified render entry point
     handleStateUpdateBroadcast(message);
     scheduleRender('port-STATE_UPDATE');
     return;
   }
 
-  // v1.6.4.0 - FIX Issue E: Handle full state sync response
+  // v1.6.3.12-v7 - FIX Issue E: Handle full state sync response
   if (message.type === 'FULL_STATE_SYNC') {
     _handleStateSyncResponse(message);
     return;
@@ -2593,7 +2598,7 @@ function handleAcknowledgment(ack) {
 /**
  * Handle broadcast messages from background
  * v1.6.3.6-v11 - FIX Issue #19: Handle visibility state sync
- * v1.6.4.0 - FIX Issue B: Route all renders through scheduleRender()
+ * v1.6.3.12-v7 - FIX Issue B: Route all renders through scheduleRender()
  * @param {Object} message - Broadcast message
  */
 function handleBroadcast(message) {
@@ -2602,7 +2607,7 @@ function handleBroadcast(message) {
   switch (action) {
     case 'VISIBILITY_CHANGE':
       console.log('[Manager] Received visibility change broadcast:', message);
-      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      // v1.6.3.12-v7 - FIX Issue B: Route through unified entry point
       scheduleRender('broadcast-VISIBILITY_CHANGE');
       break;
 
@@ -2612,7 +2617,7 @@ function handleBroadcast(message) {
       if (message.tabId) {
         browserTabInfoCache.delete(message.tabId);
       }
-      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      // v1.6.3.12-v7 - FIX Issue B: Route through unified entry point
       scheduleRender('broadcast-TAB_LIFECYCLE_CHANGE');
       break;
 
@@ -2624,7 +2629,7 @@ function handleBroadcast(message) {
 /**
  * Handle state update broadcasts
  * v1.6.3.6-v11 - FIX Issue #19: State sync via port
- * v1.6.4.0 - FIX Issue B: No longer calls renderUI directly - caller must route through scheduleRender
+ * v1.6.3.12-v7 - FIX Issue B: No longer calls renderUI directly - caller must route through scheduleRender
  * @param {Object} message - State update message
  */
 function handleStateUpdateBroadcast(message) {
@@ -2632,7 +2637,7 @@ function handleStateUpdateBroadcast(message) {
 
   if (quickTabId && changes) {
     handleStateUpdateMessage(quickTabId, changes);
-    // v1.6.4.0 - FIX Issue B: renderUI() removed - caller (handlePortMessage) now routes through scheduleRender()
+    // v1.6.3.12-v7 - FIX Issue B: renderUI() removed - caller (handlePortMessage) now routes through scheduleRender()
   }
 }
 
@@ -2640,7 +2645,7 @@ function handleStateUpdateBroadcast(message) {
  * Handle adoption completion from background
  * v1.6.3.10-v3 - FIX Issue #47: Adoption re-render fix
  * v1.6.3.10-v5 - FIX Bug #3: Surgical DOM update to prevent all Quick Tabs animating
- * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
+ * v1.6.3.12-v7 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
  * v1.6.3.10-v7 - FIX Bug #2: Container validation for adoption
  * @param {Object} message - Adoption completion message
  */
@@ -2680,7 +2685,7 @@ function _updateHostInfoForAdoption(adoptedQuickTabId, newOriginTabId, newContai
 
 /**
  * Handle adoption completion from background script
- * v1.6.4.13 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
+ * v1.6.3.12-v7 - FIX BUG #4: Update quickTabHostInfo to prevent stale host tab routing
  * v1.6.3.10-v7 - FIX Bug #2: Container validation for adoption
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * @param {Object} message - Adoption completion message
@@ -3170,7 +3175,7 @@ function _removeQuickTabFromDOM(element, sourceGroupKey) {
 /**
  * Update group counts after moving a Quick Tab
  * v1.6.3.10-v5 - FIX Bug #3: Updates count badges without re-render
- * v1.6.4.19 - Refactored: Use unified _adjustGroupCount
+ * v1.6.3.12-v7 - Refactored: Use unified _adjustGroupCount
  * @private
  * @param {number|string|null} oldGroupKey - Previous group key
  * @param {number} newGroupKey - New group key
@@ -3182,7 +3187,7 @@ function _updateGroupCountAfterMove(oldGroupKey, newGroupKey) {
 
 /**
  * Adjust a group's count badge by delta
- * v1.6.4.19 - Refactored: Combined _incrementGroupCount and _decrementGroupCount
+ * v1.6.3.12-v7 - Refactored: Combined _incrementGroupCount and _decrementGroupCount
  * @private
  * @param {number|string|null} groupKey - Group key
  * @param {number} delta - Amount to adjust by (positive or negative)
@@ -3579,7 +3584,7 @@ function _handleDeletedMessage(message, sendResponse) {
 
 /**
  * Generic message dispatcher for Quick Tab state changes
- * v1.6.4.19 - Refactored: Extracted common pattern from _handleMovedMessage, _handleResizedMessage, _handleMinimizedMessage
+ * v1.6.3.12-v7 - Refactored: Extracted common pattern from _handleMovedMessage, _handleResizedMessage, _handleMinimizedMessage
  * @private
  * @param {Object} params - Dispatch parameters
  * @param {string} params.emoji - Log emoji
@@ -3599,7 +3604,7 @@ function _dispatchQuickTabMessage({ emoji, logLabel, logFields, handler, message
 
 /**
  * Message dispatcher configuration
- * v1.6.4.19 - Use lookup table to eliminate code duplication
+ * v1.6.3.12-v7 - Use lookup table to eliminate code duplication
  * @private
  */
 const _messageDispatcherConfig = {
@@ -3639,7 +3644,7 @@ const _messageDispatcherConfig = {
 
 /**
  * Create message handler using config lookup
- * v1.6.4.19 - Refactored: Factory function to eliminate duplication
+ * v1.6.3.12-v7 - Refactored: Factory function to eliminate duplication
  * @private
  */
 function _createMessageDispatcher(configKey) {
@@ -3726,7 +3731,7 @@ function handleStateUpdateMessage(quickTabId, changes) {
 
 /**
  * Generic handler for Quick Tab property updates from content script
- * v1.6.4.19 - Refactored: Extracted common pattern from handleQuickTab*Message functions
+ * v1.6.3.12-v7 - Refactored: Extracted common pattern from handleQuickTab*Message functions
  * @private
  * @param {Object} params - Handler parameters
  * @param {string} params.quickTabId - Quick Tab ID
@@ -3776,7 +3781,7 @@ function _handleQuickTabPropertyUpdate({
 
 /**
  * Quick Tab message handler configuration
- * v1.6.4.19 - Use lookup table to eliminate code duplication
+ * v1.6.3.12-v7 - Use lookup table to eliminate code duplication
  * @private
  */
 const _quickTabMessageHandlerConfig = {
@@ -3816,7 +3821,7 @@ const _quickTabMessageHandlerConfig = {
 
 /**
  * Generic Quick Tab message handler using config lookup
- * v1.6.4.19 - Refactored: Eliminate duplication via configuration
+ * v1.6.3.12-v7 - Refactored: Eliminate duplication via configuration
  * @private
  */
 function _handleQuickTabMessage(message, configKey) {
@@ -3835,7 +3840,7 @@ function _handleQuickTabMessage(message, configKey) {
 /**
  * Handle QUICKTAB_MOVED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
- * v1.6.4.19 - Refactored: Use config-based handler
+ * v1.6.3.12-v7 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MOVED message
  */
 function handleQuickTabMovedMessage(message) {
@@ -3845,7 +3850,7 @@ function handleQuickTabMovedMessage(message) {
 /**
  * Handle QUICKTAB_RESIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
- * v1.6.4.19 - Refactored: Use config-based handler
+ * v1.6.3.12-v7 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_RESIZED message
  */
 function handleQuickTabResizedMessage(message) {
@@ -3855,7 +3860,7 @@ function handleQuickTabResizedMessage(message) {
 /**
  * Handle QUICKTAB_MINIMIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
- * v1.6.4.19 - Refactored: Use config-based handler
+ * v1.6.3.12-v7 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MINIMIZED message
  */
 function handleQuickTabMinimizedMessage(message) {
@@ -3871,7 +3876,7 @@ function handleQuickTabMinimizedMessage(message) {
  */
 /**
  * Update Quick Tab host info
- * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 17 to <9
+ * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity from 17 to <9
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} changes - Changes object
  */
@@ -4450,7 +4455,7 @@ function _markEventReceived() {
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
-// v1.6.4.0 - FIX Issue #11: Also disconnect quickTabsPort on unload
+// v1.6.3.12-v7 - FIX Issue #11: Also disconnect quickTabsPort on unload
 window.addEventListener('unload', () => {
   console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
     timestamp: Date.now(),
@@ -4467,7 +4472,7 @@ window.addEventListener('unload', () => {
   // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
   _stopCacheStalenessMonitor();
 
-  // v1.6.4.0 - FIX Issue #11: Disconnect quickTabsPort on unload
+  // v1.6.3.12-v7 - FIX Issue #11: Disconnect quickTabsPort on unload
   if (quickTabsPort) {
     console.log('[Sidebar] PORT_CLEANUP: Disconnecting quickTabsPort');
     try {
@@ -4494,7 +4499,7 @@ window.addEventListener('unload', () => {
   }
   pendingAcks.clear();
 
-  // v1.6.4.0 - FIX Issue #11: Clear pending operation timestamps
+  // v1.6.3.12-v7 - FIX Issue #11: Clear pending operation timestamps
   _quickTabPortOperationTimestamps.clear();
 });
 
@@ -4800,7 +4805,7 @@ function _updateInMemoryCache(tabs) {
 
 /**
  * Process and apply valid storage state
- * v1.6.4.19 - Extracted from loadQuickTabsState to reduce complexity
+ * v1.6.3.12-v7 - Extracted from loadQuickTabsState to reduce complexity
  * @private
  * @param {Object} state - Valid storage state
  * @param {number} loadStartTime - Load operation start timestamp
@@ -4847,7 +4852,7 @@ function _processStorageState(state, loadStartTime) {
  * v1.6.3.5-v6 - FIX Diagnostic Issue #5: Log storage read operations
  * Refactored: Extracted helpers to reduce complexity and nesting depth
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
- * v1.6.4.19 - Refactored: Extracted _processStorageState to reduce CC
+ * v1.6.3.12-v7 - Refactored: Extracted _processStorageState to reduce CC
  */
 async function loadQuickTabsState() {
   const loadStartTime = Date.now();
@@ -4961,7 +4966,7 @@ async function _executeDebounceRender(debounceTime) {
 /**
  * Render the Quick Tabs Manager UI (debounced)
  * v1.6.3.7 - FIX Issue #3: Debounced to max once per 300ms to prevent UI flicker
- * v1.6.4.0 - FIX Issue D: Hash-based state staleness detection during debounce
+ * v1.6.3.12-v7 - FIX Issue D: Hash-based state staleness detection during debounce
  * v1.6.3.10-v2 - FIX Issue #1: Sliding-window debounce that extends timer on new changes
  *   - Reduced debounce from 300ms to 100ms
  *   - Timer extends on each new change (up to RENDER_DEBOUNCE_MAX_WAIT_MS)
@@ -5048,7 +5053,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
 
 /**
  * Check for stale state during debounce and reload if needed
- * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue D: Extracted to reduce nesting depth
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
@@ -5081,7 +5086,7 @@ async function _checkAndReloadStaleState() {
 
 /**
  * Load fresh state from storage during debounce stale check
- * v1.6.4.0 - FIX Issue D: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue D: Extracted to reduce nesting depth
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
  * @private
  */
@@ -5146,7 +5151,7 @@ function _renderUIImmediate_force() {
  * Internal render function - performs actual DOM manipulation
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
  * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
- * v1.6.4.16 - FIX Area E: Enhanced render performance logging with [RENDER_PERF] prefix
+ * v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging with [RENDER_PERF] prefix
  */
 async function _renderUIImmediate() {
   const renderStartTime = Date.now();
@@ -5168,7 +5173,7 @@ async function _renderUIImmediate() {
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
 
-    // v1.6.4.16 - FIX Area E: Log render performance even for empty state
+    // v1.6.3.12-v7 - FIX Area E: Log render performance even for empty state
     const emptyDuration = Date.now() - renderStartTime;
     console.log('[RENDER_PERF] Empty state render completed:', {
       durationMs: emptyDuration,
@@ -5205,7 +5210,7 @@ async function _renderUIImmediate() {
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
 
-  // v1.6.4.16 - FIX Area E: Enhanced render performance logging
+  // v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging
   const totalDuration = Date.now() - renderStartTime;
   console.log('[RENDER_PERF] Render completed:', {
     totalDurationMs: totalDuration,
@@ -5397,8 +5402,8 @@ function _logRenderComplete(allTabs, groups, renderStartTime) {
 
 /**
  * Issue #4: Render a single tab group as a <details> element
- * v1.6.4.10 - Enhanced with Issues #2, #4, #5, #6, #8, #9 improvements
- * v1.6.4.0 - FIX Issue C: Added comprehensive logging for orphaned group rendering
+ * v1.6.3.12-v7 - Enhanced with Issues #2, #4, #5, #6, #8, #9 improvements
+ * v1.6.3.12-v7 - FIX Issue C: Added comprehensive logging for orphaned group rendering
  * Refactored to reduce complexity by extracting helper functions
  * @param {number|string} groupKey - originTabId or 'orphaned'
  * @param {Object} group - { quickTabs: Array, tabInfo: Object | null }
@@ -5413,7 +5418,7 @@ function renderTabGroup(groupKey, group, collapseState) {
   const isOrphaned = groupKey === 'orphaned';
   const isClosedTab = !isOrphaned && !group.tabInfo;
 
-  // v1.6.4.0 - FIX Issue C: Log orphaned group rendering
+  // v1.6.3.12-v7 - FIX Issue C: Log orphaned group rendering
   if (isOrphaned) {
     console.log('[Manager] ORPHANED_GROUP_RENDER:', {
       groupKey,
@@ -5618,7 +5623,7 @@ function _createSectionDivider(label) {
 /**
  * Issue #1/#5: Attach event listeners for collapse toggle with smooth animations
  * v1.6.3.6-v11 - FIX Issues #1, #5: Animations properly invoked, consistent state terminology
- * v1.6.4.10 - Enhanced with smooth height animations and scroll-into-view
+ * v1.6.3.12-v7 - Enhanced with smooth height animations and scroll-into-view
  * @param {HTMLElement} container - Container with <details> elements
  * @param {Object} collapseState - Current collapse state (will be modified)
  */
@@ -5794,7 +5799,7 @@ function _createTabInfo(tab, isMinimized) {
  */
 /**
  * Create tab action buttons
- * v1.6.4.11 - Refactored to reduce bumpy road complexity
+ * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLElement} Actions container
@@ -6049,18 +6054,29 @@ function setupEventListeners() {
       timestamp: new Date().toISOString()
     });
 
+    // v1.6.3.12-v7 - FIX Bug #2: Use port-based messaging for Quick Tab operations
+    // The old functions (minimizeQuickTab, restoreQuickTab, closeQuickTab) used
+    // _sendMessageWithRetry() which sends messages to content scripts via tabs.sendMessage.
+    // This doesn't work because Manager is a sidebar, not a content script.
+    // The correct approach is to use port messaging to background, which then
+    // coordinates with the appropriate content script.
+    // Note: ViaPort functions return boolean synchronously (fire-and-forget pattern)
+    // The actual response comes via port message handlers asynchronously.
     switch (action) {
       case 'goToTab':
         await goToTab(parseInt(tabId));
         break;
       case 'minimize':
-        await minimizeQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        minimizeQuickTabViaPort(quickTabId);
         break;
       case 'restore':
-        await restoreQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        restoreQuickTabViaPort(quickTabId);
         break;
       case 'close':
-        await closeQuickTab(quickTabId);
+        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
+        closeQuickTabViaPort(quickTabId);
         break;
       // v1.6.3.7-v1 - FIX ISSUE #8: Handle adopt to current tab action
       case 'adoptToCurrentTab':
@@ -6084,19 +6100,19 @@ function setupEventListeners() {
     closeAllElement: !!document.getElementById('closeAll')
   });
 
-  // v1.6.4 - Extracted to reduce setupEventListeners line count
+  // v1.6.3.12 - Extracted to reduce setupEventListeners line count
   _setupStorageOnChangedListener();
 }
 
 /**
  * Setup storage.onChanged listener as fallback mechanism
- * v1.6.4 - Extracted from setupEventListeners to reduce function length
+ * v1.6.3.12 - Extracted from setupEventListeners to reduce function length
  * @private
  */
 function _setupStorageOnChangedListener() {
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
-  // v1.6.4.18 - FIX: Changed from 'local' to 'session' (Quick Tabs are now session-only)
+  // v1.6.3.12-v7 - FIX: Changed from 'local' to 'session' (Quick Tabs are now session-only)
   // v1.6.3.4-v6 - FIX Issue #1: Debounce storage reads to avoid mid-transaction reads
   // v1.6.3.4-v9 - FIX Issue #18: Add reconciliation logic for suspicious storage changes
   // v1.6.3.5-v2 - FIX Report 2 Issue #6: Refactored to reduce complexity
@@ -6105,7 +6121,7 @@ function _setupStorageOnChangedListener() {
   //   - FALLBACK: storage.local changes caught here for edge cases
   //   - NOTE: 'session' area does NOT exist in Firefox MV2
 
-  // v1.6.4 - Gap #2: Log storage.onChanged listener registration
+  // v1.6.3.12 - Gap #2: Log storage.onChanged listener registration
   console.log('[Sidebar] STORAGE_ONCHANGED_LISTENER_REGISTERED:', {
     timestamp: Date.now(),
     area: 'local',
@@ -6115,7 +6131,7 @@ function _setupStorageOnChangedListener() {
   });
 
   browser.storage.onChanged.addListener((changes, areaName) => {
-    // v1.6.4 - Gap #2: Log storage.onChanged event fired
+    // v1.6.3.12 - Gap #2: Log storage.onChanged event fired
     console.log('[Sidebar] STORAGE_ONCHANGED_EVENT:', {
       timestamp: Date.now(),
       areaName,
@@ -6214,7 +6230,7 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime on storage.onChanged
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
- * v1.6.4.11 - Refactored to reduce cyclomatic complexity from 23 to <9
+ * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity from 23 to <9
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
@@ -6519,7 +6535,7 @@ function _updateLocalStateCache(newValue) {
 
 /**
  * Build context object for storage change handling
- * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
  * @private
  * @param {Object} change - Storage change object
  * @returns {Object} Context with parsed values
@@ -6547,7 +6563,7 @@ function _buildStorageChangeContext(change) {
 /**
  * Log storage change event with comprehensive details
  * Issue #8: Unified logStorageEvent() format for sequence analysis
- * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
  * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
  * @private
  * @param {Object} context - Storage change context
@@ -6584,7 +6600,7 @@ function _logStorageChangeEvent(context) {
 
 /**
  * Log tab ID changes (added/removed)
- * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
  * @private
  * @param {Object} context - Storage change context
  */
@@ -6606,7 +6622,7 @@ function _logTabIdChanges(context) {
 
 /**
  * Log position/size changes for tabs
- * v1.6.4.11 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
  * @private
  * @param {Object} context - Storage change context
  */
@@ -6637,7 +6653,7 @@ function _logPositionSizeChanges(context) {
  */
 /**
  * Identify tabs that have position or size changes
- * v1.6.4.11 - Refactored to reduce bumpy road complexity
+ * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
  * @param {Array} oldTabs - Previous tab array
  * @param {Array} newTabs - New tab array
  * @returns {{ positionChanged: Array, sizeChanged: Array }}
@@ -6741,7 +6757,7 @@ function _handleSuspiciousStorageDrop(oldValue) {
 /**
  * Schedule debounced storage update
  * v1.6.3.5-v2 - Extracted to reduce complexity
- * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
+ * v1.6.3.12-v7 - FIX Issue B: Route through unified scheduleRender entry point
  */
 function _scheduleStorageUpdate() {
   if (storageReadDebounceTimer) {
@@ -6751,7 +6767,7 @@ function _scheduleStorageUpdate() {
   storageReadDebounceTimer = setTimeout(() => {
     storageReadDebounceTimer = null;
     loadQuickTabsState().then(() => {
-      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      // v1.6.3.12-v7 - FIX Issue B: Route through unified entry point
       scheduleRender('storage.onChanged');
     });
   }, STORAGE_READ_DEBOUNCE_MS);
@@ -6865,7 +6881,7 @@ async function _processReconciliationResult(uniqueQuickTabs) {
  * Restore state from content scripts data
  * v1.6.3.4-v9 - Extracted to reduce nesting depth
  * v1.6.3.5-v2 - FIX Code Review: Use SAVEID_RECONCILED constant
- * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
+ * v1.6.3.12-v7 - FIX Issue B: Route through unified scheduleRender entry point
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
  *
  * ARCHITECTURE NOTE (v1.6.3.5-v6):
@@ -6895,19 +6911,19 @@ async function _restoreStateFromContentScripts(quickTabs) {
 
   // Update local state and re-render
   quickTabsState = restoredState;
-  // v1.6.4.0 - FIX Issue B: Route through unified entry point
+  // v1.6.3.12-v7 - FIX Issue B: Route through unified entry point
   scheduleRender('restore-from-content-scripts');
 }
 
 /**
  * Schedule normal state update after delay
  * v1.6.3.4-v9 - Extracted to reduce code duplication
- * v1.6.4.0 - FIX Issue B: Route through unified scheduleRender entry point
+ * v1.6.3.12-v7 - FIX Issue B: Route through unified scheduleRender entry point
  */
 function _scheduleNormalUpdate() {
   setTimeout(() => {
     loadQuickTabsState().then(() => {
-      // v1.6.4.0 - FIX Issue B: Route through unified entry point
+      // v1.6.3.12-v7 - FIX Issue B: Route through unified entry point
       scheduleRender('reconciliation-complete');
     });
   }, STORAGE_READ_DEBOUNCE_MS);
@@ -6917,7 +6933,7 @@ function _scheduleNormalUpdate() {
  * Close all minimized Quick Tabs (NEW FEATURE #1)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local and updated for unified format
  * v1.6.3.4-v6 - FIX Issue #4: Send CLOSE_QUICK_TAB to content scripts BEFORE updating storage
- * v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+ * v1.6.3.12-v7 - FIX Issue A: Send command to background instead of direct storage write
  *   - Manager sends CLOSE_MINIMIZED_TABS command
  *   - Background processes command, updates state, writes to storage
  *   - Background sends confirmation back to Manager
@@ -6963,7 +6979,7 @@ async function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
 
   try {
-    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+    // v1.6.3.12-v7 - FIX Issue A: Send command to background instead of direct storage write
     const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
       timestamp: Date.now()
     });
@@ -7062,7 +7078,7 @@ async function _broadcastLegacyCloseMessage() {
  * Close all Quick Tabs - both active and minimized (NEW FEATURE #2)
  * v1.6.3 - FIX: Changed from storage.sync to storage.local
  * v1.6.3.5-v6 - FIX Architecture Issue #1: Use background-coordinated clear
- * v1.6.4.12 - Refactored to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity
  */
 async function closeAllTabs() {
   const startTime = Date.now();
@@ -7117,7 +7133,7 @@ function _logPreActionState({ clearedIds, originTabIds }) {
 
 /**
  * Send CLOSE_ALL_QUICK_TABS message to background via port
- * v1.6.4.0 - FIX Issue #15: Use port messaging for Close All operation
+ * v1.6.3.12-v7 - FIX Issue #15: Use port messaging for Close All operation
  * @private
  * @returns {Promise<Object>} Response from background
  */
@@ -7127,7 +7143,7 @@ function _sendClearAllMessage() {
     timestamp: Date.now()
   });
 
-  // v1.6.4.0 - FIX Issue #15: Use port messaging (Option 4 architecture)
+  // v1.6.3.12-v7 - FIX Issue #15: Use port messaging (Option 4 architecture)
   if (quickTabsPort) {
     const correlationId = _generatePortCorrelationId();
     const sentAt = Date.now();
@@ -7217,12 +7233,12 @@ function _logCloseAllError(err, startTime) {
   });
 }
 
-// ==================== v1.6.4.16 OPERATION HELPERS ====================
+// ==================== v1.6.3.12-v7 OPERATION HELPERS ====================
 // FIX Code Health: Extracted helpers to reduce minimizeQuickTab/closeQuickTab line count
 
 /**
  * Check if operation should be queued due to circuit breaker
- * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce function size
  * @private
  * @param {string} action - Action name
  * @param {string} quickTabId - Quick Tab ID
@@ -7246,7 +7262,7 @@ function _shouldQueueForCircuitBreaker(action, quickTabId, correlationId) {
 
 /**
  * Check port viability and queue if not viable
- * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce function size
  * @private
  * @param {string} action - Action name
  * @param {string} quickTabId - Quick Tab ID
@@ -7269,7 +7285,7 @@ async function _checkPortViabilityOrQueue(action, quickTabId, correlationId) {
 
 /**
  * Resolve target tab ID from host info or origin tab ID
- * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce function size
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {string} action - Action name for logging
@@ -7295,7 +7311,7 @@ function _resolveTargetTab(quickTabId, action, correlationId) {
 
 /**
  * Log operation completion or failure
- * v1.6.4.16 - FIX Code Health: Extracted to reduce function size
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce function size
  * @private
  * @param {string} action - Action name
  * @param {string} quickTabId - Quick Tab ID
@@ -7336,7 +7352,7 @@ function _logOperationResult({
   }
 }
 
-// ==================== END v1.6.4.16 OPERATION HELPERS ====================
+// ==================== END v1.6.3.12-v7 OPERATION HELPERS ====================
 
 /**
  * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
@@ -7359,8 +7375,8 @@ async function goToTab(tabId) {
  * v1.6.3.4-v5 - FIX Issue #4: Prevent spam-clicking by tracking pending operations
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
- * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
+ * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
  */
 async function minimizeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('min', quickTabId);
@@ -7694,7 +7710,7 @@ function _showErrorNotification(message) {
  * Send restore message to target tab with confirmation tracking
  * v1.6.3.6-v8 - Extracted to reduce restoreQuickTab complexity
  * v1.6.3.7-v1 - FIX ISSUE #2: Implement per-message confirmation with timeout
- * v1.6.4.12 - Refactored to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} tabData - Tab data with originTabId
@@ -7715,7 +7731,7 @@ function _sendRestoreMessage(quickTabId, tabData) {
 
 /**
  * Resolve the target tab ID for restore operation
- * v1.6.4.13 - FIX BUG #4: Prioritize originTabId from storage over quickTabHostInfo
+ * v1.6.3.12-v7 - FIX BUG #4: Prioritize originTabId from storage over quickTabHostInfo
  *
  * After adoption, storage contains the correct originTabId but quickTabHostInfo
  * may still have the old host tab ID. We should prioritize storage (tabData.originTabId)
@@ -7726,7 +7742,7 @@ function _sendRestoreMessage(quickTabId, tabData) {
 function _resolveRestoreTarget(quickTabId, tabData) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
 
-  // v1.6.4.13 - FIX BUG #4: Prioritize storage originTabId over quickTabHostInfo
+  // v1.6.3.12-v7 - FIX BUG #4: Prioritize storage originTabId over quickTabHostInfo
   // After adoption, storage has the correct originTabId but hostInfo may be stale
   if (tabData.originTabId) {
     return tabData.originTabId;
@@ -7738,13 +7754,13 @@ function _resolveRestoreTarget(quickTabId, tabData) {
 
 /**
  * Log restore target resolution details
- * v1.6.4.13 - FIX BUG #4: Enhanced logging to show source of truth
- * v1.6.4.13 - Use shared determineRestoreSource utility to reduce code duplication
+ * v1.6.3.12-v7 - FIX BUG #4: Enhanced logging to show source of truth
+ * v1.6.3.12-v7 - Use shared determineRestoreSource utility to reduce code duplication
  * @private
  */
 function _logRestoreTargetResolution(quickTabId, tabData, targetTabId) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
-  // v1.6.4.13 - Use shared utility for source determination
+  // v1.6.3.12-v7 - Use shared utility for source determination
   const source = determineRestoreSource(tabData, hostInfo);
 
   console.log('[Manager] 🎯 RESTORE_TARGET_RESOLUTION:', {
@@ -7753,7 +7769,7 @@ function _logRestoreTargetResolution(quickTabId, tabData, targetTabId) {
     hostInfoTabId: hostInfo?.hostTabId,
     originTabId: tabData.originTabId,
     source,
-    // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
+    // v1.6.3.12-v7 - Show if hostInfo was overridden by storage originTabId
     hostInfoOverridden:
       hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });
@@ -7855,7 +7871,7 @@ function _sendRestoreMessageWithTimeout(tabId, quickTabId, timeoutMs) {
 /**
  * Send restore message to all tabs and track first confirmation
  * v1.6.3.7-v1 - FIX ISSUE #2: Broadcast with confirmation tracking
- * v1.6.4.11 - Refactored to reduce nesting depth
+ * v1.6.3.12-v7 - Refactored to reduce nesting depth
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @returns {Promise<{ success: boolean, confirmedBy?: number, broadcastResults: Object }>}
@@ -7873,7 +7889,7 @@ async function _sendRestoreMessageWithConfirmationBroadcast(quickTabId) {
 
 /**
  * Broadcast restore message to all tabs
- * v1.6.4.11 - Refactored to reduce nesting depth to 2
+ * v1.6.3.12-v7 - Refactored to reduce nesting depth to 2
  * @private
  */
 async function _broadcastRestoreToTabs(tabs, quickTabId) {
@@ -7977,7 +7993,7 @@ function _buildBroadcastResult(results, totalTabs) {
 
 /**
  * Check restore preconditions and return early if not met
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce complexity
  * @private
  * @returns {Object|null} { validation, operationKey } if preconditions met, null otherwise
  */
@@ -8011,7 +8027,7 @@ function _checkRestorePreconditions(quickTabId, correlationId) {
 
 /**
  * Check connectivity prerequisites for restore
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce complexity
  * @private
  * @returns {Promise<boolean>} true if connectivity is available
  */
@@ -8050,7 +8066,7 @@ async function _checkRestoreConnectivity(quickTabId, correlationId) {
 
 /**
  * Handle restore operation result
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce complexity
  * @private
  */
 function _handleRestoreOperationResult(quickTabId, result, correlationId, durationMs) {
@@ -8098,14 +8114,14 @@ function _handleRestoreOperationResult(quickTabId, result, correlationId, durati
  * v1.6.3.5-v7 - FIX Issue #3: Use targeted tab messaging via quickTabHostInfo or originTabId
  * v1.6.3.6-v8 - FIX Issue #5: Enhanced diagnostic logging + refactored for complexity
  * v1.6.3.7-v1 - FIX ISSUE #2: Track confirmation responses from content scripts
- * v1.6.4.12 - Refactored to reduce cyclomatic complexity
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
 async function restoreQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('restore', quickTabId);
   const startTime = Date.now();
 
-  // v1.6.4.15 - FIX Issue #20: Log operation start
+  // v1.6.3.12-v7 - FIX Issue #20: Log operation start
   console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
     action: 'RESTORE_QUICK_TAB',
     quickTabId,
@@ -8133,7 +8149,7 @@ async function restoreQuickTab(quickTabId) {
   const hostInfo = quickTabHostInfo.get(quickTabId);
   const targetTabId = hostInfo?.hostTabId || validation.tabData.originTabId;
 
-  // v1.6.4.15 - FIX Issue #20: Log target resolution
+  // v1.6.3.12-v7 - FIX Issue #20: Log target resolution
   console.log('[Manager] OPERATION_TARGET_RESOLVED:', {
     action: 'RESTORE_QUICK_TAB',
     quickTabId,
@@ -8180,7 +8196,7 @@ async function restoreQuickTab(quickTabId) {
 
 /**
  * Log restore request with context
- * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
+ * v1.6.3.12-v7 - FIX Issue #20: Added correlationId parameter
  * @private
  */
 function _logRestoreRequest(quickTabId, timestamp, correlationId = null) {
@@ -8195,7 +8211,7 @@ function _logRestoreRequest(quickTabId, timestamp, correlationId = null) {
 
 /**
  * Log restore result
- * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
+ * v1.6.3.12-v7 - FIX Issue #20: Added correlationId parameter
  * @private
  */
 function _logRestoreResult(quickTabId, confirmationResult, startTime, correlationId = null) {
@@ -8262,8 +8278,8 @@ function _logRestoreVerificationResult(quickTabId, tab) {
 /**
  * Close a Quick Tab
  * v1.6.3.10-v2 - FIX Issue #4: Queue action if circuit breaker is open
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
- * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
+ * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
  */
 async function closeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('close', quickTabId);
@@ -8331,10 +8347,10 @@ async function closeQuickTab(quickTabId) {
 /**
  * Adopt an orphaned Quick Tab to the current browser tab
  * v1.6.3.7-v1 - FIX ISSUE #8: Allow users to "rescue" orphaned Quick Tabs
- * v1.6.4.0 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
+ * v1.6.3.12-v7 - FIX Issue A: Send ADOPT_TAB command to background instead of direct storage write
  *   - Manager sends command, background is sole writer
  *   - Background updates state, writes to storage, sends confirmation
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * @param {string} quickTabId - The Quick Tab ID to adopt
  * @param {number} targetTabId - The browser tab ID to adopt to
  */
@@ -8342,7 +8358,7 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
   const correlationId = generateOperationCorrelationId('adopt', quickTabId);
   const startTime = Date.now();
 
-  // v1.6.4.15 - FIX Issue #20: Log operation start
+  // v1.6.3.12-v7 - FIX Issue #20: Log operation start
   console.log('[Manager] OPERATION_INITIATED: Manager action requested:', {
     action: 'ADOPT_TAB',
     quickTabId,
@@ -8367,7 +8383,7 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
   }
 
   try {
-    // v1.6.4.0 - FIX Issue A: Send command to background instead of direct storage write
+    // v1.6.3.12-v7 - FIX Issue A: Send command to background instead of direct storage write
     console.log('[Manager] Sending ADOPT_QUICK_TAB command to background:', {
       quickTabId,
       targetTabId,
@@ -8397,8 +8413,8 @@ async function adoptQuickTabToCurrentTab(quickTabId, targetTabId) {
 
 /**
  * Handle adoption command response
- * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
- * v1.6.4.15 - FIX Issue #20: Added correlationId and timing parameters
+ * v1.6.3.12-v7 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue #20: Added correlationId and timing parameters
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} targetTabId - Target browser tab ID
@@ -8482,12 +8498,12 @@ function _handleAdoptResponse({
 /**
  * Log adopt request
  * v1.6.3.7 - FIX Issue #7: Enhanced adoption data flow logging
- * v1.6.4.0 - FIX Issue C: Added ADOPTION_INITIATED log as specified in acceptance criteria
- * v1.6.4.15 - FIX Issue #20: Added correlationId parameter
+ * v1.6.3.12-v7 - FIX Issue C: Added ADOPTION_INITIATED log as specified in acceptance criteria
+ * v1.6.3.12-v7 - FIX Issue #20: Added correlationId parameter
  * @private
  */
 function _logAdoptRequest(quickTabId, targetTabId, correlationId = null) {
-  // v1.6.4.0 - FIX Issue C: Log ADOPTION_INITIATED as specified in issue requirements
+  // v1.6.3.12-v7 - FIX Issue C: Log ADOPTION_INITIATED as specified in issue requirements
   console.log('[Manager] ADOPTION_INITIATED:', {
     quickTabId,
     targetTabId,

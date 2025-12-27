@@ -319,7 +319,7 @@ const TestBridge = {
 
   /**
    * Get manager panel state including tab counts and groupings
-   * v1.6.4 - J2: Enhanced to include groupings and counts for test verification
+   * v1.6.3.12 - J2: Enhanced to include groupings and counts for test verification
    *
    * Note: The flags `includeGroupings` and `includeContainers` are always set to true
    * because tests require full state information. The content script handler should
@@ -514,7 +514,7 @@ const TestBridge = {
 
   /**
    * Verify Quick Tabs are properly isolated within a specific container
-   * v1.6.4 - J2: New method for single-container isolation verification
+   * v1.6.3.12 - J2: New method for single-container isolation verification
    * @param {string} containerId - Container cookie store ID (e.g., 'firefox-container-1')
    * @returns {Promise<Object>} Verification result:
    *   - isolated: boolean - Whether all Quick Tabs in container are properly isolated
@@ -546,7 +546,7 @@ const TestBridge = {
 
   /**
    * Get human-readable label for a Firefox container
-   * v1.6.4 - J2: New method for container label lookup
+   * v1.6.3.12 - J2: New method for container label lookup
    * @param {string} containerId - Container cookie store ID (e.g., 'firefox-container-1')
    * @returns {Promise<Object>} Container label info:
    *   - containerId: string - The container ID requested
@@ -578,7 +578,7 @@ const TestBridge = {
 
   /**
    * Verify cross-tab isolation - ensure Quick Tabs don't appear in wrong tabs
-   * v1.6.4 - J2: New method for cross-tab isolation verification
+   * v1.6.3.12 - J2: New method for cross-tab isolation verification
    * @param {number} originTabId - Expected origin tab ID
    * @returns {Promise<Object>} Verification result:
    *   - isolated: boolean - Whether Quick Tabs are properly isolated to origin tab

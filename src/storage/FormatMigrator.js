@@ -10,7 +10,7 @@
  * - LegacyFormat: Flat tabs array
  * - EmptyFormat: Fallback for unrecognized/empty data
  *
- * v1.6.4.16 - FIX Issue #26: FormatMigrator Schema Evolution Bugs
+ * v1.6.3.12-v7 - FIX Issue #26: FormatMigrator Schema Evolution Bugs
  * - Added migration logging with [MIGRATION] prefix
  * - Validate migrated data structure
  * - Handle partial migration failure
@@ -191,7 +191,7 @@ export class EmptyFormat extends FormatStrategy {
  * const format = migrator.detect(rawData);
  * const containers = format.parse(rawData);
  *
- * v1.6.4.16 - FIX Issue #26: Enhanced migration logging and validation
+ * v1.6.3.12-v7 - FIX Issue #26: Enhanced migration logging and validation
  */
 export class FormatMigrator {
   constructor() {
@@ -206,7 +206,7 @@ export class FormatMigrator {
 
   /**
    * Detect storage format from raw data
-   * v1.6.4.16 - FIX Issue #26: Enhanced logging
+   * v1.6.3.12-v7 - FIX Issue #26: Enhanced logging
    *
    * @param {Object} data - Raw storage data
    * @returns {FormatStrategy} Detected format strategy
@@ -232,7 +232,7 @@ export class FormatMigrator {
 
   /**
    * Parse data using detected format
-   * v1.6.4.16 - FIX Issue #26: Enhanced migration logging and validation
+   * v1.6.3.12-v7 - FIX Issue #26: Enhanced migration logging and validation
    *
    * @param {Object} data - Raw storage data
    * @returns {Object.<string, {tabs: Array, lastUpdate: number}>} Container-aware format
@@ -282,7 +282,7 @@ export class FormatMigrator {
 
   /**
    * Validate migrated data structure
-   * v1.6.4.16 - FIX Issue #26: Validate migrated data
+   * v1.6.3.12-v7 - FIX Issue #26: Validate migrated data
    * @private
    * @param {Object} containers - Migrated container data
    * @returns {{ isValid: boolean, warnings: string[], totalTabs: number }}
@@ -331,7 +331,7 @@ export class FormatMigrator {
 
   /**
    * Check if data needs migration
-   * v1.6.4.16 - FIX Issue #26: Enhanced logging
+   * v1.6.3.12-v7 - FIX Issue #26: Enhanced logging
    *
    * @param {Object} data - Raw storage data
    * @returns {boolean} True if data is not in current format

@@ -11,7 +11,7 @@
  * - Issue #4: Favicon container uses CSS classes only
  * - Issue #12: Animation support via CSS variables
  */
-/* v1.6.4.10 - FIX Issues #1-12: Comprehensive UI/UX improvements */
+/* v1.6.3.12-v7 - FIX Issues #1-12: Comprehensive UI/UX improvements */
 
 :root {
   --primary-bg: #ffffff;
@@ -21,29 +21,29 @@
   --text-secondary: #666;
   --green-indicator: #4caf50;
   --yellow-indicator: #ffc107;
-  --orange-indicator: #ff9800; /* v1.6.4.9 - FIX Issue #4: Warning indicator */
+  --orange-indicator: #ff9800; /* v1.6.3.12-v7 - FIX Issue #4: Warning indicator */
   --red-danger: #f44336;
   --blue-primary: #4a90e2;
 
-  /* v1.6.4.10 - Issue #5/#6: Orphaned/Closed tab colors */
+  /* v1.6.3.12-v7 - Issue #5/#6: Orphaned/Closed tab colors */
   --orphaned-bg: #fff3e0;
   --orphaned-text: #e65100;
   --closed-bg: #fafafa;
   --closed-text: #9e9e9e;
   --warning-color: #ff9800;
 
-  /* v1.6.4.10 - Issue #3: Visual hierarchy variables */
+  /* v1.6.3.12-v7 - Issue #3: Visual hierarchy variables */
   --group-content-border: #e0e0e0;
   --group-content-bg: rgba(0, 0, 0, 0.02);
 
-  /* v1.6.4.10 - Issue #8: Divider styling */
+  /* v1.6.3.12-v7 - Issue #8: Divider styling */
   --divider-color: #e8e8e8;
 
-  /* v1.6.4.10 - Issue #2: Count badge styling */
+  /* v1.6.3.12-v7 - Issue #2: Count badge styling */
   --count-badge-bg: #e3f2fd;
   --count-badge-text: #1976d2;
 
-  /* v1.6.4.10 - Animation timing */
+  /* v1.6.3.12-v7 - Animation timing */
   --animation-duration: 0.35s;
   --animation-timing: ease-in-out;
 }
@@ -56,21 +56,21 @@
     --text-primary: #e0e0e0;
     --text-secondary: #999;
 
-    /* v1.6.4.10 - Issue #5/#6: Orphaned/Closed tab colors (dark mode) */
+    /* v1.6.3.12-v7 - Issue #5/#6: Orphaned/Closed tab colors (dark mode) */
     --orphaned-bg: #3e2723;
     --orphaned-text: #ffb74d;
     --closed-bg: #333;
     --closed-text: #757575;
     --warning-color: #ffb74d;
 
-    /* v1.6.4.10 - Issue #3: Visual hierarchy (dark mode) */
+    /* v1.6.3.12-v7 - Issue #3: Visual hierarchy (dark mode) */
     --group-content-border: #444;
     --group-content-bg: rgba(255, 255, 255, 0.03);
 
-    /* v1.6.4.10 - Issue #8: Divider styling (dark mode) */
+    /* v1.6.3.12-v7 - Issue #8: Divider styling (dark mode) */
     --divider-color: #444;
 
-    /* v1.6.4.10 - Issue #2: Count badge styling (dark mode) */
+    /* v1.6.3.12-v7 - Issue #2: Count badge styling (dark mode) */
     --count-badge-bg: #1a237e;
     --count-badge-text: #90caf9;
   }
@@ -230,7 +230,7 @@ html {
   background: var(--yellow-indicator);
 }
 
-/* v1.6.4.9 - FIX Issue #4: Warning indicator for domVerified=false */
+/* v1.6.3.12-v7 - FIX Issue #4: Warning indicator for domVerified=false */
 .status-indicator.orange {
   background: var(--orange-indicator);
   animation: pulse-warning 1.5s ease-in-out infinite;
@@ -296,7 +296,7 @@ html {
   background: var(--border-color);
 }
 
-/* v1.6.4 - UI Fix: Button colors */
+/* v1.6.3.12 - UI Fix: Button colors */
 /* Restore button - green arrow */
 .btn-icon[data-action='restore'] {
   color: #4caf50;
@@ -338,8 +338,8 @@ html {
 }
 
 /* ========================================
- * Cross-Tab Grouping UI (v1.6.4.8)
- * v1.6.4.10 - FIX Issues #1-12: Complete UI/UX overhaul
+ * Cross-Tab Grouping UI (v1.6.3.12-v7)
+ * v1.6.3.12-v7 - FIX Issues #1-12: Complete UI/UX overhaul
  * ======================================== */
 
 .tab-groups-container {

@@ -371,45 +371,45 @@ const TAB_ID_MAX_RETRIES = TAB_ID_RETRY_DELAYS_MS.length;
 // v1.6.3.10-v10 - FIX Code Review: Extract error strings as constants
 // v1.6.3.10-v10 - FIX Code Review: Use Set for O(1) lookup performance
 const RETRYABLE_ERROR_CODES = new Set(['NOT_INITIALIZED', 'GLOBAL_STATE_NOT_READY']);
-// v1.6.4.15 - FIX Code Review: Convert to Set for O(1) lookup and consistency
+// v1.6.3.12-v7 - FIX Code Review: Convert to Set for O(1) lookup and consistency
 const RETRYABLE_MESSAGE_PATTERNS = new Set(['disconnected', 'receiving end', 'Extension context']);
 
-// ==================== v1.6.4.15 FIX ISSUE #14: MESSAGE QUEUE DURING INIT ====================
+// ==================== v1.6.3.12-v7 FIX ISSUE #14: MESSAGE QUEUE DURING INIT ====================
 // Queue messages while content script initializes to prevent lost messages
 
 /**
  * Track whether content script initialization is complete
- * v1.6.4.15 - FIX Issue #14: Initialization tracking
+ * v1.6.3.12-v7 - FIX Issue #14: Initialization tracking
  */
 let contentScriptInitialized = false;
 
 /**
  * Message queue for messages sent during initialization window
- * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ * v1.6.3.12-v7 - FIX Issue #14: Queue messages during init
  */
 const initializationMessageQueue = [];
 
 /**
  * Maximum queue size for initialization messages
- * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.12-v7 - FIX Issue #14
  */
 const MAX_INIT_MESSAGE_QUEUE_SIZE = 20;
 
 /**
  * Background unresponsive timeout (ms)
- * v1.6.4.15 - FIX Issue #14: Timeout-based fallback if background unresponsive
+ * v1.6.3.12-v7 - FIX Issue #14: Timeout-based fallback if background unresponsive
  */
 const BACKGROUND_UNRESPONSIVE_TIMEOUT_MS = 5000;
 
 /**
  * Track last successful background response time
- * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.12-v7 - FIX Issue #14
  */
 let lastBackgroundResponseTime = Date.now();
 
 /**
  * Check if a message has valid format for sending
- * v1.6.4.15 - FIX Issue #14: Pre-flight validation
+ * v1.6.3.12-v7 - FIX Issue #14: Pre-flight validation
  * @param {Object} message - Message to validate
  * @returns {{valid: boolean, error?: string}}
  */
@@ -432,7 +432,7 @@ function _validateMessageFormat(message) {
 
 /**
  * Queue a message during initialization window
- * v1.6.4.15 - FIX Issue #14: Queue messages during init
+ * v1.6.3.12-v7 - FIX Issue #14: Queue messages during init
  * @param {Object} message - Message to queue
  * @param {Function} callback - Callback to execute when message can be sent
  */
@@ -459,7 +459,7 @@ function _queueInitializationMessage(message, callback) {
 
 /**
  * Flush queued messages after initialization completes
- * v1.6.4.15 - FIX Issue #14: Process queued messages
+ * v1.6.3.12-v7 - FIX Issue #14: Process queued messages
  */
 async function _flushInitializationMessageQueue() {
   if (initializationMessageQueue.length === 0) return;
@@ -491,7 +491,7 @@ async function _flushInitializationMessageQueue() {
 
 /**
  * Check if background is responsive based on last response time
- * v1.6.4.15 - FIX Issue #14: Timeout-based fallback
+ * v1.6.3.12-v7 - FIX Issue #14: Timeout-based fallback
  * @returns {boolean} True if background is responsive
  */
 function _isBackgroundResponsive() {
@@ -501,7 +501,7 @@ function _isBackgroundResponsive() {
 
 /**
  * Update last background response time
- * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.12-v7 - FIX Issue #14
  */
 function _updateBackgroundResponseTime() {
   lastBackgroundResponseTime = Date.now();
@@ -509,7 +509,7 @@ function _updateBackgroundResponseTime() {
 
 /**
  * Mark content script as initialized and flush queued messages
- * v1.6.4.15 - FIX Issue #14
+ * v1.6.3.12-v7 - FIX Issue #14
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
@@ -537,7 +537,7 @@ function _isRetryableResponse(response) {
 /**
  * Check if an error message indicates a retryable condition
  * v1.6.3.10-v10 - FIX Code Review: Extracted to helper function
- * v1.6.4.15 - FIX Code Review: Use Set.forEach with short-circuit for O(1) average lookup
+ * v1.6.3.12-v7 - FIX Code Review: Use Set.forEach with short-circuit for O(1) average lookup
  * @private
  */
 function _isRetryableError(message) {
@@ -551,7 +551,7 @@ function _isRetryableError(message) {
 
 /**
  * Extract tab ID and container ID from response, supporting both v1 and v2 formats
- * v1.6.4.15 - FIX Code Health: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce nesting depth
  * v1.6.3.11-v11 - FIX Issue #47: Also extract cookieStoreId for container isolation
  * @private
  * @param {Object} response - Response from GET_CURRENT_TAB_ID
@@ -562,7 +562,7 @@ function _extractTabIdFromResponse(response) {
     return { found: false };
   }
 
-  // v1.6.4.15 - Support both new format (data.currentTabId) and old format (tabId)
+  // v1.6.3.12-v7 - Support both new format (data.currentTabId) and old format (tabId)
   const tabId = response.data?.currentTabId ?? response.tabId;
   if (typeof tabId !== 'number') {
     return { found: false };
@@ -578,7 +578,7 @@ function _extractTabIdFromResponse(response) {
 /**
  * Single attempt to get tab ID and container ID from background
  * v1.6.3.10-v10 - FIX Issue #5: Extracted to support retry logic
- * v1.6.4.15 - FIX Issue #15: Check response.success and response.data
+ * v1.6.3.12-v7 - FIX Issue #15: Check response.success and response.data
  * v1.6.3.11-v11 - FIX Issue #47: Also return cookieStoreId for container isolation
  * @private
  * @param {number} attemptNumber - Current attempt number (1-based)
@@ -591,8 +591,8 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
     const response = await browser.runtime.sendMessage({ action: 'GET_CURRENT_TAB_ID' });
     const duration = Date.now() - startTime;
 
-    // v1.6.4.15 - FIX Issue #15: Check response.success first
-    // v1.6.4.15 - FIX Code Health: Extract tabId handling to avoid nested depth
+    // v1.6.3.12-v7 - FIX Issue #15: Check response.success first
+    // v1.6.3.12-v7 - FIX Code Health: Extract tabId handling to avoid nested depth
     const tabIdResult = _extractTabIdFromResponse(response);
     if (tabIdResult.found) {
       // v1.6.3.11-v11 - FIX Issue #47: Also log cookieStoreId
@@ -618,7 +618,7 @@ async function _attemptGetTabIdFromBackground(attemptNumber) {
       attempt: attemptNumber,
       response,
       error: response?.error,
-      code: response?.code, // v1.6.4.15 - Log error code
+      code: response?.code, // v1.6.3.12-v7 - Log error code
       retryable: isRetryable,
       durationMs: duration
     });
@@ -1976,7 +1976,7 @@ async function initializeQuickTabsPort() {
 
 /**
  * Generate correlation ID for content script operations
- * v1.6.4 - Gap #8: Correlation IDs for async operations
+ * v1.6.3.12 - Gap #8: Correlation IDs for async operations
  * @private
  * @returns {string} Unique correlation ID
  */
@@ -1987,7 +1987,7 @@ function _generateContentCorrelationId() {
 /**
  * Execute Quick Tab port operation with error handling
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
- * v1.6.4 - Gap #7 & #8: End-to-end state sync path logging with correlation IDs
+ * v1.6.3.12 - Gap #7 & #8: End-to-end state sync path logging with correlation IDs
  * @private
  * @param {string} operationType - Type of operation (e.g., 'CREATE_QUICK_TAB')
  * @param {Object} payload - Message payload
@@ -2003,7 +2003,7 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
   const correlationId = _generateContentCorrelationId();
   const sentAt = Date.now();
 
-  // v1.6.4 - Gap #7: Log content script state change initiated
+  // v1.6.3.12 - Gap #7: Log content script state change initiated
   console.log('[Content] STATE_SYNC_PATH_INITIATED:', {
     timestamp: sentAt,
     operationType,
@@ -2017,12 +2017,12 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
       type: operationType,
       ...payload,
       timestamp: sentAt,
-      correlationId // v1.6.4 - Gap #8: Include correlation ID
+      correlationId // v1.6.3.12 - Gap #8: Include correlation ID
     });
 
     if (cacheUpdater) cacheUpdater();
 
-    // v1.6.4 - Gap #7: Log state serialized and sent
+    // v1.6.3.12 - Gap #7: Log state serialized and sent
     console.log('[Content] STATE_SYNC_PATH_SENT:', {
       timestamp: Date.now(),
       operationType,
@@ -3723,7 +3723,7 @@ function _cleanupOldRestoreEntries(now) {
 
 /**
  * Build error response for manager action
- * v1.6.4.8 - Extracted for code health, uses options object to reduce args
+ * v1.6.3.12-v7 - Extracted for code health, uses options object to reduce args
  * @private
  * @param {Object} options - Error response options
  * @param {string} options.action - Action name
@@ -3749,7 +3749,7 @@ function _buildActionErrorResponse(options) {
 
 /**
  * Build success response for manager action
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _buildActionSuccessResponse(action, quickTabId, currentTabId, durationMs) {
@@ -3765,7 +3765,7 @@ function _buildActionSuccessResponse(action, quickTabId, currentTabId, durationM
 
 /**
  * Validate manager action prerequisites
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  * @returns {string|null} Error message if validation fails, null if valid
  */
@@ -3780,7 +3780,7 @@ function _validateManagerAction(quickTabId) {
  * v1.6.3.4-v7 - FIX Issue #3: Check result from handler and send proper error responses
  * v1.6.3.7-v1 - FIX ISSUE #3 & #6: Enhanced confirmation response with structured format
  *   Response includes: success, action, quickTabId, originTabId, reason, completedAt
- * v1.6.4.8 - Refactored to reduce LoC from 70 to <50
+ * v1.6.3.12-v7 - Refactored to reduce LoC from 70 to <50
  * @private
  */
 function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
@@ -3848,7 +3848,7 @@ function _handleManagerAction(quickTabId, action, actionFn, sendResponse) {
 
 /**
  * Check if Quick Tab is owned by current tab
- * v1.6.4.8 - Extracted predicate for code health
+ * v1.6.3.12-v7 - Extracted predicate for code health
  * @private
  * @param {string} quickTabId - Quick Tab ID to check
  * @returns {{ hasInMap: boolean, hasSnapshot: boolean, currentTabId: number|null }} Ownership info
@@ -3863,7 +3863,7 @@ function _getQuickTabOwnership(quickTabId) {
 
 /**
  * Log deletion receipt with correlation ID
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _logDeletionReceipt(correlationId, quickTabId, ownership, source) {
@@ -3881,7 +3881,7 @@ function _logDeletionReceipt(correlationId, quickTabId, ownership, source) {
 
 /**
  * Log deletion applied with correlation ID
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _logDeletionApplied(correlationId, quickTabId, currentTabId) {
@@ -3897,7 +3897,7 @@ function _logDeletionApplied(correlationId, quickTabId, currentTabId) {
 
 /**
  * Handle close for Quick Tab not present in this tab
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _handleCloseNotPresent(quickTabId, sendResponse, source, ownership) {
@@ -3919,7 +3919,7 @@ function _handleCloseNotPresent(quickTabId, sendResponse, source, ownership) {
 
 /**
  * Handle close via background broadcast (direct destroy, no re-broadcast)
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, ownership) {
@@ -3949,7 +3949,7 @@ function _handleCloseFromBroadcast(quickTabId, sendResponse, correlationId, owne
  *   When source is 'background-broadcast', do local cleanup without re-broadcasting.
  *   When source is 'Manager' or other, use standard closeById() path.
  * v1.6.3.6-v5 - FIX Issue #4e: Added deletion receipt logging with correlation ID
- * v1.6.4.8 - Refactored to reduce complexity (cc=16 -> cc<9)
+ * v1.6.3.12-v7 - Refactored to reduce complexity (cc=16 -> cc<9)
  * @private
  * @param {string} quickTabId - Quick Tab ID to close
  * @param {Function} sendResponse - Response callback
@@ -4071,7 +4071,7 @@ function _determineOwnership(ownership, matchesAdoptedOwnership, wasAdopted, mat
 
 /**
  * Build restore ownership info with ID pattern fallback
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * v1.6.3.10-v7 - FIX Issue #7: Adoption-aware ownership validation
  * @private
  * @param {string} quickTabId - Quick Tab ID to check
@@ -4108,7 +4108,7 @@ function _getRestoreOwnership(quickTabId) {
 
 /**
  * Send cross-tab filtered rejection response
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnership) {
@@ -4143,7 +4143,7 @@ function _sendCrossTabFilteredResponse(quickTabId, sendResponse, restoreOwnershi
  *   When a Quick Tab is minimized and the page is reloaded, quickTabsMap and
  *   minimizedManager may be empty - but the Quick Tab still belongs to this tab.
  *   Use the tab ID embedded in the Quick Tab ID pattern as a fallback check.
- * v1.6.4.8 - Refactored to reduce complexity (cc=12 -> cc<9)
+ * v1.6.3.12-v7 - Refactored to reduce complexity (cc=12 -> cc<9)
  * v1.6.3.10-v10 - FIX Issue R: Enforce ordering for storage-dependent RESTORE operations
  * @private
  * @param {string} quickTabId - Quick Tab ID to restore
@@ -4309,8 +4309,8 @@ function _handleCloseMinimizedQuickTabs(sendResponse) {
 
 /**
  * Handle ADOPTION_COMPLETED broadcast from background
- * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
- * v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
+ * v1.6.3.12-v7 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.3.12-v7 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
  *
  * This handler updates the local Quick Tab cache when adoption occurs.
  * Without this, content scripts have stale originTabId values which causes
@@ -4371,9 +4371,9 @@ function _updateMinimizedSnapshotOriginTabId(snapshot, adoptedQuickTabId, newOri
 
 /**
  * Handle ADOPTION_COMPLETED broadcast from background
- * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
- * v1.6.4.15 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
- * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (95 -> ~55)
+ * v1.6.3.12-v7 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.3.12-v7 - FIX Issue #22: Update MinimizedManager snapshot originTabId after adoption
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (95 -> ~55)
  *
  * @private
  * @param {Object} message - Adoption completion message
@@ -4445,13 +4445,13 @@ function _handleAdoptionCompleted(message, sendResponse) {
   });
 }
 
-// ==================== v1.6.4.14 FIX Issue #17: TAB ACTIVATED HANDLER ====================
+// ==================== v1.6.3.12-v7 FIX Issue #17: TAB ACTIVATED HANDLER ====================
 // Handle tabActivated action from background when a tab becomes active
 // This enables content script hydration and adoption state refresh
 
 /**
  * Handle tabActivated message from background
- * v1.6.4.14 - FIX Issue #17: Missing tabActivated handler in content script
+ * v1.6.3.12-v7 - FIX Issue #17: Missing tabActivated handler in content script
  *
  * This handler is called when background broadcasts tabActivated due to
  * chrome.tabs.onActivated. It triggers:
@@ -4475,7 +4475,7 @@ function _handleTabActivated(message, sendResponse) {
     timestamp: Date.now()
   });
 
-  // v1.6.4.14 - FIX Issue #16: Refresh adoption state on tab activation
+  // v1.6.3.12-v7 - FIX Issue #16: Refresh adoption state on tab activation
   // After adoption, content scripts need to refresh their cache to pick up
   // new originTabId values
   let stateUpdated = false;
@@ -4521,7 +4521,7 @@ function _handleTabActivated(message, sendResponse) {
 
 /**
  * Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND message
- * v1.6.4.14 - FIX Issue #17: State sync on tab activation
+ * v1.6.3.12-v7 - FIX Issue #17: State sync on tab activation
  *
  * Background sends full Quick Tab state when a tab becomes active.
  * This ensures content script has latest state including any adoption changes.
@@ -4555,7 +4555,7 @@ function _handleStateSyncFromBackground(message, sendResponse) {
     return;
   }
 
-  // v1.6.4.14 - FIX Issue #16: Update local cache with new originTabId values from adoption
+  // v1.6.3.12-v7 - FIX Issue #16: Update local cache with new originTabId values from adoption
   const updatedCount = _syncStateTabs(state.tabs, currentTabId);
 
   console.log('[Content] STATE_SYNC_FROM_BACKGROUND: Sync complete:', {
@@ -4576,7 +4576,7 @@ function _handleStateSyncFromBackground(message, sendResponse) {
 
 /**
  * Sync tabs from state to local cache
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  * @param {Array} tabs - Array of tab data objects
  * @param {number|null} currentTabId - Current tab ID
@@ -4634,7 +4634,7 @@ function _syncSingleTabSnapshot(tabData) {
 
 /**
  * Track adoption if tab belongs to different origin
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  */
 function _trackAdoptionIfNeeded(tabData, currentTabId) {
@@ -5189,7 +5189,7 @@ const ACTION_HANDLERS = {
     _handleCloseMinimizedQuickTabs(sendResponse);
     return true;
   },
-  // v1.6.4.13 - FIX BUG #4: Handle ADOPTION_COMPLETED to update local cache
+  // v1.6.3.12-v7 - FIX BUG #4: Handle ADOPTION_COMPLETED to update local cache
   // This prevents cross-tab restore from using wrong tab context after adoption
   ADOPTION_COMPLETED: (message, sendResponse) => {
     console.log('[Content] Received ADOPTION_COMPLETED broadcast:', {
@@ -5201,7 +5201,7 @@ const ACTION_HANDLERS = {
     _handleAdoptionCompleted(message, sendResponse);
     return true;
   },
-  // v1.6.4.14 - FIX Issue #17: Handle tabActivated action from background
+  // v1.6.3.12-v7 - FIX Issue #17: Handle tabActivated action from background
   // Background broadcasts this when a tab becomes active via chrome.tabs.onActivated
   tabActivated: (message, sendResponse) => {
     console.log('[Content] Received tabActivated broadcast:', {
@@ -5212,7 +5212,7 @@ const ACTION_HANDLERS = {
     _handleTabActivated(message, sendResponse);
     return true;
   },
-  // v1.6.4.14 - FIX Issue #17: Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND action
+  // v1.6.3.12-v7 - FIX Issue #17: Handle SYNC_QUICK_TAB_STATE_FROM_BACKGROUND action
   // Background sends this with full state when tab becomes active
   SYNC_QUICK_TAB_STATE_FROM_BACKGROUND: (message, sendResponse) => {
     console.log('[Content] Received SYNC_QUICK_TAB_STATE_FROM_BACKGROUND:', {
@@ -5237,7 +5237,7 @@ const ACTION_HANDLERS = {
  */
 /**
  * Log restore command stages for diagnostics
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _logRestoreStage(stage, quickTabId, source, extra = {}) {
@@ -5256,7 +5256,7 @@ function _logRestoreStage(stage, quickTabId, source, extra = {}) {
 
 /**
  * Execute restore via visibility handler
- * v1.6.4.8 - Extracted for code health
+ * v1.6.3.12-v7 - Extracted for code health
  * @private
  */
 function _executeRestoreCommand(quickTabId, source) {

@@ -61,24 +61,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
+**v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health:**
 
-- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use port-based messaging methods
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
-**v1.6.3.12-v4 Features:**
+**v1.6.3.12-v6 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2
-  compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
 
 **Performance Targets:**
 

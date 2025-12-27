@@ -9,13 +9,13 @@
  * - Router validates sender and routes to handler
  * - Handlers return promises for async operations
  *
- * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
- * v1.6.4.15 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
- * v1.6.4.15 - FIX Issue #22: Add response format validation and normalization
- * v1.6.4.0 - FIX Issue #24: Add centralized message schema validation
+ * v1.6.3.12-v7 - FIX Issue #18: Support both `action` and `type` message properties
+ * v1.6.3.12-v7 - FIX Issue #18 (Diagnostic): Add allowlist of valid command types
+ * v1.6.3.12-v7 - FIX Issue #22: Add response format validation and normalization
+ * v1.6.3.12-v7 - FIX Issue #24: Add centralized message schema validation
  */
 
-// v1.6.4.15 - FIX Issue #18: Allowlist of valid command types for validation
+// v1.6.3.12-v7 - FIX Issue #18: Allowlist of valid command types for validation
 // This serves as documentation and validation for the message protocol
 export const VALID_MESSAGE_ACTIONS = new Set([
   // Quick Tab CRUD operations
@@ -49,7 +49,7 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'KEEPALIVE_PING'
 ]);
 
-// v1.6.4.0 - FIX Issue #24: Valid type-based message types (handled by separate listeners)
+// v1.6.3.12-v7 - FIX Issue #24: Valid type-based message types (handled by separate listeners)
 // These are NOT handled by MessageRouter but are valid extension messages
 export const VALID_MESSAGE_TYPES = new Set([
   // Port-based messages (handled via runtime.connect ports)
@@ -80,17 +80,17 @@ export const VALID_MESSAGE_TYPES = new Set([
   'ADOPT_TAB'
 ]);
 
-// v1.6.4.15 - FIX Issue #22: Standard response envelope format
+// v1.6.3.12-v7 - FIX Issue #22: Standard response envelope format
 // All handlers should return responses in this format for consistency
 export const RESPONSE_ENVELOPE = {
   SUCCESS: data => ({ success: true, data }),
   ERROR: (error, code = 'UNKNOWN_ERROR') => ({ success: false, error: String(error), code })
 };
 
-// v1.6.4.15 - FIX Issue #22: Protocol version for future compatibility
+// v1.6.3.12-v7 - FIX Issue #22: Protocol version for future compatibility
 export const MESSAGE_PROTOCOL_VERSION = '1.0.0';
 
-// v1.6.4.0 - FIX Issue #24: Message schema validation error codes
+// v1.6.3.12-v7 - FIX Issue #24: Message schema validation error codes
 export const VALIDATION_ERROR_CODES = {
   INVALID_MESSAGE_FORMAT: 'INVALID_MESSAGE_FORMAT',
   MISSING_ACTION_AND_TYPE: 'MISSING_ACTION_AND_TYPE',
@@ -104,10 +104,10 @@ export class MessageRouter {
   constructor() {
     this.handlers = new Map();
     this.extensionId = null;
-    // v1.6.4.15 - FIX Issue #18: Track rejected commands for diagnostics
+    // v1.6.3.12-v7 - FIX Issue #18: Track rejected commands for diagnostics
     this._rejectedCommandCount = 0;
     this._lastRejectedCommand = null;
-    // v1.6.4.0 - FIX Issue #24: Track validation failures for diagnostics
+    // v1.6.3.12-v7 - FIX Issue #24: Track validation failures for diagnostics
     this._validationFailureCount = 0;
     this._lastValidationFailure = null;
   }
@@ -156,7 +156,7 @@ export class MessageRouter {
 
   /**
    * Check if message is a valid object
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
    * @private
    * @param {*} message - Message to check
    * @param {Object} sender - Message sender for logging
@@ -181,7 +181,7 @@ export class MessageRouter {
 
   /**
    * Check for ambiguous messages with both action and type
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
    * @private
    * @param {boolean} hasAction - Whether message has action property
    * @param {boolean} hasType - Whether message has type property
@@ -202,7 +202,7 @@ export class MessageRouter {
 
   /**
    * Validate action property value against allowlist
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
    * @private
    * @param {Object} message - The message
    * @param {Object} sender - Message sender for logging
@@ -239,7 +239,7 @@ export class MessageRouter {
 
   /**
    * Validate type property value against allowlist
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
    * @private
    * @param {Object} message - The message
    * @param {Object} sender - Message sender for logging
@@ -271,7 +271,7 @@ export class MessageRouter {
 
   /**
    * Check if neither action nor type present and return error
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
    * @private
    * @param {boolean} hasAction - Whether message has action property
    * @param {boolean} hasType - Whether message has type property
@@ -298,7 +298,8 @@ export class MessageRouter {
 
   /**
    * Validate action or type property and return error if invalid
-   * v1.6.4.0 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce validateMessageSchema complexity
+   * v1.6.3.12-v8 - FIX Code Health: Flatten to early returns to eliminate bumpy road
    * @private
    * @param {boolean} hasAction - Whether message has action property
    * @param {boolean} hasType - Whether message has type property
@@ -307,20 +308,21 @@ export class MessageRouter {
    * @returns {{ valid: boolean, action?: string, error?: string, code?: string }|null} Error result or null if valid
    */
   _validateActionOrType(hasAction, hasType, message, sender) {
+    // v1.6.3.12-v8 - FIX Code Health: Early return for action validation
     if (hasAction) {
-      const actionError = this._validateActionProperty(message, sender);
-      if (actionError) return actionError;
-    } else if (hasType) {
-      const typeError = this._validateTypeProperty(message, sender);
-      if (typeError) return typeError;
+      return this._validateActionProperty(message, sender);
+    }
+    // v1.6.3.12-v8 - FIX Code Health: Early return for type validation
+    if (hasType) {
+      return this._validateTypeProperty(message, sender);
     }
     return null;
   }
 
   /**
    * Validate message schema - centralized validation for both action and type properties
-   * v1.6.4.0 - FIX Issue #24: Centralized message schema validation
-   * v1.6.4.0 - FIX Code Health: Refactored to reduce complexity
+   * v1.6.3.12-v7 - FIX Issue #24: Centralized message schema validation
+   * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce complexity
    * @param {Object} message - Message to validate
    * @param {Object} sender - Message sender for logging
    * @returns {{ valid: boolean, action?: string, error?: string, code?: string }}
@@ -354,7 +356,7 @@ export class MessageRouter {
 
   /**
    * Log validation failure with details
-   * v1.6.4.0 - FIX Issue #24: Centralized validation failure logging
+   * v1.6.3.12-v7 - FIX Issue #24: Centralized validation failure logging
    * @private
    * @param {string} errorType - Type of validation error
    * @param {Object} message - The invalid message
@@ -381,7 +383,7 @@ export class MessageRouter {
 
   /**
    * Extract the action identifier from message
-   * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` properties
+   * v1.6.3.12-v7 - FIX Issue #18: Support both `action` and `type` properties
    * @private
    * @param {Object} message - Message object
    * @returns {string|null} Action identifier or null
@@ -395,7 +397,7 @@ export class MessageRouter {
     }
 
     // Fall back to `type` property for type-based messages
-    // v1.6.4.14 - FIX Issue #18: Some handlers use `type` instead of `action`
+    // v1.6.3.12-v7 - FIX Issue #18: Some handlers use `type` instead of `action`
     if (typeof message.type === 'string') {
       return message.type;
     }
@@ -405,7 +407,7 @@ export class MessageRouter {
 
   /**
    * Check if message should be deferred to other browser.runtime.onMessage listeners
-   * v1.6.4.14 - FIX Issue #18: Allow type-based messages to pass through
+   * v1.6.3.12-v7 - FIX Issue #18: Allow type-based messages to pass through
    *
    * The MessageRouter handles action-based messages, but some messages use
    * `type` property instead of `action`. These type-based messages are handled
@@ -427,7 +429,7 @@ export class MessageRouter {
 
   /**
    * Validate that an action is in the allowlist of valid commands
-   * v1.6.4.15 - FIX Issue #18: Validate against allowlist
+   * v1.6.3.12-v7 - FIX Issue #18: Validate against allowlist
    * @private
    * @param {string} action - Action to validate
    * @param {Object} sender - Message sender for logging
@@ -456,37 +458,62 @@ export class MessageRouter {
   }
 
   /**
+   * Check if response is null or undefined and return appropriate envelope
+   * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce _normalizeResponse complexity
+   * @private
+   * @param {*} response - Raw response to check
+   * @param {string} action - Action for logging
+   * @returns {Object|null} Normalized response or null if response is not null/undefined
+   */
+  _handleNullResponse(response, action) {
+    if (response !== null && response !== undefined) {
+      return null;
+    }
+    console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
+      action,
+      responseType: response === null ? 'null' : 'undefined'
+    });
+    return { success: true, data: null };
+  }
+
+  /**
+   * Check if response has success property and normalize if needed
+   * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce _normalizeResponse complexity
+   * @private
+   * @param {Object} response - Response object with success property
+   * @param {string} action - Action for logging
+   * @returns {Object} Normalized response
+   */
+  _normalizeSuccessResponse(response, action) {
+    // Error response missing error field - add defaults
+    if (response.success === false && !response.error) {
+      console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
+        action,
+        response
+      });
+      return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR' };
+    }
+    // Response is valid format
+    return response;
+  }
+
+  /**
    * Validate and normalize response format
-   * v1.6.4.15 - FIX Issue #22: Ensure consistent response envelope
+   * v1.6.3.12-v7 - FIX Issue #22: Ensure consistent response envelope
+   * v1.6.3.12-v8 - FIX Code Health: Reduced cc from 9 to <9 via extraction
    * @private
    * @param {*} response - Raw handler response
    * @param {string} action - Action that generated the response
    * @returns {Object} Normalized response object
    */
   _normalizeResponse(response, action) {
-    // Handle null/undefined responses
-    if (response === null || response === undefined) {
-      console.warn('[MSG_VALIDATE][MessageRouter] Handler returned null/undefined:', {
-        action,
-        responseType: response === null ? 'null' : 'undefined'
-      });
-      return { success: true, data: null };
-    }
+    // v1.6.3.12-v8 - Handle null/undefined responses
+    const nullResult = this._handleNullResponse(response, action);
+    if (nullResult) return nullResult;
 
-    // Response already has success property - validate format
+    // v1.6.3.12-v8 - Response already has success property - validate format
     if (typeof response === 'object' && 'success' in response) {
-      // Validate required fields based on success/failure
-      if (response.success === false && !response.error) {
-        console.warn('[MSG_VALIDATE][MessageRouter] Error response missing error field:', {
-          action,
-          response
-        });
-        // Add default error if missing
-        return { ...response, error: 'Unknown error', code: response.code || 'UNKNOWN_ERROR' };
-      }
-
-      // Response is valid format
-      return response;
+      return this._normalizeSuccessResponse(response, action);
     }
 
     // Response is raw data - wrap in success envelope
@@ -504,12 +531,12 @@ export class MessageRouter {
    * @returns {boolean} True if message was handled (deferred to other listeners returns false)
    */
   _handleNoHandler(message, action, sender, sendResponse) {
-    // v1.6.4.14 - FIX Issue #18: Check if this message should be handled by other listeners
+    // v1.6.3.12-v7 - FIX Issue #18: Check if this message should be handled by other listeners
     if (this._shouldDeferToOtherListeners(message)) {
       return false;
     }
 
-    // v1.6.4.15 - FIX Issue #18: Validate against allowlist and log rejection
+    // v1.6.3.12-v7 - FIX Issue #18: Validate against allowlist and log rejection
     const validation = this._validateAction(action, sender);
     if (!validation.valid) {
       sendResponse({
@@ -530,9 +557,17 @@ export class MessageRouter {
   /**
    * Execute handler and send response
    * v1.6.3.11-v11 - FIX Issue 48 #3: Extracted to reduce route() complexity
+   * v1.6.3.12-v8 - FIX Code Health: Converted 6 args to options object
    * @private
+   * @param {Object} options - Handler execution options
+   * @param {Function} options.handler - Handler function to execute
+   * @param {Object} options.message - Message object
+   * @param {Object} options.sender - Message sender
+   * @param {Function} options.sendResponse - Response callback
+   * @param {string} options.action - Action identifier
+   * @param {number} options.routeStartTime - Start timestamp for duration calculation
    */
-  async _executeHandler(handler, message, sender, sendResponse, action, routeStartTime) {
+  async _executeHandler({ handler, message, sender, sendResponse, action, routeStartTime }) {
     // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler execution start
     console.log(`[MSG_HANDLER] Handler for ${action} executing`, {
       senderTabId: sender?.tab?.id ?? 'unknown',
@@ -542,7 +577,7 @@ export class MessageRouter {
     // Call handler and wait for result
     const result = await handler(message, sender);
 
-    // v1.6.4.15 - FIX Issue #22: Normalize response format
+    // v1.6.3.12-v7 - FIX Issue #22: Normalize response format
     const normalizedResponse = this._normalizeResponse(result, action);
 
     // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler result
@@ -560,12 +595,74 @@ export class MessageRouter {
   }
 
   /**
+   * Handle error during handler execution
+   * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   * @param {Error} error - The error that occurred
+   * @param {string} action - Action that failed
+   * @param {number} routeStartTime - Start timestamp for duration calculation
+   * @param {Function} sendResponse - Response callback
+   */
+  _handleExecutionError(error, action, routeStartTime, sendResponse) {
+    const routeDurationMs = Date.now() - routeStartTime;
+    console.error('[MSG_HANDLER] Handler returned: success=false', {
+      action,
+      error: error.message,
+      durationMs: routeDurationMs
+    });
+
+    if (sendResponse) {
+      sendResponse({
+        success: false,
+        error: error.message || 'Handler execution failed',
+        code: 'HANDLER_ERROR'
+      });
+    }
+  }
+
+  /**
+   * Send error response for invalid schema
+   * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   * @param {Object} schemaValidation - Validation result
+   * @param {Function} sendResponse - Response callback
+   */
+  _sendSchemaErrorResponse(schemaValidation, sendResponse) {
+    sendResponse({
+      success: false,
+      error: schemaValidation.error,
+      code: schemaValidation.code,
+      version: MESSAGE_PROTOCOL_VERSION
+    });
+  }
+
+  /**
+   * Log message routing details
+   * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce route() complexity
+   * @private
+   * @param {string} action - Action identifier
+   * @param {Object} sender - Message sender
+   * @param {boolean} hasHandler - Whether handler exists
+   * @param {string} propertyUsed - Which property was used (action or type)
+   */
+  _logMessageRouting(action, sender, hasHandler, propertyUsed) {
+    console.log(`[MSG_ROUTER] Message received: action=${action}`, {
+      senderTabId: sender?.tab?.id ?? 'unknown',
+      senderFrameId: sender?.frameId ?? 'unknown',
+      hasHandler,
+      propertyUsed,
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
    * Route message to appropriate handler
-   * v1.6.4.14 - FIX Issue #18: Support both `action` and `type` message properties
-   * v1.6.4.15 - FIX Issue #18: Validate against allowlist of valid actions
-   * v1.6.4.15 - FIX Issue #22: Normalize response format
+   * v1.6.3.12-v7 - FIX Issue #18: Support both `action` and `type` message properties
+   * v1.6.3.12-v7 - FIX Issue #18: Validate against allowlist of valid actions
+   * v1.6.3.12-v7 - FIX Issue #22: Normalize response format
    * v1.6.3.11-v11 - FIX Issue 48 #3: Enhanced message routing diagnostics
-   * v1.6.4.0 - FIX Issue #24: Use centralized schema validation
+   * v1.6.3.12-v7 - FIX Issue #24: Use centralized schema validation
+   * v1.6.3.12-v8 - FIX Code Health: Reduced cc from 9 to <9 via extraction
    * @param {Object} message - Message object with action or type property
    * @param {Object} sender - Message sender
    * @param {Function} sendResponse - Response callback
@@ -574,57 +671,30 @@ export class MessageRouter {
   async route(message, sender, sendResponse) {
     const routeStartTime = Date.now();
 
-    // v1.6.4.0 - FIX Issue #24: Use centralized schema validation
+    // v1.6.3.12-v7 - FIX Issue #24: Use centralized schema validation
     const schemaValidation = this.validateMessageSchema(message, sender);
 
     if (!schemaValidation.valid) {
-      sendResponse({
-        success: false,
-        error: schemaValidation.error,
-        code: schemaValidation.code,
-        version: MESSAGE_PROTOCOL_VERSION
-      });
+      this._sendSchemaErrorResponse(schemaValidation, sendResponse);
       return false;
     }
 
     const action = schemaValidation.action;
-
-    // v1.6.3.11-v11 - FIX Issue 48 #3: Log message received after validation
-    console.log(`[MSG_ROUTER] Message received: action=${action}`, {
-      senderTabId: sender?.tab?.id ?? 'unknown',
-      senderFrameId: sender?.frameId ?? 'unknown',
-      hasHandler: this.handlers.has(action),
-      propertyUsed: schemaValidation.propertyUsed,
-      timestamp: new Date().toISOString()
-    });
-
     const handler = this.handlers.get(action);
 
+    // v1.6.3.12-v8 - FIX Code Health: Extracted logging
+    this._logMessageRouting(action, sender, !!handler, schemaValidation.propertyUsed);
+
     if (!handler) {
-      // v1.6.3.11-v11 - FIX Code Review: Simplified boolean return
       return this._handleNoHandler(message, action, sender, sendResponse);
     }
 
     try {
-      await this._executeHandler(handler, message, sender, sendResponse, action, routeStartTime);
-      return true; // Keep channel open for async response
+      // v1.6.3.12-v8 - FIX Code Health: Use options object instead of 6 args
+      await this._executeHandler({ handler, message, sender, sendResponse, action, routeStartTime });
+      return true;
     } catch (error) {
-      // v1.6.3.11-v11 - FIX Issue 48 #3: Log handler error with details
-      const routeDurationMs = Date.now() - routeStartTime;
-      console.error('[MSG_HANDLER] Handler returned: success=false', {
-        action,
-        error: error.message,
-        durationMs: routeDurationMs
-      });
-
-      if (sendResponse) {
-        sendResponse({
-          success: false,
-          error: error.message || 'Handler execution failed',
-          code: 'HANDLER_ERROR'
-        });
-      }
-
+      this._handleExecutionError(error, action, routeStartTime, sendResponse);
       return true;
     }
   }

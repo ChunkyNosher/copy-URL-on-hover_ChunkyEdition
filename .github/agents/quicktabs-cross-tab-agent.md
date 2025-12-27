@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v5), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
-  priority queue, timeout backoff, rolling heartbeat window, container validation
+  (v1.6.3.12-v7), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker
 tools: ['*']
 ---
 
@@ -37,23 +37,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v5 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v5 Features (NEW):**
+**v1.6.3.12-v7 Features (NEW):**
 
-- **Circuit Breaker** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Post-Failure Delay** - 5s delay before next queue dequeue
-- **Test Write Recovery** - Every 30s probe for recovery detection
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
-- **Error Type Discrimination** - API unavailable vs quota vs transient
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use port-based messaging methods
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
-**v1.6.3.12-v4 Features:**
+**v1.6.3.12-v6 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2
-  compatibility
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -108,5 +105,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12-v5 circuit breaker,
-priority queue, timeout backoff, and rolling heartbeat window.**
+**Your strength: Reliable cross-tab sync with v1.6.3.12-v7 QUICKTAB_REMOVED handler,
+port messaging, sequence tracking, and port circuit breaker.**

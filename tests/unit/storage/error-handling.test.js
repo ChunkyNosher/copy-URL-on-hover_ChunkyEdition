@@ -525,7 +525,7 @@ describe('Storage Error Handling', () => {
 
   describe('Migration Edge Cases', () => {
     it('should migrate from legacy sync storage', async () => {
-      // v1.6.4.17 - NOTE: With session storage, this migration is no longer applicable
+      // v1.6.3.12-v7 - NOTE: With session storage, this migration is no longer applicable
       // Session storage empty, but sync storage has data
       // However, SyncStorageAdapter now uses storage.local and doesn't fallback to sync
       browser.storage.local.get.mockResolvedValue({});
@@ -538,7 +538,7 @@ describe('Storage Error Handling', () => {
 
       const result = await syncAdapter.load();
 
-      // v1.6.4.17 - With session storage, no fallback to sync storage occurs
+      // v1.6.3.12-v7 - With session storage, no fallback to sync storage occurs
       // Quick Tabs start fresh on each browser session
       expect(result).toBeNull();
     });

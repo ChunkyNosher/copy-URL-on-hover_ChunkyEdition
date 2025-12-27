@@ -10,7 +10,7 @@
  * - Manage button state updates
  * - Handle button event delegation
  *
- * v1.6.4 - Removed Solo/Mute functionality
+ * v1.6.3.12 - Removed Solo/Mute functionality
  *
  * @created 2025-11-19
  * @refactoring Phase 2.9 Task 4
@@ -408,7 +408,7 @@ export class TitlebarBuilder {
 
   /**
    * Create right section with control buttons
-   * v1.6.4 - Removed Solo/Mute buttons
+   * v1.6.3.12 - Removed Solo/Mute buttons
    * @private
    */
   _createRightSection() {

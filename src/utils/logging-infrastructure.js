@@ -1,6 +1,6 @@
 /**
  * Comprehensive Logging Infrastructure
- * v1.6.4.17 - FIX Issues #8, #13, L1-L7: Logging infrastructure for extension debugging
+ * v1.6.3.12-v7 - FIX Issues #8, #13, L1-L7: Logging infrastructure for extension debugging
  *
  * Provides standardized logging prefixes for all extension components:
  * - [LISTENER_REG] - Listener registration events

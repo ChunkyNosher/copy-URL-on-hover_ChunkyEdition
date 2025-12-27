@@ -19,6 +19,12 @@
 //   - Session-only behavior is achieved via explicit startup cleanup (_clearQuickTabsOnStartup)
 //   - Port messaging is the primary mechanism for real-time sync
 //   - storage.local is used for persistence between page reloads (during browser session)
+//
+// === v1.6.3.12-v7 FIX Bug #3 ===
+// Added QUICKTAB_REMOVED handler for content script UI close notifications
+//   - When content script closes Quick Tab via its own close button (not Manager)
+//   - DestroyHandler sends QUICKTAB_REMOVED message to background
+//   - Background updates session state and notifies sidebar for Manager UI update
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -46,13 +52,13 @@ const BACKGROUND_LOG_BUFFER = [];
 const MAX_BACKGROUND_BUFFER_SIZE = 2000;
 
 // ==================== VERSION-BASED LOG CLEANUP ====================
-// v1.6.4 - Clear accumulated logs on version upgrade to prevent confusion
+// v1.6.3.12 - Clear accumulated logs on version upgrade to prevent confusion
 // and reduce storage waste from old logs across version updates
 const EXTENSION_VERSION_KEY = 'extensionVersion';
 
 /**
  * Get the storage.local API (browser or chrome)
- * v1.6.4 - Extracted for complexity reduction
+ * v1.6.3.12 - Extracted for complexity reduction
  * @private
  * @returns {Object|null} storage.local API or null
  */
@@ -68,7 +74,7 @@ function _getStorageLocalAPI() {
 
 /**
  * Handle first install - record version without clearing logs
- * v1.6.4 - Extracted for complexity reduction
+ * v1.6.3.12 - Extracted for complexity reduction
  * @private
  */
 async function _handleFirstInstall(storageAPI, currentVersion) {
@@ -81,7 +87,7 @@ async function _handleFirstInstall(storageAPI, currentVersion) {
 
 /**
  * Handle version upgrade - clear logs and update version
- * v1.6.4 - Extracted for complexity reduction
+ * v1.6.3.12 - Extracted for complexity reduction
  * @private
  */
 async function _handleVersionUpgrade(storageAPI, storedVersion, currentVersion) {
@@ -100,7 +106,7 @@ async function _handleVersionUpgrade(storageAPI, storedVersion, currentVersion) 
 
 /**
  * Get current manifest version
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @returns {string|null} Version string or null if unavailable
  */
@@ -115,7 +121,7 @@ function _getManifestVersion() {
 
 /**
  * Handle version comparison result
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 async function _handleVersionComparison(storageAPI, storedVersion, currentVersion) {
@@ -133,8 +139,8 @@ async function _handleVersionComparison(storageAPI, storedVersion, currentVersio
 
 /**
  * Check if extension version changed and clear logs if needed
- * v1.6.4 - Version-based log history cleanup
- * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
+ * v1.6.3.12 - Version-based log history cleanup
+ * v1.6.3.12-v7 - Refactored: Extract helpers to reduce cyclomatic complexity
  * This runs early in initialization to clear logs before new logging begins
  */
 async function checkVersionAndClearLogs() {
@@ -477,25 +483,25 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
 
-// ==================== v1.6.4 J7: SCENARIO-LEVEL LOGGING ====================
+// ==================== v1.6.3.12 J7: SCENARIO-LEVEL LOGGING ====================
 // Optional scenario logger that logs scenario IDs (e.g., SCENARIO_10_STEP_4)
 // Can be enabled via Test Bridge or debug flag
 
 /**
  * Flag to enable scenario-level logging
- * v1.6.4 - J7: Set to true via Test Bridge or debug flag
+ * v1.6.3.12 - J7: Set to true via Test Bridge or debug flag
  */
 let _scenarioLoggingEnabled = false;
 
 /**
  * Current scenario context for logging
- * v1.6.4 - J7: Set by Test Bridge when running scenario tests
+ * v1.6.3.12 - J7: Set by Test Bridge when running scenario tests
  */
 let _currentScenarioContext = null;
 
 /**
  * Enable scenario logging
- * v1.6.4 - J7: Called by Test Bridge to enable detailed scenario tracking
+ * v1.6.3.12 - J7: Called by Test Bridge to enable detailed scenario tracking
  * @param {Object} context - Scenario context { scenarioId, scenarioName }
  */
 function enableScenarioLogging(context = {}) {
@@ -506,7 +512,7 @@ function enableScenarioLogging(context = {}) {
 
 /**
  * Disable scenario logging
- * v1.6.4 - J7: Called by Test Bridge to disable scenario tracking
+ * v1.6.3.12 - J7: Called by Test Bridge to disable scenario tracking
  */
 function disableScenarioLogging() {
   _scenarioLoggingEnabled = false;
@@ -516,7 +522,7 @@ function disableScenarioLogging() {
 
 /**
  * Log a scenario step
- * v1.6.4 - J7: Optional scenario-level logging for test debugging
+ * v1.6.3.12 - J7: Optional scenario-level logging for test debugging
  * @param {string} scenarioId - Scenario identifier (e.g., 'SCENARIO_10')
  * @param {number} step - Step number
  * @param {string} description - Step description
@@ -532,7 +538,7 @@ function logScenarioStep(scenarioId, step, description, data = {}) {
   });
 }
 
-// ==================== END v1.6.4 J7 ====================
+// ==================== END v1.6.3.12 J7 ====================
 
 // ==================== v1.6.3.10-v4 CONSTANTS ====================
 // FIX Issue #3/6: Firefox timeout recovery - transaction cleanup
@@ -945,7 +951,7 @@ function _hasValidProtocol(urlStr) {
 /**
  * Check if a URL is valid for Quick Tab creation
  * v1.6.3.4-v6 - FIX Issue #2: Filter corrupted tabs before broadcast
- * v1.6.4.8 - Refactored: Extracted helpers to reduce complex conditionals
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce complex conditionals
  * @param {*} url - URL to validate
  * @returns {boolean} True if URL is valid
  */
@@ -1038,12 +1044,12 @@ async function waitForInitialization(timeoutMs = 5000) {
 /**
  * Extract relevant tab data for hashing
  * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
- * v1.6.4 - J6: Fields included in hash are documented in return object
+ * v1.6.3.12 - J6: Fields included in hash are documented in return object
  * @param {Object} tab - Tab object
  * @returns {Object} Normalized tab data for hashing
  */
 function _extractTabDataForHash(tab) {
-  // v1.6.4 - J6: These are ALL fields that participate in hash computation
+  // v1.6.3.12 - J6: These are ALL fields that participate in hash computation
   // If any of these change, the hash will change, triggering a state update
   return {
     id: tab.id,
@@ -1060,7 +1066,7 @@ function _extractTabDataForHash(tab) {
 
 /**
  * Fields included in state hash computation
- * v1.6.4 - J6: Exported constant for logging purposes
+ * v1.6.3.12 - J6: Exported constant for logging purposes
  * @private
  */
 const _HASH_FIELDS = ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId'];
@@ -1363,7 +1369,7 @@ function migrateContainersToUnifiedFormat(containers) {
 
 /**
  * Helper: Get storage state from local storage (session-scoped via explicit cleanup)
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v7 - FIX: Use storage.session for Quick Tabs (session-only)
  * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * Quick Tabs are cleared on browser restart via explicit startup cleanup
  * @private
@@ -2480,7 +2486,7 @@ function _executeCacheClear(newValue) {
  * v1.6.3.2 - Extracted from _handleQuickTabStateChange to reduce complexity
  * v1.6.3.4 - FIX Bug #7: Reset saveId when cache is cleared
  * v1.6.3.4-v11 - FIX Issue #1, #8: Add cooldown and consecutive read validation
- * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * @param {Object} newValue - New storage value
  * @returns {boolean} True if cache was cleared, false if rejected
  */
@@ -2752,7 +2758,7 @@ function _buildSampleTabInfo(newValue) {
 /**
  * Log storage change with comprehensive details for debugging
  * v1.6.3.4-v8 - FIX Issue #8: Extracted from _handleQuickTabStateChange
- * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * @param {Object} oldValue - Previous storage value
  * @param {Object} newValue - New storage value
  */
@@ -3049,7 +3055,7 @@ function _buildStorageChangeComparison(newValue, oldValue) {
 /**
  * Update cooldown tracking and log the storage change
  * v1.6.3.5-v3 - Extracted to reduce _shouldIgnoreStorageChange complexity
- * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
  */
@@ -3142,7 +3148,7 @@ function _logSpuriousEventDetection(sameTimestamp, newValue) {
 /**
  * Check if this is a Firefox spurious storage.onChanged event (no actual data change)
  * v1.6.3.5-v3 - FIX Diagnostic Issue #8: Firefox fires onChanged even without data change
- * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * NOTE: We use multiple criteria to avoid false positives from saveId collisions
  * @param {Object} newValue - New storage value
  * @param {Object} oldValue - Previous storage value
@@ -3860,13 +3866,13 @@ function _parsePortName(port) {
   return { type, tabId, origin };
 }
 
-// v1.6.4.15 - FIX Issue #16: Pending port connection queue during initialization
+// v1.6.3.12-v7 - FIX Issue #16: Pending port connection queue during initialization
 const _pendingPortConnections = [];
 
 /**
  * Send background handshake to port after initialization
  * v1.6.3.10-v8 - FIX Code Health: Extracted async handshake logic
- * v1.6.4.15 - FIX Issue #16: Enhanced logging for port lifecycle
+ * v1.6.3.12-v7 - FIX Issue #16: Enhanced logging for port lifecycle
  * @private
  */
 async function _sendBackgroundHandshake(port, portId, tabId, origin) {
@@ -3875,7 +3881,7 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
     const initReady = await waitForInitialization(5000);
     const handshakeDuration = Date.now() - handshakeStartTime;
 
-    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - initialized
+    // v1.6.3.12-v7 - FIX Issue #16: Log port lifecycle - initialized
     console.log('[PORT_LIFECYCLE] Port initialized:', {
       event: 'initialized',
       portId,
@@ -3890,7 +3896,7 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
       type: 'BACKGROUND_HANDSHAKE',
       ...getBackgroundStartupInfo(),
       isInitialized: initReady,
-      // v1.6.4.15 - FIX Issue #16: Add isReadyForCommands field
+      // v1.6.3.12-v7 - FIX Issue #16: Add isReadyForCommands field
       isReadyForCommands: initReady,
       portId,
       tabId,
@@ -3910,13 +3916,13 @@ async function _sendBackgroundHandshake(port, portId, tabId, origin) {
  * Handle incoming port connection
  * v1.6.3.6-v11 - FIX Issue #11: Persistent port connections
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
- * v1.6.4.15 - FIX Issue #16: Port lifecycle logging and initialization coordination
+ * v1.6.3.12-v7 - FIX Issue #16: Port lifecycle logging and initialization coordination
  */
 function handlePortConnect(port) {
   const connectTime = Date.now();
   const { type, tabId, origin } = _parsePortName(port);
 
-  // v1.6.4.15 - FIX Issue #16: Log port lifecycle - created
+  // v1.6.3.12-v7 - FIX Issue #16: Log port lifecycle - created
   console.log('[PORT_LIFECYCLE] Port created:', {
     event: 'created',
     portName: port.name,
@@ -3932,7 +3938,7 @@ function handlePortConnect(port) {
 
   _sendBackgroundHandshake(port, portId, tabId, origin);
 
-  // v1.6.4.15 - FIX Issue #16: Enhanced port message handler with lifecycle logging
+  // v1.6.3.12-v7 - FIX Issue #16: Enhanced port message handler with lifecycle logging
   port.onMessage.addListener(message => {
     console.log('[PORT_LIFECYCLE] Message sent:', {
       event: 'message-sent',
@@ -3947,7 +3953,7 @@ function handlePortConnect(port) {
     const error = browser.runtime.lastError;
     const connectionDuration = Date.now() - connectTime;
 
-    // v1.6.4.15 - FIX Issue #16: Log port lifecycle - closed
+    // v1.6.3.12-v7 - FIX Issue #16: Log port lifecycle - closed
     console.log('[PORT_LIFECYCLE] Port closed:', {
       event: 'closed',
       portId,
@@ -4022,7 +4028,7 @@ async function handlePortMessage(port, portId, message) {
  * Route port message to appropriate handler
  * v1.6.3.6-v11 - FIX Issue #15: Message type discrimination
  * v1.6.3.6-v12 - FIX Issue #2, #4: Added HEARTBEAT handling
- * v1.6.4.0 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
+ * v1.6.3.12-v7 - FIX Issue E: Added REQUEST_FULL_STATE_SYNC handling
  * @param {Object} message - Message to route
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} Handler response
@@ -4162,7 +4168,7 @@ function handleDeletionAck(message, portInfo) {
 /**
  * Handle ACTION_REQUEST type messages
  * v1.6.3.6-v11 - FIX Issue #15: Action request handling
- * v1.6.4.0 - FIX Issue A: Added CLOSE_MINIMIZED_TABS handler
+ * v1.6.3.12-v7 - FIX Issue A: Added CLOSE_MINIMIZED_TABS handler
  * @param {Object} message - Action request message
  * @param {Object} portInfo - Port info
  */
@@ -4278,7 +4284,7 @@ function handleLegacyAction(message, portInfo) {
 
 /**
  * Validate adoption prerequisites
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
  * @private
  */
 function _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId) {
@@ -4301,7 +4307,7 @@ function _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId) 
 
 /**
  * Find Quick Tab in state and update originTabId
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
  * @private
  */
 function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
@@ -4343,7 +4349,7 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
 
 /**
  * Write and verify adoption state
- * v1.6.4.15 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
+ * v1.6.3.12-v7 - FIX Issue #20: Extracted to reduce handleAdoptAction complexity
  * @private
  */
 /**
@@ -4353,7 +4359,7 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
  */
 /**
  * Log adoption write failure
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @param {Object} context - Failure context
  */
@@ -4372,7 +4378,7 @@ function _logAdoptionWriteFailure(context) {
 
 /**
  * Build adoption state object for storage
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _buildAdoptionStatePayload(state, saveId, targetTabId) {
@@ -4452,13 +4458,13 @@ async function _writeAndVerifyAdoptionState({
  * Handle adopt action (atomic single write)
  * v1.6.3.6-v11 - FIX Issue #18: Adoption atomicity
  * v1.6.3.10-v3 - Phase 2: Smart adoption validation using TabLifecycleHandler
- * v1.6.4.14 - FIX Issue #21: Ensure storage write completes before broadcast
- * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
+ * v1.6.3.12-v7 - FIX Issue #21: Ensure storage write completes before broadcast
+ * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * @param {Object} payload - Adoption payload
  */
 /**
  * Read Quick Tab state from storage.local for adoption
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * @private
  * @returns {Promise<Object>} Result with state or error
@@ -4475,7 +4481,7 @@ async function _readAdoptionState() {
 
 /**
  * Update global cache after adoption
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _updateGlobalCacheForAdoption(quickTabId, targetTabId) {
@@ -4490,7 +4496,7 @@ function _updateGlobalCacheForAdoption(quickTabId, targetTabId) {
 
 /**
  * Broadcast adoption completion to all ports and tabs
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 async function _broadcastAdoptionCompletion(
@@ -4513,7 +4519,7 @@ async function _broadcastAdoptionCompletion(
 
 /**
  * Log successful adoption completion
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @param {Object} context - Success context
  */
@@ -4601,9 +4607,9 @@ async function handleAdoptAction(payload) {
 
 /**
  * Broadcast ADOPTION_COMPLETED to all content scripts via tabs.sendMessage
- * v1.6.4.13 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
- * v1.6.4.14 - FIX Issue #19: Retry mechanism for transient failures
- * v1.6.4.14 - FIX Issue #23: Classified error metrics (permanent vs transient)
+ * v1.6.3.12-v7 - FIX BUG #4: Cross-Tab Restore Using Wrong Tab Context
+ * v1.6.3.12-v7 - FIX Issue #19: Retry mechanism for transient failures
+ * v1.6.3.12-v7 - FIX Issue #23: Classified error metrics (permanent vs transient)
  *
  * This ensures all content scripts update their local Quick Tab cache
  * with the new originTabId after adoption. Without this, restore operations
@@ -4637,7 +4643,7 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
     const tabs = await browser.tabs.query({});
     const results = await _sendAdoptionToTabsWithRetry(tabs, message, quickTabId);
 
-    // v1.6.4.14 - FIX Issue #23: Log classified metrics
+    // v1.6.3.12-v7 - FIX Issue #23: Log classified metrics
     console.log('[Background] ADOPTION_BROADCAST_TO_TABS_COMPLETE:', {
       quickTabId,
       totalTabs: tabs.length,
@@ -4655,20 +4661,20 @@ async function _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, newOrigin
   }
 }
 
-// v1.6.4.14 - FIX Issue #19: Constants for retry mechanism
+// v1.6.3.12-v7 - FIX Issue #19: Constants for retry mechanism
 const ADOPTION_BROADCAST_MAX_RETRIES = 3;
 const ADOPTION_BROADCAST_RETRY_DELAY_MS = 200;
 
 /**
  * Classify error as permanent or transient
- * v1.6.4.14 - FIX Issue #19: Error classification for retry decisions
+ * v1.6.3.12-v7 - FIX Issue #19: Error classification for retry decisions
  * @private
  * @param {Error} error - The error to classify
  * @returns {{ isPermanent: boolean, reason: string }}
  */
 /**
  * Permanent error patterns - tab doesn't exist or can't receive messages
- * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to flatten _classifyBroadcastError
  * @const {string[]}
  */
 const PERMANENT_ERROR_PATTERNS = [
@@ -4682,7 +4688,7 @@ const PERMANENT_ERROR_PATTERNS = [
 
 /**
  * Transient error patterns - tab exists but content script may not be ready
- * v1.6.4.16 - FIX Code Health: Extracted to flatten _classifyBroadcastError
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to flatten _classifyBroadcastError
  * @const {string[]}
  */
 const TRANSIENT_ERROR_PATTERNS = [
@@ -4694,7 +4700,7 @@ const TRANSIENT_ERROR_PATTERNS = [
 
 /**
  * Check if error message matches any pattern in an array
- * v1.6.4.16 - FIX Code Health: Helper to reduce duplication
+ * v1.6.3.12-v7 - FIX Code Health: Helper to reduce duplication
  * @private
  * @param {string} errorMessage - Error message to check
  * @param {string[]} patterns - Array of patterns to match
@@ -4709,7 +4715,7 @@ function _matchErrorPattern(errorMessage, patterns) {
 
 /**
  * Classify broadcast error as permanent or transient
- * v1.6.4.16 - FIX Code Health: Refactored to use extracted helpers (bumpy road fix)
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to use extracted helpers (bumpy road fix)
  * @private
  * @param {Error} error - Error to classify
  * @returns {{ isPermanent: boolean, reason: string }}
@@ -4729,8 +4735,8 @@ function _classifyBroadcastError(error) {
 
 /**
  * Send adoption message to a list of tabs with retry for transient failures
- * v1.6.4.14 - FIX Issue #19: Retry mechanism with error classification
- * v1.6.4.14 - FIX Issue #23: Classified error metrics
+ * v1.6.3.12-v7 - FIX Issue #19: Retry mechanism with error classification
+ * v1.6.3.12-v7 - FIX Issue #23: Classified error metrics
  * @private
  * @param {Array} tabs - List of browser tabs
  * @param {Object} message - Adoption message to send
@@ -4764,12 +4770,12 @@ async function _sendAdoptionToTabsWithRetry(tabs, message, quickTabId) {
 
 /**
  * First pass of adoption broadcast - try all tabs once
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  */
 /**
  * First pass of adoption broadcast
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
@@ -4788,7 +4794,7 @@ async function _sendAdoptionFirstPass({
 
 /**
  * Process send result and update metrics
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  */
 function _processSendResult(result, tabId, completedTabs, metrics) {
@@ -4803,7 +4809,7 @@ function _processSendResult(result, tabId, completedTabs, metrics) {
 
 /**
  * Retry pass of adoption broadcast - retry transient failures
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
@@ -4840,7 +4846,7 @@ async function _sendAdoptionRetryPass({
 
 /**
  * Single retry attempt for all pending tabs
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  */
 async function _sendAdoptionRetryAttempt({
@@ -4874,7 +4880,7 @@ async function _sendAdoptionRetryAttempt({
 
 /**
  * Count remaining tabs as transient failures
- * v1.6.4.14 - Extracted to reduce complexity
+ * v1.6.3.12-v7 - Extracted to reduce complexity
  * @private
  */
 function _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, quickTabId) {
@@ -4893,7 +4899,7 @@ function _countRemainingTransientFailures(tabsToRetry, completedTabs, metrics, q
 
 /**
  * Send adoption message to a single tab with error classification
- * v1.6.4.14 - FIX Issue #19 & #23: Classified error handling
+ * v1.6.3.12-v7 - FIX Issue #19 & #23: Classified error handling
  * @private
  * @param {number} tabId - Browser tab ID
  * @param {Object} message - Adoption message to send
@@ -4932,7 +4938,7 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
 
 /**
  * Check if storage.local is available
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * v1.6.3.12-v4 - FIX: Renamed and updated to check storage.local (storage.session not available in Firefox MV2)
  * @private
  * @returns {boolean} True if storage.local is available
@@ -4944,7 +4950,7 @@ function _isStorageSessionAvailable() {
 
 /**
  * Log storage write verification result
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _logVerificationResult(verified, saveId, stateToWrite, readBack) {
@@ -4967,7 +4973,7 @@ function _logVerificationResult(verified, saveId, stateToWrite, readBack) {
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
- * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extract helpers to reduce cyclomatic complexity
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
@@ -5001,21 +5007,21 @@ async function writeStateWithVerification() {
   }
 }
 
-// ==================== v1.6.4.0 COMMAND HANDLERS ====================
+// ==================== v1.6.3.12-v7 COMMAND HANDLERS ====================
 // FIX Issue A: Background as sole storage writer
 // FIX Issue E: State sync on port reconnection
 // FIX Issue F: Storage write verification with retry
 
 /**
  * Initial backoff for storage write retry
- * v1.6.4.0 - FIX Issue F: Exponential backoff
+ * v1.6.3.12-v7 - FIX Issue F: Exponential backoff
  * v1.6.3.10-v7 - Note: STORAGE_WRITE_MAX_RETRIES is defined earlier at line 136
  */
 const STORAGE_WRITE_BACKOFF_INITIAL_MS = 100;
 
 /**
  * Handle REQUEST_FULL_STATE_SYNC message
- * v1.6.4.0 - FIX Issue E: State sync on port reconnection
+ * v1.6.3.12-v7 - FIX Issue E: State sync on port reconnection
  * @param {Object} message - Sync request message
  * @param {Object} portInfo - Port info
  * @returns {Promise<Object>} State sync response
@@ -5095,7 +5101,7 @@ function _removeMinimizedTabsFromState() {
 
 /**
  * Handle CLOSE_MINIMIZED_TABS command
- * v1.6.4.0 - FIX Issue A: Background as sole storage writer
+ * v1.6.3.12-v7 - FIX Issue A: Background as sole storage writer
  * v1.6.3.10-v8 - FIX Code Health: Reduced complexity via extraction
  */
 async function handleCloseMinimizedTabsCommand() {
@@ -5126,7 +5132,7 @@ async function handleCloseMinimizedTabsCommand() {
     verified: writeResult.verified
   });
 
-  // v1.6.4.20 - FIX Issue #3: Notify sidebar of state change after closing minimized tabs
+  // v1.6.3.12-v7 - FIX Issue #3: Notify sidebar of state change after closing minimized tabs
   // This ensures the Manager UI updates immediately to reflect the removed tabs
   notifySidebarOfStateChange();
 
@@ -5140,7 +5146,7 @@ async function handleCloseMinimizedTabsCommand() {
 
 /**
  * Broadcast close messages for multiple Quick Tabs to all content scripts
- * v1.6.4.0 - FIX Issue A: Helper for CLOSE_MINIMIZED_TABS
+ * v1.6.3.12-v7 - FIX Issue A: Helper for CLOSE_MINIMIZED_TABS
  * @private
  * @param {Array<string>} quickTabIds - Quick Tab IDs to close
  */
@@ -5155,15 +5161,15 @@ async function _broadcastCloseManyToAllTabs(quickTabIds) {
 
 /**
  * Send close messages to all browser tabs for given Quick Tab IDs
- * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue A: Extracted to reduce nesting depth
  * @private
  * @param {Array} tabs - Browser tabs
  * @param {Array<string>} quickTabIds - Quick Tab IDs to close
  */
 /**
  * Send close messages to all browser tabs for multiple Quick Tabs
- * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
- * v1.6.4.16 - FIX Code Health: Changed from async to sync (no await needed)
+ * v1.6.3.12-v7 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Code Health: Changed from async to sync (no await needed)
  * @private
  * @param {Array} tabs - Browser tabs
  * @param {Array} quickTabIds - Array of Quick Tab IDs
@@ -5176,7 +5182,7 @@ function _sendCloseMessagesToAllTabs(tabs, quickTabIds) {
 
 /**
  * Send close message to all browser tabs for a single Quick Tab
- * v1.6.4.0 - FIX Issue A: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue A: Extracted to reduce nesting depth
  * @private
  * @param {Array} tabs - Browser tabs
  * @param {string} quickTabId - Quick Tab ID to close
@@ -5197,7 +5203,7 @@ function _sendCloseMessageToTabs(tabs, quickTabId) {
 
 /**
  * Write state to storage with verification and exponential backoff retry
- * v1.6.4.0 - FIX Issue F: Storage timing uncertainty
+ * v1.6.3.12-v7 - FIX Issue F: Storage timing uncertainty
  * @param {string} operation - Operation name for logging
  * @returns {Promise<Object>} Write result with verification status
  */
@@ -5234,8 +5240,8 @@ async function writeStateWithVerificationAndRetry(operation) {
 
 /**
  * Attempt a single storage write with verification
- * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v7 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX: Use storage.session for Quick Tabs (session-only)
  * @private
  * @param {string} operation - Operation name
  * @param {string} saveId - Save ID
@@ -5272,7 +5278,7 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
 
 /**
  * Verify storage write by reading back the data
- * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
+ * v1.6.3.12-v7 - FIX Issue F: Extracted to reduce nesting depth
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * @private
@@ -5304,7 +5310,7 @@ async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backo
   return { success: false, verified: false, needsRetry: true };
 }
 
-// ==================== END v1.6.4.0 COMMAND HANDLERS ====================
+// ==================== END v1.6.3.12-v7 COMMAND HANDLERS ====================
 
 /**
  * Broadcast message to all connected ports
@@ -5366,11 +5372,11 @@ function getAllQuickTabsFromMemory() {
 /**
  * Notify sidebar of Quick Tab state change
  * v1.6.3.12 - Option 4: Push state updates to sidebar
- * v1.6.4 - J5: Enhanced broadcast error handling and logging
+ * v1.6.3.12 - J5: Enhanced broadcast error handling and logging
  */
 function notifySidebarOfStateChange() {
   if (!quickTabsSessionState.sidebarPort) {
-    // v1.6.4 - J5: Log when message dropped due to missing port
+    // v1.6.3.12 - J5: Log when message dropped due to missing port
     console.log('[Background] BROADCAST_DROPPED: No sidebar port connected', {
       timestamp: Date.now(),
       totalQuickTabs: getAllQuickTabsFromMemory().length,
@@ -5387,12 +5393,12 @@ function notifySidebarOfStateChange() {
     tabCount: allTabs.length,
     timestamp: Date.now(),
     sessionId: quickTabsSessionState.sessionId,
-    correlationId // v1.6.4 - Gap #8: Add correlation ID
+    correlationId // v1.6.3.12 - Gap #8: Add correlation ID
   };
 
   try {
     quickTabsSessionState.sidebarPort.postMessage(message);
-    // v1.6.4 - J5: Log successful broadcast with target info
+    // v1.6.3.12 - J5: Log successful broadcast with target info
     console.log('[Background] BROADCAST_SUCCESS: STATE_CHANGED sent to sidebar', {
       correlationId,
       tabCount: allTabs.length,
@@ -5400,7 +5406,7 @@ function notifySidebarOfStateChange() {
       targetPort: 'sidebar'
     });
   } catch (err) {
-    // v1.6.4 - J5: Log broadcast failure and mark port as dead
+    // v1.6.3.12 - J5: Log broadcast failure and mark port as dead
     console.error('[Background] BROADCAST_FAILED: Error sending to sidebar', {
       correlationId,
       error: err.message,
@@ -5487,15 +5493,67 @@ function handleQuickTabMinimizedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_REMOVED message from content script
+ * v1.6.3.12-v7 - FIX Bug #3: When content script closes Quick Tab via UI button,
+ * DestroyHandler sends this message to notify background for state sync.
+ * This ensures the Manager sidebar gets updated when Quick Tabs are closed
+ * from their own close buttons, not just from Manager buttons.
+ *
+ * @param {Object} message - Message containing quickTabId, originTabId, source
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabRemovedMessage(message, sender) {
+  const { quickTabId, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v7 QUICKTAB_REMOVED received:', {
+    quickTabId,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Remove the Quick Tab from session state
+  const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
+
+  // Also remove from globalQuickTabState for backward compatibility
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs.splice(globalIndex, 1);
+    globalQuickTabState.lastUpdate = Date.now();
+  }
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v7 Quick Tab removed from session state:', {
+      quickTabId,
+      ownerTabId,
+      source,
+      remainingTabsInOwner: quickTabsSessionState.quickTabsByTab[ownerTabId]?.length || 0,
+      totalGlobalTabs: globalQuickTabState.tabs.length
+    });
+
+    // Notify sidebar of state change for immediate UI update
+    notifySidebarOfStateChange();
+  } else {
+    console.warn('[Background] v1.6.3.12-v7 Quick Tab not found for QUICKTAB_REMOVED:', {
+      quickTabId,
+      senderTabId,
+      availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+    });
+  }
+}
+
+/**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
- * v1.6.4 - J5: Enhanced broadcast error handling with per-target logging
+ * v1.6.3.12 - J5: Enhanced broadcast error handling with per-target logging
  * @param {number} tabId - Tab ID to notify
  */
 function notifyContentScriptOfStateChange(tabId) {
   const port = quickTabsSessionState.contentScriptPorts[tabId];
   if (!port) {
-    // v1.6.4 - J5: Log when message dropped due to missing port
+    // v1.6.3.12 - J5: Log when message dropped due to missing port
     console.log('[Background] BROADCAST_DROPPED: No content script port for tab', {
       tabId,
       timestamp: Date.now(),
@@ -5512,19 +5570,19 @@ function notifyContentScriptOfStateChange(tabId) {
     quickTabs,
     tabCount: quickTabs.length,
     timestamp: Date.now(),
-    correlationId // v1.6.4 - Gap #8: Add correlation ID
+    correlationId // v1.6.3.12 - Gap #8: Add correlation ID
   };
 
   try {
     port.postMessage(message);
-    // v1.6.4 - J5: Log successful broadcast
+    // v1.6.3.12 - J5: Log successful broadcast
     console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script', {
       tabId,
       correlationId,
       tabCount: quickTabs.length
     });
   } catch (err) {
-    // v1.6.4 - J5: Log failure and remove dead port
+    // v1.6.3.12 - J5: Log failure and remove dead port
     console.error('[Background] BROADCAST_FAILED: Error sending to content script', {
       tabId,
       correlationId,
@@ -5538,13 +5596,13 @@ function notifyContentScriptOfStateChange(tabId) {
 /**
  * Handle CREATE_QUICK_TAB message from content script
  * v1.6.3.12 - Option 4: Add Quick Tab to in-memory state
- * v1.6.4 - J3: Log container info for Manager labeling
+ * v1.6.3.12 - J3: Log container info for Manager labeling
  * @param {number} tabId - Origin tab ID
  * @param {Object} quickTab - Quick Tab data
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleCreateQuickTab(tabId, quickTab, port) {
-  // v1.6.4 - J3: Include container info in logging for Manager labeling
+  // v1.6.3.12 - J3: Include container info in logging for Manager labeling
   console.log(`[Background] CREATE_QUICK_TAB from tab ${tabId}:`, {
     quickTabId: quickTab.id,
     url: quickTab.url,
@@ -5644,41 +5702,68 @@ function _sendQuickTabAck(port, ackType, success, quickTabId) {
 }
 
 /**
+ * Generic Quick Tab property update handler
+ * v1.6.3.12-v8 - FIX Code Health: Unified helper to reduce duplication
+ * @private
+ * @param {Object} options - Handler options
+ * @param {number} options.tabId - Origin tab ID
+ * @param {string} options.quickTabId - Quick Tab ID to update
+ * @param {browser.runtime.Port} options.port - Source port for response
+ * @param {string} options.operation - Operation name for logging
+ * @param {string} options.ackType - ACK message type to send
+ * @param {Function} options.updateFn - Function to apply updates to Quick Tab
+ */
+function _handleQuickTabUpdate({ tabId, quickTabId, port, operation, ackType, updateFn }) {
+  console.log(`[Background] ${operation} from tab ${tabId}:`, { quickTabId });
+
+  const found = _updateQuickTabProperty(tabId, quickTabId, updateFn);
+
+  _sendQuickTabAck(port, ackType, found, quickTabId);
+  if (found) notifySidebarOfStateChange();
+}
+
+/**
  * Handle MINIMIZE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to minimize
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
-  console.log(`[Background] MINIMIZE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
-
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    qt.minimized = true;
-    qt.minimizedAt = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'MINIMIZE_QUICK_TAB',
+    ackType: 'MINIMIZE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      qt.minimized = true;
+      qt.minimizedAt = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'MINIMIZE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
  * Handle RESTORE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to restore
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleRestoreQuickTabPort(tabId, quickTabId, port) {
-  console.log(`[Background] RESTORE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
-
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    qt.minimized = false;
-    qt.restoredAt = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'RESTORE_QUICK_TAB',
+    ackType: 'RESTORE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      qt.minimized = false;
+      qt.restoredAt = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'RESTORE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
@@ -5751,7 +5836,7 @@ function handleQueryMyQuickTabs(tabId, port) {
 /**
  * Handle HYDRATE_ON_LOAD message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
- * v1.6.4 - J4: Container-aware hydration logging
+ * v1.6.3.12 - J4: Container-aware hydration logging
  * @param {number} tabId - Tab ID requesting hydration
  * @param {browser.runtime.Port} port - Source port for response
  */
@@ -5759,14 +5844,14 @@ function handleHydrateOnLoad(tabId, port) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
 
-  // v1.6.4 - J4: Log container-aware hydration details
+  // v1.6.3.12 - J4: Log container-aware hydration details
   console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, {
     count: quickTabs.length,
     sessionId: quickTabsSessionState.sessionId,
     requestingContainer: cookieStoreId
   });
 
-  // v1.6.4 - J4: Log container mismatch decisions if any Quick Tabs have different containers
+  // v1.6.3.12 - J4: Log container mismatch decisions if any Quick Tabs have different containers
   if (quickTabs.length > 0) {
     const containerMismatches = quickTabs.filter(
       qt => qt.originContainerId && qt.originContainerId !== cookieStoreId
@@ -5791,21 +5876,27 @@ function handleHydrateOnLoad(tabId, port) {
 /**
  * Handle UPDATE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Origin tab ID
  * @param {Object} msg - Message with quickTabId and updates
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
+  // v1.6.3.12-v8 - Log updates object separately for diagnostics
   console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
 
-  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
-    Object.assign(qt, updates);
-    qt.lastUpdate = Date.now();
+  _handleQuickTabUpdate({
+    tabId,
+    quickTabId,
+    port,
+    operation: 'UPDATE_QUICK_TAB',
+    ackType: 'UPDATE_QUICK_TAB_ACK',
+    updateFn: qt => {
+      Object.assign(qt, updates);
+      qt.lastUpdate = Date.now();
+    }
   });
-
-  _sendQuickTabAck(port, 'UPDATE_QUICK_TAB_ACK', found, quickTabId);
-  if (found) notifySidebarOfStateChange();
 }
 
 /**
@@ -5890,7 +5981,7 @@ const _sidebarMessageHandlers = {
   CLOSE_QUICK_TAB: (msg, port) => handleSidebarCloseQuickTab(msg.quickTabId, port),
   MINIMIZE_QUICK_TAB: (msg, port) => handleSidebarMinimizeQuickTab(msg.quickTabId, port),
   RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port),
-  // v1.6.4.0 - FIX Issue #15: Add Close All Quick Tabs handler
+  // v1.6.3.12-v7 - FIX Issue #15: Add Close All Quick Tabs handler
   CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port)
 };
 
@@ -5909,102 +6000,145 @@ function _sendUnknownMessageError(port, source, msgType) {
 }
 
 /**
+ * Log port handler entry
+ * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce duplication
+ * v1.6.3.12-v8 - FIX Code Health: Converted to options object (5 args -> 1)
+ * @private
+ * @param {Object} options - Logging options
+ * @param {string} options.msgType - Message type
+ * @param {string} options.correlationId - Correlation ID for tracing
+ * @param {string} options.source - Source identifier
+ * @param {number} [options.tabId] - Tab ID (optional)
+ * @param {string[]} options.payloadKeys - Keys in the message payload
+ */
+function _logPortHandlerEntry({ msgType, correlationId, source, tabId, payloadKeys }) {
+  const logData = {
+    type: msgType,
+    correlationId,
+    source,
+    payloadKeys
+  };
+  if (tabId !== undefined) {
+    logData.tabId = tabId;
+  }
+  console.log(
+    `[PORT_HANDLER_ENTRY] type=${msgType}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    logData
+  );
+}
+
+/**
+ * Log port handler exit
+ * v1.6.3.12-v8 - FIX Code Health: Extracted to reduce duplication
+ * v1.6.3.12-v8 - FIX Code Health: Converted to options object (5 args -> 1)
+ * @private
+ * @param {Object} options - Logging options
+ * @param {string} options.msgType - Message type
+ * @param {string} options.outcome - Handler outcome
+ * @param {string} options.durationMs - Duration in milliseconds (formatted string)
+ * @param {string} options.correlationId - Correlation ID for tracing
+ * @param {number} [options.tabId] - Tab ID (optional)
+ */
+function _logPortHandlerExit({ msgType, outcome, durationMs, correlationId, tabId }) {
+  const logData = {
+    type: msgType,
+    outcome,
+    durationMs,
+    correlationId
+  };
+  if (tabId !== undefined) {
+    logData.tabId = tabId;
+  }
+  console.log(
+    `[PORT_HANDLER_EXIT] type=${msgType}, outcome=${outcome}, durationMs=${durationMs}`,
+    logData
+  );
+}
+
+/**
+ * Generic port message handler
+ * v1.6.3.12-v8 - FIX Code Health: Unified helper to reduce duplication between
+ * handleContentScriptPortMessage and handleSidebarPortMessage
+ * @private
+ * @param {Object} options - Handler options
+ * @param {Object} options.msg - Message object
+ * @param {browser.runtime.Port} options.port - Port to respond on
+ * @param {string} options.source - Source identifier for logging
+ * @param {string} options.correlationPrefix - Prefix for auto-generated correlation IDs
+ * @param {Object} options.handlers - Lookup table of message handlers
+ * @param {Function} options.invokeHandler - Function to invoke the handler
+ * @param {number} [options.tabId] - Tab ID (optional, for content script messages)
+ */
+function _handlePortMessage({ msg, port, source, correlationPrefix, handlers, invokeHandler, tabId }) {
+  const handlerStartTime = performance.now();
+  const correlationId = msg.correlationId || `${correlationPrefix}-${msg.type}-${Date.now()}`;
+
+  // v1.6.3.12-v8 - Use options object for logging
+  _logPortHandlerEntry({
+    msgType: msg.type,
+    correlationId,
+    source,
+    tabId,
+    payloadKeys: Object.keys(msg)
+  });
+
+  // Store correlationId on port for downstream handlers
+  port._lastCorrelationId = correlationId;
+
+  const handler = handlers[msg.type];
+  let outcome = 'unknown_type';
+
+  if (handler) {
+    invokeHandler(handler, msg, port);
+    outcome = 'success';
+  } else {
+    const sourceLabel = tabId !== undefined ? `tab ${tabId}` : source;
+    _sendUnknownMessageError(port, sourceLabel, msg.type);
+  }
+
+  const durationMs = (performance.now() - handlerStartTime).toFixed(2);
+  // v1.6.3.12-v8 - Use options object for logging
+  _logPortHandlerExit({ msgType: msg.type, outcome, durationMs, correlationId, tabId });
+}
+
+/**
  * Handle content script port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {number} tabId - Tab ID of the content script
  * @param {Object} msg - Message from content script
  * @param {browser.runtime.Port} port - Source port
  */
 function handleContentScriptPortMessage(tabId, msg, port) {
-  const handlerStartTime = performance.now();
-  const correlationId = msg.correlationId || `cs-${msg.type}-${Date.now()}`;
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(
-    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
-    {
-      type: msg.type,
-      tabId,
-      correlationId,
-      source: 'content-script',
-      payloadKeys: Object.keys(msg)
-    }
-  );
-
-  // Store correlationId on port for downstream handlers
-  port._lastCorrelationId = correlationId;
-
-  const handler = _contentScriptMessageHandlers[msg.type];
-  let outcome = 'unknown_type';
-
-  if (handler) {
-    handler(tabId, msg, port);
-    outcome = 'success';
-  } else {
-    _sendUnknownMessageError(port, `tab ${tabId}`, msg.type);
-  }
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
-  const durationMs = performance.now() - handlerStartTime;
-  console.log(
-    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
-    {
-      type: msg.type,
-      tabId,
-      outcome,
-      durationMs: durationMs.toFixed(2),
-      correlationId
-    }
-  );
+  _handlePortMessage({
+    msg,
+    port,
+    source: 'content-script',
+    correlationPrefix: 'cs',
+    handlers: _contentScriptMessageHandlers,
+    invokeHandler: (handler, message, p) => handler(tabId, message, p),
+    tabId
+  });
 }
 
 /**
  * Handle sidebar port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
+ * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarPortMessage(msg, port) {
-  const handlerStartTime = performance.now();
-  const correlationId = msg.correlationId || `sidebar-${msg.type}-${Date.now()}`;
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(
-    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
-    {
-      type: msg.type,
-      correlationId,
-      source: 'sidebar',
-      payloadKeys: Object.keys(msg)
-    }
-  );
-
-  // Store correlationId on port for downstream handlers
-  port._lastCorrelationId = correlationId;
-
-  const handler = _sidebarMessageHandlers[msg.type];
-  let outcome = 'unknown_type';
-
-  if (handler) {
-    handler(msg, port);
-    outcome = 'success';
-  } else {
-    _sendUnknownMessageError(port, 'sidebar', msg.type);
-  }
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
-  const durationMs = performance.now() - handlerStartTime;
-  console.log(
-    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
-    {
-      type: msg.type,
-      outcome,
-      durationMs: durationMs.toFixed(2),
-      correlationId
-    }
-  );
+  _handlePortMessage({
+    msg,
+    port,
+    source: 'sidebar',
+    correlationPrefix: 'sidebar',
+    handlers: _sidebarMessageHandlers,
+    invokeHandler: (handler, message, p) => handler(message, p)
+  });
 }
 
 /**
@@ -6183,7 +6317,7 @@ function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
 
 /**
  * Handle sidebar request to close all Quick Tabs
- * v1.6.4.0 - FIX Issue #15: Implement Close All button via port messaging
+ * v1.6.3.12-v7 - FIX Issue #15: Implement Close All button via port messaging
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
@@ -6265,7 +6399,7 @@ function _updateQuickTabMinimizedState(quickTabId, minimized) {
 
 /**
  * Capture disconnect reason from runtime.lastError
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @returns {string} Disconnect reason
  */
@@ -6279,7 +6413,7 @@ function _captureDisconnectReason() {
 
 /**
  * Log content script port replacement
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  */
 function _logContentPortReplacement(tabId, cookieStoreId) {
@@ -6293,7 +6427,7 @@ function _logContentPortReplacement(tabId, cookieStoreId) {
 
 /**
  * Create content script port disconnect handler
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @param {number} tabId - Tab ID
  * @param {string} cookieStoreId - Container ID
@@ -6318,8 +6452,8 @@ function _createContentPortDisconnectHandler(tabId, cookieStoreId) {
 /**
  * Setup content script port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
- * v1.6.4 - J1: Enhanced port lifecycle logging with container context
- * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
+ * v1.6.3.12 - J1: Enhanced port lifecycle logging with container context
+ * v1.6.3.12-v7 - Refactored: Extract helpers to reduce cyclomatic complexity
  * @private
  * @param {number} tabId - Tab ID
  * @param {browser.runtime.Port} port - The port
@@ -6351,7 +6485,7 @@ function _setupContentScriptPort(tabId, port) {
 
 /**
  * Create sidebar port disconnect handler
- * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v7 - Extracted for complexity reduction
  * @private
  * @returns {Function} Disconnect handler
  */
@@ -6370,8 +6504,8 @@ function _createSidebarPortDisconnectHandler() {
 /**
  * Setup sidebar port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
- * v1.6.4 - J1: Enhanced port lifecycle logging
- * v1.6.4.19 - Refactored: Use shared disconnect reason capture
+ * v1.6.3.12 - J1: Enhanced port lifecycle logging
+ * v1.6.3.12-v7 - Refactored: Use shared disconnect reason capture
  * @private
  * @param {browser.runtime.Port} port - The port
  */
@@ -6445,9 +6579,78 @@ console.log('[Background] v1.6.3.12 Quick Tabs port messaging initialized');
 // v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with ORIGIN_TAB_CLOSED broadcast
 
 /**
+ * Mark Quick Tabs as orphaned in cache
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {Array} orphanedQuickTabs - Array of Quick Tabs to mark as orphaned
+ * @param {number} operationTimestamp - Timestamp for orphaned marking
+ */
+function _markQuickTabsAsOrphaned(orphanedQuickTabs, operationTimestamp) {
+  for (const qt of orphanedQuickTabs) {
+    qt.isOrphaned = true;
+    qt.orphanedAt = operationTimestamp;
+    quickTabHostTabs.delete(qt.id);
+  }
+}
+
+/**
+ * Notify sidebar of tab closed via quick-tabs-port
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {Object} originTabClosedMessage - Message to send
+ */
+function _notifySidebarOfTabClosed(originTabClosedMessage) {
+  if (!quickTabsSessionState.sidebarPort) return;
+
+  try {
+    quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
+    console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
+  } catch (err) {
+    console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
+  }
+}
+
+/**
+ * Save orphan status to storage
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {number} tabId - Closed tab ID
+ * @param {number} operationTimestamp - Timestamp for save operation
+ */
+function _saveOrphanStatusToStorage(tabId, operationTimestamp) {
+  if (typeof browser.storage.local === 'undefined') return;
+
+  const saveId = `orphan-${tabId}-${operationTimestamp}`;
+  browser.storage.local
+    .set({
+      quick_tabs_state_v2: {
+        tabs: globalQuickTabState.tabs,
+        saveId,
+        timestamp: operationTimestamp
+      }
+    })
+    .catch(err => console.error('[Background] Error saving orphan status:', err));
+}
+
+/**
+ * Clean up ports associated with removed tab
+ * v1.6.3.12-v8 - FIX Code Health: Extracted from handleTabRemoved
+ * @private
+ * @param {number} tabId - Closed tab ID
+ */
+function _cleanupPortsForTab(tabId) {
+  for (const [portId, portInfo] of portRegistry.entries()) {
+    if (portInfo.tabId === tabId) {
+      unregisterPort(portId, 'tab-removed');
+    }
+  }
+}
+
+/**
  * Handle browser tab removal
  * v1.6.3.6-v11 - FIX Issue #16: Mark Quick Tabs as orphaned when their browser tab closes
  * v1.6.3.10-v3 - Phase 2: Enhanced orphan detection with isOrphaned flag and ORIGIN_TAB_CLOSED broadcast
+ * v1.6.3.12-v8 - FIX Code Health: Reduced cc from 10 to <9 via extraction
  * @param {number} tabId - ID of the removed tab
  * @param {Object} removeInfo - Removal info
  */
@@ -6463,7 +6666,6 @@ function handleTabRemoved(tabId, removeInfo) {
   }
 
   const orphanedIds = orphanedQuickTabs.map(t => t.id);
-  // Use single timestamp for consistency across all operations
   const operationTimestamp = Date.now();
 
   console.log('[Background] ORIGIN_TAB_CLOSED - Found orphaned Quick Tabs:', {
@@ -6472,18 +6674,10 @@ function handleTabRemoved(tabId, removeInfo) {
     orphanedIds
   });
 
-  // v1.6.3.10-v3 - Phase 2: Mark them as orphaned in cache
-  for (const qt of orphanedQuickTabs) {
-    qt.isOrphaned = true;
-    qt.orphanedAt = operationTimestamp;
-  }
+  // v1.6.3.12-v8 - Mark orphaned and remove from host tracking
+  _markQuickTabsAsOrphaned(orphanedQuickTabs, operationTimestamp);
 
-  // Remove from host tracking
-  for (const qt of orphanedQuickTabs) {
-    quickTabHostTabs.delete(qt.id);
-  }
-
-  // v1.6.4.20 - FIX Issue #12: Build message object once to reduce duplication
+  // v1.6.3.12-v7 - FIX Issue #12: Build message object once
   const originTabClosedMessage = {
     type: 'ORIGIN_TAB_CLOSED',
     originTabId: tabId,
@@ -6492,23 +6686,11 @@ function handleTabRemoved(tabId, removeInfo) {
     timestamp: operationTimestamp
   };
 
-  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
-  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
+  // Broadcast to all ports and sidebar
   broadcastToAllPorts(originTabClosedMessage);
+  _notifySidebarOfTabClosed(originTabClosedMessage);
 
-  // v1.6.4.20 - FIX Issue #12: Also notify sidebar via quickTabsSessionState.sidebarPort
-  // The broadcastToAllPorts function only sends to ports in portRegistry,
-  // but the sidebar's quick-tabs-port is stored separately in quickTabsSessionState
-  if (quickTabsSessionState.sidebarPort) {
-    try {
-      quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
-      console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
-    } catch (err) {
-      console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
-    }
-  }
-
-  // Also broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
+  // Broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
   broadcastToAllPorts({
     type: 'BROADCAST',
     action: 'TAB_LIFECYCLE_CHANGE',
@@ -6518,27 +6700,9 @@ function handleTabRemoved(tabId, removeInfo) {
     timestamp: operationTimestamp
   });
 
-  // v1.6.3.10-v3 - Phase 2: Save orphan status to storage
-  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
-  const saveId = `orphan-${tabId}-${operationTimestamp}`;
-  if (typeof browser.storage.local !== 'undefined') {
-    browser.storage.local
-      .set({
-        quick_tabs_state_v2: {
-          tabs: globalQuickTabState.tabs,
-          saveId,
-          timestamp: operationTimestamp
-        }
-      })
-      .catch(err => console.error('[Background] Error saving orphan status:', err));
-  }
-
-  // Clean up ports associated with this tab
-  for (const [portId, portInfo] of portRegistry.entries()) {
-    if (portInfo.tabId === tabId) {
-      unregisterPort(portId, 'tab-removed');
-    }
-  }
+  // Save to storage and cleanup ports
+  _saveOrphanStatusToStorage(tabId, operationTimestamp);
+  _cleanupPortsForTab(tabId);
 }
 
 // Register tab removal listener
@@ -6987,7 +7151,7 @@ function _tripPerTabCircuitBreaker(quickTabId, now) {
 /**
  * Check if broadcast should be allowed (circuit breaker + deduplication)
  * v1.6.3.6-v4 - FIX Issue #4: Prevent broadcast storms
- * v1.6.4.8 - Refactored: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.3.12-v7 - Refactored: Extracted helpers to reduce cyclomatic complexity
  * v1.6.3.10-v5 - FIX Issue #9: Per-Quick Tab circuit breaker (not global)
  * v1.6.3.10-v5 - FIX Issue #10: Cleanup before duplicate check to prevent race condition
  * @param {string} quickTabId - Quick Tab ID
@@ -7316,7 +7480,7 @@ const VALID_MANAGER_COMMANDS = new Set([
 
 /**
  * Log Manager action result
- * v1.6.4.16 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
+ * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce executeManagerCommand complexity
  * @private
  */
 /**
@@ -7350,7 +7514,7 @@ function _logManagerActionResult({
  * Execute Manager command by sending to target content script
  * v1.6.3.5-v3 - FIX Architecture Phase 3: Route commands to correct tab
  * v1.6.3.10-v5 - FIX Issues #1 & #2: Timeout-protected messaging with Scripting API fallback
- * v1.6.4.16 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
+ * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (99 -> ~55)
  * @param {string} command - Command to execute
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} hostTabId - Tab ID hosting the Quick Tab
@@ -7566,6 +7730,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'QUICKTAB_MINIMIZED') {
     const result = handleQuickTabMinimizedMessage(message, sender);
     sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v7 - FIX Bug #3: Handle QUICKTAB_REMOVED message from content scripts
+  // When content script's DestroyHandler closes a Quick Tab, it sends this message
+  // to notify background, which then updates session state and notifies sidebar
+  if (message.type === 'QUICKTAB_REMOVED') {
+    handleQuickTabRemovedMessage(message, sender);
+    sendResponse({ success: true });
     return false; // Synchronous response
   }
 

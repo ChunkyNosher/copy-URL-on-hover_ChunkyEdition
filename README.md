@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v6** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.12-v7** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Per-Tab
 Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,34 +8,27 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v6 Status:** Manager Sync ✅ | Port Resilience ✅ | Sequence
-Tracking ✅ | Circuit Breaker ✅ | Code Health 9.09 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v7 Status:** Message Routing ✅ | Port Messaging ✅ | Code Health
+10.0 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v6
+## 🎉 What's New in v1.6.3.12-v7
 
-**🔧 Manager Sync + Port Resilience + Code Health Improvements ✅**
+**🔧 Message Routing Fixes + Code Health Improvements ✅**
 
-- ✅ **storage.onChanged Fix** - Checks `'local'` area for Firefox MV2
-- ✅ **Close Minimized Fix** - Properly triggers state sync to Manager
-- ✅ **Close All Handler** - `CLOSE_ALL_QUICK_TABS` message implemented
-- ✅ **Tab Closure Detection** - Manager receives `ORIGIN_TAB_CLOSED` messages
-- ✅ **Defensive Port Handlers** - Input validation in all handlers
-- ✅ **Initial State Request** - Sidebar requests state on first load
-- ✅ **Sidebar Cleanup** - Explicit port/timer cleanup on unload
-- ✅ **Heartbeat Restart** - Properly restarts after reconnection
-- ✅ **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- ✅ **Message Validation** - MessageRouter centralized schema validation
-- ✅ **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
-- ✅ **Code Health** - quick-tabs-manager.js improved from 7.62 to 9.09
+- ✅ **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- ✅ **Manager Port Messaging** - Buttons use port-based messaging methods
+- ✅ **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- ✅ **Code Health** - MessageRouter.js: 10.0 (perfect), background.js: 9.09
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v6:** Manager Sync, Port Resilience, Sequence Tracking, Circuit Breaker  
 **v1.6.3.12-v5:** Circuit Breaker pattern, Priority Queue, Timeout Backoff,
 Rolling Heartbeat  
 **v1.6.3.12-v4:** storage.session API removal, cache staleness detection,
@@ -156,6 +149,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v6** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v7** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

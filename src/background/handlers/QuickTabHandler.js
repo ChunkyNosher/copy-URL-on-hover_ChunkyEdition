@@ -657,7 +657,7 @@ export class QuickTabHandler {
 
   /**
    * Build error response for GET_CURRENT_TAB_ID
-   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
    * @private
    */
   _buildTabIdErrorResponse(error, code, message = null, retryable = false) {
@@ -674,7 +674,7 @@ export class QuickTabHandler {
 
   /**
    * Build success response for GET_CURRENT_TAB_ID
-   * v1.6.4.15 - FIX Code Health: Extracted to reduce complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
    * @private
    */
   _buildTabIdSuccessResponse(tabId, cookieStoreId = null) {
@@ -692,7 +692,7 @@ export class QuickTabHandler {
 
   /**
    * Check if sender has a valid tab ID
-   * v1.6.4.15 - FIX Code Health: Extracted to reduce handleGetCurrentTabId complexity
+   * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce handleGetCurrentTabId complexity
    * @private
    */
   _hasValidSenderTabId(sender) {
@@ -723,8 +723,8 @@ export class QuickTabHandler {
    * v1.6.2.4 - FIX Issue #4: Add fallback when sender.tab is unavailable
    * v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #1: ALWAYS prioritize sender.tab.id
    * v1.6.3.10-v7 - FIX Bug #1: Add initialization guard to prevent race conditions
-   * v1.6.4.15 - FIX Issue #15: Consistent response envelope with code field
-   * v1.6.4.15 - FIX Code Health: Extracted helpers to reduce complexity
+   * v1.6.3.12-v7 - FIX Issue #15: Consistent response envelope with code field
+   * v1.6.3.12-v7 - FIX Code Health: Extracted helpers to reduce complexity
    * v1.6.3.11-v8 - FIX Diagnostic Logging #5: Handler entry/exit instrumentation
    * v1.6.3.11-v10 - FIX Code Health: Further extraction to reduce cyclomatic complexity
    * v1.6.3.11-v11 - FIX Issue #47: Return cookieStoreId for container isolation

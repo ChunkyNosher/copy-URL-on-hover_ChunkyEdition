@@ -319,7 +319,7 @@ export function restoreStorageAfterRestart(tabs, persistedStorage) {
 
 /**
  * Creates a cross-tab simulator for comprehensive cross-tab testing
- * v1.6.4 - New enhanced simulator API
+ * v1.6.3.12 - New enhanced simulator API
  * @returns {Object} Cross-tab simulator instance
  */
 export function createCrossTabSimulator() {
