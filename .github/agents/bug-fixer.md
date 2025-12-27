@@ -37,41 +37,27 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v5 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v7 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
+**v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health:**
+
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use port-based messaging methods
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+
+**v1.6.3.12-v6 Features - Manager Sync + Port Resilience:**
+
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
+
+**v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue:**
 
 - **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Post-Failure Delay** - 5s delay before next queue dequeue
-- **Fallback Mode** - Bypasses storage writes when circuit trips
-- **Test Write Recovery** - Every 30s probe for recovery detection
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
-
-**v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness:**
-
-- **storage.session API Removal** - All calls replaced with
-  `browser.storage.local`
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
-
-**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix:**
-
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
-adoption lock timeout, message validation, identity gating, storage quota
-monitoring, code health 9.0+, container isolation, atomic ops
 
 **Key Features:**
 

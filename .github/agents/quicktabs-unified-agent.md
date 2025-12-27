@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v5), memory-based state (`quickTabsSessionState`),
-  circuit breaker pattern, priority queue, timeout backoff, rolling heartbeat window
+  sync with Single Writer Authority (v1.6.3.12-v7), memory-based state (`quickTabsSessionState`),
+  circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v5 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,27 +47,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v5 Features (NEW):**
+**v1.6.3.12-v7 Features (NEW):**
 
-- **Circuit Breaker** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Post-Failure Delay** - 5s delay before next queue dequeue
-- **Fallback Mode** - Bypasses storage writes when circuit trips
-- **Test Write Recovery** - Every 30s probe for recovery detection
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`, `minimizeQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
-**v1.6.3.12-v4 Features:**
+**v1.6.3.12-v6 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2
-  compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
 
-**Key Timing Constants (v1.6.3.12-v5+):**
+**Key Timing Constants (v1.6.3.12-v7+):**
 
 | Constant                                | Value | Purpose                            |
 | --------------------------------------- | ----- | ---------------------------------- |

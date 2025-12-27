@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   drag/resize, navigation, UICoordinator invariant checks, port messaging
-  (`quick-tabs-port`), per-tab scoping enforcement, v1.6.3.12-v3 Option 4 architecture,
-  memory-based state, container ID resolution via Identity system
+  (`quick-tabs-port`), per-tab scoping enforcement, v1.6.3.12-v7 Option 4 architecture,
+  memory-based state, QUICKTAB_REMOVED handler
 tools: ['*']
 ---
 
@@ -37,14 +37,14 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v3 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v3 Features (NEW):**
+**v1.6.3.12-v7 Features (NEW):**
 
-- **Container ID Resolution** - CreateHandler queries Identity system at
-  creation
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
-- **Logging Gaps Fixed** - Port lifecycle, correlation IDs
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use port-based messaging methods
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -102,5 +102,5 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.12-v3 port
-messaging, memory-based state, container ID resolution, per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.12-v7 port
+messaging, QUICKTAB_REMOVED handler, memory-based state, per-tab scoping.**

@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v5.
+  documentation. Current version: v1.6.3.12-v7.
 tools: ['*']
 ---
 
@@ -69,34 +69,27 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v5)
+## Current Extension State (v1.6.3.12-v7)
 
-### v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue
+### v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health
+
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use port-based messaging methods
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+
+### v1.6.3.12-v6 Features - Manager Sync + Port Resilience
+
+- **storage.onChanged Fix** - Checks `'local'` area for Firefox MV2
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
+
+### v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue
 
 - **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Post-Failure Delay** - 5s delay before next queue dequeue
-- **Fallback Mode** - Bypasses storage writes when circuit trips
-- **Test Write Recovery** - Every 30s probe for recovery detection
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
 - **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Storage Backend Tracking** - `currentStorageBackend` state tracking
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
-
-### v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness
-
-- **storage.session API Removal** - All calls replaced with
-  `browser.storage.local`
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
-
-### v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps
-
-- **Container ID Resolution** - CreateHandler queries Identity system
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
 
 ### Architecture
 
@@ -109,8 +102,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v5
-- [ ] **v1.6.3.12-v5:** Circuit Breaker + Priority Queue documented
+- [ ] Version numbers match 1.6.3.12-v7
+- [ ] **v1.6.3.12-v7:** Message Routing Fixes documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -120,7 +113,7 @@ nothing.
 
 | Error                   | Fix                             |
 | ----------------------- | ------------------------------- |
-| v1.6.3.12-v4 or earlier | Update to 1.6.3.12-v5           |
+| v1.6.3.12-v6 or earlier | Update to 1.6.3.12-v7           |
 | "Solo/Mute" references  | REMOVE - Feature DELETED in v12 |
 | "Pin to Page"           | REMOVE - Feature DELETED in v12 |
 | Cross-session persist   | REMOVE - Session-only in v12    |

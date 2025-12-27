@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v5), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.3.12-v7), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions
 tools: ['*']
 ---
@@ -36,22 +36,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v5 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v5 Features (NEW):**
+**v1.6.3.12-v7 Features (NEW):**
 
-- **Circuit Breaker** - Trips after 5 failures, recovers via test write every
-  30s
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Container Validation** - Unified `_validateContainerForOperation()` helper
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`, `minimizeQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
+- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
-**v1.6.3.12-v4 Features:**
+**v1.6.3.12-v6 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
+- **Defensive Port Handlers** - Input validation in all handlers
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
 
 **Key Manager Features:**
 
@@ -108,5 +105,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v5 circuit breaker,
-priority queue, timeout backoff, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.12-v7 port messaging,
+QUICKTAB_REMOVED handler, MANAGER pattern actions.**
