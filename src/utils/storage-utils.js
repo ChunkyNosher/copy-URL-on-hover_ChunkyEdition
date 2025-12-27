@@ -247,6 +247,51 @@ const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains belo
 let circuitBreakerTripped = false;
 let circuitBreakerTripTime = null;
 
+// =============================================================================
+// v1.6.3.12-v5 - FIX Issues #1, #5, #8: Enhanced Circuit Breaker and Fallback Mode
+// =============================================================================
+
+// v1.6.3.12-v5 - FIX Issue #1: Transaction-level circuit breaker
+// Trips after consecutive TRANSACTIONS fail (not just retries within a transaction)
+const CIRCUIT_BREAKER_TRANSACTION_THRESHOLD = 5; // 5 consecutive failed transactions
+
+// v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism via periodic test writes
+const CIRCUIT_BREAKER_TEST_INTERVAL_MS = 30000; // Test write every 30s during fallback
+
+// v1.6.3.12-v5 - FIX Issue #1: Post-failure backoff
+const POST_FAILURE_MIN_DELAY_MS = 5000; // Min 5s delay after ALL_RETRIES_EXHAUSTED
+
+// v1.6.3.12-v5 - FIX Issue #8: Timeout backoff delays (exponential)
+const TIMEOUT_BACKOFF_DELAYS = [1000, 3000, 5000]; // 1s → 3s → 5s
+
+// v1.6.3.12-v5 - FIX Code Review: Explicit constant for max consecutive timeouts
+const MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP = TIMEOUT_BACKOFF_DELAYS.length;
+
+// v1.6.3.12-v5 - Transaction-level failure tracking
+let consecutiveFailedTransactions = 0;
+let lastTransactionFailureTime = null;
+
+// v1.6.3.12-v5 - Timeout tracking for exponential backoff
+let consecutiveTimeouts = 0;
+let timeoutBackoffIndex = 0;
+
+// v1.6.3.12-v5 - Fallback mode state
+/**
+ * Circuit breaker modes for storage failure handling
+ * @enum {string}
+ */
+export const CIRCUIT_BREAKER_MODE = {
+  NORMAL: 'NORMAL', // Storage writes enabled
+  TRIPPED: 'TRIPPED', // Circuit breaker activated - writes bypassed
+  FALLBACK: 'FALLBACK', // Fallback mode - using in-memory only
+  RECOVERING: 'RECOVERING' // Testing if storage is available again
+};
+
+let circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+let fallbackActivatedTime = null;
+let testWriteIntervalId = null;
+let lastSuccessfulWriteTime = null;
+
 // v1.6.3.10-v10 - FIX Issue K: Ownership filter reason codes
 /**
  * Reason codes for ownership filtering decisions
@@ -3761,7 +3806,10 @@ function createTimeoutPromise(ms, operation) {
   let timeoutId = null;
   const promise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`${operation} timed out after ${ms}ms`));
+      // v1.6.3.12-v5 - FIX Code Review: Include marker for robust timeout detection
+      const error = new Error(`${operation} timed out after ${ms}ms`);
+      error._isCircuitBreakerTimeout = true; // Custom property for reliable detection
+      reject(error);
     }, ms);
   });
   // v1.6.3.4-v4 - FIX: Only clear if timeoutId was set (safety check)
@@ -3946,12 +3994,13 @@ function _sleep(ms) {
  * Attempt a single storage write operation
  * v1.6.3.10-v6 - FIX Issue A20: Extracted from _executeStorageWrite for retry support
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+ * v1.6.3.12-v5 - FIX Issue #8: Detect timeout errors for exponential backoff
  * @private
  * @param {Object} browserAPI - Browser storage API
  * @param {Object} stateWithTxn - State with transaction metadata
  * @param {string} logPrefix - Log prefix
  * @param {number} attemptNumber - Current attempt (1-based)
- * @returns {Promise<boolean>} True if write succeeded
+ * @returns {Promise<{success: boolean, isTimeout: boolean}>} Write result with timeout indicator
  */
 async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attemptNumber) {
   // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
@@ -3961,10 +4010,18 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
     // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
     const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
     await Promise.race([storagePromise, timeout.promise]);
-    return true;
+    return { success: true, isTimeout: false };
   } catch (err) {
-    console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, err.message || err);
-    return false;
+    // v1.6.3.12-v5 - FIX Issue #8: Detect timeout errors for backoff
+    // v1.6.3.12-v5 - FIX Code Review: Use custom property for robust detection (not string matching)
+    const isTimeout = err._isCircuitBreakerTimeout === true || 
+                      (err.message && err.message.includes('timed out'));
+    console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, {
+      error: err.message || err,
+      isTimeout,
+      attemptNumber
+    });
+    return { success: false, isTimeout };
   } finally {
     timeout.clear();
   }
@@ -3985,6 +4042,7 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
  * Handle successful storage write - update state and log
  * v1.6.3.10-v6 - FIX Issue A20: Extracted to reduce _executeStorageWrite complexity
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #1: Record transaction success to reset failure counters
  * @private
  * @param {SuccessfulWriteOptions} options - Write options
  */
@@ -4011,6 +4069,9 @@ function _handleSuccessfulWrite({
 
   // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
   _checkCircuitBreakerReset();
+  
+  // v1.6.3.12-v5 - FIX Issue #1: Record transaction success to reset failure counters
+  recordTransactionSuccess(transactionId);
 
   // v1.6.3.6-v5 - Log storage write complete (success)
   logStorageWrite(operationId, STATE_KEY, 'complete', {
@@ -4046,6 +4107,413 @@ function _checkCircuitBreakerReset() {
       `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
     );
   }
+}
+
+// =============================================================================
+// v1.6.3.12-v5 - FIX Issues #1, #5, #8: Circuit Breaker and Fallback Management
+// =============================================================================
+
+/**
+ * Get current circuit breaker mode
+ * v1.6.3.12-v5 - FIX Issue #5: Expose mode for fallback decisions
+ * @returns {string} Current circuit breaker mode from CIRCUIT_BREAKER_MODE enum
+ */
+export function getCircuitBreakerMode() {
+  return circuitBreakerMode;
+}
+
+/**
+ * Check if storage writes are currently blocked by circuit breaker
+ * v1.6.3.12-v5 - FIX Issue #5: Check if writes should be bypassed
+ * @returns {boolean} True if storage writes are blocked
+ */
+export function isStorageWriteBlocked() {
+  return circuitBreakerMode !== CIRCUIT_BREAKER_MODE.NORMAL;
+}
+
+/**
+ * Record a successful transaction and reset failure counters
+ * v1.6.3.12-v5 - FIX Issue #1: Reset counters on success
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ */
+export function recordTransactionSuccess(transactionId = '') {
+  const previousFailures = consecutiveFailedTransactions;
+  const previousTimeouts = consecutiveTimeouts;
+  
+  // Reset all failure counters
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = Date.now();
+  
+  // Log if recovering from failures
+  if (previousFailures > 0 || previousTimeouts > 0) {
+    console.log('[CIRCUITBREAKER] SUCCESS_COUNTERS_RESET:', {
+      transactionId,
+      previousFailedTransactions: previousFailures,
+      previousTimeouts: previousTimeouts,
+      circuitBreakerMode,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+/**
+ * Record a failed transaction and check if circuit breaker should trip
+ * v1.6.3.12-v5 - FIX Issue #1: Track consecutive failures and trip circuit breaker
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ * @param {string} [reason='unknown'] - Reason for failure
+ * @returns {boolean} True if circuit breaker tripped as a result
+ */
+export function recordTransactionFailure(transactionId = '', reason = 'unknown') {
+  consecutiveFailedTransactions++;
+  lastTransactionFailureTime = Date.now();
+  
+  console.warn('[CIRCUITBREAKER] TRANSACTION_FAILED:', {
+    transactionId,
+    reason,
+    consecutiveFailures: consecutiveFailedTransactions,
+    threshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    circuitBreakerMode,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Check if circuit breaker should trip
+  if (consecutiveFailedTransactions >= CIRCUIT_BREAKER_TRANSACTION_THRESHOLD) {
+    _tripCircuitBreakerForFailures(transactionId, reason);
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Record a timeout and apply exponential backoff
+ * v1.6.3.12-v5 - FIX Issue #8: Track timeouts and apply backoff
+ * v1.6.3.12-v5 - FIX Code Review: Use explicit constant for max timeouts
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ * @returns {{ backoffMs: number, shouldTripCircuitBreaker: boolean }}
+ */
+export function recordTimeoutAndGetBackoff(transactionId = '') {
+  consecutiveTimeouts++;
+  
+  // v1.6.3.12-v5 - FIX Code Review: Cap index more clearly with Math.min
+  const cappedIndex = Math.min(timeoutBackoffIndex, TIMEOUT_BACKOFF_DELAYS.length - 1);
+  const backoffMs = TIMEOUT_BACKOFF_DELAYS[cappedIndex];
+  
+  console.warn('[TIMEOUT_BACKOFF_APPLIED]:', {
+    transactionId,
+    consecutiveTimeouts,
+    backoffIndex: cappedIndex,
+    backoffDelayMs: backoffMs,
+    maxIndex: TIMEOUT_BACKOFF_DELAYS.length - 1,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Advance backoff index for next timeout (cap at max)
+  if (timeoutBackoffIndex < TIMEOUT_BACKOFF_DELAYS.length - 1) {
+    timeoutBackoffIndex++;
+  }
+  
+  // v1.6.3.12-v5 - FIX Code Review: Use explicit constant for clarity
+  const shouldTripCircuitBreaker = consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP;
+  
+  if (shouldTripCircuitBreaker) {
+    console.error('[CIRCUITBREAKER] MAX_TIMEOUTS_REACHED:', {
+      transactionId,
+      consecutiveTimeouts,
+      maxTimeouts: MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP,
+      action: 'TRIPPING_CIRCUIT_BREAKER',
+      timestamp: new Date().toISOString()
+    });
+  }
+  
+  return { backoffMs, shouldTripCircuitBreaker };
+}
+
+/**
+ * Trip the circuit breaker due to consecutive transaction failures
+ * v1.6.3.12-v5 - FIX Issue #1: Activate fallback mode
+ * @private
+ * @param {string} transactionId - Transaction ID for logging
+ * @param {string} reason - Reason for tripping
+ */
+function _tripCircuitBreakerForFailures(transactionId, reason) {
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.TRIPPED;
+  fallbackActivatedTime = Date.now();
+  
+  console.error('[CIRCUITBREAKER_TRIPPED]:', {
+    transactionId,
+    reason,
+    consecutiveFailures: consecutiveFailedTransactions,
+    threshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    previousMode: CIRCUIT_BREAKER_MODE.NORMAL,
+    newMode: CIRCUIT_BREAKER_MODE.TRIPPED,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Activate fallback mode
+  _activateFallbackMode(transactionId, reason);
+  
+  // Start periodic test writes to detect recovery
+  _startCircuitBreakerRecoveryTests();
+}
+
+/**
+ * Activate fallback mode (in-memory only)
+ * v1.6.3.12-v5 - FIX Issue #5: Switch to fallback when storage unavailable
+ * @private
+ * @param {string} transactionId - Transaction ID for logging
+ * @param {string} reason - Reason for fallback
+ */
+function _activateFallbackMode(transactionId, reason) {
+  if (circuitBreakerMode === CIRCUIT_BREAKER_MODE.FALLBACK) {
+    return; // Already in fallback mode
+  }
+  
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+  fallbackActivatedTime = Date.now();
+  
+  console.error('[FALLBACK_ACTIVATED]:', {
+    transactionId,
+    reason,
+    mode: 'in-memory-only',
+    storageWritesBlocked: true,
+    portMessagingActive: true,
+    recoveryTestIntervalMs: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Start periodic test writes to detect storage recovery
+ * v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism
+ * @private
+ */
+function _startCircuitBreakerRecoveryTests() {
+  // Clear any existing interval
+  if (testWriteIntervalId) {
+    clearInterval(testWriteIntervalId);
+  }
+  
+  console.log('[CIRCUITBREAKER_TEST_WRITE] RECOVERY_TESTS_STARTED:', {
+    intervalMs: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Schedule periodic test writes
+  testWriteIntervalId = setInterval(() => {
+    _performCircuitBreakerTestWrite();
+  }, CIRCUIT_BREAKER_TEST_INTERVAL_MS);
+}
+
+/**
+ * Stop periodic test writes
+ * v1.6.3.12-v5 - FIX Issue #5: Cleanup recovery mechanism
+ * @private
+ */
+function _stopCircuitBreakerRecoveryTests() {
+  if (testWriteIntervalId) {
+    clearInterval(testWriteIntervalId);
+    testWriteIntervalId = null;
+    console.log('[CIRCUITBREAKER_TEST_WRITE] RECOVERY_TESTS_STOPPED:', {
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+/**
+ * Perform a test write to check if storage is available again
+ * v1.6.3.12-v5 - FIX Issue #5: Test write for recovery detection
+ * @private
+ */
+async function _performCircuitBreakerTestWrite() {
+  if (circuitBreakerMode === CIRCUIT_BREAKER_MODE.NORMAL) {
+    _stopCircuitBreakerRecoveryTests();
+    return;
+  }
+  
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.RECOVERING;
+  
+  console.log('[CIRCUITBREAKER_TEST_WRITE] ATTEMPTING:', {
+    previousMode: CIRCUIT_BREAKER_MODE.FALLBACK,
+    timestamp: new Date().toISOString()
+  });
+  
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[CIRCUITBREAKER_TEST_WRITE] FAILED: Storage API unavailable');
+    circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+    return;
+  }
+  
+  const testKey = '_circuit_breaker_test_';
+  const testValue = { timestamp: Date.now(), test: true };
+  
+  try {
+    // Attempt a small test write
+    await browserAPI.storage.local.set({ [testKey]: testValue });
+    
+    // If we get here, storage is working again!
+    console.log('[CIRCUITBREAKER_TEST_WRITE] SUCCESS:', {
+      timestamp: new Date().toISOString()
+    });
+    
+    // v1.6.3.12-v5 - FIX Code Review: Wrap cleanup in try-catch to ensure recovery proceeds
+    try {
+      await browserAPI.storage.local.remove(testKey);
+    } catch (cleanupErr) {
+      // Log but don't block recovery - test key cleanup is not critical
+      console.warn('[CIRCUITBREAKER_TEST_WRITE] CLEANUP_WARNING: Failed to remove test key:', cleanupErr.message);
+    }
+    
+    // Recover from circuit breaker
+    _recoverFromCircuitBreaker();
+  } catch (err) {
+    console.warn('[CIRCUITBREAKER_TEST_WRITE] FAILED:', {
+      error: err.message,
+      remainingInFallback: true,
+      nextTestIn: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+      timestamp: new Date().toISOString()
+    });
+    
+    // Stay in fallback mode
+    circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+  }
+}
+
+/**
+ * Recover from circuit breaker state when storage becomes available
+ * v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism
+ * @private
+ */
+function _recoverFromCircuitBreaker() {
+  const fallbackDuration = fallbackActivatedTime ? Date.now() - fallbackActivatedTime : 0;
+  
+  console.log('[CIRCUITBREAKER_RECOVERED]:', {
+    fallbackDurationMs: fallbackDuration,
+    previousMode: circuitBreakerMode,
+    newMode: CIRCUIT_BREAKER_MODE.NORMAL,
+    timestamp: new Date().toISOString()
+  });
+  
+  console.log('[FALLBACK_DEACTIVATED]:', {
+    reason: 'storage_recovered',
+    fallbackDurationMs: fallbackDuration,
+    timestamp: new Date().toISOString()
+  });
+  
+  // Reset all state
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+  fallbackActivatedTime = null;
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = Date.now();
+  
+  // Also reset the old circuit breaker
+  circuitBreakerTripped = false;
+  circuitBreakerTripTime = null;
+  
+  // Stop recovery tests
+  _stopCircuitBreakerRecoveryTests();
+}
+
+/**
+ * Get the required delay before next queue dequeue after failure
+ * v1.6.3.12-v5 - FIX Issue #1: Post-failure minimum delay
+ * @returns {number} Delay in milliseconds
+ */
+export function getPostFailureDelay() {
+  if (lastTransactionFailureTime === null) {
+    return 0;
+  }
+  
+  const timeSinceFailure = Date.now() - lastTransactionFailureTime;
+  const requiredDelay = POST_FAILURE_MIN_DELAY_MS;
+  
+  if (timeSinceFailure < requiredDelay) {
+    const remainingDelay = requiredDelay - timeSinceFailure;
+    console.log('[CIRCUITBREAKER] POST_FAILURE_DELAY_APPLIED:', {
+      timeSinceFailureMs: timeSinceFailure,
+      requiredDelayMs: requiredDelay,
+      remainingDelayMs: remainingDelay,
+      timestamp: new Date().toISOString()
+    });
+    return remainingDelay;
+  }
+  
+  return 0;
+}
+
+/**
+ * Check if writes should be bypassed due to circuit breaker or timeout backoff
+ * v1.6.3.12-v5 - FIX Issues #1, #5, #8: Unified bypass check
+ * @param {string} [_transactionId=''] - Transaction ID for logging (reserved for future use)
+ * @returns {{ bypass: boolean, reason: string|null, delayMs: number }}
+ */
+export function checkWriteBypassOrDelay(_transactionId = '') {
+  // Check circuit breaker mode
+  if (circuitBreakerMode !== CIRCUIT_BREAKER_MODE.NORMAL) {
+    return {
+      bypass: true,
+      reason: `circuit_breaker_${circuitBreakerMode.toLowerCase()}`,
+      delayMs: 0
+    };
+  }
+  
+  // Check post-failure delay
+  const postFailureDelay = getPostFailureDelay();
+  if (postFailureDelay > 0) {
+    return {
+      bypass: false,
+      reason: 'post_failure_backoff',
+      delayMs: postFailureDelay
+    };
+  }
+  
+  return {
+    bypass: false,
+    reason: null,
+    delayMs: 0
+  };
+}
+
+/**
+ * Get circuit breaker status for diagnostics
+ * v1.6.3.12-v5 - FIX Issue #5: Diagnostic information
+ * @returns {Object} Circuit breaker status
+ */
+export function getCircuitBreakerStatus() {
+  return {
+    mode: circuitBreakerMode,
+    consecutiveFailedTransactions,
+    transactionThreshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    consecutiveTimeouts,
+    timeoutBackoffIndex,
+    fallbackActivatedTime,
+    lastSuccessfulWriteTime,
+    lastTransactionFailureTime,
+    testWriteIntervalActive: testWriteIntervalId !== null
+  };
+}
+
+/**
+ * Reset circuit breaker state for testing purposes only
+ * v1.6.3.12-v5 - FIX: Test helper to reset state between tests
+ * @private - For testing only, not exported in production builds
+ */
+export function _resetCircuitBreakerForTesting() {
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+  fallbackActivatedTime = null;
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = null;
+  lastTransactionFailureTime = null;
+  circuitBreakerTripped = false;
+  circuitBreakerTripTime = null;
+  _stopCircuitBreakerRecoveryTests();
 }
 
 /**
@@ -4162,6 +4630,7 @@ function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPref
  * Handle failed storage write after all retries
  * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #1: Record transaction failure for circuit breaker
  * @private
  * @param {FailedWriteOptions} options - Write failure options
  */
@@ -4187,6 +4656,9 @@ function _handleFailedWrite({
     totalAttempts,
     durationMs
   });
+  
+  // v1.6.3.12-v5 - FIX Issue #1: Record transaction failure for circuit breaker
+  recordTransactionFailure(transactionId, 'ALL_RETRIES_EXHAUSTED');
 }
 
 /**
@@ -4292,6 +4764,7 @@ function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
  * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting logging helpers
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #8: Handle timeout backoff for cascading timeouts
  * @private
  * @param {WriteRetryLoopOptions} options - Retry loop options
  */
@@ -4304,14 +4777,17 @@ async function _executeWriteRetryLoop({
   tabCount
 }) {
   const totalAttempts = STORAGE_MAX_RETRIES + 1;
+  let hadTimeout = false;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
     if (attempt > 1) {
       _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
     }
 
-    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
-    if (success) {
+    // v1.6.3.12-v5 - FIX Issue #8: Handle new return format with timeout indicator
+    const result = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+    
+    if (result.success) {
       _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
       _handleSuccessfulWrite({
         operationId: context.operationId,
@@ -4323,10 +4799,23 @@ async function _executeWriteRetryLoop({
       });
       return true;
     }
+    
+    // v1.6.3.12-v5 - FIX Issue #8: Track if any attempt timed out
+    if (result.isTimeout) {
+      hadTimeout = true;
+    }
 
     // Wait before retry if more attempts remain
     if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
       await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+    }
+  }
+
+  // v1.6.3.12-v5 - FIX Issue #8: Apply timeout backoff if retries exhausted due to timeouts
+  if (hadTimeout) {
+    const backoffInfo = recordTimeoutAndGetBackoff(transactionId);
+    if (backoffInfo.shouldTripCircuitBreaker) {
+      recordTransactionFailure(transactionId, 'MAX_CONSECUTIVE_TIMEOUTS');
     }
   }
 
@@ -4671,6 +5160,7 @@ async function _waitForIdentityBeforeWrite(logPrefix, transactionId) {
  * v1.6.3.10-v9 - FIX Issue F: Recovery logic for stalled queue / unload edge cases (refactored)
  * v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write queue execution
  * v1.6.3.12 - FIX CodeScene: Extract identity wait to fix bumpy road
+ * v1.6.3.12-v5 - FIX Issues #1, #5, #8: Enhanced circuit breaker with fallback mode and backoff
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
@@ -4683,7 +5173,23 @@ export function queueStorageWrite(
 ) {
   _checkAndRecoverStalledQueue(logPrefix, transactionId);
 
-  // Circuit breaker check
+  // v1.6.3.12-v5 - FIX Issues #1, #5, #8: Check circuit breaker mode and apply delays
+  const bypassCheck = checkWriteBypassOrDelay(transactionId);
+  if (bypassCheck.bypass) {
+    console.warn('[CIRCUITBREAKER] WRITE_BYPASSED:', {
+      transactionId,
+      reason: bypassCheck.reason,
+      circuitBreakerMode,
+      timestamp: new Date().toISOString()
+    });
+    _logQueueStateTransition(logPrefix, transactionId, 'blocked', { 
+      reason: bypassCheck.reason,
+      circuitBreakerMode 
+    });
+    return Promise.resolve(false);
+  }
+
+  // Circuit breaker check (legacy queue depth check)
   if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
     if (!circuitBreakerTripped) _tripCircuitBreaker(transactionId, CIRCUIT_BREAKER_THRESHOLD);
     _logQueueStateTransition(logPrefix, transactionId, 'blocked', { reason: 'circuit_breaker' });
@@ -4699,6 +5205,18 @@ export function queueStorageWrite(
   // Chain operation to queue
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(async () => {
+      // v1.6.3.12-v5 - FIX Issue #1: Apply post-failure delay before dequeue
+      const delayMs = bypassCheck.delayMs;
+      if (delayMs > 0) {
+        console.log('[CIRCUITBREAKER] APPLYING_POST_FAILURE_DELAY:', {
+          transactionId,
+          delayMs,
+          reason: bypassCheck.reason,
+          timestamp: new Date().toISOString()
+        });
+        await _sleep(delayMs);
+      }
+      
       _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
 
       // v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write execution
