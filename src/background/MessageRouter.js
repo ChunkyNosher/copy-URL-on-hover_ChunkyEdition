@@ -42,9 +42,14 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'GET_BACKGROUND_LOGS',
   'GET_ALL_LOGS',
   'CLEAR_ALL_LOGS',
+  'EXPORT_LOGS',
+  'CLEAR_CONSOLE_LOGS',
   // Tab management
   'GET_TABS',
   'SWITCH_TAB',
+  // Storage operations
+  'COORDINATED_CLEAR_ALL_QUICK_TABS',
+  'RESET_GLOBAL_QUICK_TAB_STATE',
   // Keepalive
   'KEEPALIVE_PING'
 ]);
