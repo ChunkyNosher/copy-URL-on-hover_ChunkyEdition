@@ -318,8 +318,18 @@ const TestBridge = {
   // ==================== MANAGER PANEL METHODS ====================
 
   /**
-   * Get manager panel state
-   * @returns {Promise<Object>} Panel state (visible, position, size, minimized tabs)
+   * Get manager panel state including tab counts and groupings
+   * v1.6.4 - J2: Enhanced to include groupings and counts for test verification
+   *
+   * Note: The flags `includeGroupings` and `includeContainers` are always set to true
+   * because tests require full state information. The content script handler should
+   * implement these fields for complete test coverage.
+   *
+   * @returns {Promise<Object>} Panel state with:
+   *   - visible: boolean - Whether Manager panel is visible
+   *   - tabCount: number - Total Quick Tabs in Manager (requires handler support)
+   *   - groupings: Array<{ originTabId, containerLabel, count }> - Tabs grouped by origin (requires handler support)
+   *   - containers: Array<{ containerId, label, count }> - Tabs grouped by container (requires handler support)
    */
   async getManagerState() {
     console.log('[Test Bridge] getManagerState');
@@ -331,7 +341,7 @@ const TestBridge = {
 
       const response = await browser.tabs.sendMessage(tabs[0].id, {
         type: 'TEST_GET_MANAGER_STATE',
-        data: {}
+        data: { includeGroupings: true, includeContainers: true }
       });
 
       console.log('[Test Bridge] getManagerState response:', response);
@@ -498,6 +508,100 @@ const TestBridge = {
       return response;
     } catch (error) {
       console.error('[Test Bridge] verifyContainerIsolation error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Verify Quick Tabs are properly isolated within a specific container
+   * v1.6.4 - J2: New method for single-container isolation verification
+   * @param {string} containerId - Container cookie store ID (e.g., 'firefox-container-1')
+   * @returns {Promise<Object>} Verification result:
+   *   - isolated: boolean - Whether all Quick Tabs in container are properly isolated
+   *   - quickTabCount: number - Count of Quick Tabs in this container
+   *   - quickTabIds: string[] - IDs of Quick Tabs in this container
+   *   - containerLabel: string - Human-readable container label
+   *   - crossContainerViolations: string[] - IDs of Quick Tabs incorrectly in other containers
+   */
+  async verifyContainerIsolationById(containerId) {
+    console.log('[Test Bridge] verifyContainerIsolationById:', containerId);
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        throw new Error('No active tab found');
+      }
+
+      const response = await browser.tabs.sendMessage(tabs[0].id, {
+        type: 'TEST_VERIFY_CONTAINER_ISOLATION_BY_ID',
+        data: { containerId }
+      });
+
+      console.log('[Test Bridge] verifyContainerIsolationById response:', response);
+      return response;
+    } catch (error) {
+      console.error('[Test Bridge] verifyContainerIsolationById error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Get human-readable label for a Firefox container
+   * v1.6.4 - J2: New method for container label lookup
+   * @param {string} containerId - Container cookie store ID (e.g., 'firefox-container-1')
+   * @returns {Promise<Object>} Container label info:
+   *   - containerId: string - The container ID requested
+   *   - label: string - Human-readable label (e.g., 'Personal', 'Work', 'Banking')
+   *   - color: string - Container color
+   *   - icon: string - Container icon
+   *   - exists: boolean - Whether the container exists
+   */
+  async getContainerLabel(containerId) {
+    console.log('[Test Bridge] getContainerLabel:', containerId);
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        throw new Error('No active tab found');
+      }
+
+      const response = await browser.tabs.sendMessage(tabs[0].id, {
+        type: 'TEST_GET_CONTAINER_LABEL',
+        data: { containerId }
+      });
+
+      console.log('[Test Bridge] getContainerLabel response:', response);
+      return response;
+    } catch (error) {
+      console.error('[Test Bridge] getContainerLabel error:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Verify cross-tab isolation - ensure Quick Tabs don't appear in wrong tabs
+   * v1.6.4 - J2: New method for cross-tab isolation verification
+   * @param {number} originTabId - Expected origin tab ID
+   * @returns {Promise<Object>} Verification result:
+   *   - isolated: boolean - Whether Quick Tabs are properly isolated to origin tab
+   *   - quickTabCount: number - Count of Quick Tabs belonging to this tab
+   *   - violations: Array<{quickTabId, expectedTabId, actualTabId}>
+   */
+  async verifyCrossTabIsolation(originTabId) {
+    console.log('[Test Bridge] verifyCrossTabIsolation:', originTabId);
+    try {
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length === 0) {
+        throw new Error('No active tab found');
+      }
+
+      const response = await browser.tabs.sendMessage(tabs[0].id, {
+        type: 'TEST_VERIFY_CROSS_TAB_ISOLATION',
+        data: { originTabId }
+      });
+
+      console.log('[Test Bridge] verifyCrossTabIsolation response:', response);
+      return response;
+    } catch (error) {
+      console.error('[Test Bridge] verifyCrossTabIsolation error:', error);
       throw error;
     }
   },

@@ -103,42 +103,57 @@ async function _handleVersionUpgrade(storageAPI, storedVersion, currentVersion) 
 }
 
 /**
+ * Get current manifest version
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @returns {string|null} Version string or null if unavailable
+ */
+function _getManifestVersion() {
+  const manifest = runtimeAPI?.getManifest?.();
+  if (!manifest?.version) {
+    console.warn('[Background] Version check skipped: manifest.version unavailable');
+    return null;
+  }
+  return manifest.version;
+}
+
+/**
+ * Handle version comparison result
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+async function _handleVersionComparison(storageAPI, storedVersion, currentVersion) {
+  if (storedVersion === undefined) {
+    await _handleFirstInstall(storageAPI, currentVersion);
+  } else if (storedVersion !== currentVersion) {
+    await _handleVersionUpgrade(storageAPI, storedVersion, currentVersion);
+  } else {
+    console.log('[Background] VERSION_CHECK: No version change', {
+      version: currentVersion,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+/**
  * Check if extension version changed and clear logs if needed
  * v1.6.4 - Version-based log history cleanup
+ * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
  * This runs early in initialization to clear logs before new logging begins
  */
 async function checkVersionAndClearLogs() {
   try {
-    const manifest = runtimeAPI?.getManifest?.();
-    if (!manifest?.version) {
-      console.warn('[Background] Version check skipped: manifest.version unavailable');
-      return;
-    }
+    const currentVersion = _getManifestVersion();
+    if (!currentVersion) return;
 
-    const currentVersion = manifest.version;
     const storageAPI = _getStorageLocalAPI();
-
     if (!storageAPI) {
       console.warn('[Background] Version check skipped: storage.local unavailable');
       return;
     }
 
     const result = await storageAPI.get(EXTENSION_VERSION_KEY);
-    const storedVersion = result?.[EXTENSION_VERSION_KEY];
-
-    if (storedVersion === undefined) {
-      await _handleFirstInstall(storageAPI, currentVersion);
-      return;
-    }
-
-    if (storedVersion !== currentVersion) {
-      await _handleVersionUpgrade(storageAPI, storedVersion, currentVersion);
-    } else {
-      console.log('[Background] VERSION_CHECK: No version change', {
-        version: currentVersion,
-        timestamp: new Date().toISOString()
-      });
-    }
+    await _handleVersionComparison(storageAPI, result?.[EXTENSION_VERSION_KEY], currentVersion);
   } catch (err) {
     console.error('[Background] VERSION_CHECK_ERROR:', err.message);
   }
@@ -399,6 +414,63 @@ const _CIRCUIT_BREAKER_OPEN_DURATION_MS = 10000; // 10s cooldown in "open" state
 
 // FIX Issue #7: Enhanced logging state tracking
 let _lastCacheUpdateLog = null; // Track last cache state for before/after logging
+
+// ==================== v1.6.4 J7: SCENARIO-LEVEL LOGGING ====================
+// Optional scenario logger that logs scenario IDs (e.g., SCENARIO_10_STEP_4)
+// Can be enabled via Test Bridge or debug flag
+
+/**
+ * Flag to enable scenario-level logging
+ * v1.6.4 - J7: Set to true via Test Bridge or debug flag
+ */
+let _scenarioLoggingEnabled = false;
+
+/**
+ * Current scenario context for logging
+ * v1.6.4 - J7: Set by Test Bridge when running scenario tests
+ */
+let _currentScenarioContext = null;
+
+/**
+ * Enable scenario logging
+ * v1.6.4 - J7: Called by Test Bridge to enable detailed scenario tracking
+ * @param {Object} context - Scenario context { scenarioId, scenarioName }
+ */
+function enableScenarioLogging(context = {}) {
+  _scenarioLoggingEnabled = true;
+  _currentScenarioContext = context;
+  console.log('[Background] SCENARIO_LOGGING_ENABLED:', context);
+}
+
+/**
+ * Disable scenario logging
+ * v1.6.4 - J7: Called by Test Bridge to disable scenario tracking
+ */
+function disableScenarioLogging() {
+  _scenarioLoggingEnabled = false;
+  _currentScenarioContext = null;
+  console.log('[Background] SCENARIO_LOGGING_DISABLED');
+}
+
+/**
+ * Log a scenario step
+ * v1.6.4 - J7: Optional scenario-level logging for test debugging
+ * @param {string} scenarioId - Scenario identifier (e.g., 'SCENARIO_10')
+ * @param {number} step - Step number
+ * @param {string} description - Step description
+ * @param {Object} data - Additional data to log
+ */
+function logScenarioStep(scenarioId, step, description, data = {}) {
+  if (!_scenarioLoggingEnabled) return;
+  
+  console.log(`[SCENARIO_LOG] ${scenarioId}_STEP_${step}: ${description}`, {
+    ...data,
+    scenarioContext: _currentScenarioContext,
+    timestamp: Date.now()
+  });
+}
+
+// ==================== END v1.6.4 J7 ====================
 
 // ==================== v1.6.3.10-v4 CONSTANTS ====================
 // FIX Issue #3/6: Firefox timeout recovery - transaction cleanup
@@ -904,10 +976,13 @@ async function waitForInitialization(timeoutMs = 5000) {
 /**
  * Extract relevant tab data for hashing
  * v1.6.3.4-v11 - Extracted from computeStateHash to reduce complexity
+ * v1.6.4 - J6: Fields included in hash are documented in return object
  * @param {Object} tab - Tab object
  * @returns {Object} Normalized tab data for hashing
  */
 function _extractTabDataForHash(tab) {
+  // v1.6.4 - J6: These are ALL fields that participate in hash computation
+  // If any of these change, the hash will change, triggering a state update
   return {
     id: tab.id,
     url: tab.url,
@@ -916,8 +991,17 @@ function _extractTabDataForHash(tab) {
     width: tab.width ?? tab.size?.width,
     height: tab.height ?? tab.size?.height,
     minimized: tab.minimized ?? tab.visibility?.minimized
+    // Note: originContainerId IS NOT in hash - container changes don't trigger re-render alone
+    // Note: originTabId IS NOT in hash - tab ownership changes handled separately
   };
 }
+
+/**
+ * Fields included in state hash computation
+ * v1.6.4 - J6: Exported constant for logging purposes
+ * @private
+ */
+const _HASH_FIELDS = ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId'];
 
 /**
  * Compute 32-bit hash from string
@@ -1958,9 +2042,20 @@ messageRouter.register('EXPORT_LOGS', (msg, sender) => logHandler.handleExportLo
 messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
   quickTabHandler.handleBatchUpdate(msg, sender)
 );
-messageRouter.register('CREATE_QUICK_TAB', (msg, sender) =>
-  quickTabHandler.handleCreate(msg, sender)
-);
+// v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
+// The handleCreate returns a result, and we notify the sidebar if creation was successful
+messageRouter.register('CREATE_QUICK_TAB', async (msg, sender) => {
+  const result = await quickTabHandler.handleCreate(msg, sender);
+  // v1.6.3.12-v3 - FIX Issue F: Notify sidebar if creation was successful
+  if (result?.success && !result?.duplicate) {
+    notifySidebarOfStateChange();
+    console.log('[Background] v1.6.3.12-v3 CREATE_QUICK_TAB: Notified sidebar of state change', {
+      quickTabId: msg.id,
+      success: result.success
+    });
+  }
+  return result;
+});
 messageRouter.register('CLOSE_QUICK_TAB', (msg, sender) =>
   quickTabHandler.handleClose(msg, sender)
 );
@@ -4184,80 +4279,77 @@ function _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId) {
  * v1.6.3.10-v8 - FIX Code Health: Use options object
  * @private
  */
+/**
+ * Log adoption write failure
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @param {Object} context - Failure context
+ */
+function _logAdoptionWriteFailure(context) {
+  const { action, quickTabId, targetTabId, correlationId, error, startTime } = context;
+  console.error('[Background] MANAGER_ACTION_FAILED:', {
+    action,
+    quickTabId,
+    targetTabId,
+    correlationId,
+    status: 'failed',
+    error,
+    durationMs: Date.now() - startTime
+  });
+}
+
+/**
+ * Build adoption state object for storage
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _buildAdoptionStatePayload(state, saveId, targetTabId) {
+  return {
+    tabs: state.tabs,
+    saveId,
+    timestamp: Date.now(),
+    writingTabId: targetTabId,
+    writingInstanceId: `background-adopt-${Date.now()}`
+  };
+}
+
 async function _writeAndVerifyAdoptionState({
-  state,
-  quickTabId,
-  targetTabId,
-  correlationId,
-  startTime
+  state, quickTabId, targetTabId, correlationId, startTime
 }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
 
+  if (!_isStorageSessionAvailable()) {
+    console.error('[Background] storage.session unavailable for adoption write');
+    return { success: false, error: 'storage.session unavailable', reason: 'storage-unavailable' };
+  }
+
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
-      console.error('[Background] storage.session unavailable for adoption write');
-      return {
-        success: false,
-        error: 'storage.session unavailable',
-        reason: 'storage-unavailable'
-      };
-    }
     await browser.storage.session.set({
-      quick_tabs_state_v2: {
-        tabs: state.tabs,
-        saveId,
-        timestamp: Date.now(),
-        writingTabId: targetTabId,
-        writingInstanceId: `background-adopt-${Date.now()}`
-      }
+      quick_tabs_state_v2: _buildAdoptionStatePayload(state, saveId, targetTabId)
     });
 
-    // v1.6.4.18 - FIX: Use storage.session for verification
     const verifyResult = await browser.storage.session.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
 
     if (!verifiedState || verifiedState.saveId !== saveId) {
-      console.error('[Background] MANAGER_ACTION_FAILED:', {
-        action: 'ADOPT_TAB',
-        quickTabId,
-        targetTabId,
-        correlationId,
-        status: 'failed',
-        error: 'storage-verification-failed',
-        expectedSaveId: saveId,
-        actualSaveId: verifiedState?.saveId,
-        durationMs: Date.now() - startTime
+      _logAdoptionWriteFailure({
+        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+        error: 'storage-verification-failed', startTime
       });
-      return {
-        success: false,
-        error: 'Storage write verification failed',
-        reason: 'storage-verification-failed'
-      };
+      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
     }
 
     console.log('[Background] ADOPT_TAB: Storage write verified:', {
-      saveId,
-      correlationId,
-      durationMs: Date.now() - writeStartTime
+      saveId, correlationId, durationMs: Date.now() - writeStartTime
     });
     return { success: true, saveId };
   } catch (writeErr) {
-    console.error('[Background] MANAGER_ACTION_FAILED:', {
-      action: 'ADOPT_TAB',
-      quickTabId,
-      targetTabId,
-      correlationId,
-      status: 'failed',
-      error: writeErr.message,
-      durationMs: Date.now() - startTime
+    _logAdoptionWriteFailure({
+      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
+      error: writeErr.message, startTime
     });
-    return {
-      success: false,
-      error: `Storage write failed: ${writeErr.message}`,
-      reason: 'storage-write-error'
-    };
+    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
   }
 }
 
@@ -4269,64 +4361,42 @@ async function _writeAndVerifyAdoptionState({
  * v1.6.4.15 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * @param {Object} payload - Adoption payload
  */
-async function handleAdoptAction(payload) {
-  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
-  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
-  const startTime = Date.now();
-
-  // v1.6.4.15 - FIX Issue #20: Log Manager action requested
-  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: 'ADOPT_TAB',
-    quickTabId,
-    targetTabId,
-    correlationId,
-    timestamp: startTime
-  });
-
-  // Validate prerequisites
-  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
-  if (!validation.valid) {
-    return { success: false, error: validation.error };
-  }
-
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  if (typeof browser.storage.session === 'undefined') {
+/**
+ * Read Quick Tab state from storage.session for adoption
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @returns {Promise<Object>} Result with state or error
+ */
+async function _readAdoptionState() {
+  if (!_isStorageSessionAvailable()) {
     console.error('[Background] storage.session unavailable for adoption read');
     return { success: false, error: 'storage.session unavailable' };
   }
   const result = await browser.storage.session.get('quick_tabs_state_v2');
-  const state = result?.quick_tabs_state_v2;
+  return { success: true, state: result?.quick_tabs_state_v2 };
+}
 
-  const findResult = _findAndUpdateQuickTab(state, quickTabId, targetTabId, correlationId);
-  if (!findResult.found) {
-    return { success: false, error: findResult.error };
-  }
-  const { oldOriginTabId } = findResult;
-
-  // Write and verify state
-  const writeResult = await _writeAndVerifyAdoptionState({
-    state,
-    quickTabId,
-    targetTabId,
-    correlationId,
-    startTime
-  });
-  if (!writeResult.success) {
-    return writeResult;
-  }
-
-  // Update global cache
+/**
+ * Update global cache after adoption
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _updateGlobalCacheForAdoption(quickTabId, targetTabId) {
   const cachedTab = globalQuickTabState.tabs.find(t => t.id === quickTabId);
   if (cachedTab) {
     cachedTab.originTabId = targetTabId;
     delete cachedTab.isOrphaned;
     delete cachedTab.orphanedAt;
   }
-
-  // Update host tracking
   quickTabHostTabs.set(quickTabId, targetTabId);
+}
 
-  // Broadcast adoption completion
+/**
+ * Broadcast adoption completion to all ports and tabs
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+async function _broadcastAdoptionCompletion(quickTabId, oldOriginTabId, targetTabId, correlationId) {
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
     adoptedQuickTabId: quickTabId,
@@ -4336,10 +4406,17 @@ async function handleAdoptAction(payload) {
     correlationId,
     timestamp: Date.now()
   });
-
   await _broadcastAdoptionToAllTabs(quickTabId, oldOriginTabId, targetTabId);
+}
 
-  // v1.6.4.15 - FIX Issue #20: Log successful completion
+/**
+ * Log successful adoption completion
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @param {Object} context - Success context
+ */
+function _logAdoptionSuccess(context) {
+  const { quickTabId, targetTabId, oldOriginTabId, correlationId, startTime } = context;
   const durationMs = Date.now() - startTime;
   console.log('[Background] MANAGER_ACTION_COMPLETED:', {
     action: 'ADOPT_TAB',
@@ -4351,14 +4428,51 @@ async function handleAdoptAction(payload) {
     newOriginTabId: targetTabId,
     durationMs
   });
-
   console.log('[Background] ADOPT_TAB complete:', {
     quickTabId,
     oldOriginTabId,
     newOriginTabId: targetTabId
   });
+}
 
-  return { success: true, oldOriginTabId, newOriginTabId: targetTabId };
+async function handleAdoptAction(payload) {
+  const { quickTabId, targetTabId, correlationId: payloadCorrelationId } = payload;
+  const correlationId = payloadCorrelationId || generateCorrelationId('adopt');
+  const startTime = Date.now();
+
+  console.log('[Background] MANAGER_ACTION_REQUESTED:', {
+    action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, timestamp: startTime
+  });
+
+  const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const stateResult = await _readAdoptionState();
+  if (!stateResult.success) {
+    return stateResult;
+  }
+
+  const findResult = _findAndUpdateQuickTab(stateResult.state, quickTabId, targetTabId, correlationId);
+  if (!findResult.found) {
+    return { success: false, error: findResult.error };
+  }
+
+  const writeResult = await _writeAndVerifyAdoptionState({
+    state: stateResult.state, quickTabId, targetTabId, correlationId, startTime
+  });
+  if (!writeResult.success) {
+    return writeResult;
+  }
+
+  _updateGlobalCacheForAdoption(quickTabId, targetTabId);
+  await _broadcastAdoptionCompletion(quickTabId, findResult.oldOriginTabId, targetTabId, correlationId);
+  _logAdoptionSuccess({
+    quickTabId, targetTabId, oldOriginTabId: findResult.oldOriginTabId, correlationId, startTime
+  });
+
+  return { success: true, oldOriginTabId: findResult.oldOriginTabId, newOriginTabId: targetTabId };
 }
 
 /**
@@ -4693,9 +4807,41 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
 }
 
 /**
+ * Check if storage.session is available
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @returns {boolean} True if storage.session is available
+ */
+function _isStorageSessionAvailable() {
+  return typeof browser.storage.session !== 'undefined';
+}
+
+/**
+ * Log storage write verification result
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logVerificationResult(verified, saveId, stateToWrite, readBack) {
+  if (!verified) {
+    console.error('[Background] Storage write verification FAILED:', {
+      expectedSaveId: saveId,
+      actualSaveId: readBack?.saveId,
+      expectedTabs: stateToWrite.tabs.length,
+      actualTabs: readBack?.tabs?.length
+    });
+  } else {
+    console.log('[Background] Storage write verified (session-only):', {
+      saveId,
+      tabCount: stateToWrite.tabs.length
+    });
+  }
+}
+
+/**
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
  * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
  * @returns {Promise<Object>} Write result with verification status
  */
 async function writeStateWithVerification() {
@@ -4707,34 +4853,19 @@ async function writeStateWithVerification() {
     timestamp: Date.now()
   };
 
+  if (!_isStorageSessionAvailable()) {
+    console.error('[Background] storage.session unavailable for state write');
+    return { success: false, saveId, error: 'storage.session unavailable' };
+  }
+
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
-      console.error('[Background] storage.session unavailable for state write');
-      return { success: false, saveId, error: 'storage.session unavailable' };
-    }
-    // Write
     await browser.storage.session.set({ quick_tabs_state_v2: stateToWrite });
 
-    // v1.6.3.6-v11 - FIX Issue #14: Read-back verification
     const result = await browser.storage.session.get('quick_tabs_state_v2');
     const readBack = result?.quick_tabs_state_v2;
-
     const verified = readBack?.saveId === saveId;
 
-    if (!verified) {
-      console.error('[Background] Storage write verification FAILED:', {
-        expectedSaveId: saveId,
-        actualSaveId: readBack?.saveId,
-        expectedTabs: stateToWrite.tabs.length,
-        actualTabs: readBack?.tabs?.length
-      });
-    } else {
-      console.log('[Background] Storage write verified (session-only):', {
-        saveId,
-        tabCount: stateToWrite.tabs.length
-      });
-    }
+    _logVerificationResult(verified, saveId, stateToWrite, readBack);
 
     return { success: verified, saveId, verified };
   } catch (err) {
@@ -5103,29 +5234,48 @@ function getAllQuickTabsFromMemory() {
 /**
  * Notify sidebar of Quick Tab state change
  * v1.6.3.12 - Option 4: Push state updates to sidebar
+ * v1.6.4 - J5: Enhanced broadcast error handling and logging
  */
 function notifySidebarOfStateChange() {
   if (!quickTabsSessionState.sidebarPort) {
+    // v1.6.4 - J5: Log when message dropped due to missing port
+    console.log('[Background] BROADCAST_DROPPED: No sidebar port connected', {
+      timestamp: Date.now(),
+      totalQuickTabs: getAllQuickTabsFromMemory().length,
+      reason: 'sidebar_port_null'
+    });
     return;
   }
 
   const allTabs = getAllQuickTabsFromMemory();
+  const correlationId = `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const message = {
     type: 'STATE_CHANGED',
     quickTabs: allTabs,
     tabCount: allTabs.length,
     timestamp: Date.now(),
-    sessionId: quickTabsSessionState.sessionId
+    sessionId: quickTabsSessionState.sessionId,
+    correlationId // v1.6.4 - Gap #8: Add correlation ID
   };
 
   try {
     quickTabsSessionState.sidebarPort.postMessage(message);
-    console.log('[Background] STATE_CHANGED sent to sidebar:', {
+    // v1.6.4 - J5: Log successful broadcast with target info
+    console.log('[Background] BROADCAST_SUCCESS: STATE_CHANGED sent to sidebar', {
+      correlationId,
       tabCount: allTabs.length,
-      timestamp: message.timestamp
+      timestamp: message.timestamp,
+      targetPort: 'sidebar'
     });
   } catch (err) {
-    console.warn('[Background] Failed to notify sidebar:', err.message);
+    // v1.6.4 - J5: Log broadcast failure and mark port as dead
+    console.error('[Background] BROADCAST_FAILED: Error sending to sidebar', {
+      correlationId,
+      error: err.message,
+      timestamp: Date.now(),
+      tabCount: allTabs.length,
+      action: 'removing_stale_port'
+    });
     quickTabsSessionState.sidebarPort = null;
   }
 }
@@ -5207,27 +5357,48 @@ function handleQuickTabMinimizedMessage(message, sender) {
 /**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
+ * v1.6.4 - J5: Enhanced broadcast error handling with per-target logging
  * @param {number} tabId - Tab ID to notify
  */
 function notifyContentScriptOfStateChange(tabId) {
   const port = quickTabsSessionState.contentScriptPorts[tabId];
-  if (!port) return;
+  if (!port) {
+    // v1.6.4 - J5: Log when message dropped due to missing port
+    console.log('[Background] BROADCAST_DROPPED: No content script port for tab', {
+      tabId,
+      timestamp: Date.now(),
+      reason: 'port_not_found',
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
+    return;
+  }
 
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {
     type: 'QUICK_TABS_UPDATED',
     quickTabs,
     tabCount: quickTabs.length,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    correlationId // v1.6.4 - Gap #8: Add correlation ID
   };
 
   try {
     port.postMessage(message);
-    console.log(`[Background] QUICK_TABS_UPDATED sent to tab ${tabId}:`, {
+    // v1.6.4 - J5: Log successful broadcast
+    console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script', {
+      tabId,
+      correlationId,
       tabCount: quickTabs.length
     });
   } catch (err) {
-    console.warn(`[Background] Failed to notify tab ${tabId}:`, err.message);
+    // v1.6.4 - J5: Log failure and remove dead port
+    console.error('[Background] BROADCAST_FAILED: Error sending to content script', {
+      tabId,
+      correlationId,
+      error: err.message,
+      action: 'removing_dead_port'
+    });
     delete quickTabsSessionState.contentScriptPorts[tabId];
   }
 }
@@ -5235,14 +5406,18 @@ function notifyContentScriptOfStateChange(tabId) {
 /**
  * Handle CREATE_QUICK_TAB message from content script
  * v1.6.3.12 - Option 4: Add Quick Tab to in-memory state
+ * v1.6.4 - J3: Log container info for Manager labeling
  * @param {number} tabId - Origin tab ID
  * @param {Object} quickTab - Quick Tab data
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleCreateQuickTab(tabId, quickTab, port) {
+  // v1.6.4 - J3: Include container info in logging for Manager labeling
   console.log(`[Background] CREATE_QUICK_TAB from tab ${tabId}:`, {
     quickTabId: quickTab.id,
-    url: quickTab.url
+    url: quickTab.url,
+    originContainerId: quickTab.originContainerId || 'firefox-default',
+    originTabId: quickTab.originTabId || tabId
   });
 
   // Initialize tab's Quick Tab array if needed
@@ -5416,12 +5591,40 @@ function handleQueryMyQuickTabs(tabId, port) {
 /**
  * Handle HYDRATE_ON_LOAD message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use shared response builder
+ * v1.6.4 - J4: Container-aware hydration logging
  * @param {number} tabId - Tab ID requesting hydration
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleHydrateOnLoad(tabId, port) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
-  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { count: quickTabs.length, sessionId: quickTabsSessionState.sessionId });
+  const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
+  
+  // v1.6.4 - J4: Log container-aware hydration details
+  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { 
+    count: quickTabs.length, 
+    sessionId: quickTabsSessionState.sessionId,
+    requestingContainer: cookieStoreId
+  });
+  
+  // v1.6.4 - J4: Log container mismatch decisions if any Quick Tabs have different containers
+  if (quickTabs.length > 0) {
+    const containerMismatches = quickTabs.filter(qt => 
+      qt.originContainerId && qt.originContainerId !== cookieStoreId
+    );
+    
+    if (containerMismatches.length > 0) {
+      console.log('[Background] HYDRATION_CONTAINER_MISMATCH:', {
+        tabId,
+        requestingContainer: cookieStoreId,
+        mismatchedQuickTabs: containerMismatches.map(qt => ({
+          id: qt.id,
+          originContainerId: qt.originContainerId
+        })),
+        note: 'Quick Tabs with different containers still returned (filtering at content script)'
+      });
+    }
+  }
+  
   _sendQuickTabsListResponse(port, 'HYDRATE_ON_LOAD_RESPONSE', quickTabs, true);
 }
 
@@ -5725,13 +5928,74 @@ function _updateQuickTabMinimizedState(quickTabId, minimized) {
 }
 
 /**
+ * Capture disconnect reason from runtime.lastError
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @returns {string} Disconnect reason
+ */
+function _captureDisconnectReason() {
+  try {
+    return browser.runtime?.lastError?.message || 'unknown';
+  } catch (_e) {
+    return 'unknown';
+  }
+}
+
+/**
+ * Log content script port replacement
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logContentPortReplacement(tabId, cookieStoreId) {
+  console.log('[Background] PORT_ROUTING: Replacing existing content script port', {
+    tabId,
+    cookieStoreId,
+    reason: 'reconnection',
+    previousPortExists: true
+  });
+}
+
+/**
+ * Create content script port disconnect handler
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @param {number} tabId - Tab ID
+ * @param {string} cookieStoreId - Container ID
+ * @returns {Function} Disconnect handler
+ */
+function _createContentPortDisconnectHandler(tabId, cookieStoreId) {
+  return () => {
+    const disconnectReason = _captureDisconnectReason();
+    console.log('[Background] PORT_DISCONNECT: Content script port disconnected', {
+      tabId,
+      cookieStoreId,
+      reason: disconnectReason,
+      timestamp: Date.now(),
+      quickTabsCount: quickTabsSessionState.quickTabsByTab[tabId]?.length || 0,
+      remainingPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length - 1
+    });
+    delete quickTabsSessionState.contentScriptPorts[tabId];
+    notifySidebarOfStateChange();
+  };
+}
+
+/**
  * Setup content script port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.4 - J1: Enhanced port lifecycle logging with container context
+ * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
  * @private
  * @param {number} tabId - Tab ID
  * @param {browser.runtime.Port} port - The port
  */
 function _setupContentScriptPort(tabId, port) {
+  const existingPort = quickTabsSessionState.contentScriptPorts[tabId];
+  const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
+  
+  if (existingPort) {
+    _logContentPortReplacement(tabId, cookieStoreId);
+  }
+  
   quickTabsSessionState.contentScriptPorts[tabId] = port;
   
   if (!quickTabsSessionState.quickTabsByTab[tabId]) {
@@ -5739,31 +6003,62 @@ function _setupContentScriptPort(tabId, port) {
   }
 
   port.onMessage.addListener(msg => handleContentScriptPortMessage(tabId, msg, port));
-  port.onDisconnect.addListener(() => {
-    console.log(`[Background] Content script port disconnected for tab ${tabId}`);
-    delete quickTabsSessionState.contentScriptPorts[tabId];
-    notifySidebarOfStateChange();
-  });
+  port.onDisconnect.addListener(_createContentPortDisconnectHandler(tabId, cookieStoreId));
 
-  console.log(`[Background] Content script port registered for tab ${tabId}`);
+  console.log('[Background] PORT_ROUTING: Content script port registered', {
+    tabId,
+    cookieStoreId,
+    totalContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length,
+    existingQuickTabs: quickTabsSessionState.quickTabsByTab[tabId]?.length || 0
+  });
+}
+
+/**
+ * Create sidebar port disconnect handler
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ * @returns {Function} Disconnect handler
+ */
+function _createSidebarPortDisconnectHandler() {
+  return () => {
+    const disconnectReason = _captureDisconnectReason();
+    console.log('[Background] PORT_DISCONNECT: Sidebar port disconnected', {
+      reason: disconnectReason,
+      timestamp: Date.now(),
+      totalQuickTabs: getAllQuickTabsFromMemory().length
+    });
+    quickTabsSessionState.sidebarPort = null;
+  };
 }
 
 /**
  * Setup sidebar port handlers
  * v1.6.3.12-v2 - FIX Code Health: Extract to reduce handleQuickTabsPortConnect complexity
+ * v1.6.4 - J1: Enhanced port lifecycle logging
+ * v1.6.4.19 - Refactored: Use shared disconnect reason capture
  * @private
  * @param {browser.runtime.Port} port - The port
  */
 function _setupSidebarPort(port) {
+  const previousSidebarPort = quickTabsSessionState.sidebarPort;
+  
+  if (previousSidebarPort) {
+    console.log('[Background] PORT_ROUTING: Replacing existing sidebar port', {
+      reason: 'new_connection',
+      previousPortExists: true
+    });
+  }
+  
   quickTabsSessionState.sidebarPort = port;
 
   port.onMessage.addListener(msg => handleSidebarPortMessage(msg, port));
-  port.onDisconnect.addListener(() => {
-    console.log('[Background] Sidebar port disconnected');
-    quickTabsSessionState.sidebarPort = null;
-  });
+  port.onDisconnect.addListener(_createSidebarPortDisconnectHandler());
 
-  console.log('[Background] Sidebar port registered');
+  console.log('[Background] PORT_ROUTING: Sidebar port registered', {
+    timestamp: Date.now(),
+    connectedContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length
+  });
+  
   handleSidebarReady(port);
 }
 

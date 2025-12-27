@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v2.
+  documentation. Current version: v1.6.3.12-v3.
 tools: ['*']
 ---
 
@@ -69,9 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v2)
+## Current Extension State (v1.6.3.12-v3)
 
-### v1.6.3.12-v2 Features (NEW) - Minimize/Restore Forwarding + Port Diagnostics
+### v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps
+
+- **Container ID Resolution** - CreateHandler queries Identity system via
+  `getWritingContainerId()` at creation time (not stale constructor values)
+- **storage.session API Fix** - Properly guards MV2 incompatible code
+- **Context Detection Fix** - `setWritingTabId()` receives proper context
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs,
+  health monitoring, write queue, debounce timing, end-to-end sync
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`,
+  `getContainerLabel()`, `verifyCrossTabIsolation()`
+- **Scenario Logging** - `enableScenarioLogging()`, `disableScenarioLogging()`
+- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09, index.js 10.0
+
+### v1.6.3.12-v2 Features - Port Diagnostics
 
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
   minimize/restore events from VisibilityHandler to sidebar
@@ -115,8 +129,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v2
-- [ ] **v1.6.3.12-v2:** Minimize/restore forwarding + port diagnostics documented
+- [ ] Version numbers match 1.6.3.12-v3
+- [ ] **v1.6.3.12-v3:** Critical bug fixes + logging gaps documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -126,13 +140,12 @@ nothing.
 
 | Error                    | Fix                              |
 | ------------------------ | -------------------------------- |
-| v1.6.3.12 or earlier   | Update to 1.6.3.12-v2            |
+| v1.6.3.12-v2 or earlier  | Update to 1.6.3.12-v3            |
 | "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
 | "Pin to Page"            | REMOVE - Feature DELETED in v12  |
 | Cross-session persist    | REMOVE - Session-only in v12     |
 | Direct storage writes    | Use Single Writer Authority      |
 | BroadcastChannel refs    | REMOVE - BC DELETED in v6        |
-| Port-based messaging     | REMOVE - Ports DELETED in v12    |
 
 ---
 

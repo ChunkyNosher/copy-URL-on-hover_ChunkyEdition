@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v2  
+**Version:** 1.6.3.12-v3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,20 +20,29 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v2 Features (NEW) - Critical Fixes + Port Diagnostics:**
+**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
 
-- **Container ID Priority Fix** - CreateHandler._getOriginContainerId() prioritizes
-  identity context (`this.cookieStoreId`) over explicit `options.cookieStoreId`
-- **Storage.onChanged Fallback Fix** - Manager uses `'local'` area (not `'session'`)
-  as fallback for port messaging (Firefox MV2 has no storage.session)
+- **Container ID Resolution** - CreateHandler queries Identity system via
+  `getWritingContainerId()` at creation time (not stale constructor values)
+- **storage.session API Fix** - Properly guards MV2 incompatible code, falls back
+  to port-based messaging
+- **Context Detection Fix** - `setWritingTabId()` receives proper
+  `TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT` context
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs,
+  health monitoring, write queue, debounce timing, end-to-end sync
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`,
+  `getContainerLabel()`, `verifyCrossTabIsolation()`
+- **Scenario Logging** - `enableScenarioLogging()`, `disableScenarioLogging()`,
+  `logScenarioStep()`
+- **Code Health** - background.js 9.09, quick-tabs-manager.js 9.09, index.js 10.0
+
+**v1.6.3.12-v2 Features - Port Diagnostics:**
+
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards
-  minimize/restore events from VisibilityHandler to sidebar for immediate UI updates
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map tracks ACK
-  message roundtrip times via `_handleQuickTabPortAck()`
-- **Enhanced Port Disconnect Logging** - Logs reason from `browser.runtime.lastError`,
-  timestamp, and pending operation count
-- **Architecture Docs** - Port message ordering, state hash timing (recomputed at
-  render), debounce timing (100ms Manager, 200-300ms UpdateHandler)
+  minimize/restore events from VisibilityHandler to sidebar
+- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` Map for ACK timing
+- **Enhanced Port Disconnect Logging** - Reason, timestamp, pending count
 
 **v1.6.3.12 Features - Option 4 In-Memory Architecture:**
 
@@ -106,7 +115,18 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v2 Patterns (Current)
+### v1.6.3.12-v3 Patterns (Current)
+
+- **Container ID Resolution** - Identity system via `getWritingContainerId()` at creation
+- **storage.session API Guard** - MV2 incompatible code properly guarded
+- **Context Detection** - Proper `TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT` context
+- **Manager Refresh** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps Fixed** - Port lifecycle, correlation IDs, health monitoring
+- **Test Bridge API** - Container verification methods, Manager state API
+- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
+- **Hash/Change Detection** - `_HASH_FIELDS` for field enumeration
+
+### v1.6.3.12-v2 Patterns
 
 - **Container ID Priority** - Identity context takes priority over explicit options
 - **Storage.onChanged Fallback** - Uses `'local'` area, not `'session'` (MV2 fix)
@@ -160,6 +180,8 @@ const quickTabsSessionState = {
 | StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`, `withContext()`   |
 | Manager              | `scheduleRender()`, `_startHostInfoMaintenance()`           |
 | TabLifecycleHandler  | `start()`, `stop()`, `handleTabRemoved()`                   |
+| CreateHandler        | `_getOriginContainerId()`, `getWritingContainerId()` (v3)   |
+| TestBridge           | `getManagerState()`, `verifyContainerIsolationById()` (v3)  |
 
 ---
 
@@ -181,7 +203,12 @@ area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v2 (NEW):** `QUICK_TAB_PORT_MESSAGE_RECEIVED` `QUICK_TAB_PORT_MESSAGE_SENT`
+**v1.6.3.12-v3 (NEW):** `[SIDEBAR_PORT_LIFECYCLE]` `[STORAGE_ONCHANGED]`
+`[PORT_HANDLER_ENTRY]` `[PORT_HANDLER_EXIT]` `[STORAGE_HEALTH]`
+`[WRITE_QUEUE]` `[DEBOUNCE]` `[STATE_SYNC]` `[CORRELATION_ID]`
+`[CONTAINER_LABEL]` `[BROADCAST_FANOUT]` `[SCENARIO_LOG]`
+
+**v1.6.3.12-v2:** `QUICK_TAB_PORT_MESSAGE_RECEIVED` `QUICK_TAB_PORT_MESSAGE_SENT`
 `[Background] PORT_DISCONNECT:`
 
 **v1.6.3.12:** `[Background] PORT_CONNECT:` `[Background] PORT_MESSAGE:`

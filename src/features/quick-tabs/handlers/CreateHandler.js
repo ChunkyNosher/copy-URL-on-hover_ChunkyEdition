@@ -8,7 +8,8 @@
  * Lines 903-992 from original index.js
  */
 
-import { validateOriginTabIdForSerialization } from '@utils/storage-utils.js'; // v1.6.3.12 - FIX Issue #16
+// v1.6.3.12-v3 - FIX Issue A: Import getWritingContainerId to get current container from Identity system
+import { validateOriginTabIdForSerialization, getWritingContainerId } from '@utils/storage-utils.js';
 import browser from 'webextension-polyfill';
 
 import { createQuickTabWindow } from '../window.js';
@@ -445,10 +446,16 @@ export class CreateHandler {
    * @param {string|null} originContainerId - Resolved container ID
    * @param {Object} options - Creation options
    * @returns {string} Source name for logging
+   * @deprecated v1.6.3.12-v3 - Replaced by _getContainerIdSourceV3 which queries Identity system.
+   *   This method only checks constructor/options values which may be stale.
+   *   The V3 version adds getWritingContainerId() as a priority source.
+   *   Kept for backward compatibility - safe to remove in v1.6.4+.
    */
   _getContainerIdSource(originContainerId, options) {
+    // v1.6.3.12-v3 - DEPRECATED: Replaced by _getContainerIdSourceV3
+    // This method is kept for potential external callers but is no longer used internally.
+    // The V3 version adds Identity system (getWritingContainerId) as a priority source.
     if (originContainerId === options.originContainerId) return 'options.originContainerId';
-    // v1.6.3.12-v2 - FIX Issue #2: Check this.cookieStoreId BEFORE options.cookieStoreId (matches new priority)
     if (originContainerId === this.cookieStoreId) return 'this.cookieStoreId (identity context)';
     if (originContainerId === options.cookieStoreId) return 'options.cookieStoreId';
     return 'defaults';
@@ -461,7 +468,11 @@ export class CreateHandler {
    *   (actual identity context) over options.cookieStoreId (potentially stale value from Quick Tab options)
    *   The identity context (this.cookieStoreId) is acquired during content script initialization
    *   and represents the actual container where the tab is running.
-   * Priority: options.originContainerId > this.cookieStoreId > options.cookieStoreId > defaults
+   * v1.6.3.12-v3 - FIX Issue A (issue-47-log-analysis): Query Identity system at creation time
+   *   The constructor's this.cookieStoreId can be stale if Identity system acquired container ID
+   *   AFTER handler initialization. Now we query getWritingContainerId() at creation time to get
+   *   the actual current container from the Identity system.
+   * Priority: options.originContainerId > Identity system > this.cookieStoreId > options.cookieStoreId > defaults
    * @private
    * @param {Object} options - Creation options
    * @param {Object} defaults - Default values
@@ -469,25 +480,56 @@ export class CreateHandler {
    * @returns {string|null} Resolved container ID
    */
   _getOriginContainerId(options, defaults, quickTabId) {
-    // v1.6.3.12-v2 - FIX Issue #2: Prioritize identity context (this.cookieStoreId) over options.cookieStoreId
-    // The identity context is acquired during content script initialization and is the actual container
-    // where the tab is running. The options.cookieStoreId may contain stale values.
+    // v1.6.3.12-v3 - FIX Issue A: Query Identity system for current container at creation time
+    // This is critical because this.cookieStoreId may be stale if it was set before Identity system
+    // acquired the actual container context. getWritingContainerId() returns the current Identity state.
+    const identityContainerId = getWritingContainerId();
+
+    // v1.6.3.12-v3 - FIX Issue A: Priority order:
+    // 1. Explicit options.originContainerId (highest priority, already known)
+    // 2. Identity system's current container (getWritingContainerId) - most accurate at creation time
+    // 3. this.cookieStoreId (constructor value, may be stale)
+    // 4. options.cookieStoreId (potentially stale value from Quick Tab options)
+    // 5. defaults.originContainerId (fallback)
     const originContainerId =
       options.originContainerId ??
+      identityContainerId ??
       this.cookieStoreId ??
       options.cookieStoreId ??
       defaults.originContainerId;
 
+    // v1.6.3.12-v3 - Enhanced logging to track container resolution source
+    const source = this._getContainerIdSourceV3(originContainerId, options, identityContainerId);
+
     console.log('[CreateHandler] 📦 CONTAINER_CONTEXT:', {
       quickTabId,
       originContainerId,
-      source: this._getContainerIdSource(originContainerId, options),
-      // v1.6.3.12-v2 - Additional diagnostic fields to track container resolution
-      identityContextCookieStoreId: this.cookieStoreId ?? null,
-      optionsCookieStoreId: options.cookieStoreId ?? null
+      source,
+      // v1.6.3.12-v3 - Diagnostic fields to track container resolution from all sources
+      identitySystemContainerId: identityContainerId ?? null,
+      constructorCookieStoreId: this.cookieStoreId ?? null,
+      optionsCookieStoreId: options.cookieStoreId ?? null,
+      optionsOriginContainerId: options.originContainerId ?? null
     });
 
     return originContainerId;
+  }
+
+  /**
+   * Determine the source of the origin container ID for logging (v3 with Identity system)
+   * v1.6.3.12-v3 - FIX Issue A: Updated to include Identity system source
+   * @private
+   * @param {string|null} originContainerId - Resolved container ID
+   * @param {Object} options - Creation options
+   * @param {string|null} identityContainerId - Container ID from Identity system
+   * @returns {string} Source name for logging
+   */
+  _getContainerIdSourceV3(originContainerId, options, identityContainerId) {
+    if (originContainerId === options.originContainerId) return 'options.originContainerId';
+    if (originContainerId === identityContainerId) return 'Identity system (getWritingContainerId)';
+    if (originContainerId === this.cookieStoreId) return 'this.cookieStoreId (constructor)';
+    if (originContainerId === options.cookieStoreId) return 'options.cookieStoreId';
+    return 'defaults';
   }
 
   /**

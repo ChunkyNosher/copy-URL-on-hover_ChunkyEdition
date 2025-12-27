@@ -295,11 +295,21 @@ const _quickTabPortOperationTimestamps = new Map();
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  */
 function initializeQuickTabsPort() {
-  console.log('[Sidebar] Initializing Quick Tabs port connection');
+  // v1.6.4 - Gap #1: Log port connection attempt
+  console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
+    timestamp: Date.now(),
+    portName: 'quick-tabs-port',
+    existingPort: !!quickTabsPort
+  });
 
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
-    console.log('[Sidebar] Connected to background via quick-tabs-port');
+    // v1.6.4 - Gap #1: Log port connection success
+    console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
+      timestamp: Date.now(),
+      portName: 'quick-tabs-port',
+      success: true
+    });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
 
@@ -341,7 +351,13 @@ function initializeQuickTabsPort() {
     });
     console.log('[Sidebar] SIDEBAR_READY sent to background');
   } catch (err) {
-    console.error('[Sidebar] Failed to connect Quick Tabs port:', err.message);
+    // v1.6.4 - Gap #1: Log port connection failure
+    console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
+      timestamp: Date.now(),
+      portName: 'quick-tabs-port',
+      error: err.message,
+      success: false
+    });
   }
 }
 
@@ -349,40 +365,84 @@ function initializeQuickTabsPort() {
 /**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
+ * v1.6.4 - Gap #7: End-to-end state sync path logging
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
  */
 function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
-  if (!Array.isArray(quickTabs)) return;
+  const receiveTime = Date.now();
+  
+  // v1.6.4 - Gap #7: Log Manager received update
+  console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
+    timestamp: receiveTime,
+    source: renderReason,
+    tabCount: Array.isArray(quickTabs) ? quickTabs.length : 0,
+    isValidArray: Array.isArray(quickTabs),
+    previousTabCount: _allQuickTabsFromPort.length
+  });
+  
+  if (!Array.isArray(quickTabs)) {
+    console.warn('[Sidebar] STATE_SYNC_PATH_INVALID:', {
+      timestamp: receiveTime,
+      source: renderReason,
+      reason: 'quickTabs is not an array',
+      receivedType: typeof quickTabs
+    });
+    return;
+  }
   
   _allQuickTabsFromPort = quickTabs;
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
+  
+  // v1.6.4 - Gap #7: Log Manager render triggered
+  console.log('[Sidebar] STATE_SYNC_PATH_RENDER_TRIGGERED:', {
+    timestamp: Date.now(),
+    source: renderReason,
+    tabCount: quickTabs.length,
+    latencyMs: Date.now() - receiveTime
+  });
+  
   scheduleRender(renderReason);
 }
 
 /**
  * Handle Quick Tab port ACK with roundtrip time calculation
  * v1.6.3.12-v2 - FIX Issue #16-17: Log ACK with roundtrip time
+ * v1.6.4 - Gap #8: Log correlation ID match for async tracing
  * @private
  * @param {Object} msg - ACK message from background
  * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
  */
-function _handleQuickTabPortAck(msg, ackType) {
-  const { quickTabId, success, timestamp: responseTimestamp } = msg;
-  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+/**
+ * Build ACK log data
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _buildAckLogData(msg, sentInfo) {
+  const { success, timestamp: responseTimestamp, correlationId: responseCorrelationId } = msg;
   const roundtripMs = sentInfo ? Date.now() - sentInfo.sentAt : null;
-  
-  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
-    quickTabId,
+  return {
     success,
     roundtripMs,
     responseTimestamp,
-    sentAt: sentInfo?.sentAt || null
+    sentAt: sentInfo?.sentAt || null,
+    sentCorrelationId: sentInfo?.correlationId || null,
+    responseCorrelationId: responseCorrelationId || null,
+    correlationMatch: sentInfo?.correlationId === responseCorrelationId
+  };
+}
+
+function _handleQuickTabPortAck(msg, ackType) {
+  const { quickTabId } = msg;
+  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+  
+  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
+    quickTabId,
+    ..._buildAckLogData(msg, sentInfo)
   });
   
-  // Clean up tracking
   if (quickTabId) {
     _quickTabPortOperationTimestamps.delete(quickTabId);
   }
@@ -412,23 +472,40 @@ const _portMessageHandlers = {
  * Handle messages from Quick Tabs port
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
+ * v1.6.4 - Gap #3: Port message handler entry/exit logging
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
-  const { type, timestamp: msgTimestamp } = message;
+  const { type, timestamp: msgTimestamp, correlationId } = message;
+  const handlerStartTime = Date.now();
   
-  // v1.6.3.12-v2 - FIX Issue #16-17: Log port message with timestamp
-  console.log('[Sidebar] QUICK_TABS_PORT_MESSAGE_RECEIVED:', {
+  // v1.6.4 - Gap #3: Log handler entry with message type and payload size
+  console.log('[Sidebar] PORT_MESSAGE_HANDLER_ENTRY:', {
     type,
-    timestamp: Date.now(),
-    messageTimestamp: msgTimestamp || null
+    correlationId: correlationId || null,
+    timestamp: handlerStartTime,
+    messageTimestamp: msgTimestamp || null,
+    payloadSize: JSON.stringify(message).length
   });
 
   const handler = _portMessageHandlers[type];
   if (handler) {
     handler(message);
+    // v1.6.4 - Gap #3: Log handler exit on success
+    console.log('[Sidebar] PORT_MESSAGE_HANDLER_EXIT:', {
+      type,
+      correlationId: correlationId || null,
+      outcome: 'success',
+      durationMs: Date.now() - handlerStartTime
+    });
   } else {
-    console.log(`[Sidebar] Unknown Quick Tabs message type: ${type}`);
+    // v1.6.4 - Gap #3: Log handler exit on unknown type
+    console.log('[Sidebar] PORT_MESSAGE_HANDLER_EXIT:', {
+      type,
+      correlationId: correlationId || null,
+      outcome: 'unknown_type',
+      durationMs: Date.now() - handlerStartTime
+    });
   }
 }
 
@@ -475,9 +552,20 @@ function updateQuickTabsStateFromPort(quickTabs) {
  */
 // ==================== v1.6.3.12-v2 SIDEBAR PORT OPERATION HELPER ====================
 /**
+ * Generate correlation ID for port operations
+ * v1.6.4 - Gap #8: Correlation IDs for async operations
+ * @private
+ * @returns {string} Unique correlation ID
+ */
+function _generatePortCorrelationId() {
+  return `port-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+/**
  * Execute sidebar port operation with error handling
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
  * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
+ * v1.6.4 - Gap #8: Add correlation IDs to port messages
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
@@ -490,12 +578,16 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
   }
 
   const sentAt = Date.now();
+  // v1.6.4 - Gap #8: Generate correlation ID for tracking
+  const correlationId = _generatePortCorrelationId();
   
   try {
+    // v1.6.4 - Gap #8: Include correlationId in message
     quickTabsPort.postMessage({
       type: messageType,
       ...payload,
-      timestamp: sentAt
+      timestamp: sentAt,
+      correlationId
     });
     
     // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
@@ -504,7 +596,8 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     if (quickTabId) {
       _quickTabPortOperationTimestamps.set(quickTabId, {
         sentAt,
-        messageType
+        messageType,
+        correlationId // v1.6.4 - Gap #8: Store correlationId for matching
       });
     }
     
@@ -1657,26 +1750,88 @@ function _handleStateSyncResponse(response) {
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
  * @param {string} source - Source of render trigger for logging
  */
-function scheduleRender(source = 'unknown') {
-  const currentHash = computeStateHash(quickTabsState);
+/**
+ * Log hash computation for render scheduling
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logHashComputation(scheduleTimestamp, source, currentHash) {
+  console.log('[Sidebar] DEBOUNCE_HASH_COMPUTED:', {
+    timestamp: scheduleTimestamp,
+    source,
+    hashValue: currentHash,
+    previousHash: lastRenderedStateHash,
+    hashChanged: currentHash !== lastRenderedStateHash,
+    stateTabCount: quickTabsState?.tabs?.length || 0,
+    fieldsInHash: ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId']
+  });
+}
 
-  // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
-  if (currentHash === lastRenderedStateHash) {
-    console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
-      source,
-      hash: currentHash
-    });
-    return;
-  }
+/**
+ * Log when render is skipped due to hash match
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+/**
+ * Build state summary for logging
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _buildStateSummary() {
+  const tabs = quickTabsState?.tabs || [];
+  return {
+    totalTabs: tabs.length,
+    minimizedTabs: tabs.filter(t => t.minimized).length
+  };
+}
 
+function _logRenderSkipped(scheduleTimestamp, source, currentHash) {
+  console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
+    source,
+    hash: currentHash
+  });
+  console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
+    timestamp: scheduleTimestamp,
+    source,
+    hash: currentHash,
+    tabCount: quickTabsState?.tabs?.length || 0,
+    stateSummary: _buildStateSummary()
+  });
+}
+
+/**
+ * Log when render is scheduled
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logRenderScheduled(scheduleTimestamp, source, currentHash) {
+  console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
+    timestamp: scheduleTimestamp,
+    source,
+    debounceId: `render-${scheduleTimestamp}`,
+    delayMs: RENDER_DEBOUNCE_MS,
+    reason: 'hash_changed'
+  });
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
   });
+}
 
-  // Route to the debounced renderUI
+function scheduleRender(source = 'unknown') {
+  const scheduleTimestamp = Date.now();
+  const currentHash = computeStateHash(quickTabsState);
+  
+  _logHashComputation(scheduleTimestamp, source, currentHash);
+
+  if (currentHash === lastRenderedStateHash) {
+    _logRenderSkipped(scheduleTimestamp, source, currentHash);
+    return;
+  }
+  
+  _logRenderScheduled(scheduleTimestamp, source, currentHash);
   renderUI();
 }
 
@@ -2788,52 +2943,52 @@ function _dispatchQuickTabMessage({ emoji, logLabel, logFields, handler, message
 }
 
 /**
- * Handle QUICKTAB_MOVED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
+ * Message dispatcher configuration
+ * v1.6.4.19 - Use lookup table to eliminate code duplication
  * @private
  */
-function _handleMovedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
+const _messageDispatcherConfig = {
+  MOVED: {
     emoji: '📍',
     logLabel: 'QUICKTAB_MOVED',
-    logFields: { quickTabId: message.quickTabId, left: message.left, top: message.top, originTabId: message.originTabId },
-    handler: handleQuickTabMovedMessage,
-    message,
-    sendResponse
-  });
-}
-
-/**
- * Handle QUICKTAB_RESIZED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
- * @private
- */
-function _handleResizedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, left: msg.left, top: msg.top, originTabId: msg.originTabId }),
+    handler: handleQuickTabMovedMessage
+  },
+  RESIZED: {
     emoji: '📐',
     logLabel: 'QUICKTAB_RESIZED',
-    logFields: { quickTabId: message.quickTabId, width: message.width, height: message.height, originTabId: message.originTabId },
-    handler: handleQuickTabResizedMessage,
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, width: msg.width, height: msg.height, originTabId: msg.originTabId }),
+    handler: handleQuickTabResizedMessage
+  },
+  MINIMIZED: {
+    emoji: '🔽',
+    logLabel: 'QUICKTAB_MINIMIZED',
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, minimized: msg.minimized, originTabId: msg.originTabId }),
+    handler: handleQuickTabMinimizedMessage
+  }
+};
+
+/**
+ * Create message handler using config lookup
+ * v1.6.4.19 - Refactored: Factory function to eliminate duplication
+ * @private
+ */
+function _createMessageDispatcher(configKey) {
+  const config = _messageDispatcherConfig[configKey];
+  return (message, sendResponse) => _dispatchQuickTabMessage({
+    emoji: config.emoji,
+    logLabel: config.logLabel,
+    logFields: config.extractLogFields(message),
+    handler: config.handler,
     message,
     sendResponse
   });
 }
 
-/**
- * Handle QUICKTAB_MINIMIZED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
- * @private
- */
-function _handleMinimizedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
-    emoji: '🔽',
-    logLabel: 'QUICKTAB_MINIMIZED',
-    logFields: { quickTabId: message.quickTabId, minimized: message.minimized, originTabId: message.originTabId },
-    handler: handleQuickTabMinimizedMessage,
-    message,
-    sendResponse
-  });
-}
+// Create dispatch handlers using factory
+const _handleMovedMessage = _createMessageDispatcher('MOVED');
+const _handleResizedMessage = _createMessageDispatcher('RESIZED');
+const _handleMinimizedMessage = _createMessageDispatcher('MINIMIZED');
 
 /**
  * Handle QUICKTAB_REMOVED message
@@ -2943,57 +3098,77 @@ function _handleQuickTabPropertyUpdate({ quickTabId, updates, originTabId, logLa
 }
 
 /**
+ * Quick Tab message handler configuration
+ * v1.6.4.19 - Use lookup table to eliminate code duplication
+ * @private
+ */
+const _quickTabMessageHandlerConfig = {
+  MOVED: {
+    extractUpdates: (msg) => ({ left: msg.left, top: msg.top }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, left: msg.left, top: msg.top, originTabId: msg.originTabId }),
+    logLabel: 'MOVE_HANDLER',
+    renderReason: 'QUICKTAB_MOVED'
+  },
+  RESIZED: {
+    extractUpdates: (msg) => ({ width: msg.width, height: msg.height }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, width: msg.width, height: msg.height, originTabId: msg.originTabId }),
+    logLabel: 'RESIZE_HANDLER',
+    renderReason: 'QUICKTAB_RESIZED'
+  },
+  MINIMIZED: {
+    extractUpdates: (msg) => ({ minimized: msg.minimized }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, minimized: msg.minimized, originTabId: msg.originTabId }),
+    logLabel: 'MINIMIZE_HANDLER',
+    renderReason: 'QUICKTAB_MINIMIZED'
+  }
+};
+
+/**
+ * Generic Quick Tab message handler using config lookup
+ * v1.6.4.19 - Refactored: Eliminate duplication via configuration
+ * @private
+ */
+function _handleQuickTabMessage(message, configKey) {
+  const config = _quickTabMessageHandlerConfig[configKey];
+  const { quickTabId, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: config.extractUpdates(message),
+    originTabId,
+    logLabel: config.logLabel,
+    renderReason: config.renderReason,
+    logFields: config.extractLogFields(message)
+  });
+}
+
+/**
  * Handle QUICKTAB_MOVED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MOVED message
  */
 function handleQuickTabMovedMessage(message) {
-  const { quickTabId, left, top, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { left, top },
-    originTabId,
-    logLabel: 'MOVE_HANDLER',
-    renderReason: 'QUICKTAB_MOVED',
-    logFields: { quickTabId, left, top, originTabId }
-  });
+  _handleQuickTabMessage(message, 'MOVED');
 }
 
 /**
  * Handle QUICKTAB_RESIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_RESIZED message
  */
 function handleQuickTabResizedMessage(message) {
-  const { quickTabId, width, height, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { width, height },
-    originTabId,
-    logLabel: 'RESIZE_HANDLER',
-    renderReason: 'QUICKTAB_RESIZED',
-    logFields: { quickTabId, width, height, originTabId }
-  });
+  _handleQuickTabMessage(message, 'RESIZED');
 }
 
 /**
  * Handle QUICKTAB_MINIMIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MINIMIZED message
  */
 function handleQuickTabMinimizedMessage(message) {
-  const { quickTabId, minimized, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { minimized },
-    originTabId,
-    logLabel: 'MINIMIZE_HANDLER',
-    renderReason: 'QUICKTAB_MINIMIZED',
-    logFields: { quickTabId, minimized, originTabId }
-  });
+  _handleQuickTabMessage(message, 'MINIMIZED');
 }
 
 /**
@@ -5095,6 +5270,16 @@ function setupEventListeners() {
     closeAllElement: !!document.getElementById('closeAll')
   });
 
+  // v1.6.4 - Extracted to reduce setupEventListeners line count
+  _setupStorageOnChangedListener();
+}
+
+/**
+ * Setup storage.onChanged listener as fallback mechanism
+ * v1.6.4 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+function _setupStorageOnChangedListener() {
   // Listen for storage changes to auto-update
   // v1.6.3 - FIX: Changed from 'sync' to 'local' (storage location since v1.6.0.12)
   // v1.6.4.18 - FIX: Changed from 'local' to 'session' (Quick Tabs are now session-only)
@@ -5105,11 +5290,43 @@ function setupEventListeners() {
   //   - PRIMARY: Port messaging ('quick-tabs-port') for real-time sync
   //   - FALLBACK: storage.local changes caught here for edge cases
   //   - NOTE: 'session' area does NOT exist in Firefox MV2
+  
+  // v1.6.4 - Gap #2: Log storage.onChanged listener registration
+  console.log('[Sidebar] STORAGE_ONCHANGED_LISTENER_REGISTERED:', {
+    timestamp: Date.now(),
+    area: 'local',
+    stateKey: STATE_KEY,
+    purpose: 'fallback for port messaging',
+    note: 'storage.session does NOT exist in Firefox MV2'
+  });
+  
   browser.storage.onChanged.addListener((changes, areaName) => {
+    // v1.6.4 - Gap #2: Log storage.onChanged event fired
+    console.log('[Sidebar] STORAGE_ONCHANGED_EVENT:', {
+      timestamp: Date.now(),
+      areaName,
+      changedKeys: Object.keys(changes),
+      hasStateKey: !!changes[STATE_KEY]
+    });
+    
     // v1.6.3.12-v2 - FIX Issue #13: Listen for 'local' area as fallback
     // Port messaging is the PRIMARY sync mechanism (Option 4 Architecture)
     // storage.session does NOT exist in Firefox MV2, so listen for 'local' instead
-    if (areaName !== 'local' || !changes[STATE_KEY]) return;
+    if (areaName !== 'local' || !changes[STATE_KEY]) {
+      console.log('[Sidebar] STORAGE_ONCHANGED_SKIPPED:', {
+        reason: areaName !== 'local' ? 'wrong_area' : 'no_state_key',
+        areaName,
+        expectedArea: 'local'
+      });
+      return;
+    }
+    
+    console.log('[Sidebar] STORAGE_ONCHANGED_HANDLER_INVOKED:', {
+      timestamp: Date.now(),
+      areaName,
+      stateKey: STATE_KEY,
+      fallbackPath: true
+    });
     _handleStorageChange(changes[STATE_KEY]);
   });
 }
