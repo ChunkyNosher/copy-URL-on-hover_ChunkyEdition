@@ -5877,17 +5877,43 @@ function _executePersistWrite(state, context, logPrefix) {
 // =============================================================================
 // STORAGE COORDINATOR
 // v1.6.3.12 - FIX Issue #14: Centralized storage write coordination
+// v1.6.3.12-v5 - FIX Issue #16: Priority-based queue with non-blocking timeout eviction
 // Serializes all writes - only ONE write operation in-flight at a time
 // =============================================================================
 
 /**
+ * Operation priority levels for queue ordering
+ * v1.6.3.12-v5 - FIX Issue #16: State changes have higher priority than position updates
+ * @enum {number}
+ */
+export const QUEUE_PRIORITY = {
+  HIGH: 1, // minimize/restore state changes - process first
+  MEDIUM: 2, // position/size updates
+  LOW: 3 // diagnostic writes, z-index persistence
+};
+
+/**
+ * Default timeout for queue operations (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #16: Stalled operations evicted after this timeout
+ */
+const QUEUE_OPERATION_TIMEOUT_MS = 2000;
+
+/**
+ * Maximum wait time in queue before eviction (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #16: Operations waiting longer than this are evicted
+ */
+const QUEUE_MAX_WAIT_MS = 5000;
+
+/**
  * StorageCoordinator - Centralized manager for storage writes
  * v1.6.3.12 - FIX Issue #14: Prevents concurrent write race conditions
+ * v1.6.3.12-v5 - FIX Issue #16: Non-blocking queue with priority and timeout eviction
  *
  * This class ensures that:
  * 1. Only ONE storage write is in-flight at a time
- * 2. Write requests are queued and processed in order
- * 3. Queue status is logged for debugging
+ * 2. Write requests are queued and processed by priority
+ * 3. Stalled operations are evicted instead of blocking the queue
+ * 4. Queue status is logged for debugging
  *
  * @class StorageCoordinator
  */
@@ -5897,29 +5923,43 @@ class StorageCoordinator {
     this._isWriting = false;
     this._writeCount = 0;
     this._currentHandler = null;
+    this._currentOperationStartTime = null;
+    this._evictedCount = 0;
   }
 
   /**
-   * Queue a storage write operation
+   * Queue a storage write operation with priority
+   * v1.6.3.12-v5 - FIX Issue #16: Added priority parameter for queue ordering
    * @param {string} handlerName - Name of handler requesting write (e.g., 'VisibilityHandler')
    * @param {Function} writeOperation - Async function that performs the actual write
+   * @param {number} [priority=QUEUE_PRIORITY.MEDIUM] - Operation priority (1=HIGH, 2=MEDIUM, 3=LOW)
    * @returns {Promise<boolean>} Promise resolving to write success status
    */
-  queueWrite(handlerName, writeOperation) {
+  queueWrite(handlerName, writeOperation, priority = QUEUE_PRIORITY.MEDIUM) {
     return new Promise((resolve, reject) => {
-      this._writeQueue.push({
+      const queueEntry = {
         handlerName,
         writeOperation,
         resolve,
         reject,
-        queuedAt: Date.now()
-      });
+        queuedAt: Date.now(),
+        priority,
+        id: `${handlerName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      };
+
+      // v1.6.3.12-v5 - FIX Issue #16: Evict stale entries before adding new one
+      this._evictStaleEntries();
+
+      // v1.6.3.12-v5 - FIX Issue #16: Insert based on priority (lower number = higher priority)
+      this._insertByPriority(queueEntry);
 
       console.log('[WRITE_QUEUE] ENQUEUED:', {
         handler: handlerName,
+        priority,
         queueSize: this._writeQueue.length,
         isWriting: this._isWriting,
         currentHandler: this._currentHandler,
+        entryId: queueEntry.id,
         timestamp: new Date().toISOString()
       });
 
@@ -5928,7 +5968,155 @@ class StorageCoordinator {
   }
 
   /**
-   * Process the write queue sequentially
+   * Insert queue entry by priority (higher priority = lower number = earlier in queue)
+   * v1.6.3.12-v5 - FIX Issue #16: Priority-based insertion
+   * @private
+   */
+  _insertByPriority(entry) {
+    // Find insertion point: insert before first entry with lower priority (higher number)
+    const insertIndex = this._writeQueue.findIndex(e => e.priority > entry.priority);
+    if (insertIndex === -1) {
+      // No lower priority entries, append to end
+      this._writeQueue.push(entry);
+    } else {
+      // Insert before the first lower priority entry
+      this._writeQueue.splice(insertIndex, 0, entry);
+    }
+  }
+
+  /**
+   * Evict stale entries that have been waiting too long
+   * v1.6.3.12-v5 - FIX Issue #16: Non-blocking queue - remove stalled operations
+   * @private
+   */
+  _evictStaleEntries() {
+    const now = Date.now();
+    const staleEntries = [];
+    const freshEntries = [];
+
+    for (const entry of this._writeQueue) {
+      const waitTime = now - entry.queuedAt;
+      if (waitTime > QUEUE_MAX_WAIT_MS) {
+        staleEntries.push(entry);
+      } else {
+        freshEntries.push(entry);
+      }
+    }
+
+    if (staleEntries.length > 0) {
+      this._writeQueue = freshEntries;
+      this._evictedCount += staleEntries.length;
+
+      for (const entry of staleEntries) {
+        console.warn('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
+          handler: entry.handlerName,
+          entryId: entry.id,
+          priority: entry.priority,
+          waitTimeMs: now - entry.queuedAt,
+          maxWaitMs: QUEUE_MAX_WAIT_MS,
+          reason: 'exceeded_max_wait_time',
+          totalEvicted: this._evictedCount,
+          timestamp: new Date().toISOString()
+        });
+        // Resolve with false to indicate operation was not completed
+        entry.resolve(false);
+      }
+    }
+  }
+
+  /**
+   * Create a timeout promise for queue operations
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * The timeout is cleared when clear() is called, preventing memory leaks
+   * @private
+   * @param {string} handlerName - Handler name
+   * @param {string} id - Entry ID
+   * @param {number} priority - Priority level
+   * @returns {{ promise: Promise, clear: Function, didTimeout: () => boolean }}
+   */
+  _createOperationTimeout(handlerName, id, priority) {
+    let timeoutId = null;
+    let timedOut = false;
+
+    const promise = new Promise((_resolve, _reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        console.error('[WRITE_QUEUE] OPERATION_TIMEOUT:', {
+          handler: handlerName,
+          entryId: id,
+          priority,
+          timeoutMs: QUEUE_OPERATION_TIMEOUT_MS,
+          timestamp: new Date().toISOString()
+        });
+        _reject(new Error(`Operation timeout after ${QUEUE_OPERATION_TIMEOUT_MS}ms`));
+      }, QUEUE_OPERATION_TIMEOUT_MS);
+    });
+
+    return {
+      promise,
+      // Clear timeout to prevent memory leaks - the promise becomes orphaned but harmless
+      clear: () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      },
+      didTimeout: () => timedOut
+    };
+  }
+
+  /**
+   * Handle operation success
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * @private
+   */
+  _handleOperationSuccess(entry, result) {
+    console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
+      handler: entry.handlerName,
+      entryId: entry.id,
+      priority: entry.priority,
+      writeNumber: this._writeCount,
+      queueSize: this._writeQueue.length,
+      durationMs: Date.now() - this._currentOperationStartTime,
+      timestamp: new Date().toISOString()
+    });
+    entry.resolve(result);
+  }
+
+  /**
+   * Handle operation failure
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * @private
+   */
+  _handleOperationFailure(entry, error, didTimeout) {
+    if (didTimeout) {
+      this._evictedCount++;
+      console.error('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        reason: 'operation_timeout',
+        timeoutMs: QUEUE_OPERATION_TIMEOUT_MS,
+        totalEvicted: this._evictedCount,
+        timestamp: new Date().toISOString()
+      });
+      entry.resolve(false);
+    } else {
+      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        writeNumber: this._writeCount,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      entry.reject(error);
+    }
+  }
+
+  /**
+   * Process the write queue sequentially with timeout protection
+   * v1.6.3.12-v5 - FIX Issue #16: Timeout eviction instead of blocking
    * @private
    */
   async _processQueue() {
@@ -5936,47 +6124,40 @@ class StorageCoordinator {
       return;
     }
 
+    this._evictStaleEntries();
+    if (this._writeQueue.length === 0) return;
+
     this._isWriting = true;
-    const { handlerName, writeOperation, resolve, reject, queuedAt } = this._writeQueue.shift();
-    this._currentHandler = handlerName;
+    const entry = this._writeQueue.shift();
+    this._currentHandler = entry.handlerName;
+    this._currentOperationStartTime = Date.now();
     this._writeCount++;
 
-    const waitTimeMs = Date.now() - queuedAt;
     console.log('[WRITE_QUEUE] DEQUEUE_START:', {
-      handler: handlerName,
+      handler: entry.handlerName,
+      entryId: entry.id,
+      priority: entry.priority,
       writeNumber: this._writeCount,
       queueSize: this._writeQueue.length,
-      waitTimeMs,
+      waitTimeMs: Date.now() - entry.queuedAt,
       timestamp: new Date().toISOString()
     });
 
+    const timeout = this._createOperationTimeout(entry.handlerName, entry.id, entry.priority);
+
     try {
-      const result = await writeOperation();
-
-      console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
-        handler: handlerName,
-        writeNumber: this._writeCount,
-        queueSize: this._writeQueue.length,
-        nextWriteIn: this._writeQueue.length > 0 ? '0ms' : 'N/A',
-        timestamp: new Date().toISOString()
-      });
-
-      resolve(result);
+      const result = await Promise.race([entry.writeOperation(), timeout.promise]);
+      timeout.clear();
+      this._handleOperationSuccess(entry, result);
     } catch (error) {
-      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
-        handler: handlerName,
-        writeNumber: this._writeCount,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      reject(error);
+      timeout.clear();
+      this._handleOperationFailure(entry, error, timeout.didTimeout());
     } finally {
       this._isWriting = false;
       this._currentHandler = null;
+      this._currentOperationStartTime = null;
 
-      // Process next write immediately if queue has items
       if (this._writeQueue.length > 0) {
-        // Use setImmediate/setTimeout(0) to avoid call stack growth
         setTimeout(() => this._processQueue(), 0);
       }
     }
@@ -5984,6 +6165,7 @@ class StorageCoordinator {
 
   /**
    * Get current queue status
+   * v1.6.3.12-v5 - FIX Issue #16: Added priority and eviction stats
    * @returns {Object} Queue status information
    */
   getStatus() {
@@ -5992,7 +6174,12 @@ class StorageCoordinator {
       isWriting: this._isWriting,
       currentHandler: this._currentHandler,
       totalWrites: this._writeCount,
-      pendingHandlers: this._writeQueue.map(w => w.handlerName)
+      totalEvicted: this._evictedCount,
+      pendingHandlers: this._writeQueue.map(w => ({
+        handler: w.handlerName,
+        priority: w.priority,
+        waitTimeMs: Date.now() - w.queuedAt
+      }))
     };
   }
 
@@ -6028,10 +6215,20 @@ export function getStorageCoordinator() {
 // =============================================================================
 // STORAGE LISTENER HEALTH MONITOR
 // v1.6.3.12 - FIX Issue #15: Detect storage listener disconnection
+// v1.6.3.12-v5 - FIX Issue #18: Heartbeat response tracking for fallback decisions
 // =============================================================================
 
 /**
+ * Heartbeat response tracking configuration
+ * v1.6.3.12-v5 - FIX Issue #18: Rolling window for decision making
+ */
+const HEARTBEAT_ROLLING_WINDOW_SIZE = 5; // Track last 5 heartbeat responses
+const HEARTBEAT_STALE_THRESHOLD_MS = 300000; // 5 minutes - heartbeat considered stale
+const HEARTBEAT_MIN_HEALTHY_COUNT = 2; // Need at least 2 successful in window
+
+/**
  * Storage listener health monitor state
+ * v1.6.3.12-v5 - FIX Issue #18: Added heartbeatResponses rolling window
  * @private
  */
 const _storageListenerHealthState = {
@@ -6042,12 +6239,130 @@ const _storageListenerHealthState = {
   heartbeatIntervalId: null,
   heartbeatTimeoutId: null,
   missedHeartbeats: 0,
-  reregistrationCount: 0
+  reregistrationCount: 0,
+  // v1.6.3.12-v5 - FIX Issue #18: Rolling window of heartbeat responses
+  heartbeatResponses: [], // Array of { success: boolean, timestamp: number }
+  fallbackActivated: false,
+  fallbackActivatedAt: null
 };
+
+/**
+ * Record a heartbeat result in the rolling window
+ * v1.6.3.12-v5 - FIX Issue #18: Track heartbeat success/failure for decision making
+ * @private
+ * @param {boolean} success - Whether heartbeat succeeded
+ * @param {number} [timestamp=Date.now()] - Timestamp of the result
+ */
+function _recordHeartbeatResult(success, timestamp = Date.now()) {
+  _storageListenerHealthState.heartbeatResponses.push({ success, timestamp });
+
+  // Keep only the last N responses (rolling window) - typically only removes one element
+  if (_storageListenerHealthState.heartbeatResponses.length > HEARTBEAT_ROLLING_WINDOW_SIZE) {
+    _storageListenerHealthState.heartbeatResponses.shift();
+  }
+
+  console.log('[STORAGE_HEARTBEAT] RESULT_RECORDED:', {
+    success,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
+    timestamp: new Date(timestamp).toISOString()
+  });
+}
+
+/**
+ * Check if heartbeat is healthy for storage operations
+ * v1.6.3.12-v5 - FIX Issue #18: Use rolling window to determine health status
+ * @returns {boolean} True if heartbeat is healthy (at least N successful in last M minutes)
+ */
+export function isHeartbeatHealthy() {
+  const now = Date.now();
+  const recentThreshold = now - HEARTBEAT_STALE_THRESHOLD_MS;
+
+  // Count recent successful heartbeats
+  const recentSuccesses = _storageListenerHealthState.heartbeatResponses.filter(
+    h => h.success && h.timestamp > recentThreshold
+  );
+
+  const isHealthy = recentSuccesses.length >= HEARTBEAT_MIN_HEALTHY_COUNT;
+
+  console.log('[HEARTBEAT_STATUS_CHECK]:', {
+    result: isHealthy ? 'HEALTHY' : 'STALE',
+    recentSuccessCount: recentSuccesses.length,
+    requiredCount: HEARTBEAT_MIN_HEALTHY_COUNT,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
+    staleThresholdMs: HEARTBEAT_STALE_THRESHOLD_MS,
+    fallbackActivated: _storageListenerHealthState.fallbackActivated,
+    timestamp: new Date().toISOString()
+  });
+
+  return isHealthy;
+}
+
+/**
+ * Check heartbeat health and decide whether to retry or fallback
+ * v1.6.3.12-v5 - FIX Issue #18: Decision point for storage operation failure handling
+ * @param {string} operationId - ID of the failing operation for logging
+ * @returns {{ shouldRetry: boolean, reason: string }}
+ */
+export function checkHeartbeatForRetryDecision(operationId) {
+  const isHealthy = isHeartbeatHealthy();
+
+  if (isHealthy) {
+    console.log('[HEARTBEAT_DECISION] RETRY:', {
+      operationId,
+      reason: 'heartbeat_healthy',
+      action: 'retrying_operation',
+      timestamp: new Date().toISOString()
+    });
+    return { shouldRetry: true, reason: 'heartbeat_healthy' };
+  }
+
+  // Heartbeat is stale - activate fallback instead of retrying
+  if (!_storageListenerHealthState.fallbackActivated) {
+    _storageListenerHealthState.fallbackActivated = true;
+    _storageListenerHealthState.fallbackActivatedAt = Date.now();
+
+    console.warn('[HEARTBEAT_STALE] FALLBACK_ACTIVATED:', {
+      operationId,
+      reason: 'heartbeat_stale',
+      action: 'activating_fallback',
+      fallbackActivatedAt: new Date().toISOString()
+    });
+  }
+
+  console.warn('[HEARTBEAT_DECISION] NO_RETRY:', {
+    operationId,
+    reason: 'heartbeat_stale',
+    action: 'fallback_mode',
+    fallbackActivatedAt: _storageListenerHealthState.fallbackActivatedAt
+      ? new Date(_storageListenerHealthState.fallbackActivatedAt).toISOString()
+      : null,
+    timestamp: new Date().toISOString()
+  });
+
+  return { shouldRetry: false, reason: 'heartbeat_stale' };
+}
+
+/**
+ * Reset fallback mode after successful storage operation
+ * v1.6.3.12-v5 - FIX Issue #18: Allow recovery from fallback mode
+ */
+export function resetHeartbeatFallback() {
+  if (_storageListenerHealthState.fallbackActivated) {
+    console.log('[HEARTBEAT_FALLBACK] RESET:', {
+      previousActivatedAt: _storageListenerHealthState.fallbackActivatedAt
+        ? new Date(_storageListenerHealthState.fallbackActivatedAt).toISOString()
+        : null,
+      timestamp: new Date().toISOString()
+    });
+    _storageListenerHealthState.fallbackActivated = false;
+    _storageListenerHealthState.fallbackActivatedAt = null;
+  }
+}
 
 /**
  * Handle heartbeat storage change
  * v1.6.3.12 - FIX Issue #15: Detect heartbeat response
+ * v1.6.3.12-v5 - FIX Issue #18: Record successful response in rolling window
  * @private
  * @param {Object} changes - Storage changes
  * @param {string} _areaName - Storage area name (unused, kept for signature)
@@ -6060,6 +6375,9 @@ function _handleHeartbeatChange(changes, _areaName) {
   _storageListenerHealthState.lastHeartbeatReceived = Date.now();
   _storageListenerHealthState.missedHeartbeats = 0;
 
+  // v1.6.3.12-v5 - FIX Issue #18: Record successful heartbeat in rolling window
+  _recordHeartbeatResult(true);
+
   // Clear timeout since we received response
   if (_storageListenerHealthState.heartbeatTimeoutId) {
     clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
@@ -6068,6 +6386,7 @@ function _handleHeartbeatChange(changes, _areaName) {
 
   console.log('[STORAGE_HEARTBEAT] Received:', {
     latencyMs: latency,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
     timestamp: new Date().toISOString()
   });
 }
@@ -6102,21 +6421,28 @@ async function _sendHeartbeat() {
     }, STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS);
   } catch (err) {
     console.error('[STORAGE_HEARTBEAT] Send failed:', err.message);
+    // v1.6.3.12-v5 - FIX Issue #18: Record failed heartbeat
+    _recordHeartbeatResult(false);
   }
 }
 
 /**
  * Handle missed heartbeat response
  * v1.6.3.12 - FIX Issue #15: Re-register listener if heartbeat not received
+ * v1.6.3.12-v5 - FIX Issue #18: Record failure in rolling window
  * @private
  */
 function _handleMissedHeartbeat() {
   _storageListenerHealthState.missedHeartbeats++;
 
+  // v1.6.3.12-v5 - FIX Issue #18: Record failed heartbeat in rolling window
+  _recordHeartbeatResult(false);
+
   console.warn('[STORAGE_LISTENER_DEAD] No heartbeat received:', {
     missedCount: _storageListenerHealthState.missedHeartbeats,
     lastSent: _storageListenerHealthState.lastHeartbeatSent,
     lastReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    windowHealth: isHeartbeatHealthy() ? 'HEALTHY' : 'STALE',
     timestamp: new Date().toISOString()
   });
 
@@ -6228,23 +6554,50 @@ export function stopStorageListenerHealthMonitor() {
 /**
  * Get storage listener health status
  * v1.6.3.12 - FIX Issue #15: Diagnostic info
+ * v1.6.3.12-v5 - FIX Issue #18: Include heartbeat rolling window stats
  * @returns {Object} Health status
  */
 export function getStorageListenerHealthStatus() {
+  const now = Date.now();
+  const recentThreshold = now - HEARTBEAT_STALE_THRESHOLD_MS;
+
+  // Calculate rolling window stats
+  const windowResponses = _storageListenerHealthState.heartbeatResponses;
+  const recentSuccesses = windowResponses.filter(
+    h => h.success && h.timestamp > recentThreshold
+  ).length;
+  const recentFailures = windowResponses.filter(
+    h => !h.success && h.timestamp > recentThreshold
+  ).length;
+
   return {
     isRegistered: _storageListenerHealthState.isRegistered,
     listenerAddress: _storageListenerHealthState.listenerAddress,
     lastHeartbeatSent: _storageListenerHealthState.lastHeartbeatSent,
     lastHeartbeatReceived: _storageListenerHealthState.lastHeartbeatReceived,
     missedHeartbeats: _storageListenerHealthState.missedHeartbeats,
-    reregistrationCount: _storageListenerHealthState.reregistrationCount
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    // v1.6.3.12-v5 - FIX Issue #18: Rolling window stats
+    heartbeatWindowSize: windowResponses.length,
+    heartbeatRecentSuccesses: recentSuccesses,
+    heartbeatRecentFailures: recentFailures,
+    isHeartbeatHealthy: recentSuccesses >= HEARTBEAT_MIN_HEALTHY_COUNT,
+    fallbackActivated: _storageListenerHealthState.fallbackActivated,
+    fallbackActivatedAt: _storageListenerHealthState.fallbackActivatedAt
   };
 }
 
 // =============================================================================
 // Z-INDEX COUNTER PERSISTENCE
 // v1.6.3.12 - FIX Issue #17: Persist z-index counter across reloads
+// v1.6.3.12-v5 - FIX Issue #17: Atomic z-index persistence with acknowledgment
 // =============================================================================
+
+/**
+ * Z-index persistence timeout (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #17: Max time to wait for persistence acknowledgment
+ */
+const ZINDEX_PERSIST_TIMEOUT_MS = 1000;
 
 /**
  * Load z-index counter from storage
@@ -6280,8 +6633,9 @@ export async function loadZIndexCounter(defaultValue = 1000) {
 }
 
 /**
- * Save z-index counter to storage
+ * Save z-index counter to storage (fire-and-forget pattern)
  * v1.6.3.12 - FIX Issue #17: Persist counter value after increment
+ * NOTE: For atomic persistence with confirmation, use saveZIndexCounterWithAck
  * @param {number} value - Counter value to persist
  * @returns {Promise<boolean>} True if saved successfully
  */
@@ -6306,6 +6660,83 @@ export async function saveZIndexCounter(value) {
     return true;
   } catch (err) {
     console.error('[ZINDEX_PERSIST] Failed to save:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Save z-index counter to storage with acknowledgment (atomic pattern)
+ * v1.6.3.12-v5 - FIX Issue #17: Atomic persistence - confirms write succeeded before returning
+ * Uses timeout to prevent indefinite blocking if storage is unresponsive.
+ * 
+ * This should be called when increment reliability is critical:
+ * - Counter should only be incremented AFTER this function returns true
+ * - If it returns false, caller should NOT increment the in-memory counter
+ * 
+ * @param {number} value - Counter value to persist
+ * @returns {Promise<boolean>} True if saved and verified successfully
+ */
+export async function saveZIndexCounterWithAck(value) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[Z_INDEX_PERSIST_FAILED] Storage API unavailable');
+    return false;
+  }
+
+  const startTime = Date.now();
+
+  try {
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Z-index persistence timeout'));
+      }, ZINDEX_PERSIST_TIMEOUT_MS);
+    });
+
+    // Race the storage write against timeout
+    await Promise.race([
+      browserAPI.storage.local.set({ [ZINDEX_COUNTER_KEY]: value }),
+      timeoutPromise
+    ]);
+
+    // Verify the write by reading back
+    const verifyResult = await Promise.race([
+      browserAPI.storage.local.get(ZINDEX_COUNTER_KEY),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Z-index verify timeout')), ZINDEX_PERSIST_TIMEOUT_MS);
+      })
+    ]);
+
+    const verifiedValue = verifyResult[ZINDEX_COUNTER_KEY];
+    const writeVerified = verifiedValue === value;
+
+    if (!writeVerified) {
+      console.error('[Z_INDEX_PERSIST_FAILED] Verification failed:', {
+        expectedValue: value,
+        actualValue: verifiedValue,
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+      return false;
+    }
+
+    // Log periodically (every 100 increments) to avoid log spam
+    if (value % 100 === 0) {
+      console.log('[ZINDEX_PERSIST_ACK] Counter saved with verification:', {
+        value,
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[Z_INDEX_PERSIST_FAILED] Error during atomic save:', {
+      value,
+      error: err.message,
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
+    });
     return false;
   }
 }

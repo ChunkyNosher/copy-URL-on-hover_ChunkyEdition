@@ -84,7 +84,8 @@ describe('StorageCoordinator', () => {
       const statusWhileWriting = coordinator.getStatus();
       expect(statusWhileWriting.isWriting).toBe(true);
       expect(statusWhileWriting.queueSize).toBe(1);
-      expect(statusWhileWriting.pendingHandlers).toContain('FastHandler');
+      // v1.6.3.12-v5 - FIX Issue #16: pendingHandlers now returns objects with handler, priority, waitTimeMs
+      expect(statusWhileWriting.pendingHandlers[0].handler).toBe('FastHandler');
 
       // Release the first write
       firstWriteResolve();
@@ -255,7 +256,8 @@ describe('StorageCoordinator', () => {
 
       // Check status while blocked
       const statusWhileBlocked = coordinator.getStatus();
-      expect(statusWhileBlocked.pendingHandlers).toEqual(['PendingHandler1', 'PendingHandler2']);
+      // v1.6.3.12-v5 - FIX Issue #16: pendingHandlers now returns objects with handler, priority, waitTimeMs
+      expect(statusWhileBlocked.pendingHandlers.map(p => p.handler)).toEqual(['PendingHandler1', 'PendingHandler2']);
 
       // Release blocked write
       resolveFirst();
@@ -395,6 +397,86 @@ describe('StorageCoordinator', () => {
       expect(arrayResult).toEqual([1, 2, 3]);
       expect(nullResult).toBe(null);
       expect(undefinedResult).toBe(undefined);
+    });
+  });
+
+  // v1.6.3.12-v5 - FIX Issue #16: Priority-based queue tests
+  describe('Priority-Based Queue (Issue #16)', () => {
+    test('high priority operations process before low priority', async () => {
+      const executionOrder = [];
+      let resolveBlocker;
+      const blockerPromise = new Promise(resolve => {
+        resolveBlocker = resolve;
+      });
+
+      // Queue a blocker to hold the queue
+      const blocker = coordinator.queueWrite('Blocker', async () => {
+        await blockerPromise;
+        executionOrder.push('Blocker');
+        return true;
+      }, 2); // MEDIUM priority
+
+      // Wait for blocker to start
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Queue operations with different priorities (1=HIGH, 2=MEDIUM, 3=LOW)
+      const low = coordinator.queueWrite('LowHandler', async () => {
+        executionOrder.push('Low');
+        return true;
+      }, 3);
+
+      const high = coordinator.queueWrite('HighHandler', async () => {
+        executionOrder.push('High');
+        return true;
+      }, 1);
+
+      const medium = coordinator.queueWrite('MediumHandler', async () => {
+        executionOrder.push('Medium');
+        return true;
+      }, 2);
+
+      // Release blocker
+      resolveBlocker();
+      await Promise.all([blocker, low, high, medium]);
+
+      // High priority should execute first after blocker
+      expect(executionOrder).toEqual(['Blocker', 'High', 'Medium', 'Low']);
+    });
+
+    test('getStatus includes priority information', async () => {
+      let resolveBlocker;
+      const blockerPromise = new Promise(resolve => {
+        resolveBlocker = resolve;
+      });
+
+      const blocker = coordinator.queueWrite('Blocker', async () => {
+        await blockerPromise;
+        return true;
+      }, 2);
+
+      // Wait for blocker to start
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Queue with different priorities - capture promises to catch rejections
+      const highPromise = coordinator.queueWrite('High', async () => true, 1);
+      const lowPromise = coordinator.queueWrite('Low', async () => true, 3);
+
+      const status = coordinator.getStatus();
+      expect(status.pendingHandlers.length).toBe(2);
+      expect(status.pendingHandlers[0].priority).toBe(1);
+      expect(status.pendingHandlers[1].priority).toBe(3);
+
+      // Release blocker and wait for all to complete naturally
+      resolveBlocker();
+      await blocker;
+      await highPromise;
+      await lowPromise;
+    });
+
+    test('getStatus includes totalEvicted count', () => {
+      const status = coordinator.getStatus();
+      expect(status).toHaveProperty('totalEvicted');
+      expect(typeof status.totalEvicted).toBe('number');
     });
   });
 });
