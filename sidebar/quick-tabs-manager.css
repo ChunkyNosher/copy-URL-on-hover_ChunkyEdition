@@ -699,7 +699,21 @@ html {
   color: white;
 }
 
-/* Issue #5: Orphaned warning badge - more prominent */
+/* v1.6.4 - FIX Issue #16: Orphan badge for individual quick-tab-item elements */
+.orphan-badge {
+  font-size: 10px;
+  color: var(--warning-color);
+  background: rgba(255, 152, 0, 0.15);
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+}
+
+/* Issue #5: Orphaned warning badge for group headers - more prominent */
 .orphaned-badge {
   font-size: 10px;
   color: var(--warning-color);
@@ -709,6 +723,19 @@ html {
   flex-shrink: 0;
   border: 1px solid var(--warning-color); /* Issue #5: Border for emphasis */
   font-weight: 500;
+}
+
+/* v1.6.4 - FIX Issue #16: Individual orphaned quick-tab-item styling */
+.quick-tab-item.orphaned {
+  background: var(--orphaned-bg);
+  border-left: 3px solid var(--warning-color);
+  opacity: 0.85;
+  position: relative;
+}
+
+.quick-tab-item.orphaned .tab-title {
+  font-style: italic;
+  color: var(--orphaned-text);
 }
 
 /* Issue #5: Items within orphaned groups - reduced opacity */

@@ -670,10 +670,53 @@ function _clearCircuitBreakerAutoResetTimer() {
 
 // ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
 /**
+ * Compute per-origin-tab statistics for cross-tab visibility logging
+ * v1.6.4 - FIX Issue #11/#14: Extracted to reduce _handleQuickTabsStateUpdate complexity
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @returns {{ originTabStats: Object, originTabCount: number }}
+ */
+function _computeOriginTabStats(quickTabs) {
+  // Use Object.create(null) to avoid prototype pollution
+  const originTabStats = Object.create(null);
+  for (const tab of quickTabs) {
+    const originKey = `tab-${tab.originTabId || 'unknown'}`;
+    if (!originTabStats[originKey]) {
+      originTabStats[originKey] = 0;
+    }
+    originTabStats[originKey]++;
+  }
+  return {
+    originTabStats,
+    originTabCount: Object.keys(originTabStats).length
+  };
+}
+
+/**
+ * Log cross-tab aggregation statistics
+ * v1.6.4 - FIX Issue #11/#14: Extracted to reduce _handleQuickTabsStateUpdate complexity
+ * @private
+ */
+function _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId) {
+  const { originTabStats, originTabCount } = _computeOriginTabStats(quickTabs);
+
+  console.log('[Sidebar] STATE_SYNC_CROSS_TAB_AGGREGATION:', {
+    timestamp: receiveTime,
+    source: renderReason,
+    correlationId: correlationId || null,
+    totalQuickTabs: quickTabs.length,
+    originTabCount,
+    quickTabsPerOriginTab: originTabStats,
+    message: `Received ${quickTabs.length} Quick Tabs from ${originTabCount} browser tabs`
+  });
+}
+
+/**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
+ * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -702,6 +745,9 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     });
     return;
   }
+
+  // v1.6.4 - FIX Issue #11/#14: Log per-origin-tab breakdown for cross-tab visibility
+  _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId);
 
   _allQuickTabsFromPort = quickTabs;
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
@@ -6419,6 +6465,13 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   item.dataset.tabId = tab.id;
   item.dataset.containerId = cookieStoreId;
 
+  // v1.6.4 - FIX Issue #16: Add 'orphaned' class for visual indicator
+  const isOrphaned = _isOrphanedQuickTab(tab);
+  if (isOrphaned) {
+    item.classList.add('orphaned');
+    item.dataset.orphaned = 'true';
+  }
+
   // Status indicator
   // v1.6.3.4-v10 - FIX Issue #4: Use helper function for indicator class
   const indicator = document.createElement('span');
@@ -6428,6 +6481,15 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
   // v1.6.3.4-v10 - FIX Issue #4: Add tooltip for warning state
   if (indicatorClass === 'orange') {
     indicator.title = 'Warning: Window may not be visible. Try restoring again.';
+  }
+
+  // v1.6.4 - FIX Issue #16: Add orphan badge if tab is orphaned
+  if (isOrphaned) {
+    const orphanBadge = document.createElement('span');
+    orphanBadge.className = 'orphan-badge';
+    orphanBadge.textContent = '⚠️';
+    orphanBadge.title = 'Orphaned: Browser tab was closed. Use "Adopt to Current Tab" to recover.';
+    item.appendChild(orphanBadge);
   }
 
   // Create components - using imported createFavicon
