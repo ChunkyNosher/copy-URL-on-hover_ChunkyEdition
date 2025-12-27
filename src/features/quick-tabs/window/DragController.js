@@ -14,6 +14,10 @@
  * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
  *   - Issue #3: Add public cleanup() method for DOM event listener cleanup before minimize
  *   - Issue #5: Add comprehensive callback logging in handlePointerUp()
+ * v1.6.3.12-v4 - FIX Issue #10: Add emergency save logging for rapid tab switch detection
+ *   - Log drag initiation with emergency save context
+ *   - Log tab switch detection during drag operations (pointercancel)
+ *   - Log emergency save completion verification
  *
  * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
  */
@@ -65,6 +69,7 @@ export class DragController {
   /**
    * Handle pointer down - start drag
    * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.12-v4 - FIX Issue #10: Add drag initiation logging with emergency save context
    * @param {PointerEvent} e
    */
   handlePointerDown(e) {
@@ -88,6 +93,14 @@ export class DragController {
 
     // Capture pointer events
     this.element.setPointerCapture(e.pointerId);
+
+    // v1.6.3.12-v4 - FIX Issue #10: Log drag initiation with emergency save context
+    console.log('[DRAG][INITIATED] Drag operation started, emergency save will trigger if tab switch detected', {
+      initialPosition: { x: this.currentX, y: this.currentY },
+      pointerId: e.pointerId,
+      hasOnDragCancel: !!this.onDragCancel,
+      timestamp: new Date().toISOString()
+    });
 
     if (this.onDragStart) {
       this.onDragStart(this.currentX, this.currentY);
@@ -184,12 +197,21 @@ export class DragController {
    * Handle pointer cancel - CRITICAL FOR ISSUE #51
    * This fires when drag is interrupted (e.g., user switches tabs during drag)
    * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.12-v4 - FIX Issue #10: Add emergency save logging for tab switch detection
    * @param {PointerEvent} _e
    */
   handlePointerCancel(_e) {
     // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
     if (this.destroyed) return;
     if (!this.isDragging) return;
+
+    // v1.6.3.12-v4 - FIX Issue #10: Log tab switch detection during drag (emergency save trigger)
+    console.log('[DRAG][EMERGENCY_SAVE] Tab switch detected during drag, triggering emergency save', {
+      position: { x: this.currentX, y: this.currentY },
+      reason: 'pointercancel_event',
+      isDragging: this.isDragging,
+      timestamp: new Date().toISOString()
+    });
 
     this.isDragging = false;
 
@@ -201,7 +223,26 @@ export class DragController {
     // Call onDragCancel with last known position (or onDragEnd as fallback)
     const callback = this.onDragCancel || this.onDragEnd;
     if (callback) {
+      // v1.6.3.12-v4 - FIX Issue #10: Log before callback
+      console.log('[DRAG][EMERGENCY_SAVE] Invoking emergency save callback', {
+        callbackType: this.onDragCancel ? 'onDragCancel' : 'onDragEnd (fallback)',
+        position: { x: this.currentX, y: this.currentY }
+      });
+
       callback(this.currentX, this.currentY);
+
+      // v1.6.3.12-v4 - FIX Issue #10: Log after successful emergency save
+      console.log('[DRAG][EMERGENCY_SAVE_COMPLETE] Emergency save completed successfully', {
+        finalPosition: { x: this.currentX, y: this.currentY },
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // v1.6.3.12-v4 - FIX Issue #10: Warning if no callback available
+      console.warn('[DRAG][EMERGENCY_SAVE_FAILED] No callback available for emergency save', {
+        hasOnDragCancel: !!this.onDragCancel,
+        hasOnDragEnd: !!this.onDragEnd,
+        position: { x: this.currentX, y: this.currentY }
+      });
     }
 
     this.currentPointerId = null;

@@ -17,6 +17,11 @@
  * v1.6.3.10-v6 - FIX Issue A3: Check MINIMIZED state before persisting position/size
  *   - Prevents race condition where position data persists during 300ms debounce window
  *     after tab is minimized
+ * v1.6.3.12-v4 - FIX Issue #8: Add debounce timing validation logging
+ *   - Log debounce trigger with scheduled delay
+ *   - Track and log rapid events during debounce window
+ *   - Log prevented write operations count on completion
+ *   - Validate scheduled vs actual delay timing
  *
  * Responsibilities:
  * - Handle position updates during drag
@@ -27,7 +32,7 @@
  * - Emit update events for coordinators
  * - Persist state to storage after updates (debounced, with change detection)
  *
- * @version 1.6.3.10-v6
+ * @version 1.6.3.12-v4
  */
 
 import {
@@ -65,6 +70,12 @@ export class UpdateHandler {
     this._dragDebounceTimers = {};
     // v1.6.3.4-v10 - FIX Issue #5: Use 64-bit hash (object with lo/hi parts)
     this._lastStateHash = null;
+
+    // v1.6.3.12-v4 - FIX Issue #8: Debounce event tracking for validation logging
+    this._debounceEventCounts = {}; // { key -> eventCount }
+    this._debounceScheduledTimes = {}; // { key -> scheduledTime }
+    this._mainDebounceEventCount = 0;
+    this._mainDebounceScheduledTime = null;
   }
 
   /**
@@ -125,23 +136,61 @@ export class UpdateHandler {
    * Debounced persist during drag/resize operations
    * v1.6.3.5-v7 - FIX Issue #4: Enable live sync without overwhelming storage
    * Uses 200ms debounce (faster than end persist, but not on every pixel)
+   * v1.6.3.12-v4 - FIX Issue #8: Add debounce timing validation logging
    * @private
    * @param {string} id - Quick Tab ID
    * @param {string} type - 'position' or 'size'
    */
   _debouncedDragPersist(id, type) {
     const key = `drag-${id}-${type}`;
+    const scheduledDelayMs = 200;
 
-    // Clear existing timer for this operation
+    // v1.6.3.12-v4 - FIX Issue #8: Initialize or increment event counter
     if (this._dragDebounceTimers[key]) {
+      // Subsequent event during debounce window
+      this._debounceEventCounts[key] = (this._debounceEventCounts[key] || 0) + 1;
+      console.log('[DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window', {
+        key,
+        debouncedEventCount: this._debounceEventCounts[key],
+        scheduledDelayMs,
+        timestamp: new Date().toISOString()
+      });
       clearTimeout(this._dragDebounceTimers[key]);
+    } else {
+      // v1.6.3.12-v4 - FIX Issue #8: Log debounce trigger
+      this._debounceEventCounts[key] = 0;
+      this._debounceScheduledTimes[key] = Date.now();
+      console.log('[DEBOUNCE][DRAG_TRIGGERED] Debounce initiated', {
+        key,
+        scheduledDelayMs,
+        debouncedEventCount: 0,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // Schedule new persist (200ms - faster than DEBOUNCE_DELAY_MS for end operations)
     this._dragDebounceTimers[key] = setTimeout(() => {
+      // v1.6.3.12-v4 - FIX Issue #8: Log completion with metrics
+      const actualDelayMs = Date.now() - this._debounceScheduledTimes[key];
+      const preventedWrites = this._debounceEventCounts[key] || 0;
+
+      console.log('[DEBOUNCE][DRAG_COMPLETE] Debounce timer fired', {
+        key,
+        scheduledDelayMs,
+        actualDelayMs,
+        delayDeltaMs: actualDelayMs - scheduledDelayMs,
+        preventedWrites,
+        message: `Debounce complete, prevented ${preventedWrites} write operations`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Cleanup tracking state
       delete this._dragDebounceTimers[key];
+      delete this._debounceEventCounts[key];
+      delete this._debounceScheduledTimes[key];
+
       this._doPersist();
-    }, 200);
+    }, scheduledDelayMs);
   }
 
   /**
@@ -425,19 +474,56 @@ export class UpdateHandler {
    * Persist current state to browser.storage.local (debounced with change detection)
    * v1.6.3.4 - FIX Issue #2: Added debounce and change detection
    * v1.6.3.4 - FIX Issue #3: Persist to storage after position/size changes
+   * v1.6.3.12-v4 - FIX Issue #8: Add debounce timing validation logging
    * Uses shared buildStateForStorage and persistStateToStorage utilities
    * @private
    */
   _persistToStorage() {
+    const scheduledDelayMs = DEBOUNCE_DELAY_MS;
+
     // v1.6.3.4 - FIX Issue #2: Clear any existing debounce timer
     if (this._debounceTimer) {
+      // v1.6.3.12-v4 - FIX Issue #8: Increment event counter during debounce
+      this._mainDebounceEventCount++;
+      console.log('[DEBOUNCE][MAIN_EVENT_QUEUED] Event during debounce window', {
+        debouncedEventCount: this._mainDebounceEventCount,
+        scheduledDelayMs,
+        timestamp: new Date().toISOString()
+      });
       clearTimeout(this._debounceTimer);
+    } else {
+      // v1.6.3.12-v4 - FIX Issue #8: Log debounce trigger
+      this._mainDebounceEventCount = 0;
+      this._mainDebounceScheduledTime = Date.now();
+      console.log('[DEBOUNCE][MAIN_TRIGGERED] Debounce initiated', {
+        scheduledDelayMs,
+        debouncedEventCount: 0,
+        timestamp: new Date().toISOString()
+      });
     }
 
     // v1.6.3.4 - FIX Issue #2: Schedule debounced persist
     this._debounceTimer = setTimeout(() => {
+      // v1.6.3.12-v4 - FIX Issue #8: Log completion with metrics
+      const actualDelayMs = Date.now() - this._mainDebounceScheduledTime;
+      const preventedWrites = this._mainDebounceEventCount;
+
+      console.log('[DEBOUNCE][MAIN_COMPLETE] Debounce timer fired', {
+        scheduledDelayMs,
+        actualDelayMs,
+        delayDeltaMs: actualDelayMs - scheduledDelayMs,
+        preventedWrites,
+        message: `Debounce complete, prevented ${preventedWrites} write operations`,
+        timestamp: new Date().toISOString()
+      });
+
+      // Reset tracking state
+      this._mainDebounceEventCount = 0;
+      this._mainDebounceScheduledTime = null;
+      this._debounceTimer = null;
+
       this._doPersist();
-    }, DEBOUNCE_DELAY_MS);
+    }, scheduledDelayMs);
   }
 
   /**
