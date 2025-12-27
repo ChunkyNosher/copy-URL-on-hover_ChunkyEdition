@@ -14,6 +14,7 @@ console.log('[Test Bridge Background Handler] Initializing...');
 /**
  * Method signature handlers for test bridge methods
  * Maps method name to function that extracts parameters from data
+ * v1.6.4 - J2: Added container isolation and Manager state verification methods
  */
 const METHOD_HANDLERS = {
   createQuickTab: (testBridge, data) => testBridge.createQuickTab(data.url, data.options),
@@ -26,7 +27,15 @@ const METHOD_HANDLERS = {
   getQuickTabGeometry: (testBridge, data) => testBridge.getQuickTabGeometry(data.id),
   verifyZIndexOrder: (testBridge, data) => testBridge.verifyZIndexOrder(data.ids),
   getQuickTabs: testBridge => testBridge.getQuickTabs(),
-  clearAllQuickTabs: testBridge => testBridge.clearAllQuickTabs()
+  clearAllQuickTabs: testBridge => testBridge.clearAllQuickTabs(),
+  // v1.6.4 - J2: Manager state verification
+  getManagerState: testBridge => testBridge.getManagerState(),
+  // v1.6.4 - J2: Container isolation verification
+  getContainerInfo: testBridge => testBridge.getContainerInfo(),
+  verifyContainerIsolation: (testBridge, data) => testBridge.verifyContainerIsolation(data.id1, data.id2),
+  verifyContainerIsolationById: (testBridge, data) => testBridge.verifyContainerIsolationById(data.containerId),
+  getContainerLabel: (testBridge, data) => testBridge.getContainerLabel(data.containerId),
+  verifyCrossTabIsolation: (testBridge, data) => testBridge.verifyCrossTabIsolation(data.originTabId)
 };
 
 /**
