@@ -645,20 +645,43 @@ function _handleQuickTabPortAck(msg, ackType) {
 }
 
 /**
+ * Check if message is a valid object
+ * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * @private
+ * @param {*} msg - Message to validate
+ * @returns {boolean} True if message is a valid object
+ */
+function _isValidMessageObject(msg) {
+  return msg && typeof msg === 'object';
+}
+
+/**
+ * Check if quickTabs field is valid when present
+ * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * @private
+ * @param {*} quickTabs - quickTabs field to validate
+ * @returns {boolean} True if quickTabs is valid (undefined, null, or array)
+ */
+function _isValidQuickTabsField(quickTabs) {
+  return quickTabs === undefined || quickTabs === null || Array.isArray(quickTabs);
+}
+
+/**
  * Validate message has required fields for state update handlers
  * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * v1.6.4.21 - FIX Code Health: Extracted complex conditionals to helpers
  * @private
  * @param {Object} msg - Message to validate
  * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
  * @returns {{ valid: boolean, error?: string }}
  */
 function _validateStateUpdateMessage(msg, _handlerName) {
-  if (!msg || typeof msg !== 'object') {
+  if (!_isValidMessageObject(msg)) {
     return { valid: false, error: 'Message is not an object' };
   }
   // quickTabs can be undefined/null (will be handled by _handleQuickTabsStateUpdate)
   // but if present, it should be an array
-  if (msg.quickTabs !== undefined && msg.quickTabs !== null && !Array.isArray(msg.quickTabs)) {
+  if (!_isValidQuickTabsField(msg.quickTabs)) {
     return { valid: false, error: `quickTabs field is not an array (got ${typeof msg.quickTabs})` };
   }
   return { valid: true };
@@ -685,12 +708,67 @@ function _validateAckMessage(msg, handlerName) {
 }
 
 /**
+ * Log validation error for port message handlers
+ * v1.6.4.21 - FIX Code Health: Extracted from duplicate handler code
+ * @private
+ * @param {string} type - Message type
+ * @param {Object} msg - Original message
+ * @param {string} error - Validation error message
+ */
+function _logPortMessageValidationError(type, msg, error) {
+  console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+    type,
+    correlationId: msg?.correlationId || null,
+    error
+  });
+}
+
+/**
+ * Create a state update handler with validation
+ * v1.6.4.21 - FIX Code Health: Generic factory for state update handlers
+ * @private
+ * @param {string} messageType - The message type for logging
+ * @param {string} renderReason - The reason to pass to scheduleRender
+ * @returns {Function} Handler function
+ */
+function _createStateUpdateHandler(messageType, renderReason) {
+  return msg => {
+    const validation = _validateStateUpdateMessage(msg, messageType);
+    if (!validation.valid) {
+      _logPortMessageValidationError(messageType, msg, validation.error);
+      return;
+    }
+    _handleQuickTabsStateUpdate(msg.quickTabs, renderReason, msg.correlationId);
+  };
+}
+
+/**
+ * Create an ACK handler with validation
+ * v1.6.4.21 - FIX Code Health: Generic factory for ACK handlers
+ * @private
+ * @param {string} messageType - The message type for logging
+ * @param {string} ackType - The ACK type to pass to _handleQuickTabPortAck
+ * @returns {Function} Handler function
+ */
+function _createAckHandler(messageType, ackType) {
+  return msg => {
+    const validation = _validateAckMessage(msg, messageType);
+    if (!validation.valid) {
+      _logPortMessageValidationError(messageType, msg, validation.error);
+      return;
+    }
+    _handleQuickTabPortAck(msg, ackType);
+  };
+}
+
+/**
  * Quick Tabs port message handlers lookup table
  * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
  * v1.6.3.12-v4 - Gap #5: Pass correlationId through handler chain
  * v1.6.3.12-v4 - Gap #6: Document FIFO ordering assumption
  * v1.6.4.0 - FIX Issue #9: Handlers now include input validation
+ * v1.6.4.21 - FIX Code Health: Use factory functions to reduce duplication
  *
  * IMPORTANT - MESSAGE ORDERING ASSUMPTION (Gap #6):
  * This handler assumes that port messages arrive in FIFO (First-In-First-Out) order.
@@ -708,87 +786,21 @@ function _validateAckMessage(msg, handlerName) {
  * @private
  */
 const _portMessageHandlers = {
-  SIDEBAR_STATE_SYNC: msg => {
-    const validation = _validateStateUpdateMessage(msg, 'SIDEBAR_STATE_SYNC');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'SIDEBAR_STATE_SYNC',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId);
-  },
-  GET_ALL_QUICK_TABS_RESPONSE: msg => {
-    const validation = _validateStateUpdateMessage(msg, 'GET_ALL_QUICK_TABS_RESPONSE');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'GET_ALL_QUICK_TABS_RESPONSE',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId);
-  },
-  STATE_CHANGED: msg => {
-    const validation = _validateStateUpdateMessage(msg, 'STATE_CHANGED');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'STATE_CHANGED',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification', msg.correlationId);
-  },
-  CLOSE_QUICK_TAB_ACK: msg => {
-    const validation = _validateAckMessage(msg, 'CLOSE_QUICK_TAB_ACK');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'CLOSE_QUICK_TAB_ACK',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabPortAck(msg, 'CLOSE');
-  },
-  MINIMIZE_QUICK_TAB_ACK: msg => {
-    const validation = _validateAckMessage(msg, 'MINIMIZE_QUICK_TAB_ACK');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'MINIMIZE_QUICK_TAB_ACK',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabPortAck(msg, 'MINIMIZE');
-  },
-  RESTORE_QUICK_TAB_ACK: msg => {
-    const validation = _validateAckMessage(msg, 'RESTORE_QUICK_TAB_ACK');
-    if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'RESTORE_QUICK_TAB_ACK',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
-      return;
-    }
-    _handleQuickTabPortAck(msg, 'RESTORE');
-  },
+  // State update handlers - use factory pattern
+  SIDEBAR_STATE_SYNC: _createStateUpdateHandler('SIDEBAR_STATE_SYNC', 'quick-tabs-port-sync'),
+  GET_ALL_QUICK_TABS_RESPONSE: _createStateUpdateHandler('GET_ALL_QUICK_TABS_RESPONSE', 'quick-tabs-port-sync'),
+  STATE_CHANGED: _createStateUpdateHandler('STATE_CHANGED', 'state-changed-notification'),
+  
+  // ACK handlers - use factory pattern
+  CLOSE_QUICK_TAB_ACK: _createAckHandler('CLOSE_QUICK_TAB_ACK', 'CLOSE'),
+  MINIMIZE_QUICK_TAB_ACK: _createAckHandler('MINIMIZE_QUICK_TAB_ACK', 'MINIMIZE'),
+  RESTORE_QUICK_TAB_ACK: _createAckHandler('RESTORE_QUICK_TAB_ACK', 'RESTORE'),
+  
+  // Close All ACK - special handler with additional logging
   CLOSE_ALL_QUICK_TABS_ACK: msg => {
-    // v1.6.4.0 - FIX Issue #15: Handle Close All ACK from background
     const validation = _validateAckMessage(msg, 'CLOSE_ALL_QUICK_TABS_ACK');
     if (!validation.valid) {
-      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
-        type: 'CLOSE_ALL_QUICK_TABS_ACK',
-        correlationId: msg?.correlationId || null,
-        error: validation.error
-      });
+      _logPortMessageValidationError('CLOSE_ALL_QUICK_TABS_ACK', msg, validation.error);
       return;
     }
     console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_ACK received:', {
@@ -833,11 +845,17 @@ function _markQuickTabsAsOrphaned(orphanedQuickTabIds, timestamp) {
  * @private
  * @param {Object} msg - Message from background
  */
-function _handleOriginTabClosed(msg) {
-  // Input validation
-  if (!msg || typeof msg !== 'object') {
+/**
+ * Validate origin tab closed message
+ * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * @private
+ * @param {Object} msg - Message to validate
+ * @returns {boolean} True if message is valid
+ */
+function _validateOriginTabClosedMessage(msg) {
+  if (!_isValidMessageObject(msg)) {
     console.error('[Sidebar] ORIGIN_TAB_CLOSED_VALIDATION_ERROR: Message is not an object');
-    return;
+    return false;
   }
 
   if (typeof msg.originTabId !== 'number') {
@@ -845,9 +863,18 @@ function _handleOriginTabClosed(msg) {
       received: typeof msg.originTabId
     });
   }
+  
+  return true;
+}
 
-  const timestamp = msg.timestamp || Date.now();
-
+/**
+ * Log origin tab closed message
+ * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * @private
+ * @param {Object} msg - Message to log
+ * @param {number} timestamp - Timestamp
+ */
+function _logOriginTabClosed(msg, timestamp) {
   console.log('[Sidebar] ORIGIN_TAB_CLOSED received:', {
     originTabId: msg.originTabId,
     orphanedCount: msg.orphanedCount || 0,
@@ -855,6 +882,23 @@ function _handleOriginTabClosed(msg) {
     timestamp,
     correlationId: msg?.correlationId || null
   });
+}
+
+/**
+ * Handle ORIGIN_TAB_CLOSED message
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.4.20 - FIX Code Review: Added input validation
+ * v1.6.4.21 - FIX Code Health: Extracted validation and logging helpers
+ * @private
+ * @param {Object} msg - Message from background
+ */
+function _handleOriginTabClosed(msg) {
+  if (!_validateOriginTabClosedMessage(msg)) {
+    return;
+  }
+
+  const timestamp = msg.timestamp || Date.now();
+  _logOriginTabClosed(msg, timestamp);
 
   // Mark affected Quick Tabs as orphaned in local state
   _markQuickTabsAsOrphaned(msg.orphanedQuickTabIds, timestamp);
@@ -980,6 +1024,7 @@ function handleQuickTabsPortMessage(message) {
 /**
  * Check message sequence number for FIFO ordering detection
  * v1.6.4.0 - FIX Issue #13: Detect out-of-order messages and request state sync
+ * v1.6.4.21 - FIX Code Health: Extracted helpers to reduce complexity
  * @private
  * @param {number|undefined} sequence - Message sequence number from background
  * @param {string} type - Message type for logging
@@ -993,41 +1038,79 @@ function _checkMessageSequence(sequence, type, correlationId) {
   }
 
   const expectedSequence = _lastReceivedSequence + 1;
+  const isOutOfOrder = sequence !== expectedSequence && _lastReceivedSequence > 0;
   
-  // Check for out-of-order message
-  if (sequence !== expectedSequence && _lastReceivedSequence > 0) {
-    _sequenceGapsDetected++;
-    
-    if (SEQUENCE_GAP_WARNING_ENABLED) {
-      console.warn('[Sidebar] PORT_MESSAGE_OUT_OF_ORDER:', {
-        timestamp: Date.now(),
-        type,
-        correlationId: correlationId || null,
-        expectedSequence,
-        actualSequence: sequence,
-        gap: sequence - expectedSequence,
-        totalGapsDetected: _sequenceGapsDetected,
-        message: `Expected sequence ${expectedSequence}, received ${sequence}`,
-        recoveryAction: 'requesting_full_state_sync'
-      });
-    }
-    
-    // v1.6.4.0 - FIX Issue #13: Request full state sync to recover from sequence gap
-    // Only trigger sync for significant gaps (not just duplicate messages)
-    if (sequence > expectedSequence) {
-      _lastReceivedSequence = sequence; // Update to latest received
-      _triggerSequenceGapRecovery(type, correlationId);
-    }
-    
-    return { status: 'out_of_order', isOutOfOrder: true };
+  if (isOutOfOrder) {
+    return _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
   }
   
   // Update last received sequence
+  _updateLastReceivedSequence(sequence);
+  
+  return { status: 'in_order', isOutOfOrder: false };
+}
+
+/**
+ * Handle out-of-order sequence detection
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - Received sequence
+ * @param {number} expectedSequence - Expected sequence
+ * @param {string} type - Message type
+ * @param {string|null} correlationId - Correlation ID
+ * @returns {{ status: string, isOutOfOrder: boolean }}
+ */
+function _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId) {
+  _sequenceGapsDetected++;
+  
+  _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
+  
+  // Only trigger sync for significant gaps (not just duplicate messages)
+  if (sequence > expectedSequence) {
+    _lastReceivedSequence = sequence;
+    _triggerSequenceGapRecovery(type, correlationId);
+  }
+  
+  return { status: 'out_of_order', isOutOfOrder: true };
+}
+
+/**
+ * Log out-of-order sequence warning
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - Received sequence
+ * @param {number} expectedSequence - Expected sequence
+ * @param {string} type - Message type
+ * @param {string|null} correlationId - Correlation ID
+ */
+function _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId) {
+  if (!SEQUENCE_GAP_WARNING_ENABLED) {
+    return;
+  }
+  
+  console.warn('[Sidebar] PORT_MESSAGE_OUT_OF_ORDER:', {
+    timestamp: Date.now(),
+    type,
+    correlationId: correlationId || null,
+    expectedSequence,
+    actualSequence: sequence,
+    gap: sequence - expectedSequence,
+    totalGapsDetected: _sequenceGapsDetected,
+    message: `Expected sequence ${expectedSequence}, received ${sequence}`,
+    recoveryAction: 'requesting_full_state_sync'
+  });
+}
+
+/**
+ * Update last received sequence number
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - New sequence number
+ */
+function _updateLastReceivedSequence(sequence) {
   if (sequence > _lastReceivedSequence) {
     _lastReceivedSequence = sequence;
   }
-  
-  return { status: 'in_order', isOutOfOrder: false };
 }
 
 /**
