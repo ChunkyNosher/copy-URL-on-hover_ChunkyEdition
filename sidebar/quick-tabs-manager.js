@@ -177,6 +177,10 @@ const PORT_VIABILITY_MIN_TIMEOUT_MS = 700; // Minimum timeout (increased from 50
 const PORT_VIABILITY_MAX_TIMEOUT_MS = 3000; // Maximum adaptive timeout
 const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th percentile
 
+// ==================== v1.6.4 FIX Issue #17 CONSTANTS ====================
+// Browser tab info cache audit interval
+const BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
 // ==================== v1.6.3.12-v7 FIX Issue #30 CONSTANTS ====================
 // Port reconnection circuit breaker for Quick Tabs port
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
@@ -252,6 +256,9 @@ let quickTabsState = {}; // Maps cookieStoreId -> { tabs: [], timestamp }
 // v1.6.3.10-v7 - FIX Bug #1: Added maintenance interval and max size guard
 const quickTabHostInfo = new Map();
 let hostInfoMaintenanceIntervalId = null;
+
+// v1.6.4 - FIX Issue #17: Browser tab info cache audit interval ID
+let browserTabCacheAuditIntervalId = null;
 
 // v1.6.3.10-v7 - FIX Bug #3: Adaptive port timeout tracking
 // Track recent heartbeat latencies for 95th percentile calculation
@@ -1018,6 +1025,7 @@ function _logOriginTabClosed(msg, timestamp) {
  * v1.6.3.12-v7 - FIX Code Health: Extracted to reduce complexity
  * v1.6.3.12-v7 - FIX Code Review: Added input validation
  * v1.6.3.12-v7 - FIX Code Health: Extracted validation and logging helpers
+ * v1.6.4 - FIX Issue #17: Invalidate browserTabInfoCache when origin tab closes
  * @private
  * @param {Object} msg - Message from background
  */
@@ -1028,6 +1036,20 @@ function _handleOriginTabClosed(msg) {
 
   const timestamp = msg.timestamp || Date.now();
   _logOriginTabClosed(msg, timestamp);
+
+  // v1.6.4 - FIX Issue #17: Invalidate cache for the closed tab
+  if (typeof msg.originTabId === 'number') {
+    const cacheHadEntry = browserTabInfoCache.has(msg.originTabId);
+    browserTabInfoCache.delete(msg.originTabId);
+
+    console.log('[Sidebar] BROWSER_TAB_CACHE_INVALIDATED:', {
+      timestamp,
+      originTabId: msg.originTabId,
+      reason: 'ORIGIN_TAB_CLOSED received',
+      cacheHadEntry,
+      remainingCacheSize: browserTabInfoCache.size
+    });
+  }
 
   // Mark affected Quick Tabs as orphaned in local state
   _markQuickTabsAsOrphaned(msg.orphanedQuickTabIds, timestamp);
@@ -1458,9 +1480,31 @@ function restoreQuickTabViaPort(quickTabId) {
 /**
  * Request all Quick Tabs via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.4 - FIX Issue #14: Add comprehensive logging for cross-tab state request
  */
 function requestAllQuickTabsViaPort() {
-  return _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+  const timestamp = Date.now();
+
+  // v1.6.4 - FIX Issue #14: Log request for cross-tab state
+  console.log('[Sidebar] GET_ALL_QUICK_TABS_REQUEST:', {
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    currentCachedTabCount: _allQuickTabsFromPort.length,
+    message: 'Requesting ALL Quick Tabs from ALL browser tabs'
+  });
+
+  const result = _executeSidebarPortOperation('GET_ALL_QUICK_TABS');
+
+  // v1.6.4 - FIX Issue #14: Log request result
+  console.log('[Sidebar] GET_ALL_QUICK_TABS_REQUEST_RESULT:', {
+    timestamp: Date.now(),
+    success: result,
+    roundtripStarted: result,
+    message: result ? 'Request sent, awaiting GET_ALL_QUICK_TABS_RESPONSE' : 'Request failed'
+  });
+
+  return result;
 }
 
 /**
@@ -4349,6 +4393,115 @@ function _stopHostInfoMaintenance() {
   }
 }
 
+// ==================== v1.6.4 FIX Issue #17: Browser Tab Cache Audit ====================
+
+/**
+ * Start periodic browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Remove expired entries and validate remaining entries
+ */
+function _startBrowserTabCacheAudit() {
+  // Clear any existing interval
+  if (browserTabCacheAuditIntervalId) {
+    clearInterval(browserTabCacheAuditIntervalId);
+  }
+
+  // Run audit every 5 minutes
+  browserTabCacheAuditIntervalId = setInterval(() => {
+    _performBrowserTabCacheAudit();
+  }, BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS);
+
+  console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_STARTED:', {
+    intervalMs: BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS,
+    currentCacheSize: browserTabInfoCache.size
+  });
+}
+
+/**
+ * Stop periodic browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Cleanup on unload
+ */
+function _stopBrowserTabCacheAudit() {
+  if (browserTabCacheAuditIntervalId) {
+    clearInterval(browserTabCacheAuditIntervalId);
+    browserTabCacheAuditIntervalId = null;
+    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_STOPPED');
+  }
+}
+
+/**
+ * Perform browser tab cache audit
+ * v1.6.4 - FIX Issue #17: Check if cached entries are still valid
+ * Removes expired entries and verifies remaining entries exist
+ */
+async function _performBrowserTabCacheAudit() {
+  const auditStartTime = Date.now();
+  const cacheSize = browserTabInfoCache.size;
+
+  if (cacheSize === 0) {
+    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT: Cache is empty, skipping');
+    return;
+  }
+
+  const expiredEntries = [];
+  const invalidatedEntries = [];
+  const validEntries = [];
+
+  // Iterate through all cached entries
+  for (const [tabId, cached] of browserTabInfoCache.entries()) {
+    // Check if entry is expired (TTL exceeded)
+    if (Date.now() - cached.timestamp > BROWSER_TAB_CACHE_TTL_MS) {
+      expiredEntries.push(tabId);
+      continue;
+    }
+
+    // If cache indicates tab is closed (data === null), skip validation
+    if (cached.data === null) {
+      validEntries.push(tabId);
+      continue;
+    }
+
+    // Verify tab still exists
+    try {
+      await browser.tabs.get(tabId);
+      validEntries.push(tabId);
+    } catch (_err) {
+      // Tab no longer exists - mark cache entry as closed
+      browserTabInfoCache.set(tabId, {
+        data: null,
+        timestamp: Date.now()
+      });
+      invalidatedEntries.push(tabId);
+    }
+  }
+
+  // Remove expired entries
+  for (const tabId of expiredEntries) {
+    browserTabInfoCache.delete(tabId);
+  }
+
+  const auditDurationMs = Date.now() - auditStartTime;
+
+  console.log('[Manager] BROWSER_TAB_CACHE_AUDIT_COMPLETE:', {
+    timestamp: Date.now(),
+    originalCacheSize: cacheSize,
+    expiredEntriesRemoved: expiredEntries.length,
+    entriesInvalidated: invalidatedEntries.length,
+    validEntries: validEntries.length,
+    finalCacheSize: browserTabInfoCache.size,
+    auditDurationMs
+  });
+
+  // If entries were invalidated (tabs closed), trigger re-render for orphan detection
+  if (invalidatedEntries.length > 0) {
+    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT: Tabs closed, scheduling render for orphan detection', {
+      closedTabIds: invalidatedEntries
+    });
+    scheduleRender('cache-audit-invalidation');
+  }
+}
+
+// ==================== END v1.6.4 FIX Issue #17 ====================
+
 /**
  * Get set of valid Quick Tab IDs from current state
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
@@ -4522,6 +4675,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.10-v7 - FIX Bug #1: Start periodic maintenance for quickTabHostInfo
   _startHostInfoMaintenance();
 
+  // v1.6.4 - FIX Issue #17: Start periodic browser tab cache audit
+  _startBrowserTabCacheAudit();
+
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
 
@@ -4539,7 +4695,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.3.12-v4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor initialized'
+    '[Manager] v1.6.4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit initialized'
   );
 });
 
@@ -6205,11 +6361,18 @@ function _createActionButton(text, title, dataset) {
 /**
  * Check if a Quick Tab is orphaned (no valid browser tab to restore to)
  * v1.6.3.7-v1 - FIX ISSUE #8: Detect orphaned tabs
+ * v1.6.4 - FIX Issue #16: Also check isOrphaned flag set by background
  * @private
  * @param {Object} tab - Quick Tab data
  * @returns {boolean} True if orphaned
  */
 function _isOrphanedQuickTab(tab) {
+  // v1.6.4 - FIX Issue #16: Check isOrphaned flag from background (highest priority)
+  // Background sets this flag when ORIGIN_TAB_CLOSED is detected
+  if (tab.isOrphaned === true) {
+    return true;
+  }
+
   // No originTabId means definitely orphaned
   if (tab.originTabId == null) {
     return true;
