@@ -3,19 +3,20 @@ import browser from 'webextension-polyfill';
 import { StorageAdapter } from './StorageAdapter.js';
 
 /**
- * SessionStorageAdapter - Storage adapter for browser.storage.session API
+ * SessionStorageAdapter - Storage adapter for browser.storage.local API (session-scoped)
  * v1.6.3.10-v7 - FIX Diagnostic Issues #4, #15: Standardized to unified format (matching SyncStorageAdapter)
+ * v1.6.3.12-v4 - FIX: Replace browser.storage.session with browser.storage.local (Firefox MV2 compatibility)
  *
  * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
  *
  * CANONICAL ADAPTER SELECTION:
  * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence
- *   - Uses browser.storage.local for permanent state
- *   - Data survives browser restart
+ *   - Uses browser.storage.local for session-scoped state
+ *   - Data survives page reload but NOT browser restart (explicit startup cleanup)
  *   - Used for hydration on extension load
  *
  * - **SessionStorageAdapter** is for TEMPORARY session state only
- *   - Uses browser.storage.session (cleared on browser close)
+ *   - Uses browser.storage.local (session-scoped via explicit startup cleanup)
  *   - Used for rollback buffers and temporary caching
  *   - NOT used for Quick Tab persistence
  *
@@ -56,8 +57,9 @@ export class SessionStorageAdapter extends StorageAdapter {
   constructor() {
     super();
     this.STORAGE_KEY = 'quick_tabs_state_v2';
+    // v1.6.3.12-v4 - FIX: Use storage.local (session-scoped via explicit startup cleanup)
     console.log(
-      '[SessionStorageAdapter] Initialized (session storage - temporary, cleared on browser close)'
+      '[SessionStorageAdapter] Initialized (storage.local - session-scoped with explicit startup cleanup)'
     );
   }
 
@@ -82,9 +84,10 @@ export class SessionStorageAdapter extends StorageAdapter {
     };
 
     try {
-      await browser.storage.session.set(stateToSave);
+      // v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
+      await browser.storage.local.set(stateToSave);
       console.log(
-        `[SessionStorageAdapter] Saved ${tabs.length} tabs (unified format, saveId: ${saveId})`
+        `[SessionStorageAdapter] Saved ${tabs.length} tabs to local storage (unified format, saveId: ${saveId})`
       );
       return saveId;
     } catch (error) {
@@ -204,8 +207,9 @@ export class SessionStorageAdapter extends StorageAdapter {
    * @returns {Promise<void>}
    */
   async clear() {
-    await browser.storage.session.remove(this.STORAGE_KEY);
-    console.log('[SessionStorageAdapter] Cleared all Quick Tabs');
+    // v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
+    await browser.storage.local.remove(this.STORAGE_KEY);
+    console.log('[SessionStorageAdapter] Cleared all Quick Tabs from local storage');
   }
 
   /**
@@ -240,7 +244,8 @@ export class SessionStorageAdapter extends StorageAdapter {
    */
   async _loadRawState() {
     try {
-      const result = await browser.storage.session.get(this.STORAGE_KEY);
+      // v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
+      const result = await browser.storage.local.get(this.STORAGE_KEY);
 
       if (result[this.STORAGE_KEY]) {
         return result[this.STORAGE_KEY];
@@ -255,7 +260,7 @@ export class SessionStorageAdapter extends StorageAdapter {
     } catch (error) {
       // DOMException and browser-native errors don't serialize properly
       // Extract properties explicitly for proper logging
-      console.error('[SessionStorageAdapter] Load failed:', {
+      console.error('[SessionStorageAdapter] Load from local storage failed:', {
         message: error?.message,
         name: error?.name,
         stack: error?.stack,
@@ -279,7 +284,8 @@ export class SessionStorageAdapter extends StorageAdapter {
    * @returns {Promise<void>}
    */
   async _saveRawState(state) {
-    await browser.storage.session.set({
+    // v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
+    await browser.storage.local.set({
       [this.STORAGE_KEY]: state
     });
   }

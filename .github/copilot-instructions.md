@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v3  
+**Version:** 1.6.3.12-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,21 +20,29 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
+**v1.6.3.12-v4 Features (NEW) - storage.session Removal + Cache Staleness:**
+
+- **storage.session API Removal** - All `browser.storage.session` calls replaced
+  with `browser.storage.local` for Firefox MV2 compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` in background.js simulates
+  session-only behavior (clears Quick Tabs on browser restart)
+- **Port Disconnect Fix** - Captures `lastError` immediately on first line of handler
+- **Correlation ID Propagation** - Full propagation with FIFO ordering documented
+- **Cache Staleness Detection** - 30s warning (`CACHE_STALENESS_ALERT_MS`),
+  60s auto-sync (`CACHE_STALENESS_EMERGENCY_MS`)
+- **Comprehensive Logging** - Hydration filtering, debounce timing, ownership filter,
+  emergency save logging
+- **Code Health** - SyncStorageAdapter refactored to 10.0
+
+**v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps:**
 
 - **Container ID Resolution** - CreateHandler queries Identity system via
   `getWritingContainerId()` at creation time (not stale constructor values)
-- **storage.session API Fix** - Properly guards MV2 incompatible code, falls back
-  to port-based messaging
-- **Context Detection Fix** - `setWritingTabId()` receives proper
-  `TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT` context
+- **Context Detection Fix** - `setWritingTabId()` receives proper context
 - **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
 - **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs,
   health monitoring, write queue, debounce timing, end-to-end sync
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`,
-  `getContainerLabel()`, `verifyCrossTabIsolation()`
-- **Scenario Logging** - `enableScenarioLogging()`, `disableScenarioLogging()`,
-  `logScenarioStep()`
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
 - **Code Health** - background.js 9.09, quick-tabs-manager.js 9.09, index.js 10.0
 
 **v1.6.3.12-v2 Features - Port Diagnostics:**
@@ -48,7 +56,7 @@
 
 - **Background Script Memory** - Quick Tabs stored in `quickTabsSessionState`
 - **Port-Based Messaging** - All Quick Tabs use `runtime.connect()` ports
-- **No browser.storage.session** - Fixed Firefox MV2 compatibility issue
+- **browser.storage.local Only** - Uses `storage.local` + startup cleanup (MV2)
 - **Push Notifications** - Background → Sidebar via `STATE_CHANGED` messages
 
 **v1.6.3.11-v12 Features - Solo/Mute Removal:**
@@ -61,7 +69,7 @@
 MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-`browser.storage.session` for Quick Tabs (v1.6.3.12), `runtime.sendMessage` for
+`browser.storage.session` (REMOVED in v1.6.3.12-v4), `runtime.sendMessage` for
 Quick Tabs sync (v1.6.3.12), Solo/Mute (v12)
 
 ---
@@ -115,16 +123,23 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v3 Patterns (Current)
+### v1.6.3.12-v4 Patterns (Current)
+
+- **storage.local Only** - `browser.storage.session` REMOVED, uses `storage.local`
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **Port Disconnect lastError** - Capture immediately on first line of handler
+- **Cache Staleness** - 30s warning, 60s auto-sync via `setInterval(checkCacheStaleness, 10000)`
+- **Correlation ID FIFO** - Full propagation with documented FIFO ordering assumption
+- **SyncStorageAdapter 10.0** - Refactored from 8.91 to 10.0 Code Health
+
+### v1.6.3.12-v3 Patterns
 
 - **Container ID Resolution** - Identity system via `getWritingContainerId()` at creation
-- **storage.session API Guard** - MV2 incompatible code properly guarded
 - **Context Detection** - Proper `TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT` context
 - **Manager Refresh** - UICoordinator notifies sidebar via STATE_CHANGED
 - **Logging Gaps Fixed** - Port lifecycle, correlation IDs, health monitoring
 - **Test Bridge API** - Container verification methods, Manager state API
 - **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
-- **Hash/Change Detection** - `_HASH_FIELDS` for field enumeration
 
 ### v1.6.3.12-v2 Patterns
 
@@ -156,14 +171,16 @@ const quickTabsSessionState = {
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods
 - **v1.6.3.10:** tabs.sendMessage, storage.onChanged, unified barrier
 
-### Key Timing Constants (v1.6.3.12+)
+### Key Timing Constants (v1.6.3.12-v4+)
 
-| Constant                | Value | Purpose                          |
-| ----------------------- | ----- | -------------------------------- |
-| `MESSAGE_TIMEOUT_MS`    | 5000  | Message timeout                  |
-| `_MAX_EARLY_QUEUE_SIZE` | 100   | Max queued messages before ready |
-| `TAB_ID_BACKOFF_DELAYS` | Array | 200, 500, 1500, 5000ms           |
-| `LRU_MAP_MAX_SIZE`      | 500   | Maximum map entries              |
+| Constant                       | Value | Purpose                          |
+| ------------------------------ | ----- | -------------------------------- |
+| `MESSAGE_TIMEOUT_MS`           | 5000  | Message timeout                  |
+| `_MAX_EARLY_QUEUE_SIZE`        | 100   | Max queued messages before ready |
+| `TAB_ID_BACKOFF_DELAYS`        | Array | 200, 500, 1500, 5000ms           |
+| `LRU_MAP_MAX_SIZE`             | 500   | Maximum map entries              |
+| `CACHE_STALENESS_ALERT_MS`     | 30000 | Warn if no sync for 30s          |
+| `CACHE_STALENESS_EMERGENCY_MS` | 60000 | Auto-request sync after 60s      |
 
 ---
 
@@ -203,7 +220,13 @@ area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v3 (NEW):** `[SIDEBAR_PORT_LIFECYCLE]` `[STORAGE_ONCHANGED]`
+**v1.6.3.12-v4 (NEW):** `[HYDRATION][INITIATION]` `[HYDRATION][STORAGE_FETCH]`
+`[HYDRATION][FILTER_RESULT]` `[HYDRATION][COMPLETION]` `[DEBOUNCE][*_TRIGGERED]`
+`[DEBOUNCE][*_EVENT_QUEUED]` `[DEBOUNCE][*_COMPLETE]` `[OWNERSHIP_FILTER][BEFORE]`
+`[OWNERSHIP_FILTER][EXCLUDED]` `[OWNERSHIP_FILTER][AFTER]` `[DRAG][INITIATED]`
+`[DRAG][EMERGENCY_SAVE]` `[DRAG][EMERGENCY_SAVE_COMPLETE]` `[CACHE_STALENESS]`
+
+**v1.6.3.12-v3:** `[SIDEBAR_PORT_LIFECYCLE]` `[STORAGE_ONCHANGED]`
 `[PORT_HANDLER_ENTRY]` `[PORT_HANDLER_EXIT]` `[STORAGE_HEALTH]`
 `[WRITE_QUEUE]` `[DEBOUNCE]` `[STATE_SYNC]` `[CORRELATION_ID]`
 `[CONTAINER_LABEL]` `[BROADCAST_FANOUT]` `[SCENARIO_LOG]`
@@ -301,13 +324,13 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/quick-tabs-manager.js`   | Port-based queries to background      |
 | `src/content.js`                  | Port messaging for Quick Tabs         |
 
-### Storage (v1.6.3.12+)
+### Storage (v1.6.3.12-v4+)
 
-**In-Memory State:** `quickTabsSessionState` in background.js (NOT persisted)  
+**In-Memory State:** `quickTabsSessionState` in background.js  
+**Persistence:** `browser.storage.local` with startup cleanup (`_clearQuickTabsOnStartup()`)  
 **Format:** `{ quickTabsByTab: {}, contentScriptPorts: {}, sidebarPort, sessionId, sessionStartTime }`
 
-**Note:** No `browser.storage.session` for Quick Tabs - Firefox MV2
-incompatible.
+**Note:** `browser.storage.session` REMOVED - uses `storage.local` + startup cleanup for session-only behavior.
 
 ### Port Messages (v1.6.3.12+)
 

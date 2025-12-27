@@ -1681,6 +1681,7 @@ function _buildFilteredTabDetails(filteredTabs) {
  * v1.6.3.10-v6 - FIX Diagnostic Issue #8: Enhanced logging with type information for originTabId
  * v1.6.3.10-v6 - FIX Issue #13: Include container ID information in logging
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
+ * v1.6.3.12-v4 - FIX Issue #9: Enhanced before/after logging with exclusion reasons summary
  * @private
  * @param {Array} tabs - All tabs being filtered
  * @param {Array} ownedTabs - Tabs that passed ownership filter
@@ -1696,6 +1697,64 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
     t => !_isTabOwnedByContext(t, tabId, normalizedCurrentContainerId)
   );
 
+  // v1.6.3.12-v4 - FIX Issue #9: Collect unique container IDs for logging
+  const containerIds = [...new Set(tabs.map(t => t.originContainerId).filter(Boolean))];
+
+  // v1.6.3.12-v4 - FIX Issue #9: Before-filtering log
+  console.log('[OWNERSHIP_FILTER][BEFORE] Starting ownership filter', {
+    totalTabs: tabs.length,
+    currentTabId: tabId,
+    currentContainerId: normalizedCurrentContainerId,
+    containersPresent: containerIds,
+    timestamp: new Date().toISOString()
+  });
+
+  // v1.6.3.12-v4 - FIX Issue #9: Categorize exclusion reasons
+  const exclusionReasons = {
+    tabIdMismatch: 0,
+    containerMismatch: 0,
+    noOwnershipData: 0
+  };
+
+  // v1.6.3.12-v4 - FIX Issue #9: Log each excluded tab with reason
+  filteredTabs.forEach(tab => {
+    const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_logOwnershipFiltering');
+    const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_logOwnershipFiltering');
+
+    let reason = 'unknown';
+    if (normalizedOriginTabId === null) {
+      reason = 'no_ownership_data';
+      exclusionReasons.noOwnershipData++;
+    } else if (normalizedOriginTabId !== tabId) {
+      reason = 'tab_id_mismatch';
+      exclusionReasons.tabIdMismatch++;
+    } else if (normalizedOriginContainerId !== null && normalizedOriginContainerId !== normalizedCurrentContainerId) {
+      reason = 'container_mismatch';
+      exclusionReasons.containerMismatch++;
+    }
+
+    console.log('[OWNERSHIP_FILTER][EXCLUDED] Tab excluded from ownership', {
+      quickTabId: tab.id,
+      originTabId: tab.originTabId,
+      originContainerId: tab.originContainerId,
+      currentTabId: tabId,
+      currentContainerId: normalizedCurrentContainerId,
+      exclusionReason: reason
+    });
+  });
+
+  // v1.6.3.12-v4 - FIX Issue #9: After-filtering log with summary
+  console.log('[OWNERSHIP_FILTER][AFTER] Ownership filter complete', {
+    totalTabs: tabs.length,
+    ownedTabs: ownedTabs.length,
+    filteredOut: filteredTabs.length,
+    exclusionReasonsSummary: exclusionReasons,
+    currentTabId: tabId,
+    currentContainerId: normalizedCurrentContainerId,
+    timestamp: new Date().toISOString()
+  });
+
+  // Keep original detailed log for backwards compatibility
   console.log('[StorageUtils] v1.6.3.10-v6 Ownership filtering:', {
     currentTabId: tabId,
     currentTabIdType: typeof tabId,

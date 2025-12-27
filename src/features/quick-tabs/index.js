@@ -9,6 +9,7 @@
  * v1.6.3.5-v5 - FIX Issue #5: Added deprecation warnings to legacy mutation methods
  * v1.6.3.5-v10 - FIX Issue #1-2: Pass handlers to UICoordinator for callback wiring
  * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session (session-only)
+ * v1.6.3.12-v4 - FIX Issue #4: Enhanced hydration lifecycle logging with timing metrics
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each browser tab manages only Quick Tabs it owns (originTabId matches currentTabId)
@@ -362,13 +363,27 @@ class QuickTabsManager {
   /**
    * Log per-tab hydration status
    * v1.6.3.11-v11 - FIX Issue 48 #4: Extracted helper for consistent hydration logging
+   * v1.6.3.12-v4 - FIX Issue #4: Enhanced with match/filter details and action
    * @private
    * @param {string} tabId - Tab ID being hydrated
    * @param {string} status - 'success' or 'failed'
    * @param {string} reason - Reason for the status
+   * @param {Object} [details={}] - Additional details for logging
    */
-  _logHydrationStatus(tabId, status, reason) {
-    console.log(`[HYDRATION] Tab ${tabId}: status=${status}, reason=${reason}`);
+  _logHydrationStatus(tabId, status, reason, details = {}) {
+    // v1.6.3.12-v4 - FIX Issue #4: Enhanced per-tab filter application logging
+    const isMatch = status === 'success';
+    const action = isMatch ? 'RESTORE' : 'SKIP';
+    console.log(`[HYDRATION][FILTER] Tab ${tabId}: originTabId=${details.originTabId ?? 'N/A'}, currentTabId=${this.currentTabId}, match=${isMatch ? 'TRUE' : 'FALSE'}, ACTION=${action}`, {
+      tabId,
+      status,
+      reason,
+      originTabId: details.originTabId ?? null,
+      currentTabId: this.currentTabId,
+      match: isMatch,
+      action,
+      timestamp: new Date().toISOString()
+    });
   }
 
   /**
@@ -384,11 +399,13 @@ class QuickTabsManager {
   /**
    * Log hydration rejection
    * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v4 - FIX Issue #4: Pass details for enhanced logging
    * @private
    */
   _logHydrationRejection(tabData, reason, filterReasons) {
     const tabId = tabData?.id ?? 'unknown';
-    this._logHydrationStatus(tabId, 'failed', reason);
+    // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
+    this._logHydrationStatus(tabId, 'failed', reason, { originTabId: tabData?.originTabId });
     console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
       id: tabData?.id,
       originTabId: tabData?.originTabId,
@@ -419,7 +436,8 @@ class QuickTabsManager {
       return this._logHydrationRejection(tabData, 'alreadyExists', filterReasons);
     }
     if (!this.createHandler) {
-      this._logHydrationStatus(tabData.id, 'failed', 'noHandler');
+      // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
+      this._logHydrationStatus(tabData.id, 'failed', 'noHandler', { originTabId: tabData?.originTabId });
       console.warn('[QuickTabsManager] No createHandler available for hydration');
       filterReasons.noHandler++;
       return { success: false, reason: 'noHandler' };
@@ -446,10 +464,12 @@ class QuickTabsManager {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
 
-      this._logHydrationStatus(tabData.id, 'success', 'hydrated');
+      // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
+      this._logHydrationStatus(tabData.id, 'success', 'hydrated', { originTabId: tabData.originTabId });
       return { success: true, reason: 'hydrated' };
     } catch (tabError) {
-      this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message);
+      // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
+      this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message, { originTabId: tabData?.originTabId });
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
       return { success: false, reason: 'error' };
@@ -479,6 +499,50 @@ class QuickTabsManager {
   }
 
   /**
+   * Log hydration completion metrics
+   * v1.6.3.12-v4 - FIX Issue #4: Extracted to reduce _hydrateStateFromStorage complexity
+   * @private
+   * @param {Object} metrics - Hydration metrics
+   * @param {number} metrics.totalFromStorage - Total tabs from storage
+   * @param {number} metrics.hydratedCount - Successfully hydrated count
+   * @param {number} metrics.fetchDurationMs - Fetch duration in ms
+   * @param {number} metrics.filterDurationMs - Filter duration in ms
+   * @param {number} metrics.hydrationStartTime - Start time timestamp
+   */
+  _logHydrationCompletion(metrics) {
+    const { totalFromStorage, hydratedCount, fetchDurationMs, filterDurationMs, hydrationStartTime } = metrics;
+    const totalDurationMs = Date.now() - hydrationStartTime;
+    const failedCount = totalFromStorage - hydratedCount;
+
+    // Restoration completion log with comprehensive timing metrics
+    console.log('[HYDRATION][RESTORATION_COMPLETE] All tabs processed', {
+      totalFromStorage,
+      successfullyRestored: hydratedCount,
+      filteredOrFailed: failedCount,
+      currentTabId: this.currentTabId,
+      timing: {
+        totalDurationMs,
+        fetchDurationMs,
+        filterDurationMs,
+        restorationDurationMs: totalDurationMs - fetchDurationMs - filterDurationMs
+      },
+      timestamp: new Date().toISOString()
+    });
+
+    // Legacy completion summary log
+    console.log(
+      `[HYDRATION] COMPLETE: total=${totalFromStorage}, success=${hydratedCount}, failed=${failedCount}`,
+      {
+        totalFromStorage,
+        successfullyHydrated: hydratedCount,
+        failedOrFiltered: failedCount,
+        currentTabId: this.currentTabId,
+        timestamp: new Date().toISOString()
+      }
+    );
+  }
+
+  /**
    * Hydrate Quick Tab state from browser.storage.local
    * v1.6.3.4 - FIX Issue #1: Restore Quick Tabs after page reload
    * v1.6.3.4-v8 - Extracted logging to reduce complexity
@@ -489,12 +553,24 @@ class QuickTabsManager {
    * @returns {Promise<{success: boolean, count: number, reason: string}>}
    */
   async _hydrateStateFromStorage() {
+    // v1.6.3.12-v4 - FIX Issue #4: Enhanced hydration lifecycle logging with timing metrics
+    const hydrationStartTime = Date.now();
+
     // v1.6.4.15 - FIX Issue #21: Detect domain change at hydration time
     const currentDomain = this._getCurrentDomain();
     console.log('[HYDRATION_DOMAIN_CHECK] Current page domain:', {
       domain: currentDomain,
       url: typeof window !== 'undefined' ? window.location?.href : 'N/A',
       currentTabId: this.currentTabId
+    });
+
+    // v1.6.3.12-v4 - FIX Issue #4: Hydration initiation log (page load trigger detected)
+    console.log('[HYDRATION][INITIATION] Page load trigger detected, starting hydration', {
+      currentTabId: this.currentTabId,
+      currentDomain,
+      cookieStoreId: this.cookieStoreId ?? 'unknown',
+      trigger: 'page_load',
+      timestamp: new Date().toISOString()
     });
 
     // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration START
@@ -510,13 +586,23 @@ class QuickTabsManager {
     }
 
     try {
+      // v1.6.3.12-v4 - FIX Issue #4: Storage fetch timing
+      const fetchStartTime = Date.now();
       const storedState = await this._readAndLogStorageState();
+      const fetchDurationMs = Date.now() - fetchStartTime;
 
       // Validate stored state
       const validation = this._validateStoredState(storedState);
       if (!validation.valid) {
         return { success: false, count: 0, reason: validation.reason };
       }
+
+      // v1.6.3.12-v4 - FIX Issue #4: Storage fetch completion log with timing
+      console.log('[HYDRATION][STORAGE_FETCH] Fetch completed', {
+        tabCount: storedState.tabs.length,
+        fetchDurationMs,
+        timestamp: new Date().toISOString()
+      });
 
       // v1.6.3.11-v11 - FIX Issue 48 #4: Log hydration start with tab count
       const tabIds = storedState.tabs.map(t => t.id);
@@ -530,8 +616,13 @@ class QuickTabsManager {
         `[QuickTabsManager] Found ${storedState.tabs.length} Quick Tab(s) in storage to hydrate`
       );
 
+      // v1.6.3.12-v4 - FIX Issue #4: Filter timing
+      const filterStartTime = Date.now();
+
       // Hydrate each stored tab
       const hydratedCount = this._hydrateTabsFromStorage(storedState.tabs);
+
+      const filterDurationMs = Date.now() - filterStartTime;
 
       // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration COMPLETE
       console.log('[Content][Hydration] COMPLETE: Hydration finished', {
@@ -541,18 +632,14 @@ class QuickTabsManager {
         currentTabId: this.currentTabId
       });
 
-      // v1.6.3.11-v11 - FIX Issue 48 #4: Log hydration completion summary
-      const failedCount = storedState.tabs.length - hydratedCount;
-      console.log(
-        `[HYDRATION] COMPLETE: total=${storedState.tabs.length}, success=${hydratedCount}, failed=${failedCount}`,
-        {
-          totalFromStorage: storedState.tabs.length,
-          successfullyHydrated: hydratedCount,
-          failedOrFiltered: failedCount,
-          currentTabId: this.currentTabId,
-          timestamp: new Date().toISOString()
-        }
-      );
+      // v1.6.3.12-v4 - FIX Issue #4: Log completion metrics via helper
+      this._logHydrationCompletion({
+        totalFromStorage: storedState.tabs.length,
+        hydratedCount,
+        fetchDurationMs,
+        filterDurationMs,
+        hydrationStartTime
+      });
 
       // Emit hydrated event for UICoordinator to render restored tabs
       this._emitHydratedEventIfNeeded(hydratedCount);
@@ -567,23 +654,23 @@ class QuickTabsManager {
   /**
    * Read state from storage and log result
    * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
-   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-   * v1.6.3.12-v3 - FIX Issue D: Remove storage.session usage for Firefox MV2 compatibility
-   *   Firefox MV2 does NOT have browser.storage.session. The extension uses Option 4
-   *   architecture with port-based messaging (quickTabsSessionState in background).
-   *   Hydration should happen via content.js port messaging, not storage.session.
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+   *   Quick Tabs now use storage.local with explicit startup cleanup for session-scoped behavior.
+   *   Hydration can also happen via content.js port messaging (Option 4 architecture).
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
   /**
-   * Read from storage.session if available
+   * Read from storage.local if available (session-scoped via explicit cleanup)
    * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    * @private
    */
   async _tryReadStorageSession() {
-    console.log('[QuickTabsManager] storage.session available, attempting read');
+    console.log('[QuickTabsManager] storage.local available, attempting read');
     try {
-      const result = await browser.storage.session.get(STATE_KEY);
+      // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+      const result = await browser.storage.local.get(STATE_KEY);
       const storedState = result[STATE_KEY];
       console.log('[QuickTabsManager] Storage read result:', {
         found: !!storedState,
@@ -593,18 +680,19 @@ class QuickTabsManager {
       });
       return storedState;
     } catch (err) {
-      console.warn('[QuickTabsManager] storage.session read failed:', err.message);
+      console.warn('[QuickTabsManager] storage.local read failed:', err.message);
       return null;
     }
   }
 
   /**
-   * Log storage session unavailable
+   * Log storage unavailable
    * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v4 - FIX: Updated for storage.local (storage.session not available in Firefox MV2)
    * @private
    */
   _logStorageSessionUnavailable() {
-    console.log('[QuickTabsManager] v1.6.3.12-v3 storage.session unavailable', {
+    console.log('[QuickTabsManager] v1.6.3.12-v4 storage.local unavailable', {
       action: 'Returning null - hydration handled by content.js port messaging',
       portName: 'quick-tabs-port',
       messageType: 'HYDRATE_ON_LOAD'
@@ -612,13 +700,14 @@ class QuickTabsManager {
   }
 
   async _readAndLogStorageState() {
-    console.log('[QuickTabsManager] v1.6.3.12-v3 _readAndLogStorageState: Checking storage.session availability', {
-      storageSessionAvailable: typeof browser?.storage?.session !== 'undefined',
+    console.log('[QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability', {
+      storageLocalAvailable: typeof browser?.storage?.local !== 'undefined',
       hydrationMethod: 'port-based (Option 4 architecture)',
-      note: 'Quick Tabs state is stored in background memory, not storage.session'
+      note: 'Quick Tabs state is stored in background memory and storage.local (session-scoped)'
     });
 
-    if (typeof browser?.storage?.session !== 'undefined') {
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser?.storage?.local !== 'undefined') {
       // Return the async result - _tryReadStorageSession handles the await internally
       return this._tryReadStorageSession();
     }

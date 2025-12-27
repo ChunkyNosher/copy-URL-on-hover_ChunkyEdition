@@ -1,5 +1,6 @@
 // QuickTabStateManager - Centralized state management for Quick Tabs
-// Uses browser.storage.sync for persistent state and browser.storage.session for fast ephemeral sync
+// Uses browser.storage.sync for persistent state and browser.storage.local for session-scoped Quick Tabs
+// v1.6.3.12-v4 - FIX: Replace storage.session with storage.local (Firefox MV2 compatibility)
 // This module is shared between content.js, background.js, and other components
 
 /** Default container ID when none is specified */
@@ -23,7 +24,8 @@ async function getCurrentCookieStoreId() {
  * QuickTabStateManager class handles all Quick Tab state persistence and synchronization
  * Uses a dual-layer storage approach:
  * - browser.storage.sync: Persistent storage that syncs across devices (container-aware since v1.5.7)
- * - browser.storage.session: Fast ephemeral storage for current session (Firefox 115+)
+ * - browser.storage.local: Session-scoped storage for Quick Tabs (cleared on browser restart via explicit cleanup)
+ * v1.6.3.12-v4 - FIX: Replace storage.session with storage.local (Firefox MV2 compatibility)
  *
  * Container-aware storage structure (v1.5.7+):
  * {
@@ -38,10 +40,12 @@ export class QuickTabStateManager {
   constructor() {
     this.stateKey = 'quick_tabs_state_v2';
     this.sessionKey = 'quick_tabs_session';
-    this.hasSessionStorage =
+    // v1.6.3.12-v4 - FIX: Always use storage.local (storage.session not available in Firefox MV2)
+    // Session-scoped behavior is achieved via explicit startup cleanup in background.js
+    this.hasLocalStorage =
       typeof browser !== 'undefined' &&
       browser.storage &&
-      typeof browser.storage.session !== 'undefined';
+      typeof browser.storage.local !== 'undefined';
     this.debug = false;
   }
 
@@ -84,15 +88,16 @@ export class QuickTabStateManager {
   }
 
   /**
-   * Persist container states to session storage
+   * Persist container states to local storage (session-scoped via explicit cleanup)
+   * v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
    * @private
    */
   _persistToSession(containerStates) {
-    if (!this.hasSessionStorage) return Promise.resolve();
-    return browser.storage.session
+    if (!this.hasLocalStorage) return Promise.resolve();
+    return browser.storage.local
       .set({ [this.sessionKey]: containerStates })
-      .then(() => this.log('Saved to session storage'))
-      .catch(err => console.error('Error saving to session storage:', err));
+      .then(() => this.log('Saved to local storage (session-scoped)'))
+      .catch(err => console.error('Error saving to local storage:', err));
   }
 
   /**
@@ -146,17 +151,18 @@ export class QuickTabStateManager {
   }
 
   /**
-   * Load state from session storage
+   * Load state from local storage (session-scoped via explicit cleanup)
+   * v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
    * @private
    */
   async _loadFromSession(cookieStoreId) {
-    if (!this.hasSessionStorage) return null;
+    if (!this.hasLocalStorage) return null;
 
-    const sessionResult = await browser.storage.session.get(this.sessionKey);
+    const sessionResult = await browser.storage.local.get(this.sessionKey);
     const containerState = sessionResult?.[this.sessionKey]?.[cookieStoreId];
 
     if (containerState) {
-      this.log(`Loaded ${containerState.tabs.length} tabs from session storage`);
+      this.log(`Loaded ${containerState.tabs.length} tabs from local storage (session-scoped)`);
       return containerState;
     }
     return null;
@@ -172,10 +178,11 @@ export class QuickTabStateManager {
 
     if (!containerStates) return null;
 
-    if (this.hasSessionStorage) {
-      await browser.storage.session
+    // v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
+    if (this.hasLocalStorage) {
+      await browser.storage.local
         .set({ [this.sessionKey]: containerStates })
-        .catch(err => console.error('Error populating session storage:', err));
+        .catch(err => console.error('Error populating local storage:', err));
     }
 
     const containerState = containerStates[cookieStoreId];

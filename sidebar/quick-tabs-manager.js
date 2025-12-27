@@ -2,7 +2,7 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.3.12-v2 ARCHITECTURE UPDATE ===
+ * === v1.6.3.12-v4 PORT MESSAGING ARCHITECTURE ===
  * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
  *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
  *   - All Quick Tab operations use port messaging, NOT storage APIs
@@ -13,11 +13,15 @@
  *   - Any storage.session calls will return early with "unavailable" warning
  *   - This is expected behavior - port messaging is the primary mechanism
  *   - Collapse state still uses storage.local (UI preference)
+ *   - Legacy storage.session calls are GUARDED and return early without error
  *
- * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
- *   - Quick Tabs are now session-only (cleared on browser restart)
- *   - All Quick Tab state operations use storage.session
- *   - Collapse state still uses storage.local (UI preference)
+ * v1.6.3.12-v4 - FIX Diagnostic Gaps #1-8:
+ *   - Gap #4: browser.runtime.lastError captured IMMEDIATELY in disconnect handler
+ *   - Gap #5: CorrelationId propagation through entire handler → render chain
+ *   - Gap #6: FIFO ordering assumption documented in _portMessageHandlers
+ *   - Gap #7: Cache staleness detection with periodic check (10s interval)
+ *          - Warns if cache stale >30 seconds (CACHE_STALENESS_ALERT_MS)
+ *          - Auto-syncs if cache stale >60 seconds (CACHE_STALENESS_AUTO_SYNC_MS)
  *
  * v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
  *   - Implemented surgical DOM update for adoption events
@@ -142,6 +146,10 @@ const MESSAGE_RETRY_BACKOFF_MS = 150;
 // ==================== v1.6.3.10-v2 CONSTANTS ====================
 // FIX Issue #8: Cache staleness tracking
 const CACHE_STALENESS_ALERT_MS = 30000; // Alert if cache diverges for >30 seconds
+// v1.6.3.12-v4 - Gap #7: Auto-sync threshold when cache severely stale
+const CACHE_STALENESS_AUTO_SYNC_MS = 60000; // Request state sync if stale for >60 seconds
+// v1.6.3.12-v4 - Gap #7: Cache staleness check interval
+const CACHE_STALENESS_CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
 
@@ -314,22 +322,23 @@ function initializeQuickTabsPort() {
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
 
     quickTabsPort.onDisconnect.addListener(() => {
-      // v1.6.3.12-v2 - FIX Issue #16-17: Log disconnect with reason
-      // NOTE: browser.runtime.lastError must be accessed immediately in the callback
-      // to capture the error context before it's cleared by the browser
-      let lastErrorMessage = 'unknown';
-      try {
-        if (browser.runtime?.lastError?.message) {
-          lastErrorMessage = browser.runtime.lastError.message;
-        }
-      } catch (_e) {
-        // Error context may have already been cleared
-      }
+      // v1.6.3.12-v4 - Gap #4 CRITICAL FIX: Capture browser.runtime.lastError IMMEDIATELY
+      // This MUST be the very first line in the callback - any delay can clear the error context
+      // The browser clears lastError after the callback returns or after any async operation
+      const lastError = browser.runtime?.lastError;
+      const lastErrorMessage = lastError?.message || 'unknown';
+      const disconnectTimestamp = Date.now();
+      
+      // v1.6.3.12-v4 - Gap #4: Enhanced disconnect logging with captured error
       console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
         reason: lastErrorMessage,
-        timestamp: Date.now(),
-        pendingOperations: _quickTabPortOperationTimestamps.size
+        errorCaptured: !!lastError,
+        timestamp: disconnectTimestamp,
+        pendingOperations: _quickTabPortOperationTimestamps.size,
+        portWasConnected: !!quickTabsPort,
+        cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage
       });
+      
       quickTabsPort = null;
       
       // Clear pending operation timestamps on disconnect
@@ -338,7 +347,10 @@ function initializeQuickTabsPort() {
       // Attempt reconnection after a delay
       setTimeout(() => {
         if (!quickTabsPort) {
-          console.log('[Sidebar] Attempting Quick Tabs port reconnection');
+          console.log('[Sidebar] PORT_LIFECYCLE: Attempting Quick Tabs port reconnection', {
+            timestamp: Date.now(),
+            timeSinceDisconnect: Date.now() - disconnectTimestamp
+          });
           initializeQuickTabsPort();
         }
       }, QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS);
@@ -366,17 +378,20 @@ function initializeQuickTabsPort() {
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * v1.6.4 - Gap #7: End-to-end state sync path logging
+ * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
+ * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
-function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
+function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
   const receiveTime = Date.now();
   
-  // v1.6.4 - Gap #7: Log Manager received update
+  // v1.6.4 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
     source: renderReason,
+    correlationId: correlationId || null,
     tabCount: Array.isArray(quickTabs) ? quickTabs.length : 0,
     isValidArray: Array.isArray(quickTabs),
     previousTabCount: _allQuickTabsFromPort.length
@@ -386,6 +401,7 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
     console.warn('[Sidebar] STATE_SYNC_PATH_INVALID:', {
       timestamp: receiveTime,
       source: renderReason,
+      correlationId: correlationId || null,
       reason: 'quickTabs is not an array',
       receivedType: typeof quickTabs
     });
@@ -396,15 +412,17 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
   
-  // v1.6.4 - Gap #7: Log Manager render triggered
+  // v1.6.4 - Gap #7: Log Manager render triggered with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_RENDER_TRIGGERED:', {
     timestamp: Date.now(),
     source: renderReason,
+    correlationId: correlationId || null,
     tabCount: quickTabs.length,
     latencyMs: Date.now() - receiveTime
   });
   
-  scheduleRender(renderReason);
+  // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
+  scheduleRender(renderReason, correlationId);
 }
 
 /**
@@ -452,17 +470,28 @@ function _handleQuickTabPortAck(msg, ackType) {
  * Quick Tabs port message handlers lookup table
  * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
+ * v1.6.3.12-v4 - Gap #5: Pass correlationId through handler chain
+ * v1.6.3.12-v4 - Gap #6: Document FIFO ordering assumption
  *
- * NOTE Issue #11 (Port Message Ordering): Port messages may arrive out of order
- * with async handlers. The current implementation assumes message ordering is
- * preserved by the browser's port messaging system. If ordering issues occur,
- * consider adding sequence numbers to messages and buffering out-of-order messages.
+ * IMPORTANT - MESSAGE ORDERING ASSUMPTION (Gap #6):
+ * This handler assumes that port messages arrive in FIFO (First-In-First-Out) order.
+ * Per WebExtensions specification, browser.runtime.Port messaging within a single
+ * extension process preserves message ordering. This is relied upon for:
+ *   - State updates being applied in the order they occurred
+ *   - ACKs correlating to the correct sent messages
+ *   - No out-of-order state corruption
+ *
+ * If message ordering issues are observed in the future:
+ *   1. Add sequence numbers to messages from background
+ *   2. Buffer out-of-order messages and process in sequence
+ *   3. Request full state sync if sequence gap detected
+ *
  * @private
  */
 const _portMessageHandlers = {
-  SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
-  GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync'),
-  STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification'),
+  SIDEBAR_STATE_SYNC: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
+  GET_ALL_QUICK_TABS_RESPONSE: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
+  STATE_CHANGED: (msg) => _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification', msg.correlationId),
   CLOSE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'CLOSE'),
   MINIMIZE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'MINIMIZE'),
   RESTORE_QUICK_TAB_ACK: (msg) => _handleQuickTabPortAck(msg, 'RESTORE')
@@ -1785,14 +1814,21 @@ function _buildStateSummary() {
   };
 }
 
-function _logRenderSkipped(scheduleTimestamp, source, currentHash) {
+/**
+ * Log when render is skipped due to hash match
+ * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * @private
+ */
+function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId = null) {
   console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
     source,
-    hash: currentHash
+    hash: currentHash,
+    correlationId: correlationId || null
   });
   console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
     timestamp: scheduleTimestamp,
     source,
+    correlationId: correlationId || null,
     hash: currentHash,
     tabCount: quickTabsState?.tabs?.length || 0,
     stateSummary: _buildStateSummary()
@@ -1802,36 +1838,45 @@ function _logRenderSkipped(scheduleTimestamp, source, currentHash) {
 /**
  * Log when render is scheduled
  * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
  * @private
  */
-function _logRenderScheduled(scheduleTimestamp, source, currentHash) {
+function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
   console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
     timestamp: scheduleTimestamp,
     source,
+    correlationId: correlationId || null,
     debounceId: `render-${scheduleTimestamp}`,
     delayMs: RENDER_DEBOUNCE_MS,
     reason: 'hash_changed'
   });
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
+    correlationId: correlationId || null,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
   });
 }
 
-function scheduleRender(source = 'unknown') {
+/**
+ * Schedule UI render with deduplication
+ * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
+ * @param {string} [source='unknown'] - Source of render request
+ * @param {string} [correlationId=null] - Correlation ID for async tracing
+ */
+function scheduleRender(source = 'unknown', correlationId = null) {
   const scheduleTimestamp = Date.now();
   const currentHash = computeStateHash(quickTabsState);
   
   _logHashComputation(scheduleTimestamp, source, currentHash);
 
   if (currentHash === lastRenderedStateHash) {
-    _logRenderSkipped(scheduleTimestamp, source, currentHash);
+    _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId);
     return;
   }
   
-  _logRenderScheduled(scheduleTimestamp, source, currentHash);
+  _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
   renderUI();
 }
 
@@ -3578,6 +3623,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.10-v7 - FIX Bug #1: Start periodic maintenance for quickTabHostInfo
   _startHostInfoMaintenance();
 
+  // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
+  _startCacheStalenessMonitor();
+
   // Auto-refresh every 2 seconds
   // v1.6.3.11-v12 - FIX Issue #6: Enhanced with staleness detection
   setInterval(async () => {
@@ -3592,13 +3640,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.3.12 Port connection + Quick Tabs port + Host info maintenance + Staleness tracking initialized'
+    '[Manager] v1.6.3.12-v4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor initialized'
   );
 });
 
 /**
  * Check for staleness and log warning if no events received for threshold period
  * v1.6.3.11-v12 - FIX Issue #6: Staleness tracking for fallback sync
+ * v1.6.3.12-v4 - Gap #7: Enhanced with cache staleness detection and auto-sync
  * @private
  */
 function _checkStaleness() {
@@ -3616,6 +3665,108 @@ function _checkStaleness() {
       lastLocalUpdateTime,
       recommendation: 'Consider checking content script connectivity'
     });
+  }
+}
+
+/**
+ * Check cache staleness and request sync if needed
+ * v1.6.3.12-v4 - Gap #7: Dedicated cache staleness monitor
+ *   - Warns if cache stale for >30 seconds (CACHE_STALENESS_ALERT_MS)
+ *   - Requests full state sync if stale for >60 seconds (CACHE_STALENESS_AUTO_SYNC_MS)
+ * @private
+ */
+function _checkCacheStaleness() {
+  const now = Date.now();
+  
+  // Skip if no cache sync has happened yet (initial hydration pending)
+  if (lastCacheSyncFromStorage === 0) {
+    console.log('[Manager] CACHE_STALENESS_CHECK: Skipping - initial sync pending');
+    return;
+  }
+  
+  const cacheStalenessMs = now - lastCacheSyncFromStorage;
+  
+  // v1.6.3.12-v4 - Gap #7: Log periodic staleness check
+  console.log('[Manager] CACHE_STALENESS_CHECK:', {
+    timestamp: now,
+    lastCacheSyncFromStorage,
+    cacheStalenessMs,
+    alertThresholdMs: CACHE_STALENESS_ALERT_MS,
+    autoSyncThresholdMs: CACHE_STALENESS_AUTO_SYNC_MS,
+    isStale: cacheStalenessMs > CACHE_STALENESS_ALERT_MS,
+    needsAutoSync: cacheStalenessMs > CACHE_STALENESS_AUTO_SYNC_MS
+  });
+  
+  // v1.6.3.12-v4 - Gap #7: Auto-sync if severely stale (>60 seconds)
+  if (cacheStalenessMs > CACHE_STALENESS_AUTO_SYNC_MS) {
+    console.warn('[Manager] ⚠️ CACHE_STALENESS_AUTO_SYNC: Cache severely stale, requesting sync', {
+      cacheStalenessMs,
+      thresholdMs: CACHE_STALENESS_AUTO_SYNC_MS,
+      lastCacheSyncFromStorage,
+      recoveryAction: 'requesting full state sync from background'
+    });
+    
+    // Request state sync via Quick Tabs port
+    if (quickTabsPort) {
+      quickTabsPort.postMessage({
+        type: 'GET_ALL_QUICK_TABS',
+        reason: 'cache-staleness-auto-sync',
+        timestamp: now,
+        correlationId: _generatePortCorrelationId()
+      });
+    }
+    return;
+  }
+  
+  // v1.6.3.12-v4 - Gap #7: Warn if stale (>30 seconds)
+  if (cacheStalenessMs > CACHE_STALENESS_ALERT_MS) {
+    console.warn('[Manager] ⚠️ CACHE_STALENESS_ALERT: Cache stale for extended period', {
+      cacheStalenessMs,
+      thresholdMs: CACHE_STALENESS_ALERT_MS,
+      lastCacheSyncFromStorage,
+      recommendation: 'Port messaging may be disrupted, consider checking connection'
+    });
+  }
+}
+
+/**
+ * Cache staleness check interval ID
+ * v1.6.3.12-v4 - Gap #7: Track interval for cleanup
+ * @private
+ */
+let _cacheStalenessIntervalId = null;
+
+/**
+ * Start periodic cache staleness monitoring
+ * v1.6.3.12-v4 - Gap #7: Run every 10 seconds to detect stale cache
+ * @private
+ */
+function _startCacheStalenessMonitor() {
+  // Clear any existing interval
+  if (_cacheStalenessIntervalId) {
+    clearInterval(_cacheStalenessIntervalId);
+  }
+  
+  // Start periodic check
+  _cacheStalenessIntervalId = setInterval(_checkCacheStaleness, CACHE_STALENESS_CHECK_INTERVAL_MS);
+  
+  console.log('[Manager] CACHE_STALENESS_MONITOR_STARTED:', {
+    intervalMs: CACHE_STALENESS_CHECK_INTERVAL_MS,
+    alertThresholdMs: CACHE_STALENESS_ALERT_MS,
+    autoSyncThresholdMs: CACHE_STALENESS_AUTO_SYNC_MS
+  });
+}
+
+/**
+ * Stop cache staleness monitoring
+ * v1.6.3.12-v4 - Gap #7: Cleanup on unload
+ * @private
+ */
+function _stopCacheStalenessMonitor() {
+  if (_cacheStalenessIntervalId) {
+    clearInterval(_cacheStalenessIntervalId);
+    _cacheStalenessIntervalId = null;
+    console.log('[Manager] CACHE_STALENESS_MONITOR_STOPPED');
   }
 }
 
@@ -3652,12 +3803,16 @@ function _markEventReceived() {
 // v1.6.3.6-v11 - FIX Issue #17: Port cleanup on window unload
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
+// v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
 window.addEventListener('unload', () => {
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
 
   // v1.6.3.10-v7 - FIX Bug #1: Stop host info maintenance
   _stopHostInfoMaintenance();
+
+  // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
+  _stopCacheStalenessMonitor();
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });

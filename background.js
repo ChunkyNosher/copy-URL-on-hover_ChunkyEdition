@@ -13,16 +13,12 @@
 //   - All content scripts and sidebar use port messaging for Quick Tab operations
 //   - On browser restart, background reloads with empty memory (session-only)
 //
+// === v1.6.3.12-v4 STORAGE FIX ===
 // IMPORTANT: browser.storage.session does NOT exist in Firefox Manifest V2
-//   - Any storage.session calls will return early with "unavailable" warning
-//   - This is expected behavior - port messaging is the primary mechanism
-//   - storage.local is used as FALLBACK for edge cases only
-//
-// v1.6.4.18 - (LEGACY NOTE): Claimed switch to storage.session, but storage.session
-//   is NOT available in Firefox MV2. The actual implementation uses:
-//   - Port messaging for real-time sync (PRIMARY)
-//   - In-memory quickTabsSessionState (SINGLE SOURCE OF TRUTH)
-//   - storage.local as fallback for compatibility
+//   - All storage.session calls have been replaced with storage.local
+//   - Session-only behavior is achieved via explicit startup cleanup (_clearQuickTabsOnStartup)
+//   - Port messaging is the primary mechanism for real-time sync
+//   - storage.local is used for persistence between page reloads (during browser session)
 
 // v1.6.0 - PHASE 3.1: Import message routing infrastructure
 import { LogHandler } from './src/background/handlers/LogHandler.js';
@@ -162,6 +158,72 @@ async function checkVersionAndClearLogs() {
 // Run version check immediately (async, non-blocking)
 // This is called early before main initialization to clear stale logs
 checkVersionAndClearLogs();
+
+// ==================== v1.6.3.12-v4 STARTUP CLEANUP ====================
+// FIX: browser.storage.session doesn't exist in Firefox MV2
+// Implement explicit startup cleanup to simulate session-only behavior
+// Quick Tabs survive page reload but NOT browser restart
+
+/**
+ * Flag to track if startup cleanup has run this session
+ * v1.6.3.12-v4 - FIX: Prevent multiple cleanups in same session
+ */
+let _startupCleanupCompleted = false;
+
+/**
+ * Storage key used for Quick Tabs state
+ * v1.6.3.12-v4 - Must match SessionStorageAdapter and SyncStorageAdapter STORAGE_KEY
+ */
+const QUICK_TABS_STORAGE_KEY = 'quick_tabs_state_v2';
+
+/**
+ * Session storage key used by QuickTabStateManager
+ * v1.6.3.12-v4 - Must match QuickTabStateManager sessionKey
+ */
+const QUICK_TABS_SESSION_KEY = 'quick_tabs_session';
+
+/**
+ * Clear Quick Tabs from storage on browser startup
+ * v1.6.3.12-v4 - FIX: Explicit cleanup to simulate session-only behavior
+ * This runs once per browser session to clear any Quick Tabs from previous session
+ * @returns {Promise<void>}
+ */
+async function _clearQuickTabsOnStartup() {
+  if (_startupCleanupCompleted) {
+    console.log('[Background] v1.6.3.12-v4 Startup cleanup already completed this session');
+    return;
+  }
+
+  try {
+    const storageAPI = _getStorageLocalAPI();
+    if (!storageAPI) {
+      console.warn('[Background] v1.6.3.12-v4 Startup cleanup skipped: storage.local unavailable');
+      _startupCleanupCompleted = true;
+      return;
+    }
+
+    // Remove Quick Tabs state from storage
+    await storageAPI.remove([QUICK_TABS_STORAGE_KEY, QUICK_TABS_SESSION_KEY]);
+
+    _startupCleanupCompleted = true;
+
+    console.log('[Background] v1.6.3.12-v4 STARTUP_CLEANUP: Quick Tabs cleared on startup', {
+      keysCleared: [QUICK_TABS_STORAGE_KEY, QUICK_TABS_SESSION_KEY],
+      timestamp: new Date().toISOString(),
+      reason: 'session-scoped behavior (simulating storage.session via explicit cleanup)'
+    });
+  } catch (err) {
+    console.error('[Background] v1.6.3.12-v4 STARTUP_CLEANUP_ERROR:', err.message);
+    // Mark as completed even on error to prevent retry loops
+    _startupCleanupCompleted = true;
+  }
+}
+
+// Run startup cleanup immediately (async, non-blocking)
+// This is called early before main initialization to clear Quick Tabs from previous session
+_clearQuickTabsOnStartup();
+
+// ==================== END v1.6.3.12-v4 STARTUP CLEANUP ====================
 
 function addBackgroundLog(type, ...args) {
   if (BACKGROUND_LOG_BUFFER.length >= MAX_BACKGROUND_BUFFER_SIZE) {
@@ -1170,9 +1232,10 @@ async function initializeGlobalState() {
 }
 
 /**
- * Check if session storage has valid session state
+ * Check if local storage has valid session state
  * v1.6.3.4-v11 - Extracted to reduce complexity and fix complex conditional
- * @param {Object} result - Result from browser.storage.session.get()
+ * v1.6.3.12-v4 - FIX: Updated to reference storage.local (storage.session not available in Firefox MV2)
+ * @param {Object} result - Result from browser.storage.local.get()
  * @returns {boolean} true if valid session data exists
  */
 function _hasValidSessionState(result) {
@@ -1219,20 +1282,21 @@ function _applyMigratedContainerState(sessionState, source) {
 }
 
 /**
- * Helper: Try loading from session storage
+ * Helper: Try loading from local storage (session-scoped via explicit cleanup)
  * v1.6.3.4-v11 - Refactored: Extracted helpers to reduce cc below 9
+ * v1.6.3.12-v4 - FIX: Use storage.local instead of storage.session (Firefox MV2 compatibility)
  *
  * @returns {Promise<boolean>} True if loaded successfully
  */
 async function tryLoadFromSessionStorage() {
-  // Guard: Session storage not available
-  if (typeof browser.storage.session === 'undefined') {
+  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+  if (typeof browser.storage.local === 'undefined') {
     return false;
   }
 
-  const result = await browser.storage.session.get('quick_tabs_session');
+  const result = await browser.storage.local.get('quick_tabs_session');
 
-  // Guard: No data in session storage
+  // Guard: No data in local storage
   if (!_hasValidSessionState(result)) {
     return false;
   }
@@ -1241,13 +1305,13 @@ async function tryLoadFromSessionStorage() {
 
   // v1.6.2.2 - Unified format
   if (_hasValidTabsArray(sessionState)) {
-    _applyUnifiedFormatState(sessionState, 'session storage', 'v1.6.2.2 unified');
+    _applyUnifiedFormatState(sessionState, 'local storage (session-scoped)', 'v1.6.2.2 unified');
     return true;
   }
 
   // Backward compatibility: container format migration
   if (sessionState.containers) {
-    _applyMigratedContainerState(sessionState, 'session storage');
+    _applyMigratedContainerState(sessionState, 'local storage (session-scoped)');
     return true;
   }
 
@@ -1298,28 +1362,29 @@ function migrateContainersToUnifiedFormat(containers) {
 }
 
 /**
- * Helper: Get storage state from session storage
+ * Helper: Get storage state from local storage (session-scoped via explicit cleanup)
  * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
- * Quick Tabs no longer persist across browser restarts
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+ * Quick Tabs are cleared on browser restart via explicit startup cleanup
  * @private
  * @returns {Promise<Object|null>} Storage state or null
  */
 async function _getStorageState() {
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  // Quick Tabs are cleared on browser close/restart
-  if (typeof browser.storage.session === 'undefined') {
-    console.log('[Background] storage.session unavailable, returning null');
+  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+  // Session-only behavior achieved via explicit startup cleanup in _clearQuickTabsOnStartup()
+  if (typeof browser.storage.local === 'undefined') {
+    console.log('[Background] storage.local unavailable, returning null');
     return null;
   }
-  const result = await browser.storage.session.get('quick_tabs_state_v2');
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
   return result?.quick_tabs_state_v2 || null;
 }
 
 /**
- * Helper: Try loading from session storage
+ * Helper: Try loading from sync storage
  * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
  * v1.6.2.2 - Updated for unified format
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  *
  * @returns {Promise<void>}
  */
@@ -1327,9 +1392,9 @@ async function tryLoadFromSyncStorage() {
   const state = await _getStorageState();
 
   // Guard: No data - this is expected on fresh browser start
-  // v1.6.4.18 - Quick Tabs are now session-only, so no data is normal
+  // v1.6.3.12-v4 - Quick Tabs are now session-scoped via explicit startup cleanup
   if (!state) {
-    console.log('[Background] ✓ EAGER LOAD: No session state found, starting with empty state (session-only)');
+    console.log('[Background] ✓ EAGER LOAD: No local state found, starting with empty state (session-scoped)');
     isInitialized = true;
     return;
   }
@@ -1338,12 +1403,12 @@ async function tryLoadFromSyncStorage() {
   if (state.tabs && Array.isArray(state.tabs)) {
     globalQuickTabState.tabs = state.tabs;
     globalQuickTabState.lastUpdate = state.timestamp || Date.now();
-    logSuccessfulLoad('session', 'v1.6.2.2 unified (session-only)');
+    logSuccessfulLoad('local storage', 'v1.6.2.2 unified (session-scoped)');
     isInitialized = true;
     return;
   }
 
-  // v1.6.4.18 - No migration needed for session-only storage
+  // v1.6.3.12-v4 - No migration needed for session-scoped storage
   // Container format migration removed - Quick Tabs don't persist across sessions
   isInitialized = true;
 }
@@ -1351,7 +1416,7 @@ async function tryLoadFromSyncStorage() {
 /**
  * Helper: Save migrated state to unified format
  * v1.6.2.2 - Save in new unified format
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  *
  * @returns {Promise<void>}
  */
@@ -1359,19 +1424,19 @@ async function saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
-      console.warn('[Background] storage.session unavailable, cannot save migrated state');
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser.storage.local === 'undefined') {
+      console.warn('[Background] storage.local unavailable, cannot save migrated state');
       return;
     }
-    await browser.storage.session.set({
+    await browser.storage.local.set({
       quick_tabs_state_v2: {
         tabs: globalQuickTabState.tabs,
         saveId: saveId,
         timestamp: Date.now()
       }
     });
-    console.log('[Background] ✓ Migrated to v1.6.2.2 unified format (session-only)');
+    console.log('[Background] ✓ Migrated to v1.6.2.2 unified format (session-scoped)');
   } catch (err) {
     console.error('[Background] Error saving migrated state:', err);
   }
@@ -1454,16 +1519,17 @@ class StateCoordinator {
   /**
    * Helper: Try loading from session storage
    * v1.6.3.4-v11 - Refactored: Extracted _hasValidSessionData to fix complex conditional
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    *
    * @returns {Promise<boolean>} True if loaded successfully
    */
   async tryLoadFromSessionStorage() {
-    // Guard: Session storage not available
-    if (typeof browser.storage.session === 'undefined') {
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser.storage.local === 'undefined') {
       return false;
     }
 
-    const result = await browser.storage.session.get('quick_tabs_session');
+    const result = await browser.storage.local.get('quick_tabs_session');
 
     // Guard: No valid data
     if (!this._hasValidSessionData(result)) {
@@ -1473,7 +1539,7 @@ class StateCoordinator {
     this.globalState = result.quick_tabs_session;
     this.initialized = true;
     console.log(
-      '[STATE COORDINATOR] Initialized from session storage:',
+      '[STATE COORDINATOR] Initialized from local storage (session-scoped):',
       this.globalState.tabs.length,
       'tabs'
     );
@@ -1481,26 +1547,26 @@ class StateCoordinator {
   }
 
   /**
-   * Helper: Try loading from session storage
+   * Helper: Try loading from local storage (session-scoped)
    * v1.6.0.12 - FIX: Prioritize local storage to match save behavior
-   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    *
    * @returns {Promise<void>}
    */
   async tryLoadFromSyncStorage() {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser.storage.local === 'undefined') {
       this.initialized = true;
-      console.log('[STATE COORDINATOR] storage.session unavailable, starting fresh');
+      console.log('[STATE COORDINATOR] storage.local unavailable, starting fresh');
       return;
     }
 
-    const result = await browser.storage.session.get('quick_tabs_state_v2');
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
 
     // Guard: No data - this is expected on fresh browser start
     if (!result || !result.quick_tabs_state_v2) {
       this.initialized = true;
-      console.log('[STATE COORDINATOR] No session state found, starting fresh (session-only)');
+      console.log('[STATE COORDINATOR] No local state found, starting fresh (session-scoped)');
       return;
     }
 
@@ -1508,7 +1574,7 @@ class StateCoordinator {
     this.loadStateFromSyncData(result.quick_tabs_state_v2);
     this.initialized = true;
     console.log(
-      '[STATE COORDINATOR] Initialized from session storage (session-only):',
+      '[STATE COORDINATOR] Initialized from local storage (session-scoped):',
       this.globalState.tabs.length,
       'tabs'
     );
@@ -1699,23 +1765,23 @@ class StateCoordinator {
   /**
    * Persist state to storage
    * v1.6.0.12 - FIX: Use local storage to avoid quota errors
-   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    */
   async persistState() {
     try {
-      // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-      // Quick Tabs are cleared on browser close/restart
-      if (typeof browser.storage.session !== 'undefined') {
-        await browser.storage.session.set({
+      // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+      // Session-only behavior achieved via explicit startup cleanup in _clearQuickTabsOnStartup()
+      if (typeof browser.storage.local !== 'undefined') {
+        await browser.storage.local.set({
           quick_tabs_state_v2: this.globalState
         });
         // Also save to quick_tabs_session for backward compatibility
-        await browser.storage.session.set({
+        await browser.storage.local.set({
           quick_tabs_session: this.globalState
         });
       }
 
-      console.log('[STATE COORDINATOR] Persisted state to session storage (session-only)');
+      console.log('[STATE COORDINATOR] Persisted state to local storage (session-scoped)');
     } catch (err) {
       console.error('[STATE COORDINATOR] Error persisting state:', err);
       throw err;
@@ -2163,11 +2229,11 @@ messageRouter.register('COORDINATED_CLEAR_ALL_QUICK_TABS', async () => {
     consecutiveZeroTabReads = ZERO_TAB_CLEAR_THRESHOLD; // Intentionally cleared marker
     lastNonEmptyStateTimestamp = 0; // Allow immediate clear
 
-    // v1.6.4.18 - FIX: Clear session storage (Quick Tabs are now session-only)
-    // Step 1: Clear session storage (primary storage for Quick Tabs)
-    if (typeof browser.storage.session !== 'undefined') {
-      await browser.storage.session.remove('quick_tabs_state_v2');
-      await browser.storage.session.remove('quick_tabs_session');
+    // v1.6.3.12-v4 - FIX: Clear local storage (storage.session not available in Firefox MV2)
+    // Step 1: Clear local storage (primary storage for Quick Tabs - session-scoped via explicit cleanup)
+    if (typeof browser.storage.local !== 'undefined') {
+      await browser.storage.local.remove('quick_tabs_state_v2');
+      await browser.storage.local.remove('quick_tabs_session');
     }
 
     // Step 2: Reset background's cache
@@ -4320,16 +4386,17 @@ async function _writeAndVerifyAdoptionState({
   const writeStartTime = Date.now();
 
   if (!_isStorageSessionAvailable()) {
-    console.error('[Background] storage.session unavailable for adoption write');
-    return { success: false, error: 'storage.session unavailable', reason: 'storage-unavailable' };
+    console.error('[Background] storage.local unavailable for adoption write');
+    return { success: false, error: 'storage.local unavailable', reason: 'storage-unavailable' };
   }
 
   try {
-    await browser.storage.session.set({
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    await browser.storage.local.set({
       quick_tabs_state_v2: _buildAdoptionStatePayload(state, saveId, targetTabId)
     });
 
-    const verifyResult = await browser.storage.session.get('quick_tabs_state_v2');
+    const verifyResult = await browser.storage.local.get('quick_tabs_state_v2');
     const verifiedState = verifyResult?.quick_tabs_state_v2;
 
     if (!verifiedState || verifiedState.saveId !== saveId) {
@@ -4362,17 +4429,19 @@ async function _writeAndVerifyAdoptionState({
  * @param {Object} payload - Adoption payload
  */
 /**
- * Read Quick Tab state from storage.session for adoption
+ * Read Quick Tab state from storage.local for adoption
  * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * @private
  * @returns {Promise<Object>} Result with state or error
  */
 async function _readAdoptionState() {
   if (!_isStorageSessionAvailable()) {
-    console.error('[Background] storage.session unavailable for adoption read');
-    return { success: false, error: 'storage.session unavailable' };
+    console.error('[Background] storage.local unavailable for adoption read');
+    return { success: false, error: 'storage.local unavailable' };
   }
-  const result = await browser.storage.session.get('quick_tabs_state_v2');
+  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
   return { success: true, state: result?.quick_tabs_state_v2 };
 }
 
@@ -4807,13 +4876,15 @@ async function _sendAdoptionToSingleTabClassified(tabId, message, quickTabId) {
 }
 
 /**
- * Check if storage.session is available
+ * Check if storage.local is available
  * v1.6.4.19 - Extracted for complexity reduction
+ * v1.6.3.12-v4 - FIX: Renamed and updated to check storage.local (storage.session not available in Firefox MV2)
  * @private
- * @returns {boolean} True if storage.session is available
+ * @returns {boolean} True if storage.local is available
  */
 function _isStorageSessionAvailable() {
-  return typeof browser.storage.session !== 'undefined';
+  // v1.6.3.12-v4 - FIX: Check storage.local (storage.session not available in Firefox MV2)
+  return typeof browser.storage.local !== 'undefined';
 }
 
 /**
@@ -4840,7 +4911,7 @@ function _logVerificationResult(verified, saveId, stateToWrite, readBack) {
 /**
  * Write state to storage with verification
  * v1.6.3.6-v11 - FIX Issue #14: Storage write verification
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * v1.6.4.19 - Refactored: Extract helpers to reduce cyclomatic complexity
  * @returns {Promise<Object>} Write result with verification status
  */
@@ -4854,14 +4925,15 @@ async function writeStateWithVerification() {
   };
 
   if (!_isStorageSessionAvailable()) {
-    console.error('[Background] storage.session unavailable for state write');
-    return { success: false, saveId, error: 'storage.session unavailable' };
+    console.error('[Background] storage.local unavailable for state write');
+    return { success: false, saveId, error: 'storage.local unavailable' };
   }
 
   try {
-    await browser.storage.session.set({ quick_tabs_state_v2: stateToWrite });
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
 
-    const result = await browser.storage.session.get('quick_tabs_state_v2');
+    const result = await browser.storage.local.get('quick_tabs_state_v2');
     const readBack = result?.quick_tabs_state_v2;
     const verified = readBack?.saveId === saveId;
 
@@ -5119,12 +5191,12 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
   };
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    if (typeof browser.storage.session === 'undefined') {
-      console.error('[Background] storage.session unavailable for write attempt');
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser.storage.local === 'undefined') {
+      console.error('[Background] storage.local unavailable for write attempt');
       return { success: false, verified: false, needsRetry: false };
     }
-    await browser.storage.session.set({ quick_tabs_state_v2: stateToWrite });
+    await browser.storage.local.set({ quick_tabs_state_v2: stateToWrite });
     return await _verifyStorageWrite({
       operation,
       saveId,
@@ -5142,12 +5214,12 @@ async function _attemptStorageWriteWithVerification(operation, saveId, attempt, 
  * Verify storage write by reading back the data
  * v1.6.4.0 - FIX Issue F: Extracted to reduce nesting depth
  * v1.6.3.10-v8 - FIX Code Health: Use options object
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
  * @private
  */
 async function _verifyStorageWrite({ operation, saveId, tabCount, attempt, backoffMs }) {
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  const result = await browser.storage.session.get('quick_tabs_state_v2');
+  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+  const result = await browser.storage.local.get('quick_tabs_state_v2');
   const readBack = result?.quick_tabs_state_v2;
   const verified = readBack?.saveId === saveId;
 
@@ -6163,10 +6235,10 @@ function handleTabRemoved(tabId, removeInfo) {
   });
 
   // v1.6.3.10-v3 - Phase 2: Save orphan status to storage
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+  // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
   const saveId = `orphan-${tabId}-${operationTimestamp}`;
-  if (typeof browser.storage.session !== 'undefined') {
-    browser.storage.session
+  if (typeof browser.storage.local !== 'undefined') {
+    browser.storage.local
       .set({
         quick_tabs_state_v2: {
           tabs: globalQuickTabState.tabs,
