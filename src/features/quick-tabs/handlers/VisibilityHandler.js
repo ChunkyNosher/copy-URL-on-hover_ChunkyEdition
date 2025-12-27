@@ -183,9 +183,62 @@ export class VisibilityHandler {
   }
 
   /**
+   * Unified container validation helper for all operations
+   * v1.6.3.12-v5 - FIX Issue #20: Single source of truth for container validation logic
+   * Ensures consistent behavior across all code paths:
+   * - Case 1: currentContainerId is null/undefined → fail-closed (deny operation for safety)
+   * - Case 2: Legacy Quick Tab (no originContainerId) → allow for backward compatibility
+   * - Case 3: Container IDs must match → allow if match, deny if mismatch
+   * @private
+   * @param {Object} quickTab - Quick Tab window instance
+   * @param {string} operation - Operation name for logging
+   * @returns {{ valid: boolean, reason: string }}
+   */
+  _validateContainerForOperation(quickTab, operation) {
+    const logPrefix = `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}`;
+
+    // Case 1: Current container ID unknown - fail-closed for safety
+    // This handles the edge case where identity system hasn't initialized
+    if (this.currentContainerId === null || this.currentContainerId === undefined) {
+      // Only log warning if Quick Tab has container info (not legacy)
+      if (quickTab?.originContainerId) {
+        console.warn(`${logPrefix}: currentContainerId is null - denying operation for safety`, {
+          quickTabId: quickTab?.id,
+          originContainerId: quickTab?.originContainerId
+        });
+      }
+      return { valid: false, reason: 'currentContainerId_unknown' };
+    }
+
+    // Case 2: Legacy Quick Tab (no container info) - allow for backward compatibility
+    // Quick Tabs created before container tracking was added won't have originContainerId
+    if (quickTab?.originContainerId === null || quickTab?.originContainerId === undefined) {
+      console.log(`${logPrefix}: Legacy Quick Tab (no originContainerId) - allowing`, {
+        quickTabId: quickTab?.id,
+        currentContainerId: this.currentContainerId
+      });
+      return { valid: true, reason: 'legacy_quicktab' };
+    }
+
+    // Case 3: Container IDs must match for container isolation
+    const matches = quickTab.originContainerId === this.currentContainerId;
+    if (!matches) {
+      console.warn(`${logPrefix}: Container mismatch - blocking`, {
+        quickTabId: quickTab.id,
+        originContainerId: quickTab.originContainerId,
+        currentContainerId: this.currentContainerId
+      });
+      return { valid: false, reason: 'container_mismatch' };
+    }
+
+    return { valid: true, reason: 'container_match' };
+  }
+
+  /**
    * Check if a tabWindow is owned by the current tab
    * v1.6.3.10-v4 - FIX Issue #9: Extracted to reduce duplication (Code Review feedback)
    * v1.6.3.11-v9 - FIX Issue 5: Now also validates container ID for container isolation
+   * v1.6.3.12-v5 - FIX Issue #20: Now uses unified _validateContainerForOperation helper
    * @private
    * @param {Object} tabWindow - Quick Tab window instance
    * @returns {boolean} True if owned by current tab or ownership is unset
@@ -201,74 +254,33 @@ export class VisibilityHandler {
       return false;
     }
 
-    // v1.6.3.11-v9 - FIX Issue 5: Also validate container ID for container isolation
-    // If originContainerId is not set, consider it owned (legacy Quick Tab)
-    if (tabWindow.originContainerId === null || tabWindow.originContainerId === undefined) {
-      return true;
-    }
-    // If current container ID is not known, fail-closed (block operation)
-    if (this.currentContainerId === null) {
-      console.warn(
-        `${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId
-        }
-      );
-      return false;
-    }
-    // Check if originContainerId matches current container
-    const containerMatch = tabWindow.originContainerId === this.currentContainerId;
-    if (!containerMatch) {
-      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] Container mismatch:`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId,
-        currentContainerId: this.currentContainerId
-      });
-    }
-    return containerMatch;
+    // v1.6.3.12-v5 - FIX Issue #20: Use unified container validation helper
+    const containerValidation = this._validateContainerForOperation(tabWindow, 'ownership_check');
+    return containerValidation.valid;
   }
 
   /**
    * Validate container isolation for an operation
    * v1.6.3.11-v9 - FIX Issue 5: Container validation for runtime operations
+   * v1.6.3.12-v5 - FIX Issue #20: Now uses unified _validateContainerForOperation helper
    * @private
    * @param {Object} tabWindow - Quick Tab window instance
    * @param {string} operation - Operation name for logging
    * @returns {{ valid: boolean, reason?: string }}
    */
   _validateContainerIsolation(tabWindow, operation) {
-    // If no container ID on Quick Tab, it's a legacy Quick Tab - allow
-    if (!tabWindow?.originContainerId) {
-      return { valid: true };
+    // v1.6.3.12-v5 - FIX Issue #20: Delegate to unified helper
+    const result = this._validateContainerForOperation(tabWindow, operation);
+    // Transform reason to match legacy format for backward compatibility
+    if (!result.valid) {
+      if (result.reason === 'currentContainerId_unknown') {
+        return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
+      }
+      if (result.reason === 'container_mismatch') {
+        return { valid: false, reason: 'CONTAINER_MISMATCH' };
+      }
     }
-
-    // If current container unknown, fail-closed
-    if (!this.currentContainerId) {
-      console.warn(
-        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId
-        }
-      );
-      return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
-    }
-
-    // Compare container IDs
-    if (tabWindow.originContainerId !== this.currentContainerId) {
-      console.log(
-        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId,
-          currentContainerId: this.currentContainerId
-        }
-      );
-      return { valid: false, reason: 'CONTAINER_MISMATCH' };
-    }
-
-    return { valid: true };
+    return { valid: result.valid };
   }
 
   /**
@@ -1935,8 +1947,19 @@ export class VisibilityHandler {
 
     try {
       await Promise.race([this._persistToStorage(), timeoutPromise]);
-      // Reset timeout count on success
+      // v1.6.3.12-v5 - FIX Issue #12: Reset timeout count on success with logging
+      if (this._storageTimeoutCount > 0) {
+        console.log(`${this._logPrefix} [TIMEOUT_COUNTER_RESET] Reset to 0 after successful write`, {
+          previousCount: this._storageTimeoutCount,
+          storageAvailable: this._storageAvailable
+        });
+      }
       this._storageTimeoutCount = 0;
+      // v1.6.3.12-v5 - FIX Issue #12: Also reset storage availability if it was marked unavailable
+      if (!this._storageAvailable) {
+        console.log(`${this._logPrefix} [STORAGE_RECOVERY] Storage marked available after successful write`);
+        this._storageAvailable = true;
+      }
     } catch (err) {
       if (err.message === 'Storage persist timeout') {
         this._handleStorageTimeout();
