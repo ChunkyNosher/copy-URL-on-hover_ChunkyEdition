@@ -1,10 +1,10 @@
 # Quick Tab Manager – Additional Diagnostics Beyond Previous Report
 
-**Repository:** copy-URL-on-hover_ChunkyEdition  
+**Repository:** copy-URL-on-hover*ChunkyEdition  
 **Extension Version:** v1.6.3.11+  
 **Date:** 2025-12-25  
 **Scope:** Additional issues, bugged behaviors, and missing logging found in the
-latest repo version _beyond_ what was already covered in the prior Quick Tab
+latest repo version \_beyond* what was already covered in the prior Quick Tab
 Manager synchronization diagnosis report
 
 ---

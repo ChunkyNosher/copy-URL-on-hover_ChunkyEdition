@@ -162,6 +162,16 @@ const PORT_VIABILITY_MIN_TIMEOUT_MS = 700; // Minimum timeout (increased from 50
 const PORT_VIABILITY_MAX_TIMEOUT_MS = 3000; // Maximum adaptive timeout
 const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th percentile
 
+// ==================== v1.6.4.0 FIX Issue #30 CONSTANTS ====================
+// Port reconnection circuit breaker for Quick Tabs port
+const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
+const QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS = 1000; // Start at 1 second
+const QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS = 30000; // Max 30 seconds between attempts
+
+// ==================== v1.6.4.0 FIX Issue #13 CONSTANTS ====================
+// Port messaging FIFO ordering - sequence number tracking
+const SEQUENCE_GAP_WARNING_ENABLED = true; // Enable/disable out-of-order detection logging
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -299,24 +309,59 @@ let _allQuickTabsFromPort = [];
 const _quickTabPortOperationTimestamps = new Map();
 
 /**
+ * v1.6.4.0 - FIX Issue #30: Quick Tabs port reconnection circuit breaker state
+ * Tracks consecutive reconnection attempts to prevent infinite reconnection loops
+ */
+let _quickTabsPortReconnectAttempts = 0;
+let _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+let _quickTabsPortCircuitBreakerTripped = false;
+
+/**
+ * v1.6.4.0 - FIX Issue #13: Port message sequence number tracking
+ * Tracks last received sequence number for out-of-order detection
+ */
+let _lastReceivedSequence = 0;
+let _sequenceGapsDetected = 0;
+
+/**
  * Initialize Quick Tabs port connection
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
+ * v1.6.4.0 - FIX Issue #30: Add circuit breaker with max reconnection attempts
  */
 function initializeQuickTabsPort() {
+  // v1.6.4.0 - FIX Issue #30: Check circuit breaker state
+  if (_quickTabsPortCircuitBreakerTripped) {
+    console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
+      timestamp: Date.now(),
+      attempts: _quickTabsPortReconnectAttempts,
+      maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
+      message: 'Connection attempts exhausted. Use manual reconnect button.'
+    });
+    return;
+  }
+
   // v1.6.4 - Gap #1: Log port connection attempt
   console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
     timestamp: Date.now(),
     portName: 'quick-tabs-port',
-    existingPort: !!quickTabsPort
+    existingPort: !!quickTabsPort,
+    reconnectAttempt: _quickTabsPortReconnectAttempts
   });
 
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
+
+    // v1.6.4.0 - FIX Issue #30: Reset circuit breaker on successful connection
+    _quickTabsPortReconnectAttempts = 0;
+    _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+    _quickTabsPortCircuitBreakerTripped = false;
+
     // v1.6.4 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
-      success: true
+      success: true,
+      circuitBreakerReset: true
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
@@ -336,7 +381,8 @@ function initializeQuickTabsPort() {
         timestamp: disconnectTimestamp,
         pendingOperations: _quickTabPortOperationTimestamps.size,
         portWasConnected: !!quickTabsPort,
-        cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage
+        cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage,
+        reconnectAttempts: _quickTabsPortReconnectAttempts
       });
 
       quickTabsPort = null;
@@ -344,16 +390,8 @@ function initializeQuickTabsPort() {
       // Clear pending operation timestamps on disconnect
       _quickTabPortOperationTimestamps.clear();
 
-      // Attempt reconnection after a delay
-      setTimeout(() => {
-        if (!quickTabsPort) {
-          console.log('[Sidebar] PORT_LIFECYCLE: Attempting Quick Tabs port reconnection', {
-            timestamp: Date.now(),
-            timeSinceDisconnect: Date.now() - disconnectTimestamp
-          });
-          initializeQuickTabsPort();
-        }
-      }, QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS);
+      // v1.6.4.0 - FIX Issue #30: Schedule reconnection with circuit breaker
+      _scheduleQuickTabsPortReconnect(disconnectTimestamp);
     });
 
     // Send SIDEBAR_READY to get initial state
@@ -362,15 +400,155 @@ function initializeQuickTabsPort() {
       timestamp: Date.now()
     });
     console.log('[Sidebar] SIDEBAR_READY sent to background');
+
+    // v1.6.4.0 - FIX Issue #10: Explicitly request initial state after port connection
+    // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
+    // even if that message is delayed, lost, or the port was reconnected
+    console.log('[Sidebar] Sidebar requesting initial state after port connection', {
+      timestamp: Date.now(),
+      portConnected: !!quickTabsPort
+    });
+    requestAllQuickTabsViaPort();
   } catch (err) {
     // v1.6.4 - Gap #1: Log port connection failure
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
       error: err.message,
-      success: false
+      success: false,
+      reconnectAttempt: _quickTabsPortReconnectAttempts
     });
+
+    // v1.6.4.0 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
+    _scheduleQuickTabsPortReconnect(Date.now());
   }
+}
+
+/**
+ * Schedule Quick Tabs port reconnection with exponential backoff and circuit breaker
+ * v1.6.4.0 - FIX Issue #30: Implement max reconnection attempts with exponential backoff
+ * @private
+ * @param {number} disconnectTimestamp - When the disconnect occurred
+ */
+function _scheduleQuickTabsPortReconnect(disconnectTimestamp) {
+  // Increment reconnect attempts
+  _quickTabsPortReconnectAttempts++;
+
+  // Check if we've exceeded max attempts
+  if (_quickTabsPortReconnectAttempts >= QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS) {
+    _quickTabsPortCircuitBreakerTripped = true;
+
+    console.error('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_TRIPPED:', {
+      timestamp: Date.now(),
+      attempts: _quickTabsPortReconnectAttempts,
+      maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
+      message: 'Max reconnection attempts reached. Background may be unavailable.',
+      recoveryAction: 'manual_reconnect_required'
+    });
+
+    // v1.6.4.0 - FIX Issue #30: Show error notification to user
+    _showQuickTabsPortConnectionError();
+    return;
+  }
+
+  // Calculate backoff delay with exponential increase
+  const backoffDelay = _quickTabsPortReconnectBackoffMs;
+
+  console.log('[Sidebar] QUICK_TABS_PORT_RECONNECT_SCHEDULED:', {
+    timestamp: Date.now(),
+    attempt: _quickTabsPortReconnectAttempts,
+    maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
+    backoffMs: backoffDelay,
+    timeSinceDisconnect: Date.now() - disconnectTimestamp,
+    nextBackoffMs: Math.min(backoffDelay * 2, QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS)
+  });
+
+  // Schedule reconnect with current backoff
+  setTimeout(() => {
+    if (!quickTabsPort && !_quickTabsPortCircuitBreakerTripped) {
+      console.log('[Sidebar] PORT_LIFECYCLE: Attempting Quick Tabs port reconnection', {
+        timestamp: Date.now(),
+        attempt: _quickTabsPortReconnectAttempts,
+        timeSinceDisconnect: Date.now() - disconnectTimestamp
+      });
+      initializeQuickTabsPort();
+    }
+  }, backoffDelay);
+
+  // Increase backoff for next attempt (capped at max)
+  _quickTabsPortReconnectBackoffMs = Math.min(
+    _quickTabsPortReconnectBackoffMs * 2,
+    QUICK_TABS_PORT_RECONNECT_BACKOFF_MAX_MS
+  );
+}
+
+/**
+ * Show error notification when Quick Tabs port connection fails
+ * v1.6.4.0 - FIX Issue #30: User feedback after max reconnection attempts
+ * @private
+ */
+function _showQuickTabsPortConnectionError() {
+  const errorMessage = 'Connection to background lost. Click to reconnect.';
+
+  // Create error notification element
+  const notification = document.createElement('div');
+  notification.id = 'quick-tabs-port-error-notification';
+  notification.className = 'error-notification reconnect-available';
+  notification.textContent = errorMessage;
+  notification.style.cssText = `
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #d32f2f;
+    color: white;
+    padding: 10px 16px;
+    border-radius: 4px;
+    z-index: 10000;
+    font-size: 14px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  `;
+
+  // v1.6.4.0 - FIX Issue #30: Add click handler for manual reconnect
+  notification.addEventListener('click', () => {
+    manualQuickTabsPortReconnect();
+    notification.remove();
+  });
+
+  // Remove any existing notification first
+  const existing = document.getElementById('quick-tabs-port-error-notification');
+  if (existing) {
+    existing.remove();
+  }
+
+  document.body.appendChild(notification);
+
+  console.log('[Sidebar] QUICK_TABS_PORT_ERROR_NOTIFICATION_SHOWN:', {
+    timestamp: Date.now(),
+    message: errorMessage,
+    hasManualReconnect: true
+  });
+}
+
+/**
+ * Manual reconnection triggered by user
+ * v1.6.4.0 - FIX Issue #30: Provide manual reconnect mechanism
+ */
+function manualQuickTabsPortReconnect() {
+  console.log('[Sidebar] QUICK_TABS_PORT_MANUAL_RECONNECT:', {
+    timestamp: Date.now(),
+    previousAttempts: _quickTabsPortReconnectAttempts,
+    wasCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  // Reset circuit breaker state
+  _quickTabsPortReconnectAttempts = 0;
+  _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+  _quickTabsPortCircuitBreakerTripped = false;
+
+  // Attempt connection
+  initializeQuickTabsPort();
 }
 
 // ==================== v1.6.3.12-v2 PORT MESSAGE HANDLER HELPERS ====================
@@ -467,11 +645,132 @@ function _handleQuickTabPortAck(msg, ackType) {
 }
 
 /**
+ * Check if message is a valid object
+ * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * @private
+ * @param {*} msg - Message to validate
+ * @returns {boolean} True if message is a valid object
+ */
+function _isValidMessageObject(msg) {
+  return msg && typeof msg === 'object';
+}
+
+/**
+ * Check if quickTabs field is valid when present
+ * v1.6.4.21 - FIX Code Health: Extracted from _validateStateUpdateMessage
+ * @private
+ * @param {*} quickTabs - quickTabs field to validate
+ * @returns {boolean} True if quickTabs is valid (undefined, null, or array)
+ */
+function _isValidQuickTabsField(quickTabs) {
+  return quickTabs === undefined || quickTabs === null || Array.isArray(quickTabs);
+}
+
+/**
+ * Validate message has required fields for state update handlers
+ * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * v1.6.4.21 - FIX Code Health: Extracted complex conditionals to helpers
+ * @private
+ * @param {Object} msg - Message to validate
+ * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function _validateStateUpdateMessage(msg, _handlerName) {
+  if (!_isValidMessageObject(msg)) {
+    return { valid: false, error: 'Message is not an object' };
+  }
+  // quickTabs can be undefined/null (will be handled by _handleQuickTabsStateUpdate)
+  // but if present, it should be an array
+  if (!_isValidQuickTabsField(msg.quickTabs)) {
+    return { valid: false, error: `quickTabs field is not an array (got ${typeof msg.quickTabs})` };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate message has required fields for ACK handlers
+ * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * @private
+ * @param {Object} msg - Message to validate
+ * @param {string} handlerName - Handler name for logging
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function _validateAckMessage(msg, handlerName) {
+  if (!msg || typeof msg !== 'object') {
+    return { valid: false, error: 'Message is not an object' };
+  }
+  // ACK messages should have success field (boolean)
+  if (typeof msg.success !== 'boolean') {
+    // Not a hard error - some ACKs may not have success field
+    console.warn(
+      `[Sidebar] PORT_MESSAGE_VALIDATION_WARN: ${handlerName} - success field missing or not boolean (got ${typeof msg.success})`
+    );
+  }
+  return { valid: true };
+}
+
+/**
+ * Log validation error for port message handlers
+ * v1.6.4.21 - FIX Code Health: Extracted from duplicate handler code
+ * @private
+ * @param {string} type - Message type
+ * @param {Object} msg - Original message
+ * @param {string} error - Validation error message
+ */
+function _logPortMessageValidationError(type, msg, error) {
+  console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+    type,
+    correlationId: msg?.correlationId || null,
+    error
+  });
+}
+
+/**
+ * Create a state update handler with validation
+ * v1.6.4.21 - FIX Code Health: Generic factory for state update handlers
+ * @private
+ * @param {string} messageType - The message type for logging
+ * @param {string} renderReason - The reason to pass to scheduleRender
+ * @returns {Function} Handler function
+ */
+function _createStateUpdateHandler(messageType, renderReason) {
+  return msg => {
+    const validation = _validateStateUpdateMessage(msg, messageType);
+    if (!validation.valid) {
+      _logPortMessageValidationError(messageType, msg, validation.error);
+      return;
+    }
+    _handleQuickTabsStateUpdate(msg.quickTabs, renderReason, msg.correlationId);
+  };
+}
+
+/**
+ * Create an ACK handler with validation
+ * v1.6.4.21 - FIX Code Health: Generic factory for ACK handlers
+ * @private
+ * @param {string} messageType - The message type for logging
+ * @param {string} ackType - The ACK type to pass to _handleQuickTabPortAck
+ * @returns {Function} Handler function
+ */
+function _createAckHandler(messageType, ackType) {
+  return msg => {
+    const validation = _validateAckMessage(msg, messageType);
+    if (!validation.valid) {
+      _logPortMessageValidationError(messageType, msg, validation.error);
+      return;
+    }
+    _handleQuickTabPortAck(msg, ackType);
+  };
+}
+
+/**
  * Quick Tabs port message handlers lookup table
  * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
  * v1.6.3.12-v4 - Gap #5: Pass correlationId through handler chain
  * v1.6.3.12-v4 - Gap #6: Document FIFO ordering assumption
+ * v1.6.4.0 - FIX Issue #9: Handlers now include input validation
+ * v1.6.4.21 - FIX Code Health: Use factory functions to reduce duplication
  *
  * IMPORTANT - MESSAGE ORDERING ASSUMPTION (Gap #6):
  * This handler assumes that port messages arrive in FIFO (First-In-First-Out) order.
@@ -489,31 +788,148 @@ function _handleQuickTabPortAck(msg, ackType) {
  * @private
  */
 const _portMessageHandlers = {
-  SIDEBAR_STATE_SYNC: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
-  GET_ALL_QUICK_TABS_RESPONSE: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
-  STATE_CHANGED: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification', msg.correlationId),
-  CLOSE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'CLOSE'),
-  MINIMIZE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'MINIMIZE'),
-  RESTORE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'RESTORE')
+  // State update handlers - use factory pattern
+  SIDEBAR_STATE_SYNC: _createStateUpdateHandler('SIDEBAR_STATE_SYNC', 'quick-tabs-port-sync'),
+  GET_ALL_QUICK_TABS_RESPONSE: _createStateUpdateHandler(
+    'GET_ALL_QUICK_TABS_RESPONSE',
+    'quick-tabs-port-sync'
+  ),
+  STATE_CHANGED: _createStateUpdateHandler('STATE_CHANGED', 'state-changed-notification'),
+
+  // ACK handlers - use factory pattern
+  CLOSE_QUICK_TAB_ACK: _createAckHandler('CLOSE_QUICK_TAB_ACK', 'CLOSE'),
+  MINIMIZE_QUICK_TAB_ACK: _createAckHandler('MINIMIZE_QUICK_TAB_ACK', 'MINIMIZE'),
+  RESTORE_QUICK_TAB_ACK: _createAckHandler('RESTORE_QUICK_TAB_ACK', 'RESTORE'),
+
+  // Close All ACK - special handler with additional logging
+  CLOSE_ALL_QUICK_TABS_ACK: msg => {
+    const validation = _validateAckMessage(msg, 'CLOSE_ALL_QUICK_TABS_ACK');
+    if (!validation.valid) {
+      _logPortMessageValidationError('CLOSE_ALL_QUICK_TABS_ACK', msg, validation.error);
+      return;
+    }
+    console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_ACK received:', {
+      success: msg.success,
+      closedCount: msg.closedCount || 0,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+  },
+  // v1.6.4.20 - FIX Issue #12: Handle ORIGIN_TAB_CLOSED message when a browser tab with Quick Tabs is closed
+  // This allows the Manager to detect orphaned Quick Tabs and update its UI accordingly
+  ORIGIN_TAB_CLOSED: msg => {
+    _handleOriginTabClosed(msg);
+  }
 };
 
 /**
- * Handle messages from Quick Tabs port
- * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
- * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
- * v1.6.4 - Gap #3: Port message handler entry/exit logging
- * v1.6.3.12-v5 - FIX Issue #7: Use performance.now() for accurate duration
- * @param {Object} message - Message from background
+ * Mark Quick Tabs as orphaned in local state
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity of ORIGIN_TAB_CLOSED handler
+ * @private
+ * @param {Array<string>} orphanedQuickTabIds - IDs of orphaned Quick Tabs
+ * @param {number} timestamp - Timestamp when tab was closed
  */
-function handleQuickTabsPortMessage(message) {
-  const { type, timestamp: msgTimestamp, correlationId } = message;
-  const handlerStartTime = performance.now();
-  const entryTimestamp = Date.now();
+function _markQuickTabsAsOrphaned(orphanedQuickTabIds, timestamp) {
+  if (!orphanedQuickTabIds || !Array.isArray(orphanedQuickTabIds)) return;
 
-  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log with format matching acceptance criteria
+  const orphanedIds = new Set(orphanedQuickTabIds);
+  const currentTabs = quickTabsState?.tabs || [];
+
+  for (const tab of currentTabs) {
+    if (orphanedIds.has(tab.id)) {
+      tab.isOrphaned = true;
+      tab.orphanedAt = timestamp;
+    }
+  }
+}
+
+/**
+ * Handle ORIGIN_TAB_CLOSED message
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.4.20 - FIX Code Review: Added input validation
+ * @private
+ * @param {Object} msg - Message from background
+ */
+/**
+ * Validate origin tab closed message
+ * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * @private
+ * @param {Object} msg - Message to validate
+ * @returns {boolean} True if message is valid
+ */
+function _validateOriginTabClosedMessage(msg) {
+  if (!_isValidMessageObject(msg)) {
+    console.error('[Sidebar] ORIGIN_TAB_CLOSED_VALIDATION_ERROR: Message is not an object');
+    return false;
+  }
+
+  if (typeof msg.originTabId !== 'number') {
+    console.warn('[Sidebar] ORIGIN_TAB_CLOSED_VALIDATION_WARN: originTabId is not a number', {
+      received: typeof msg.originTabId
+    });
+  }
+
+  return true;
+}
+
+/**
+ * Log origin tab closed message
+ * v1.6.4.21 - FIX Code Health: Extracted to reduce _handleOriginTabClosed complexity
+ * @private
+ * @param {Object} msg - Message to log
+ * @param {number} timestamp - Timestamp
+ */
+function _logOriginTabClosed(msg, timestamp) {
+  console.log('[Sidebar] ORIGIN_TAB_CLOSED received:', {
+    originTabId: msg.originTabId,
+    orphanedCount: msg.orphanedCount || 0,
+    orphanedQuickTabIds: msg.orphanedQuickTabIds || [],
+    timestamp,
+    correlationId: msg?.correlationId || null
+  });
+}
+
+/**
+ * Handle ORIGIN_TAB_CLOSED message
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.4.20 - FIX Code Review: Added input validation
+ * v1.6.4.21 - FIX Code Health: Extracted validation and logging helpers
+ * @private
+ * @param {Object} msg - Message from background
+ */
+function _handleOriginTabClosed(msg) {
+  if (!_validateOriginTabClosedMessage(msg)) {
+    return;
+  }
+
+  const timestamp = msg.timestamp || Date.now();
+  _logOriginTabClosed(msg, timestamp);
+
+  // Mark affected Quick Tabs as orphaned in local state
+  _markQuickTabsAsOrphaned(msg.orphanedQuickTabIds, timestamp);
+
+  // Request fresh state from background to ensure consistency
+  requestAllQuickTabsViaPort();
+
+  // Schedule re-render to update UI with orphan indicators
+  scheduleRender('origin-tab-closed', msg?.correlationId);
+}
+
+/**
+ * Log port handler entry with all context
+ * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * @private
+ * @param {Object} params - Entry log parameters
+ */
+function _logPortHandlerEntry({
+  type,
+  correlationId,
+  entryTimestamp,
+  msgTimestamp,
+  payloadSize,
+  sequence,
+  sequenceStatus
+}) {
   console.log(
     `[PORT_HANDLER_ENTRY] type=${type}, correlationId=${correlationId || 'none'}, timestamp=${entryTimestamp}`,
     {
@@ -521,39 +937,28 @@ function handleQuickTabsPortMessage(message) {
       correlationId: correlationId || null,
       timestamp: entryTimestamp,
       messageTimestamp: msgTimestamp || null,
-      payloadSize: JSON.stringify(message).length,
-      source: 'background'
+      payloadSize,
+      source: 'background',
+      sequence: sequence ?? null,
+      expectedSequence: _lastReceivedSequence + 1,
+      sequenceStatus
     }
   );
+}
 
-  const handler = _portMessageHandlers[type];
-  let outcome = 'unknown_type';
-  let errorMessage = null;
-
-  if (handler) {
-    try {
-      handler(message);
-      outcome = 'success';
-    } catch (err) {
-      outcome = 'error';
-      errorMessage = err.message;
-      console.error('[Sidebar] PORT_MESSAGE_HANDLER_ERROR:', {
-        type,
-        correlationId: correlationId || null,
-        error: err.message
-      });
-    }
-  }
-
-  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log with format matching acceptance criteria
-  const durationMs = performance.now() - handlerStartTime;
+/**
+ * Log port handler exit with outcome and timing
+ * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * @private
+ * @param {Object} params - Exit log parameters
+ */
+function _logPortHandlerExit({ type, correlationId, outcome, durationMs, errorMessage }) {
   const exitLogData = {
     type,
     correlationId: correlationId || null,
     outcome,
     durationMs: durationMs.toFixed(2)
   };
-  // Only include error field when there's an actual error
   if (errorMessage) {
     exitLogData.error = errorMessage;
   }
@@ -561,6 +966,184 @@ function handleQuickTabsPortMessage(message) {
     `[PORT_HANDLER_EXIT] type=${type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
     exitLogData
   );
+}
+
+/**
+ * Execute port message handler with error handling
+ * v1.6.4.0 - FIX Code Health: Extracted to reduce handleQuickTabsPortMessage complexity
+ * @private
+ * @param {Function|undefined} handler - Handler function
+ * @param {Object} message - Port message
+ * @param {string} type - Message type
+ * @param {string|null} correlationId - Correlation ID
+ * @returns {{ outcome: string, errorMessage: string|null }}
+ */
+function _executePortHandler(handler, message, type, correlationId) {
+  if (!handler) {
+    return { outcome: 'unknown_type', errorMessage: null };
+  }
+
+  try {
+    handler(message);
+    return { outcome: 'success', errorMessage: null };
+  } catch (err) {
+    console.error('[Sidebar] PORT_MESSAGE_HANDLER_ERROR:', {
+      type,
+      correlationId: correlationId || null,
+      error: err.message
+    });
+    return { outcome: 'error', errorMessage: err.message };
+  }
+}
+
+/**
+ * Handle messages from Quick Tabs port
+ * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
+ * v1.6.4 - Gap #3: Port message handler entry/exit logging
+ * v1.6.3.12-v5 - FIX Issue #7: Use performance.now() for accurate duration
+ * v1.6.4.0 - FIX Issue #13: Add sequence number tracking for FIFO ordering detection
+ * v1.6.4.0 - FIX Code Health: Refactored to reduce complexity
+ * @param {Object} message - Message from background
+ */
+function handleQuickTabsPortMessage(message) {
+  const { type, timestamp: msgTimestamp, correlationId, sequence } = message;
+  const handlerStartTime = performance.now();
+  const entryTimestamp = Date.now();
+
+  // v1.6.4.0 - FIX Issue #13: Check message sequence for out-of-order detection
+  const sequenceCheckResult = _checkMessageSequence(sequence, type, correlationId);
+
+  // v1.6.4.0 - FIX Code Health: Extracted entry logging
+  _logPortHandlerEntry({
+    type,
+    correlationId,
+    entryTimestamp,
+    msgTimestamp,
+    payloadSize: JSON.stringify(message).length,
+    sequence,
+    sequenceStatus: sequenceCheckResult.status
+  });
+
+  // v1.6.4.0 - FIX Code Health: Extracted handler execution
+  const handler = _portMessageHandlers[type];
+  const { outcome, errorMessage } = _executePortHandler(handler, message, type, correlationId);
+
+  // v1.6.4.0 - FIX Code Health: Extracted exit logging
+  const durationMs = performance.now() - handlerStartTime;
+  _logPortHandlerExit({ type, correlationId, outcome, durationMs, errorMessage });
+}
+
+/**
+ * Check message sequence number for FIFO ordering detection
+ * v1.6.4.0 - FIX Issue #13: Detect out-of-order messages and request state sync
+ * v1.6.4.21 - FIX Code Health: Extracted helpers to reduce complexity
+ * @private
+ * @param {number|undefined} sequence - Message sequence number from background
+ * @param {string} type - Message type for logging
+ * @param {string|null} correlationId - Correlation ID for logging
+ * @returns {{ status: string, isOutOfOrder: boolean }}
+ */
+function _checkMessageSequence(sequence, type, correlationId) {
+  // If sequence number is not provided, skip checking (backward compatibility)
+  if (sequence === undefined || sequence === null) {
+    return { status: 'no_sequence', isOutOfOrder: false };
+  }
+
+  const expectedSequence = _lastReceivedSequence + 1;
+  const isOutOfOrder = sequence !== expectedSequence && _lastReceivedSequence > 0;
+
+  if (isOutOfOrder) {
+    return _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
+  }
+
+  // Update last received sequence
+  _updateLastReceivedSequence(sequence);
+
+  return { status: 'in_order', isOutOfOrder: false };
+}
+
+/**
+ * Handle out-of-order sequence detection
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - Received sequence
+ * @param {number} expectedSequence - Expected sequence
+ * @param {string} type - Message type
+ * @param {string|null} correlationId - Correlation ID
+ * @returns {{ status: string, isOutOfOrder: boolean }}
+ */
+function _handleOutOfOrderSequence(sequence, expectedSequence, type, correlationId) {
+  _sequenceGapsDetected++;
+
+  _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId);
+
+  // Only trigger sync for significant gaps (not just duplicate messages)
+  if (sequence > expectedSequence) {
+    _lastReceivedSequence = sequence;
+    _triggerSequenceGapRecovery(type, correlationId);
+  }
+
+  return { status: 'out_of_order', isOutOfOrder: true };
+}
+
+/**
+ * Log out-of-order sequence warning
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - Received sequence
+ * @param {number} expectedSequence - Expected sequence
+ * @param {string} type - Message type
+ * @param {string|null} correlationId - Correlation ID
+ */
+function _logOutOfOrderSequence(sequence, expectedSequence, type, correlationId) {
+  if (!SEQUENCE_GAP_WARNING_ENABLED) {
+    return;
+  }
+
+  console.warn('[Sidebar] PORT_MESSAGE_OUT_OF_ORDER:', {
+    timestamp: Date.now(),
+    type,
+    correlationId: correlationId || null,
+    expectedSequence,
+    actualSequence: sequence,
+    gap: sequence - expectedSequence,
+    totalGapsDetected: _sequenceGapsDetected,
+    message: `Expected sequence ${expectedSequence}, received ${sequence}`,
+    recoveryAction: 'requesting_full_state_sync'
+  });
+}
+
+/**
+ * Update last received sequence number
+ * v1.6.4.21 - FIX Code Health: Extracted from _checkMessageSequence
+ * @private
+ * @param {number} sequence - New sequence number
+ */
+function _updateLastReceivedSequence(sequence) {
+  if (sequence > _lastReceivedSequence) {
+    _lastReceivedSequence = sequence;
+  }
+}
+
+/**
+ * Trigger recovery from sequence gap by requesting full state sync
+ * v1.6.4.0 - FIX Issue #13: Request full state sync to recover from sequence gaps
+ * @private
+ * @param {string} type - Message type that triggered gap detection
+ * @param {string|null} correlationId - Correlation ID for logging
+ */
+function _triggerSequenceGapRecovery(type, correlationId) {
+  console.log('[Sidebar] SEQUENCE_GAP_RECOVERY_TRIGGERED:', {
+    timestamp: Date.now(),
+    triggeringMessageType: type,
+    correlationId: correlationId || null,
+    totalGapsDetected: _sequenceGapsDetected,
+    action: 'requesting_full_state_sync'
+  });
+
+  // Request full state sync to ensure we have consistent state
+  requestAllQuickTabsViaPort();
 }
 
 /**
@@ -970,6 +1553,12 @@ function connectToBackground() {
     currentHeartbeatInterval = HEARTBEAT_INTERVAL_MS;
 
     // v1.6.3.6-v12 - FIX Issue #2, #4: Start heartbeat mechanism
+    // v1.6.4.0 - FIX Issue #14: Explicitly restart heartbeat after reconnection
+    console.log('[Manager] Starting heartbeat after reconnection', {
+      timestamp: Date.now(),
+      previousHeartbeatState: heartbeatIntervalId ? 'running' : 'stopped',
+      interval: currentHeartbeatInterval
+    });
     startHeartbeat();
 
     // v1.6.4.0 - FIX Issue E: Request full state sync after reconnection
@@ -3861,7 +4450,14 @@ function _markEventReceived() {
 // v1.6.3.6-v12 - FIX Issue #4: Also stop heartbeat on unload
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
+// v1.6.4.0 - FIX Issue #11: Also disconnect quickTabsPort on unload
 window.addEventListener('unload', () => {
+  console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
+    timestamp: Date.now(),
+    hasBackgroundPort: !!backgroundPort,
+    hasQuickTabsPort: !!quickTabsPort
+  });
+
   // v1.6.3.6-v12 - FIX Issue #4: Stop heartbeat before disconnecting
   stopHeartbeat();
 
@@ -3870,6 +4466,21 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
   _stopCacheStalenessMonitor();
+
+  // v1.6.4.0 - FIX Issue #11: Disconnect quickTabsPort on unload
+  if (quickTabsPort) {
+    console.log('[Sidebar] PORT_CLEANUP: Disconnecting quickTabsPort');
+    try {
+      quickTabsPort.disconnect();
+    } catch (_err) {
+      // Expected: Port may already be disconnected if background unloaded first
+      // This is normal during browser shutdown or extension reload
+      console.log(
+        '[Sidebar] PORT_CLEANUP: quickTabsPort already disconnected (expected during shutdown)'
+      );
+    }
+    quickTabsPort = null;
+  }
 
   if (backgroundPort) {
     logPortLifecycle('unload', { reason: 'window-unload' });
@@ -3882,6 +4493,9 @@ window.addEventListener('unload', () => {
     clearTimeout(pending.timeout);
   }
   pendingAcks.clear();
+
+  // v1.6.4.0 - FIX Issue #11: Clear pending operation timestamps
+  _quickTabPortOperationTimestamps.clear();
 });
 
 /**
@@ -6502,12 +7116,47 @@ function _logPreActionState({ clearedIds, originTabIds }) {
 }
 
 /**
- * Send COORDINATED_CLEAR_ALL_QUICK_TABS message to background
+ * Send CLOSE_ALL_QUICK_TABS message to background via port
+ * v1.6.4.0 - FIX Issue #15: Use port messaging for Close All operation
  * @private
  * @returns {Promise<Object>} Response from background
  */
 function _sendClearAllMessage() {
-  console.log('[Manager] Close All: Dispatching COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
+  console.log('[Manager] Close All: Dispatching CLOSE_ALL_QUICK_TABS via port...', {
+    portConnected: !!quickTabsPort,
+    timestamp: Date.now()
+  });
+
+  // v1.6.4.0 - FIX Issue #15: Use port messaging (Option 4 architecture)
+  if (quickTabsPort) {
+    const correlationId = _generatePortCorrelationId();
+    const sentAt = Date.now();
+
+    // Track operation for roundtrip calculation
+    _quickTabPortOperationTimestamps.set('close-all', {
+      sentAt,
+      messageType: 'CLOSE_ALL_QUICK_TABS',
+      correlationId
+    });
+
+    quickTabsPort.postMessage({
+      type: 'CLOSE_ALL_QUICK_TABS',
+      timestamp: sentAt,
+      correlationId
+    });
+
+    console.log('[Sidebar] CLOSE_ALL_QUICK_TABS sent via port:', {
+      correlationId,
+      timestamp: sentAt
+    });
+
+    // Return a promise that resolves after a short delay
+    // The actual state update will come via STATE_CHANGED message
+    return Promise.resolve({ success: true, method: 'port', correlationId });
+  }
+
+  // Fallback to runtime.sendMessage if port not connected
+  console.warn('[Manager] Close All: Port not connected, falling back to runtime.sendMessage');
   return browser.runtime.sendMessage({
     action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
   });

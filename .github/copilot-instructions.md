@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v5  
+**Version:** 1.6.3.12-v6  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,22 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
+**v1.6.3.12-v6 Features (NEW) - Manager Sync + Port Resilience:**
+
+- **storage.onChanged Fix** - Checks `'local'` area instead of `'session'` (MV2)
+- **Close Minimized Fix** - Properly triggers state sync to Manager
+- **Close All Handler** - `CLOSE_ALL_QUICK_TABS` message type implemented
+- **Tab Closure Detection** - Manager receives `ORIGIN_TAB_CLOSED` messages
+- **Defensive Port Handlers** - All handlers have input validation
+- **Initial State Request** - Sidebar requests state on first load
+- **Sidebar Cleanup** - Explicit port/timer cleanup on unload
+- **Heartbeat Restart** - Properly restarts after reconnection
+- **Sequence Tracking** - `_lastReceivedSequence` for FIFO ordering resilience
+- **Message Validation** - MessageRouter has centralized schema validation
+- **Port Circuit Breaker** - Max 10 reconnect attempts with exponential backoff
+- **Code Health** - quick-tabs-manager.js improved from 7.62 to 9.09
+
+**v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue:**
 
 - **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
 - **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
@@ -34,26 +49,16 @@
 - **Error Type Discrimination** - API unavailable vs quota vs transient
 - **Unified Container Validation** - `_validateContainerForOperation()` helper
 
-**v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness:**
+**v1.6.3.12-v4 Features - storage.session Removal:**
 
-- **storage.session API Removal** - All `browser.storage.session` calls replaced
-  with `browser.storage.local` for Firefox MV2 compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
-- **Cache Staleness Detection** - 30s warning, 60s auto-sync
-- **Code Health** - SyncStorageAdapter refactored to 10.0
+- **storage.session Removal** - Uses `storage.local` + startup cleanup for MV2
+- **Cache Staleness** - 30s warning, 60s auto-sync
 
-**v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps:**
+**v1.6.3.12-v3 Features - Critical Bug Fixes:**
 
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs,
-  health monitoring, write queue, debounce timing, end-to-end sync
+- **Container ID Resolution** - CreateHandler queries Identity system
+- **Manager Refresh** - UICoordinator notifies sidebar via STATE_CHANGED
 - **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-- **Code Health** - background.js 9.09, quick-tabs-manager.js 9.09, index.js
-  10.0
 
 **v1.6.3.12-v2 Features - Port Diagnostics:**
 
@@ -128,59 +133,45 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v5 Patterns (Current)
+### v1.6.3.12-v6 Patterns (Current)
 
-- **Circuit Breaker** - Trips after 5 failed transactions, recovers via test
-  write every 30s
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s via
-  `TIMEOUT_BACKOFF_DELAYS`
-- **Post-Failure Delay** - 5s (`POST_FAILURE_MIN_DELAY_MS`) before next dequeue
-- **Priority Queue** - `QUEUE_PRIORITY` enum for write ordering (HIGH > MEDIUM >
-  LOW)
-- **Atomic Z-Index** - `saveZIndexCounterWithAck()` persists with ACK
-  confirmation
+- **Sequence Tracking** - `_lastReceivedSequence` tracks message order
+- **Port Circuit Breaker** - `_quickTabsPortCircuitBreakerTripped` flag
+- **Factory Patterns** - `_createStateUpdateHandler()`, `_createAckHandler()`
+- **Defensive Handlers** - Input validation in all port message handlers
+- **Close All Handler** - `CLOSE_ALL_QUICK_TABS` in background port handler
+- **Tab Closure Notify** - `ORIGIN_TAB_CLOSED` sent to sidebar on tab close
+- **storage.onChanged** - Checks `'local'` area (not `'session'`) for MV2
+
+### v1.6.3.12-v5 Patterns
+
+- **Circuit Breaker** - Trips after 5 failures, recovers via test write (30s)
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW)
 - **Rolling Heartbeat** - Window of 5 responses for retry decisions
-- **Error Discrimination** - API unavailable vs quota exceeded vs transient
-  errors
-- **Storage Backend State** - `currentStorageBackend` tracks active storage API
 - **Container Validation** - Unified `_validateContainerForOperation()` helper
 
 ### v1.6.3.12-v4 Patterns
 
-- **storage.local Only** - `browser.storage.session` REMOVED, uses
-  `storage.local`
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior
-- **Port Disconnect lastError** - Capture immediately on first line of handler
-- **Cache Staleness** - 30s warning, 60s auto-sync via
-  `setInterval(checkCacheStaleness, 10000)`
-- **Correlation ID FIFO** - Full propagation with documented FIFO ordering
-  assumption
-- **SyncStorageAdapter 10.0** - Refactored from 8.91 to 10.0 Code Health
+- **storage.local Only** - `browser.storage.session` REMOVED
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` for session-only behavior
+- **Cache Staleness** - 30s warning, 60s auto-sync
 
 ### v1.6.3.12-v3 Patterns
 
-- **Container ID Resolution** - Identity system via `getWritingContainerId()` at
-  creation
-- **Context Detection** - Proper `TAB_ID_CALLER_CONTEXT.CONTENT_SCRIPT` context
+- **Container ID Resolution** - Identity system via `getWritingContainerId()`
 - **Manager Refresh** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps Fixed** - Port lifecycle, correlation IDs, health monitoring
-- **Test Bridge API** - Container verification methods, Manager state API
-- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
+- **Test Bridge API** - Container verification, Manager state API
 
 ### v1.6.3.12-v2 Patterns
 
-- **Container ID Priority** - Identity context takes priority over explicit
-  options
 - **Port Messaging PRIMARY** - storage.onChanged is fallback, not primary sync
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK
-  timing
 
 ### v1.6.3.12 Patterns
 
 - **Option 4 Architecture** - Background script in-memory storage
 - **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
-- **Push Notifications** - Background → Sidebar via `STATE_CHANGED`
 
 ### Previous Version Patterns (Consolidated)
 
@@ -188,7 +179,7 @@ const quickTabsSessionState = {
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix, helper methods
 - **v1.6.3.10:** tabs.sendMessage, storage.onChanged, unified barrier
 
-### Key Timing Constants (v1.6.3.12-v5+)
+### Key Timing Constants (v1.6.3.12-v6+)
 
 | Constant                                | Value | Purpose                            |
 | --------------------------------------- | ----- | ---------------------------------- |
@@ -202,6 +193,7 @@ const quickTabsSessionState = {
 | `MESSAGE_TIMEOUT_MS`                    | 5000  | Message timeout                    |
 | `CACHE_STALENESS_ALERT_MS`              | 30000 | Warn if no sync for 30s            |
 | `CACHE_STALENESS_EMERGENCY_MS`          | 60000 | Auto-request sync after 60s        |
+| `PORT_RECONNECT_MAX_ATTEMPTS`           | 10    | Max port reconnection attempts     |
 
 ---
 
@@ -239,7 +231,11 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v5 (NEW):** `[CIRCUITBREAKER_TRIPPED]` `[CIRCUITBREAKER_RECOVERED]`
+**v1.6.3.12-v6 (NEW):** `[PORT_RECONNECT_ATTEMPT]` `[PORT_CIRCUIT_BREAKER]`
+`[SEQUENCE_TRACKING]` `[CLOSE_ALL_HANDLER]` `[TAB_CLOSED_NOTIFY]`
+`[SIDEBAR_CLEANUP]` `[HEARTBEAT_RESTART]` `[MESSAGE_VALIDATION]`
+
+**v1.6.3.12-v5:** `[CIRCUITBREAKER_TRIPPED]` `[CIRCUITBREAKER_RECOVERED]`
 `[CIRCUITBREAKER_TEST_WRITE]` `[TIMEOUT_BACKOFF_APPLIED]` `[FALLBACK_ACTIVATED]`
 `[FALLBACK_DEACTIVATED]` `[TIMEOUT_COUNTER_RESET]` `[STORAGE_RECOVERY]`
 `[QUEUE_ENTRY_EVICTED]` `[HEARTBEAT_STATUS_CHECK]` `[Z_INDEX_PERSIST_FAILED]`
@@ -264,7 +260,8 @@ machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
 error telemetry, originTabId resolution, container isolation, z-index recycling,
 port messaging, factory patterns, lookup tables, generic wrapper functions,
 in-memory state, push notifications, port roundtrip tracking, circuit breaker,
-priority queue, timeout backoff, rolling heartbeat window.
+priority queue, timeout backoff, rolling heartbeat window, sequence number
+tracking, port reconnection circuit breaker, defensive input validation.
 
 ---
 
@@ -338,7 +335,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/quick-tabs-manager.js`   | Port-based queries to background     |
 | `src/content.js`                  | Port messaging for Quick Tabs        |
 
-### Storage (v1.6.3.12-v5+)
+### Storage (v1.6.3.12-v6+)
 
 **In-Memory State:** `quickTabsSessionState` in background.js  
 **Persistence:** `browser.storage.local` with startup cleanup
@@ -358,9 +355,10 @@ startup cleanup for session-only behavior.
 
 **Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
 `SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`,
-`SIDEBAR_RESTORE_QUICK_TAB`
+`SIDEBAR_RESTORE_QUICK_TAB`, `CLOSE_ALL_QUICK_TABS`
 
-**Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`
+**Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`,
+`ORIGIN_TAB_CLOSED`
 
 ---
 

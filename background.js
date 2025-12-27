@@ -3328,22 +3328,23 @@ browser.storage.onChanged.addListener((changes, areaName) => {
     timestamp: Date.now()
   });
 
-  // v1.6.4.18 - FIX: Process session storage for Quick Tabs (session-only)
-  // Also process local for settings (which still use storage.local)
-  if (areaName !== 'session' && areaName !== 'local') {
+  // v1.6.3.12-v6 - FIX: Process local storage for Quick Tabs (Firefox MV2 - storage.session NOT available)
+  // Quick Tabs use storage.local with explicit startup cleanup for session-scoped behavior
+  if (areaName !== 'local') {
     return;
   }
 
-  // Handle Quick Tab state changes (now in session storage)
-  // v1.6.4.18 - Quick Tabs are now session-only
-  if (changes.quick_tabs_state_v2 && areaName === 'session') {
+  // v1.6.3.12-v6 - FIX Issue #1, #4: Handle Quick Tab state changes (storage.local - NOT session)
+  // BUG FIX: Previous code checked for areaName === 'session' which never fires in Firefox MV2
+  // because browser.storage.session API does not exist. Changed to 'local' to match actual storage usage.
+  if (changes.quick_tabs_state_v2 && areaName === 'local') {
     console.log(
-      '[Background][StorageListener] v1.6.4.18 PROCESSING: quick_tabs_state_v2 change (session-only)'
+      '[Background][StorageListener] v1.6.3.12-v6 PROCESSING: quick_tabs_state_v2 change (storage.local)'
     );
     _handleQuickTabStateChange(changes);
   }
 
-  // Handle settings changes (still in local storage)
+  // Handle settings changes (also in local storage)
   if (changes.quick_tab_settings && areaName === 'local') {
     console.log('[Background][StorageListener] v1.6.3.10-v6 PROCESSING: quick_tab_settings change');
     _handleSettingsChange(changes);
@@ -3351,7 +3352,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
 });
 
 console.log(
-  '[Background][StorageListener] v1.6.4.18 Listener registered successfully (session-only)',
+  '[Background][StorageListener] v1.6.3.12-v6 Listener registered successfully (storage.local - Firefox MV2 compatible)',
   {
     timestamp: Date.now()
   }
@@ -5124,6 +5125,11 @@ async function handleCloseMinimizedTabsCommand() {
     closedCount: closedIds.length,
     verified: writeResult.verified
   });
+
+  // v1.6.4.20 - FIX Issue #3: Notify sidebar of state change after closing minimized tabs
+  // This ensures the Manager UI updates immediately to reflect the removed tabs
+  notifySidebarOfStateChange();
+
   return {
     success: true,
     closedCount: closedIds.length,
@@ -5883,7 +5889,9 @@ const _sidebarMessageHandlers = {
   SIDEBAR_READY: (_msg, port) => handleSidebarReady(port),
   CLOSE_QUICK_TAB: (msg, port) => handleSidebarCloseQuickTab(msg.quickTabId, port),
   MINIMIZE_QUICK_TAB: (msg, port) => handleSidebarMinimizeQuickTab(msg.quickTabId, port),
-  RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port)
+  RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port),
+  // v1.6.4.0 - FIX Issue #15: Add Close All Quick Tabs handler
+  CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port)
 };
 
 /**
@@ -6174,6 +6182,72 @@ function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
 }
 
 /**
+ * Handle sidebar request to close all Quick Tabs
+ * v1.6.4.0 - FIX Issue #15: Implement Close All button via port messaging
+ * @param {Object} msg - Message from sidebar
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
+  const handlerStartTime = performance.now();
+  // Use msg.correlationId if available, otherwise generate a new one
+  const correlationId = msg.correlationId || `close-all-${Date.now()}`;
+
+  console.log('[Background] SIDEBAR_CLOSE_ALL_QUICK_TABS:', {
+    correlationId,
+    timestamp: Date.now(),
+    currentQuickTabCount: getAllQuickTabsFromMemory().length
+  });
+
+  // Count Quick Tabs before clearing
+  const allQuickTabs = getAllQuickTabsFromMemory();
+  const closedCount = allQuickTabs.length;
+  const quickTabIds = allQuickTabs.map(qt => qt.id);
+
+  // Notify all content scripts to close their Quick Tabs
+  for (const quickTab of allQuickTabs) {
+    const ownerTabId = quickTab.originTabId;
+    if (ownerTabId) {
+      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+    }
+  }
+
+  // Clear all Quick Tabs from session state
+  quickTabsSessionState.quickTabsByTab = {};
+
+  // Clear global state
+  globalQuickTabState.tabs = [];
+  globalQuickTabState.lastUpdate = Date.now();
+  globalQuickTabState.saveId = `close-all-${Date.now()}`;
+
+  // Clear Quick Tab host tracking
+  quickTabHostTabs.clear();
+
+  // Send ACK to sidebar
+  if (sidebarPort) {
+    sidebarPort.postMessage({
+      type: 'CLOSE_ALL_QUICK_TABS_ACK',
+      success: true,
+      closedCount,
+      quickTabIds,
+      correlationId,
+      timestamp: Date.now()
+    });
+  }
+
+  // Notify sidebar of state change (empty state)
+  notifySidebarOfStateChange();
+
+  // Log completion
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] CLOSE_ALL_QUICK_TABS completed:', {
+    correlationId,
+    closedCount,
+    durationMs: durationMs.toFixed(2),
+    globalTabsRemaining: globalQuickTabState.tabs.length
+  });
+}
+
+/**
  * Update Quick Tab minimized state in session state
  * v1.6.3.12-v2 - FIX Code Health: Use shared session modifier
  * @private
@@ -6409,15 +6483,30 @@ function handleTabRemoved(tabId, removeInfo) {
     quickTabHostTabs.delete(qt.id);
   }
 
-  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
-  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
-  broadcastToAllPorts({
+  // v1.6.4.20 - FIX Issue #12: Build message object once to reduce duplication
+  const originTabClosedMessage = {
     type: 'ORIGIN_TAB_CLOSED',
     originTabId: tabId,
     orphanedQuickTabIds: orphanedIds,
     orphanedCount: orphanedIds.length,
     timestamp: operationTimestamp
-  });
+  };
+
+  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
+  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
+  broadcastToAllPorts(originTabClosedMessage);
+
+  // v1.6.4.20 - FIX Issue #12: Also notify sidebar via quickTabsSessionState.sidebarPort
+  // The broadcastToAllPorts function only sends to ports in portRegistry,
+  // but the sidebar's quick-tabs-port is stored separately in quickTabsSessionState
+  if (quickTabsSessionState.sidebarPort) {
+    try {
+      quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
+      console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
+    } catch (err) {
+      console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
+    }
+  }
 
   // Also broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
   broadcastToAllPorts({
