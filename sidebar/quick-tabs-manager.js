@@ -2,6 +2,16 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.12-v9 COMPREHENSIVE LOGGING & OPTIMISTIC UI ===
+ * v1.6.3.12-v9 - FIX Issues from log-analysis-bugs-v1.6.3.12.md:
+ *   - Issue #1: Manager buttons now have comprehensive click logging
+ *   - Issue #2: Close All button has detailed logging via closeAllQuickTabsViaPort()
+ *   - Issue #3: Close Minimized button has detailed logging via closeMinimizedQuickTabsViaPort()
+ *   - Issue #4: Manager updates logged via enhanced scheduleRender() and STATE_CHANGED handling
+ *   - Issue #8: Button DOM creation logged in _createTabActions()
+ *   - Issue #10: Minimize/restore operations logged in *ViaPort() functions
+ *   - Button Architecture: Implemented optimistic UI updates for instant feedback
+ *
  * === v1.6.3.12-v5 PORT MESSAGING ARCHITECTURE ===
  * PRIMARY SYNC: Port messaging ('quick-tabs-port') - Option 4 Architecture
  *   - Background script memory is SINGLE SOURCE OF TRUTH (quickTabsSessionState)
@@ -1367,28 +1377,82 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
 /**
  * Request Quick Tab close via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #1: Add comprehensive logging for button operations
  * @param {string} quickTabId - Quick Tab ID to close
  */
 function closeQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] CLOSE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('CLOSE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] CLOSE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request Quick Tab minimize via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #10: Add comprehensive logging for minimize operations
  * @param {string} quickTabId - Quick Tab ID to minimize
  */
 function minimizeQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] MINIMIZE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('MINIMIZE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] MINIMIZE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request Quick Tab restore via port
  * v1.6.3.12-v2 - FIX Code Health: Use generic wrapper
+ * v1.6.3.12-v9 - FIX Issue #10: Add comprehensive logging for restore operations
  * @param {string} quickTabId - Quick Tab ID to restore
  */
 function restoreQuickTabViaPort(quickTabId) {
-  return _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
+  const timestamp = Date.now();
+  console.log('[Manager] RESTORE_QUICK_TAB_VIA_PORT_CALLED:', {
+    quickTabId,
+    timestamp,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped
+  });
+
+  const result = _executeSidebarPortOperation('RESTORE_QUICK_TAB', { quickTabId });
+
+  console.log('[Manager] RESTORE_QUICK_TAB_VIA_PORT_RESULT:', {
+    quickTabId,
+    success: result,
+    timestamp: Date.now(),
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
@@ -1402,29 +1466,63 @@ function requestAllQuickTabsViaPort() {
 /**
  * Request close all Quick Tabs via port
  * v1.6.4 - FIX Issue #2: Implement bulk close operation for Manager header button
+ * v1.6.3.12-v9 - FIX Issue #2: Add comprehensive logging for Close All operation
  * @returns {boolean} Success status
  */
 function closeAllQuickTabsViaPort() {
-  console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_SENT:', {
-    timestamp: Date.now(),
-    currentQuickTabCount: _allQuickTabsFromPort.length
+  const timestamp = Date.now();
+  const quickTabCount = _allQuickTabsFromPort.length;
+
+  console.log('[Manager] CLOSE_ALL_QUICK_TABS_VIA_PORT_CALLED:', {
+    timestamp,
+    currentQuickTabCount: quickTabCount,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id)
   });
-  return _executeSidebarPortOperation('CLOSE_ALL_QUICK_TABS');
+
+  const result = _executeSidebarPortOperation('CLOSE_ALL_QUICK_TABS');
+
+  console.log('[Manager] CLOSE_ALL_QUICK_TABS_VIA_PORT_RESULT:', {
+    success: result,
+    timestamp: Date.now(),
+    quickTabsToClose: quickTabCount,
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 /**
  * Request close only minimized Quick Tabs via port
  * v1.6.4 - FIX Issue #2: Implement bulk close minimized operation for Manager header button
+ * v1.6.3.12-v9 - FIX Issue #3: Add comprehensive logging for Close Minimized operation
  * @returns {boolean} Success status
  */
 function closeMinimizedQuickTabsViaPort() {
-  const minimizedCount = _allQuickTabsFromPort.filter(qt => qt.minimized).length;
-  console.log('[Sidebar] CLOSE_MINIMIZED_QUICK_TABS_SENT:', {
-    timestamp: Date.now(),
+  const timestamp = Date.now();
+  const minimizedTabs = _allQuickTabsFromPort.filter(qt => qt.minimized);
+  const minimizedCount = minimizedTabs.length;
+
+  console.log('[Manager] CLOSE_MINIMIZED_QUICK_TABS_VIA_PORT_CALLED:', {
+    timestamp,
     minimizedCount,
-    totalQuickTabCount: _allQuickTabsFromPort.length
+    totalQuickTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort,
+    portCircuitBreakerTripped: _quickTabsPortCircuitBreakerTripped,
+    minimizedQuickTabIds: minimizedTabs.map(qt => qt.id)
   });
-  return _executeSidebarPortOperation('CLOSE_MINIMIZED_QUICK_TABS');
+
+  const result = _executeSidebarPortOperation('CLOSE_MINIMIZED_QUICK_TABS');
+
+  console.log('[Manager] CLOSE_MINIMIZED_QUICK_TABS_VIA_PORT_RESULT:', {
+    success: result,
+    timestamp: Date.now(),
+    minimizedTabsToClose: minimizedCount,
+    roundtripStarted: result
+  });
+
+  return result;
 }
 
 // ==================== END v1.6.3.12 OPTION 4 QUICK TABS PORT ====================
@@ -2595,9 +2693,20 @@ function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId
  * Log when render is scheduled
  * v1.6.3.12-v7 - Extracted for complexity reduction
  * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * v1.6.3.12-v9 - FIX Issue #4: Enhanced logging for Manager update tracking
  * @private
  */
 function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
+  const tabCount = quickTabsState?.tabs?.length ?? 0;
+  const minimizedCount = quickTabsState?.tabs?.filter(t => t.minimized)?.length ?? 0;
+
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ RENDER_SCHEDULED');
+  console.log('[Manager] │ Source:', source);
+  console.log('[Manager] │ TabCount:', tabCount, '(minimized:', minimizedCount + ')');
+  console.log('[Manager] │ CorrelationId:', correlationId || 'none');
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
   console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
     timestamp: scheduleTimestamp,
     source,
@@ -2611,6 +2720,8 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
     correlationId: correlationId || null,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
+    tabCount,
+    minimizedCount,
     timestamp: Date.now()
   });
 }
@@ -5937,6 +6048,7 @@ function _createTabInfo(tab, isMinimized) {
 /**
  * Create tab action buttons
  * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
+ * v1.6.3.12-v9 - FIX Issue #8: Add comprehensive logging for button DOM creation
  * @param {Object} tab - Quick Tab data
  * @param {boolean} isMinimized - Whether tab is minimized
  * @returns {HTMLElement} Actions container
@@ -5947,19 +6059,41 @@ function _createTabActions(tab, isMinimized) {
 
   const context = _buildTabActionContext(tab, isMinimized);
 
+  // v1.6.3.12-v9 - FIX Issue #8: Log button creation for this Quick Tab
+  console.log('[Manager] BUTTON_DOM_CREATION:', {
+    quickTabId: tab.id,
+    isMinimized,
+    isOrphaned: context.isOrphaned,
+    isRestorePending: context.isRestorePending,
+    timestamp: Date.now()
+  });
+
+  const buttonsCreated = [];
+
   if (!isMinimized) {
     _appendActiveTabActions(actions, tab, context);
+    buttonsCreated.push('goToTab', 'minimize');
   } else {
     _appendMinimizedTabActions(actions, tab, context);
+    buttonsCreated.push('restore');
   }
 
   // Adopt button for orphaned tabs
   if (context.isOrphaned && currentBrowserTabId) {
     _appendAdoptButton(actions, tab);
+    buttonsCreated.push('adopt');
   }
 
   // Close button (always available)
   _appendCloseButton(actions, tab);
+  buttonsCreated.push('close');
+
+  // v1.6.3.12-v9 - FIX Issue #8: Log which buttons were created
+  console.log('[Manager] BUTTONS_CREATED:', {
+    quickTabId: tab.id,
+    buttons: buttonsCreated,
+    buttonCount: buttonsCreated.length
+  });
 
   return actions;
 }
@@ -6148,88 +6282,286 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
 }
 
 /**
- * Setup event listeners for user interactions
+ * Apply optimistic UI update for immediate visual feedback
+ * v1.6.3.12-v9 - FIX Button Architecture: Implement Phase 1 of two-phase architecture
+ *   - Phase 1: Update DOM immediately (this function)
+ *   - Phase 2: Send port message to background (done by caller)
+ *
+ * This provides instant visual feedback while port message is in flight.
+ * If port message fails, the next STATE_CHANGED will reconcile.
+ *
+ * @private
+ * @param {string} action - The action being performed (minimize, restore, close)
+ * @param {string} quickTabId - The Quick Tab ID being acted upon
+ * @param {HTMLButtonElement} button - The button element clicked
  */
-function setupEventListeners() {
-  // Close Minimized button
-  document.getElementById('closeMinimized').addEventListener('click', async () => {
-    console.log('[Manager] BUTTON_CLICKED: closeMinimized button');
-    await closeMinimizedTabs();
+function _applyOptimisticUIUpdate(action, quickTabId, button) {
+  const timestamp = Date.now();
+
+  console.log('[Manager] OPTIMISTIC_UI_UPDATE:', {
+    action,
+    quickTabId,
+    timestamp,
+    phase: 'applying_immediate_visual_feedback'
   });
 
-  // Close All button
-  document.getElementById('closeAll').addEventListener('click', async () => {
-    console.log('[Manager] BUTTON_CLICKED: closeAll button');
-    await closeAllTabs();
-  });
+  // Find the Quick Tab item in the DOM
+  const quickTabItem = button.closest('.quick-tab-item');
+  if (!quickTabItem) {
+    console.warn('[Manager] OPTIMISTIC_UI_UPDATE_FAILED: Could not find quick-tab-item parent', {
+      action,
+      quickTabId
+    });
+    return;
+  }
 
-  // Delegated event listener for Quick Tab actions
-  // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Add detailed logging for button clicks
-  containersList.addEventListener('click', async e => {
-    const button = e.target.closest('button[data-action]');
-    if (!button) {
-      // v1.6.3.11-v11 - FIX Issue #47: Log when click doesn't match a button
-      console.log('[Manager] CLICK_NOT_BUTTON:', {
-        tagName: e.target.tagName,
-        className: e.target.className,
-        id: e.target.id
-      });
-      return;
+  try {
+    switch (action) {
+      case 'minimize':
+        // Add visual indicator that minimize is in progress
+        quickTabItem.classList.add('minimizing');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Minimizing...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', { quickTabId, classes: 'minimizing, operation-pending' });
+        break;
+
+      case 'restore':
+        // Add visual indicator that restore is in progress
+        quickTabItem.classList.add('restoring');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Restoring...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', { quickTabId, classes: 'restoring, operation-pending' });
+        break;
+
+      case 'close':
+        // Add fade-out animation for close
+        quickTabItem.classList.add('closing');
+        quickTabItem.classList.add('operation-pending');
+        button.disabled = true;
+        button.title = 'Closing...';
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', { quickTabId, classes: 'closing, operation-pending' });
+        break;
+
+      default:
+        // No optimistic update for other actions
+        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', { action, quickTabId });
+        break;
     }
-
-    const action = button.dataset.action;
-    const quickTabId = button.dataset.quickTabId;
-    const tabId = button.dataset.tabId;
-
-    // v1.6.3.11-v11 - FIX Issue #47 Problem 4: Log button click with all relevant data
-    console.log('[Manager] BUTTON_CLICKED:', {
+  } catch (err) {
+    console.error('[Manager] OPTIMISTIC_UI_UPDATE_ERROR:', {
       action,
       quickTabId,
-      tabId,
-      buttonText: button.textContent,
-      buttonTitle: button.title,
-      timestamp: new Date().toISOString()
+      error: err.message
     });
+  }
+}
 
-    // v1.6.3.12-v7 - FIX Bug #2: Use port-based messaging for Quick Tab operations
-    // The old functions (minimizeQuickTab, restoreQuickTab, closeQuickTab) used
-    // _sendMessageWithRetry() which sends messages to content scripts via tabs.sendMessage.
-    // This doesn't work because Manager is a sidebar, not a content script.
-    // The correct approach is to use port messaging to background, which then
-    // coordinates with the appropriate content script.
-    // Note: ViaPort functions return boolean synchronously (fire-and-forget pattern)
-    // The actual response comes via port message handlers asynchronously.
-    switch (action) {
-      case 'goToTab':
-        await goToTab(parseInt(tabId));
-        break;
-      case 'minimize':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        minimizeQuickTabViaPort(quickTabId);
-        break;
-      case 'restore':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        restoreQuickTabViaPort(quickTabId);
-        break;
-      case 'close':
-        // v1.6.3.12-v7 - FIX Bug #2: Use port messaging instead of content script messaging
-        closeQuickTabViaPort(quickTabId);
-        break;
-      // v1.6.3.7-v1 - FIX ISSUE #8: Handle adopt to current tab action
-      case 'adoptToCurrentTab':
-        await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-        break;
-      default:
-        // v1.6.3.11-v11 - FIX Issue #47: Log unknown actions
-        console.warn('[Manager] UNKNOWN_ACTION:', {
-          action,
-          quickTabId,
-          tabId
-        });
-    }
+/**
+ * Handle Close Minimized button click
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+async function _handleCloseMinimizedButtonClick() {
+  const clickTimestamp = Date.now();
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ HEADER_BUTTON_CLICKED: closeMinimized');
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_MINIMIZED_BUTTON_CLICK:', {
+    buttonId: 'closeMinimized',
+    timestamp: clickTimestamp,
+    minimizedTabCount: _allQuickTabsFromPort.filter(qt => qt.minimized).length,
+    totalTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
   });
 
-  // v1.6.3.11-v11 - FIX Issue #47: Log event listener setup completion
+  await closeMinimizedTabs();
+
+  console.log('[Manager] CLOSE_MINIMIZED_BUTTON_CLICK_COMPLETE:', {
+    timestamp: Date.now(),
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+/**
+ * Handle Close All button click
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+async function _handleCloseAllButtonClick() {
+  const clickTimestamp = Date.now();
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ HEADER_BUTTON_CLICKED: closeAll');
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_ALL_BUTTON_CLICK:', {
+    buttonId: 'closeAll',
+    timestamp: clickTimestamp,
+    totalTabCount: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
+  });
+
+  await closeAllTabs();
+
+  console.log('[Manager] CLOSE_ALL_BUTTON_CLICK_COMPLETE:', {
+    timestamp: Date.now(),
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+/**
+ * Setup header buttons (Close Minimized, Close All)
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+function _setupHeaderButtons() {
+  const closeMinimizedBtn = document.getElementById('closeMinimized');
+  if (closeMinimizedBtn) {
+    closeMinimizedBtn.addEventListener('click', _handleCloseMinimizedButtonClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: closeMinimized button');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: closeMinimized button not found in DOM');
+  }
+
+  const closeAllBtn = document.getElementById('closeAll');
+  if (closeAllBtn) {
+    closeAllBtn.addEventListener('click', _handleCloseAllButtonClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: closeAll button');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: closeAll button not found in DOM');
+  }
+}
+
+/**
+ * Dispatch Quick Tab action based on button action type
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ * @param {string} action - The action type
+ * @param {string} quickTabId - The Quick Tab ID
+ * @param {string} tabId - The browser tab ID (for goToTab action)
+ * @param {HTMLButtonElement} button - The clicked button element
+ * @param {number} clickTimestamp - When the click occurred
+ */
+async function _dispatchQuickTabAction(action, quickTabId, tabId, button, clickTimestamp) {
+  switch (action) {
+    case 'goToTab':
+      console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
+      await goToTab(parseInt(tabId));
+      console.log('[Manager] ACTION_COMPLETE: goToTab', { tabId, durationMs: Date.now() - clickTimestamp });
+      break;
+    case 'minimize':
+      console.log('[Manager] ACTION_DISPATCH: minimize via port', { quickTabId, timestamp: Date.now() });
+      minimizeQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: minimize', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      break;
+    case 'restore':
+      console.log('[Manager] ACTION_DISPATCH: restore via port', { quickTabId, timestamp: Date.now() });
+      restoreQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: restore', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      break;
+    case 'close':
+      console.log('[Manager] ACTION_DISPATCH: close via port', { quickTabId, timestamp: Date.now() });
+      closeQuickTabViaPort(quickTabId);
+      console.log('[Manager] ACTION_SENT: close', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      break;
+    case 'adoptToCurrentTab':
+      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', { quickTabId, targetTabId: button.dataset.targetTabId, timestamp: Date.now() });
+      await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
+      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      break;
+    default:
+      console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
+  }
+}
+
+/**
+ * Handle delegated click on Quick Tab action buttons
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ * @param {Event} e - Click event
+ */
+async function _handleQuickTabActionClick(e) {
+  const button = e.target.closest('button[data-action]');
+  if (!button) {
+    // Only log if clicked element was a button without data-action (for debugging)
+    const clickedButton = e.target.closest('button');
+    if (clickedButton) {
+      console.log('[Manager] CLICK_NOT_ACTION_BUTTON:', {
+        tagName: e.target.tagName,
+        className: e.target.className,
+        id: e.target.id,
+        hasDataAction: !!clickedButton.dataset?.action
+      });
+    }
+    return;
+  }
+
+  const action = button.dataset.action;
+  const quickTabId = button.dataset.quickTabId;
+  const tabId = button.dataset.tabId;
+  const clickTimestamp = Date.now();
+
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ QUICK_TAB_ACTION_BUTTON_CLICKED');
+  console.log('[Manager] │ Action:', action);
+  console.log('[Manager] │ QuickTabId:', quickTabId);
+  console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] QUICK_TAB_BUTTON_CLICKED:', {
+    action,
+    quickTabId,
+    tabId,
+    buttonText: button.textContent,
+    buttonTitle: button.title,
+    buttonDisabled: button.disabled,
+    timestamp: clickTimestamp,
+    portConnected: !!quickTabsPort,
+    currentBrowserTabId
+  });
+
+  _applyOptimisticUIUpdate(action, quickTabId, button);
+  await _dispatchQuickTabAction(action, quickTabId, tabId, button, clickTimestamp);
+}
+
+/**
+ * Setup delegated click handler for Quick Tab action buttons
+ * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * @private
+ */
+function _setupQuickTabActionHandler() {
+  if (containersList) {
+    containersList.addEventListener('click', _handleQuickTabActionClick);
+    console.log('[Manager] EVENT_LISTENER_ATTACHED: containersList delegated click handler');
+  } else {
+    console.error('[Manager] EVENT_LISTENER_FAILED: containersList element not found');
+  }
+}
+
+/**
+ * Setup event listeners for user interactions
+ * v1.6.3.12-v9 - FIX Issue #1-3, #8: Add comprehensive logging for all button operations
+ *   - Log when header buttons (Close Minimized, Close All) are clicked
+ *   - Log before and after port operations are invoked
+ *   - Add optimistic UI updates for immediate visual feedback
+ */
+function setupEventListeners() {
+  const setupTimestamp = Date.now();
+
+  console.log('[Manager] SETUP_EVENT_LISTENERS_ENTRY:', {
+    timestamp: setupTimestamp,
+    containersListExists: !!containersList,
+    closeMinimizedBtnExists: !!document.getElementById('closeMinimized'),
+    closeAllBtnExists: !!document.getElementById('closeAll')
+  });
+
+  _setupHeaderButtons();
+  _setupQuickTabActionHandler();
+
   console.log('[Manager] EVENT_LISTENERS_SETUP_COMPLETE:', {
     timestamp: new Date().toISOString(),
     containersListElement: !!containersList,
@@ -6237,7 +6569,6 @@ function setupEventListeners() {
     closeAllElement: !!document.getElementById('closeAll')
   });
 
-  // v1.6.3.12 - Extracted to reduce setupEventListeners line count
   _setupStorageOnChangedListener();
 }
 
@@ -7113,7 +7444,21 @@ function _isCloseMinimizedSuccessful(response) {
 }
 
 function closeMinimizedTabs() {
-  console.log('[Manager] Close Minimized Tabs requested');
+  const timestamp = Date.now();
+  const minimizedTabs = _allQuickTabsFromPort.filter(qt => qt.minimized);
+
+  console.log('[Manager] ┌─────────────────────────────────────────────────────────');
+  console.log('[Manager] │ CLOSE_MINIMIZED_TABS function invoked');
+  console.log('[Manager] │ Minimized tabs count:', minimizedTabs.length);
+  console.log('[Manager] └─────────────────────────────────────────────────────────');
+
+  console.log('[Manager] CLOSE_MINIMIZED_TABS_INITIATED:', {
+    timestamp,
+    minimizedCount: minimizedTabs.length,
+    minimizedQuickTabIds: minimizedTabs.map(qt => qt.id),
+    totalQuickTabs: _allQuickTabsFromPort.length,
+    portConnected: !!quickTabsPort
+  });
 
   try {
     // v1.6.3.12-v8 - FIX Issue #1: Use port messaging via closeMinimizedQuickTabsViaPort()
@@ -7220,7 +7565,7 @@ async function closeAllTabs() {
   const startTime = Date.now();
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
-  console.log('[Manager] │ Close All button clicked');
+  console.log('[Manager] │ CLOSE_ALL_TABS function invoked');
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
   try {

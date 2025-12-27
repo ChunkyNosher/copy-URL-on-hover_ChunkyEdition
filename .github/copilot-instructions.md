@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v8  
+**Version:** 1.6.3.12-v9  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,23 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v8 Features (NEW) - Bulk Close + Circuit Breaker Auto-Reset:**
+**v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI:**
+
+- **Button Click Logging** - Comprehensive logging for all Manager buttons
+  (Close, Minimize, Restore, Close All, Close Minimized)
+- **Optimistic UI Updates** - Immediate visual feedback via
+  `_applyOptimisticUIUpdate()` before port message sent
+- **Port Operation Logging** - Enhanced logging in `closeQuickTabViaPort()`,
+  `minimizeQuickTabViaPort()`, `restoreQuickTabViaPort()`
+- **Bulk Operation Logging** - Detailed logging in `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Button DOM Creation Logging** - `_createTabActions()` logs which buttons are
+  created
+- **Render Scheduling Logging** - Enhanced `scheduleRender()` with tab counts
+- **Refactored Event Handlers** - `setupEventListeners()` extracted to helper
+  functions
+
+**v1.6.3.12-v8 Features - Bulk Close + Circuit Breaker Auto-Reset:**
 
 - **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
   `closeMinimizedQuickTabsViaPort()`
@@ -233,7 +249,15 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v8 (NEW):** `[CIRCUIT_BREAKER_AUTO_RESET_SCHEDULED]`
+**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:` `[Manager] QUICK_TAB_BUTTON_CLICKED:`
+`[Manager] ACTION_DISPATCH:` `[Manager] ACTION_SENT:` `[Manager] ACTION_COMPLETE:`
+`[Manager] OPTIMISTIC_UI_UPDATE:` `[Manager] OPTIMISTIC_UI_APPLIED:`
+`[Manager] BUTTON_DOM_CREATION:` `[Manager] BUTTONS_CREATED:`
+`[Manager] SETUP_EVENT_LISTENERS_ENTRY:` `[Manager] EVENT_LISTENER_ATTACHED:`
+`[Manager] CLOSE_MINIMIZED_BUTTON_CLICK:` `[Manager] CLOSE_ALL_BUTTON_CLICK:`
+`[Manager] RENDER_SCHEDULED:` `[Manager] *_VIA_PORT_CALLED:` `[Manager] *_VIA_PORT_RESULT:`
+
+**v1.6.3.12-v8:** `[CIRCUIT_BREAKER_AUTO_RESET_SCHEDULED]`
 `[CIRCUIT_BREAKER_AUTO_RESET]` `[Settings][INIT]`
 
 **v1.6.3.12-v7:** `[VALID_MESSAGE_ACTIONS]` `[QUICKTAB_REMOVED_HANDLER]`
@@ -270,7 +294,8 @@ port messaging, factory patterns, lookup tables, generic wrapper functions,
 in-memory state, push notifications, port roundtrip tracking, circuit breaker,
 priority queue, timeout backoff, rolling heartbeat window, sequence number
 tracking, port reconnection circuit breaker, defensive input validation, circuit
-breaker auto-reset, listener registration guards, message timeout protection.
+breaker auto-reset, listener registration guards, message timeout protection,
+optimistic UI updates.
 
 ---
 
