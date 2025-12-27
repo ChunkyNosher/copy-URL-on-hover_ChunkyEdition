@@ -628,8 +628,74 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
+  },
+  // v1.6.4.20 - FIX Issue #12: Handle ORIGIN_TAB_CLOSED message when a browser tab with Quick Tabs is closed
+  // This allows the Manager to detect orphaned Quick Tabs and update its UI accordingly
+  ORIGIN_TAB_CLOSED: msg => {
+    _handleOriginTabClosed(msg);
   }
 };
+
+/**
+ * Mark Quick Tabs as orphaned in local state
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity of ORIGIN_TAB_CLOSED handler
+ * @private
+ * @param {Array<string>} orphanedQuickTabIds - IDs of orphaned Quick Tabs
+ * @param {number} timestamp - Timestamp when tab was closed
+ */
+function _markQuickTabsAsOrphaned(orphanedQuickTabIds, timestamp) {
+  if (!orphanedQuickTabIds || !Array.isArray(orphanedQuickTabIds)) return;
+
+  const orphanedIds = new Set(orphanedQuickTabIds);
+  const currentTabs = quickTabsState?.tabs || [];
+
+  for (const tab of currentTabs) {
+    if (orphanedIds.has(tab.id)) {
+      tab.isOrphaned = true;
+      tab.orphanedAt = timestamp;
+    }
+  }
+}
+
+/**
+ * Handle ORIGIN_TAB_CLOSED message
+ * v1.6.4.20 - FIX Code Health: Extracted to reduce complexity
+ * v1.6.4.20 - FIX Code Review: Added input validation
+ * @private
+ * @param {Object} msg - Message from background
+ */
+function _handleOriginTabClosed(msg) {
+  // Input validation
+  if (!msg || typeof msg !== 'object') {
+    console.error('[Sidebar] ORIGIN_TAB_CLOSED_VALIDATION_ERROR: Message is not an object');
+    return;
+  }
+
+  if (typeof msg.originTabId !== 'number') {
+    console.warn('[Sidebar] ORIGIN_TAB_CLOSED_VALIDATION_WARN: originTabId is not a number', {
+      received: typeof msg.originTabId
+    });
+  }
+
+  const timestamp = msg.timestamp || Date.now();
+
+  console.log('[Sidebar] ORIGIN_TAB_CLOSED received:', {
+    originTabId: msg.originTabId,
+    orphanedCount: msg.orphanedCount || 0,
+    orphanedQuickTabIds: msg.orphanedQuickTabIds || [],
+    timestamp,
+    correlationId: msg?.correlationId || null
+  });
+
+  // Mark affected Quick Tabs as orphaned in local state
+  _markQuickTabsAsOrphaned(msg.orphanedQuickTabIds, timestamp);
+
+  // Request fresh state from background to ensure consistency
+  requestAllQuickTabsViaPort();
+
+  // Schedule re-render to update UI with orphan indicators
+  scheduleRender('origin-tab-closed', msg?.correlationId);
+}
 
 /**
  * Handle messages from Quick Tabs port

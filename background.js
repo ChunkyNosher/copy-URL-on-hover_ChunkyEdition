@@ -5125,6 +5125,11 @@ async function handleCloseMinimizedTabsCommand() {
     closedCount: closedIds.length,
     verified: writeResult.verified
   });
+
+  // v1.6.4.20 - FIX Issue #3: Notify sidebar of state change after closing minimized tabs
+  // This ensures the Manager UI updates immediately to reflect the removed tabs
+  notifySidebarOfStateChange();
+
   return {
     success: true,
     closedCount: closedIds.length,
@@ -6478,15 +6483,30 @@ function handleTabRemoved(tabId, removeInfo) {
     quickTabHostTabs.delete(qt.id);
   }
 
-  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
-  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
-  broadcastToAllPorts({
+  // v1.6.4.20 - FIX Issue #12: Build message object once to reduce duplication
+  const originTabClosedMessage = {
     type: 'ORIGIN_TAB_CLOSED',
     originTabId: tabId,
     orphanedQuickTabIds: orphanedIds,
     orphanedCount: orphanedIds.length,
     timestamp: operationTimestamp
-  });
+  };
+
+  // v1.6.3.10-v3 - Phase 2: Broadcast ORIGIN_TAB_CLOSED to Manager
+  // This provides more detailed orphan information than TAB_LIFECYCLE_CHANGE
+  broadcastToAllPorts(originTabClosedMessage);
+
+  // v1.6.4.20 - FIX Issue #12: Also notify sidebar via quickTabsSessionState.sidebarPort
+  // The broadcastToAllPorts function only sends to ports in portRegistry,
+  // but the sidebar's quick-tabs-port is stored separately in quickTabsSessionState
+  if (quickTabsSessionState.sidebarPort) {
+    try {
+      quickTabsSessionState.sidebarPort.postMessage(originTabClosedMessage);
+      console.log('[Background] ORIGIN_TAB_CLOSED sent to sidebar via quick-tabs-port');
+    } catch (err) {
+      console.warn('[Background] Failed to send ORIGIN_TAB_CLOSED to sidebar:', err.message);
+    }
+  }
 
   // Also broadcast legacy TAB_LIFECYCLE_CHANGE for backward compatibility
   broadcastToAllPorts({
