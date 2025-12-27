@@ -237,7 +237,7 @@ export class SessionStorageAdapter extends StorageAdapter {
 
     const config = errorLogConfig[errorType] || errorLogConfig.transient;
     const message = `[${config.prefix}] ${operation} failed - ${config.suffix}`;
-    
+
     console[config.level](message, errorDetails);
   }
 
@@ -293,7 +293,9 @@ export class SessionStorageAdapter extends StorageAdapter {
    */
   _validateStorageAvailable(operation) {
     if (!this.isLocalAvailable) {
-      console.error(`[STORAGE_API_UNAVAILABLE] ${operation}() called but storage.local unavailable`);
+      console.error(
+        `[STORAGE_API_UNAVAILABLE] ${operation}() called but storage.local unavailable`
+      );
       throw new Error('Storage API unavailable');
     }
   }
@@ -388,7 +390,7 @@ export class SessionStorageAdapter extends StorageAdapter {
    */
   _tryLoadUnifiedFormat(state) {
     const hasValidTabs = state.tabs && Array.isArray(state.tabs) && state.tabs.length > 0;
-    
+
     if (!hasValidTabs) {
       return null;
     }

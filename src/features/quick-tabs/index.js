@@ -172,7 +172,10 @@ class QuickTabsManager {
    */
   async _initContainerContext() {
     if (this.cookieStoreId !== null && this.cookieStoreId !== undefined) {
-      console.log('[QuickTabsManager] STEP 1: Container ID already set (from options):', this.cookieStoreId);
+      console.log(
+        '[QuickTabsManager] STEP 1: Container ID already set (from options):',
+        this.cookieStoreId
+      );
       return;
     }
     console.log('[QuickTabsManager] STEP 1: Detecting container context...');
@@ -189,7 +192,10 @@ class QuickTabsManager {
    */
   async _initTabId() {
     if (this.currentTabId !== null && this.currentTabId !== undefined) {
-      console.log('[QuickTabsManager] STEP 1: Tab ID already set (from options):', this.currentTabId);
+      console.log(
+        '[QuickTabsManager] STEP 1: Tab ID already set (from options):',
+        this.currentTabId
+      );
       return;
     }
     console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
@@ -207,7 +213,10 @@ class QuickTabsManager {
       this.currentZIndex.value = restoredZIndex;
       console.log('[QuickTabsManager] STEP 1: Z-index counter restored:', restoredZIndex);
     } catch (err) {
-      console.warn('[QuickTabsManager] STEP 1: Z-index restore failed, using default:', err.message);
+      console.warn(
+        '[QuickTabsManager] STEP 1: Z-index restore failed, using default:',
+        err.message
+      );
     }
   }
 
@@ -219,9 +228,15 @@ class QuickTabsManager {
   _initStorageHealthMonitor() {
     try {
       const monitorStarted = startStorageListenerHealthMonitor();
-      console.log('[QuickTabsManager] STEP 1: Storage health monitor:', monitorStarted ? 'started' : 'failed');
+      console.log(
+        '[QuickTabsManager] STEP 1: Storage health monitor:',
+        monitorStarted ? 'started' : 'failed'
+      );
     } catch (err) {
-      console.warn('[QuickTabsManager] STEP 1: Storage health monitor failed to start:', err.message);
+      console.warn(
+        '[QuickTabsManager] STEP 1: Storage health monitor failed to start:',
+        err.message
+      );
     }
   }
 
@@ -374,16 +389,19 @@ class QuickTabsManager {
     // v1.6.3.12-v4 - FIX Issue #4: Enhanced per-tab filter application logging
     const isMatch = status === 'success';
     const action = isMatch ? 'RESTORE' : 'SKIP';
-    console.log(`[HYDRATION][FILTER] Tab ${tabId}: originTabId=${details.originTabId ?? 'N/A'}, currentTabId=${this.currentTabId}, match=${isMatch ? 'TRUE' : 'FALSE'}, ACTION=${action}`, {
-      tabId,
-      status,
-      reason,
-      originTabId: details.originTabId ?? null,
-      currentTabId: this.currentTabId,
-      match: isMatch,
-      action,
-      timestamp: new Date().toISOString()
-    });
+    console.log(
+      `[HYDRATION][FILTER] Tab ${tabId}: originTabId=${details.originTabId ?? 'N/A'}, currentTabId=${this.currentTabId}, match=${isMatch ? 'TRUE' : 'FALSE'}, ACTION=${action}`,
+      {
+        tabId,
+        status,
+        reason,
+        originTabId: details.originTabId ?? null,
+        currentTabId: this.currentTabId,
+        match: isMatch,
+        action,
+        timestamp: new Date().toISOString()
+      }
+    );
   }
 
   /**
@@ -437,7 +455,9 @@ class QuickTabsManager {
     }
     if (!this.createHandler) {
       // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
-      this._logHydrationStatus(tabData.id, 'failed', 'noHandler', { originTabId: tabData?.originTabId });
+      this._logHydrationStatus(tabData.id, 'failed', 'noHandler', {
+        originTabId: tabData?.originTabId
+      });
       console.warn('[QuickTabsManager] No createHandler available for hydration');
       filterReasons.noHandler++;
       return { success: false, reason: 'noHandler' };
@@ -451,10 +471,15 @@ class QuickTabsManager {
       if (rejection) return rejection;
 
       console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
-        id: tabData.id, originTabId: tabData.originTabId, currentTabId: this.currentTabId, result: 'KEEP'
+        id: tabData.id,
+        originTabId: tabData.originTabId,
+        currentTabId: this.currentTabId,
+        result: 'KEEP'
       });
 
-      console.log(`[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`);
+      console.log(
+        `[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`
+      );
       const options = this._buildHydrationOptions(tabData);
       const optionsWithCallbacks = this._addHydrationCallbacks(options);
 
@@ -465,11 +490,15 @@ class QuickTabsManager {
       }
 
       // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
-      this._logHydrationStatus(tabData.id, 'success', 'hydrated', { originTabId: tabData.originTabId });
+      this._logHydrationStatus(tabData.id, 'success', 'hydrated', {
+        originTabId: tabData.originTabId
+      });
       return { success: true, reason: 'hydrated' };
     } catch (tabError) {
       // v1.6.3.12-v4 - FIX Issue #4: Include originTabId in details
-      this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message, { originTabId: tabData?.originTabId });
+      this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message, {
+        originTabId: tabData?.originTabId
+      });
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
       return { success: false, reason: 'error' };
@@ -510,7 +539,13 @@ class QuickTabsManager {
    * @param {number} metrics.hydrationStartTime - Start time timestamp
    */
   _logHydrationCompletion(metrics) {
-    const { totalFromStorage, hydratedCount, fetchDurationMs, filterDurationMs, hydrationStartTime } = metrics;
+    const {
+      totalFromStorage,
+      hydratedCount,
+      fetchDurationMs,
+      filterDurationMs,
+      hydrationStartTime
+    } = metrics;
     const totalDurationMs = Date.now() - hydrationStartTime;
     const failedCount = totalFromStorage - hydratedCount;
 
@@ -700,11 +735,14 @@ class QuickTabsManager {
   }
 
   async _readAndLogStorageState() {
-    console.log('[QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability', {
-      storageLocalAvailable: typeof browser?.storage?.local !== 'undefined',
-      hydrationMethod: 'port-based (Option 4 architecture)',
-      note: 'Quick Tabs state is stored in background memory and storage.local (session-scoped)'
-    });
+    console.log(
+      '[QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability',
+      {
+        storageLocalAvailable: typeof browser?.storage?.local !== 'undefined',
+        hydrationMethod: 'port-based (Option 4 architecture)',
+        note: 'Quick Tabs state is stored in background memory and storage.local (session-scoped)'
+      }
+    );
 
     // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
     if (typeof browser?.storage?.local !== 'undefined') {

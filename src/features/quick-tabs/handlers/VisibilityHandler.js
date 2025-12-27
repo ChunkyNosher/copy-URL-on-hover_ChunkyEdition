@@ -713,10 +713,12 @@ export class VisibilityHandler {
    */
   async _sendMinimizeMessage(id, minimized, source) {
     try {
-      console.log(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`,
-        { id, minimized, source, originTabId: this.currentTabId }
-      );
+      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`, {
+        id,
+        minimized,
+        source,
+        originTabId: this.currentTabId
+      });
 
       await browser.runtime.sendMessage({
         type: 'QUICKTAB_MINIMIZED',
@@ -727,16 +729,13 @@ export class VisibilityHandler {
         timestamp: Date.now()
       });
 
-      console.log(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`,
-        { id, minimized }
-      );
+      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`, { id, minimized });
     } catch (err) {
       // Background may not be available - this is non-critical
-      console.debug(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`,
-        { id, error: err.message }
-      );
+      console.debug(`${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`, {
+        id,
+        error: err.message
+      });
     }
   }
 
@@ -1653,13 +1652,16 @@ export class VisibilityHandler {
     const persistSuccess = await saveZIndexCounterWithAck(newZIndex);
 
     if (!persistSuccess) {
-      console.error(`${this._logPrefix}[handleFocus] [Z_INDEX_PERSIST_FAILED] Reverting to last known good value:`, {
-        id,
-        attemptedValue: newZIndex,
-        revertedValue: oldCounterValue,
-        tabWindowZIndex: oldZIndex,
-        timestamp: new Date().toISOString()
-      });
+      console.error(
+        `${this._logPrefix}[handleFocus] [Z_INDEX_PERSIST_FAILED] Reverting to last known good value:`,
+        {
+          id,
+          attemptedValue: newZIndex,
+          revertedValue: oldCounterValue,
+          tabWindowZIndex: oldZIndex,
+          timestamp: new Date().toISOString()
+        }
+      );
       return { success: false, newZIndex: null };
     }
 
@@ -1726,7 +1728,12 @@ export class VisibilityHandler {
     if (!incrementResult.success) return;
 
     // Apply z-index via helper
-    this._applyZIndexUpdate(id, { tabWindow, newZIndex: incrementResult.newZIndex, hasContainer, isAttachedToDOM });
+    this._applyZIndexUpdate(id, {
+      tabWindow,
+      newZIndex: incrementResult.newZIndex,
+      hasContainer,
+      isAttachedToDOM
+    });
 
     // Emit focus event
     if (this.eventBus && this.Events) {
@@ -1766,9 +1773,12 @@ export class VisibilityHandler {
     const persistSuccess = await saveZIndexCounterWithAck(newCounterValue);
 
     if (!persistSuccess) {
-      console.error(`${this._logPrefix} Z-INDEX_RECYCLE: Counter persist failed, aborting recycle`, {
-        attemptedValue: newCounterValue
-      });
+      console.error(
+        `${this._logPrefix} Z-INDEX_RECYCLE: Counter persist failed, aborting recycle`,
+        {
+          attemptedValue: newCounterValue
+        }
+      );
       return; // Don't recycle if we can't persist
     }
 
@@ -2062,15 +2072,20 @@ export class VisibilityHandler {
       await Promise.race([this._persistToStorage(), timeoutPromise]);
       // v1.6.3.12-v5 - FIX Issue #12: Reset timeout count on success with logging
       if (this._storageTimeoutCount > 0) {
-        console.log(`${this._logPrefix} [TIMEOUT_COUNTER_RESET] Reset to 0 after successful write`, {
-          previousCount: this._storageTimeoutCount,
-          storageAvailable: this._storageAvailable
-        });
+        console.log(
+          `${this._logPrefix} [TIMEOUT_COUNTER_RESET] Reset to 0 after successful write`,
+          {
+            previousCount: this._storageTimeoutCount,
+            storageAvailable: this._storageAvailable
+          }
+        );
       }
       this._storageTimeoutCount = 0;
       // v1.6.3.12-v5 - FIX Issue #12: Also reset storage availability if it was marked unavailable
       if (!this._storageAvailable) {
-        console.log(`${this._logPrefix} [STORAGE_RECOVERY] Storage marked available after successful write`);
+        console.log(
+          `${this._logPrefix} [STORAGE_RECOVERY] Storage marked available after successful write`
+        );
         this._storageAvailable = true;
       }
     } catch (err) {

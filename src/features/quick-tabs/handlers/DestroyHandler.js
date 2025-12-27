@@ -302,7 +302,9 @@ export class DestroyHandler {
     try {
       // v1.6.3.11-v12 - FIX Issue #3: Send QUICKTAB_REMOVED message for sidebar
       console.log('[DestroyHandler] [REMOVE_MESSAGE] Sending QUICKTAB_REMOVED:', {
-        id, source, originTabId: this.currentTabId
+        id,
+        source,
+        originTabId: this.currentTabId
       });
 
       await browser.runtime.sendMessage({
@@ -316,7 +318,10 @@ export class DestroyHandler {
       console.log('[DestroyHandler] [REMOVE_MESSAGE] Sent successfully:', { id });
     } catch (err) {
       // Background may not be available - this is expected in some edge cases
-      console.debug('[DestroyHandler] [REMOVE_MESSAGE] Could not send:', { id, error: err.message });
+      console.debug('[DestroyHandler] [REMOVE_MESSAGE] Could not send:', {
+        id,
+        error: err.message
+      });
     }
   }
 
@@ -477,7 +482,9 @@ export class DestroyHandler {
   async _requestCrossTabBroadcast(id, source) {
     try {
       console.log('[DestroyHandler] [BROADCAST] Requesting cross-tab broadcast:', {
-        id, source, originTabId: this.currentTabId
+        id,
+        source,
+        originTabId: this.currentTabId
       });
 
       await browser.runtime.sendMessage({

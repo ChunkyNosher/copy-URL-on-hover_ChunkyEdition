@@ -49,10 +49,10 @@ describe('Circuit Breaker', () => {
       // Record some failures first
       recordTransactionFailure('txn-1', 'test');
       recordTransactionFailure('txn-2', 'test');
-      
+
       // Record success
       recordTransactionSuccess('txn-success');
-      
+
       // Check status - counters should be reset
       const status = getCircuitBreakerStatus();
       expect(status.consecutiveFailedTransactions).toBe(0);
@@ -65,9 +65,9 @@ describe('Circuit Breaker', () => {
     it('should increment failure counter', () => {
       const statusBefore = getCircuitBreakerStatus();
       const initialFailures = statusBefore.consecutiveFailedTransactions;
-      
+
       recordTransactionFailure('txn-fail', 'test-reason');
-      
+
       const statusAfter = getCircuitBreakerStatus();
       expect(statusAfter.consecutiveFailedTransactions).toBe(initialFailures + 1);
     });
@@ -83,7 +83,7 @@ describe('Circuit Breaker', () => {
           expect(tripped).toBe(true);
         }
       }
-      
+
       expect(getCircuitBreakerMode()).not.toBe(CIRCUIT_BREAKER_MODE.NORMAL);
       expect(isStorageWriteBlocked()).toBe(true);
     });
@@ -94,11 +94,11 @@ describe('Circuit Breaker', () => {
       const result1 = recordTimeoutAndGetBackoff('txn-timeout-1');
       expect(result1.backoffMs).toBe(1000); // First timeout: 1s
       expect(result1.shouldTripCircuitBreaker).toBe(false);
-      
+
       const result2 = recordTimeoutAndGetBackoff('txn-timeout-2');
       expect(result2.backoffMs).toBe(3000); // Second timeout: 3s
       expect(result2.shouldTripCircuitBreaker).toBe(false);
-      
+
       const result3 = recordTimeoutAndGetBackoff('txn-timeout-3');
       expect(result3.backoffMs).toBe(5000); // Third timeout: 5s
       expect(result3.shouldTripCircuitBreaker).toBe(true); // Should trip after 3 timeouts
@@ -118,7 +118,7 @@ describe('Circuit Breaker', () => {
       for (let i = 0; i < 5; i++) {
         recordTransactionFailure(`txn-fail-${i}`, 'test-reason');
       }
-      
+
       const result = checkWriteBypassOrDelay('test-txn');
       expect(result.bypass).toBe(true);
       expect(result.reason).toContain('circuit_breaker');
@@ -134,7 +134,7 @@ describe('Circuit Breaker', () => {
     it('should return remaining delay after recent failure', () => {
       // Record a failure
       recordTransactionFailure('txn-fail', 'test-reason');
-      
+
       // Immediately check delay - should be close to 5000ms
       const delay = getPostFailureDelay();
       expect(delay).toBeGreaterThan(4900); // Allow some tolerance for execution time
@@ -145,7 +145,7 @@ describe('Circuit Breaker', () => {
   describe('getCircuitBreakerStatus', () => {
     it('should return all status fields', () => {
       const status = getCircuitBreakerStatus();
-      
+
       expect(status).toHaveProperty('mode');
       expect(status).toHaveProperty('consecutiveFailedTransactions');
       expect(status).toHaveProperty('transactionThreshold');

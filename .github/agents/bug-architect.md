@@ -83,7 +83,8 @@ const relevantMemories = await searchMemories({
 
 **v1.6.3.12-v4 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2 compatibility
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **Key Features:**

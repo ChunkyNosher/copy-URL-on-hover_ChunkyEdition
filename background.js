@@ -524,7 +524,7 @@ function disableScenarioLogging() {
  */
 function logScenarioStep(scenarioId, step, description, data = {}) {
   if (!_scenarioLoggingEnabled) return;
-  
+
   console.log(`[SCENARIO_LOG] ${scenarioId}_STEP_${step}: ${description}`, {
     ...data,
     scenarioContext: _currentScenarioContext,
@@ -1394,7 +1394,9 @@ async function tryLoadFromSyncStorage() {
   // Guard: No data - this is expected on fresh browser start
   // v1.6.3.12-v4 - Quick Tabs are now session-scoped via explicit startup cleanup
   if (!state) {
-    console.log('[Background] ✓ EAGER LOAD: No local state found, starting with empty state (session-scoped)');
+    console.log(
+      '[Background] ✓ EAGER LOAD: No local state found, starting with empty state (session-scoped)'
+    );
     isInitialized = true;
     return;
   }
@@ -3348,9 +3350,12 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-console.log('[Background][StorageListener] v1.6.4.18 Listener registered successfully (session-only)', {
-  timestamp: Date.now()
-});
+console.log(
+  '[Background][StorageListener] v1.6.4.18 Listener registered successfully (session-only)',
+  {
+    timestamp: Date.now()
+  }
+);
 
 // ==================== END STORAGE SYNC BROADCASTING ====================
 
@@ -4380,7 +4385,11 @@ function _buildAdoptionStatePayload(state, saveId, targetTabId) {
 }
 
 async function _writeAndVerifyAdoptionState({
-  state, quickTabId, targetTabId, correlationId, startTime
+  state,
+  quickTabId,
+  targetTabId,
+  correlationId,
+  startTime
 }) {
   const saveId = `adopt-${quickTabId}-${Date.now()}`;
   const writeStartTime = Date.now();
@@ -4401,22 +4410,40 @@ async function _writeAndVerifyAdoptionState({
 
     if (!verifiedState || verifiedState.saveId !== saveId) {
       _logAdoptionWriteFailure({
-        action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
-        error: 'storage-verification-failed', startTime
+        action: 'ADOPT_TAB',
+        quickTabId,
+        targetTabId,
+        correlationId,
+        error: 'storage-verification-failed',
+        startTime
       });
-      return { success: false, error: 'Storage write verification failed', reason: 'storage-verification-failed' };
+      return {
+        success: false,
+        error: 'Storage write verification failed',
+        reason: 'storage-verification-failed'
+      };
     }
 
     console.log('[Background] ADOPT_TAB: Storage write verified:', {
-      saveId, correlationId, durationMs: Date.now() - writeStartTime
+      saveId,
+      correlationId,
+      durationMs: Date.now() - writeStartTime
     });
     return { success: true, saveId };
   } catch (writeErr) {
     _logAdoptionWriteFailure({
-      action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId,
-      error: writeErr.message, startTime
+      action: 'ADOPT_TAB',
+      quickTabId,
+      targetTabId,
+      correlationId,
+      error: writeErr.message,
+      startTime
     });
-    return { success: false, error: `Storage write failed: ${writeErr.message}`, reason: 'storage-write-error' };
+    return {
+      success: false,
+      error: `Storage write failed: ${writeErr.message}`,
+      reason: 'storage-write-error'
+    };
   }
 }
 
@@ -4465,7 +4492,12 @@ function _updateGlobalCacheForAdoption(quickTabId, targetTabId) {
  * v1.6.4.19 - Extracted for complexity reduction
  * @private
  */
-async function _broadcastAdoptionCompletion(quickTabId, oldOriginTabId, targetTabId, correlationId) {
+async function _broadcastAdoptionCompletion(
+  quickTabId,
+  oldOriginTabId,
+  targetTabId,
+  correlationId
+) {
   broadcastToAllPorts({
     type: 'ADOPTION_COMPLETED',
     adoptedQuickTabId: quickTabId,
@@ -4510,7 +4542,11 @@ async function handleAdoptAction(payload) {
   const startTime = Date.now();
 
   console.log('[Background] MANAGER_ACTION_REQUESTED:', {
-    action: 'ADOPT_TAB', quickTabId, targetTabId, correlationId, timestamp: startTime
+    action: 'ADOPT_TAB',
+    quickTabId,
+    targetTabId,
+    correlationId,
+    timestamp: startTime
   });
 
   const validation = _validateAdoptionPrerequisites(quickTabId, targetTabId, correlationId);
@@ -4523,22 +4559,40 @@ async function handleAdoptAction(payload) {
     return stateResult;
   }
 
-  const findResult = _findAndUpdateQuickTab(stateResult.state, quickTabId, targetTabId, correlationId);
+  const findResult = _findAndUpdateQuickTab(
+    stateResult.state,
+    quickTabId,
+    targetTabId,
+    correlationId
+  );
   if (!findResult.found) {
     return { success: false, error: findResult.error };
   }
 
   const writeResult = await _writeAndVerifyAdoptionState({
-    state: stateResult.state, quickTabId, targetTabId, correlationId, startTime
+    state: stateResult.state,
+    quickTabId,
+    targetTabId,
+    correlationId,
+    startTime
   });
   if (!writeResult.success) {
     return writeResult;
   }
 
   _updateGlobalCacheForAdoption(quickTabId, targetTabId);
-  await _broadcastAdoptionCompletion(quickTabId, findResult.oldOriginTabId, targetTabId, correlationId);
+  await _broadcastAdoptionCompletion(
+    quickTabId,
+    findResult.oldOriginTabId,
+    targetTabId,
+    correlationId
+  );
   _logAdoptionSuccess({
-    quickTabId, targetTabId, oldOriginTabId: findResult.oldOriginTabId, correlationId, startTime
+    quickTabId,
+    targetTabId,
+    oldOriginTabId: findResult.oldOriginTabId,
+    correlationId,
+    startTime
   });
 
   return { success: true, oldOriginTabId: findResult.oldOriginTabId, newOriginTabId: targetTabId };
@@ -5499,7 +5553,7 @@ function handleCreateQuickTab(tabId, quickTab, port) {
 
   // Add Quick Tab to memory
   const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
-  
+
   // Check for duplicate
   const existingIndex = tabQuickTabs.findIndex(qt => qt.id === quickTab.id);
   if (existingIndex >= 0) {
@@ -5546,7 +5600,7 @@ function handleCreateQuickTab(tabId, quickTab, port) {
 function _updateQuickTabProperty(tabId, quickTabId, updater) {
   let found = false;
   const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
-  
+
   for (const qt of tabQuickTabs) {
     if (qt.id === quickTabId) {
       updater(qt);
@@ -5593,7 +5647,7 @@ function _sendQuickTabAck(port, ackType, success, quickTabId) {
 function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
   console.log(`[Background] MINIMIZE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
 
-  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
     qt.minimized = true;
     qt.minimizedAt = Date.now();
   });
@@ -5612,7 +5666,7 @@ function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
 function handleRestoreQuickTabPort(tabId, quickTabId, port) {
   console.log(`[Background] RESTORE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
 
-  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
     qt.minimized = false;
     qt.restoredAt = Date.now();
   });
@@ -5632,18 +5686,21 @@ function handleDeleteQuickTabPort(tabId, quickTabId, port) {
   // v1.6.3.12-v5 - FIX Issue #3: Add handler ENTRY/EXIT logging
   const handlerStartTime = performance.now();
   const correlationId = port._lastCorrelationId || `delete-${quickTabId}-${Date.now()}`;
-  
-  console.log(`[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
-    quickTabId,
-    tabId,
-    correlationId,
-    handlerType: 'DELETE_QUICK_TAB'
-  });
+
+  console.log(
+    `[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    {
+      quickTabId,
+      tabId,
+      correlationId,
+      handlerType: 'DELETE_QUICK_TAB'
+    }
+  );
 
   const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
   let found = index >= 0;
-  
+
   if (found) tabQuickTabs.splice(index, 1);
 
   const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
@@ -5655,19 +5712,22 @@ function handleDeleteQuickTabPort(tabId, quickTabId, port) {
 
   _sendQuickTabAck(port, 'DELETE_QUICK_TAB_ACK', found, quickTabId);
   if (found) notifySidebarOfStateChange();
-  
+
   // v1.6.3.12-v5 - FIX Issue #3: Handler EXIT log with outcome and duration
   const durationMs = performance.now() - handlerStartTime;
   const outcome = found ? 'success' : 'not_found';
-  console.log(`[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`, {
-    quickTabId,
-    tabId,
-    outcome,
-    durationMs: durationMs.toFixed(2),
-    correlationId,
-    tabsRemainingInTab: tabQuickTabs.length,
-    globalTabsRemaining: globalQuickTabState.tabs.length
-  });
+  console.log(
+    `[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`,
+    {
+      quickTabId,
+      tabId,
+      outcome,
+      durationMs: durationMs.toFixed(2),
+      correlationId,
+      tabsRemainingInTab: tabQuickTabs.length,
+      globalTabsRemaining: globalQuickTabState.tabs.length
+    }
+  );
 }
 
 /**
@@ -5692,20 +5752,20 @@ function handleQueryMyQuickTabs(tabId, port) {
 function handleHydrateOnLoad(tabId, port) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
-  
+
   // v1.6.4 - J4: Log container-aware hydration details
-  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, { 
-    count: quickTabs.length, 
+  console.log(`[Background] HYDRATE_ON_LOAD for tab ${tabId}:`, {
+    count: quickTabs.length,
     sessionId: quickTabsSessionState.sessionId,
     requestingContainer: cookieStoreId
   });
-  
+
   // v1.6.4 - J4: Log container mismatch decisions if any Quick Tabs have different containers
   if (quickTabs.length > 0) {
-    const containerMismatches = quickTabs.filter(qt => 
-      qt.originContainerId && qt.originContainerId !== cookieStoreId
+    const containerMismatches = quickTabs.filter(
+      qt => qt.originContainerId && qt.originContainerId !== cookieStoreId
     );
-    
+
     if (containerMismatches.length > 0) {
       console.log('[Background] HYDRATION_CONTAINER_MISMATCH:', {
         tabId,
@@ -5718,7 +5778,7 @@ function handleHydrateOnLoad(tabId, port) {
       });
     }
   }
-  
+
   _sendQuickTabsListResponse(port, 'HYDRATE_ON_LOAD_RESPONSE', quickTabs, true);
 }
 
@@ -5733,7 +5793,7 @@ function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
   console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
 
-  const found = _updateQuickTabProperty(tabId, quickTabId, (qt) => {
+  const found = _updateQuickTabProperty(tabId, quickTabId, qt => {
     Object.assign(qt, updates);
     qt.lastUpdate = Date.now();
   });
@@ -5758,12 +5818,12 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
     tabCount: quickTabs.length,
     timestamp: Date.now()
   };
-  
+
   if (includeSessionInfo) {
     response.sessionId = quickTabsSessionState.sessionId;
     response.sessionStartTime = quickTabsSessionState.sessionStartTime;
   }
-  
+
   port.postMessage(response);
 }
 
@@ -5774,7 +5834,10 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
  */
 function handleGetAllQuickTabs(port) {
   const allTabs = getAllQuickTabsFromMemory();
-  console.log('[Background] GET_ALL_QUICK_TABS for sidebar:', { count: allTabs.length, sessionId: quickTabsSessionState.sessionId });
+  console.log('[Background] GET_ALL_QUICK_TABS for sidebar:', {
+    count: allTabs.length,
+    sessionId: quickTabsSessionState.sessionId
+  });
   _sendQuickTabsListResponse(port, 'GET_ALL_QUICK_TABS_RESPONSE', allTabs, true);
 }
 
@@ -5785,7 +5848,10 @@ function handleGetAllQuickTabs(port) {
  */
 function handleSidebarReady(port) {
   const allTabs = getAllQuickTabsFromMemory();
-  console.log('[Background] SIDEBAR_READY - sending full state:', { count: allTabs.length, sessionId: quickTabsSessionState.sessionId });
+  console.log('[Background] SIDEBAR_READY - sending full state:', {
+    count: allTabs.length,
+    sessionId: quickTabsSessionState.sessionId
+  });
   _sendQuickTabsListResponse(port, 'SIDEBAR_STATE_SYNC', allTabs, true);
 }
 
@@ -5845,38 +5911,44 @@ function _sendUnknownMessageError(port, source, msgType) {
 function handleContentScriptPortMessage(tabId, msg, port) {
   const handlerStartTime = performance.now();
   const correlationId = msg.correlationId || `cs-${msg.type}-${Date.now()}`;
-  
+
   // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(`[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
-    type: msg.type,
-    tabId,
-    correlationId,
-    source: 'content-script',
-    payloadKeys: Object.keys(msg)
-  });
-  
+  console.log(
+    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    {
+      type: msg.type,
+      tabId,
+      correlationId,
+      source: 'content-script',
+      payloadKeys: Object.keys(msg)
+    }
+  );
+
   // Store correlationId on port for downstream handlers
   port._lastCorrelationId = correlationId;
 
   const handler = _contentScriptMessageHandlers[msg.type];
   let outcome = 'unknown_type';
-  
+
   if (handler) {
     handler(tabId, msg, port);
     outcome = 'success';
   } else {
     _sendUnknownMessageError(port, `tab ${tabId}`, msg.type);
   }
-  
+
   // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
   const durationMs = performance.now() - handlerStartTime;
-  console.log(`[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`, {
-    type: msg.type,
-    tabId,
-    outcome,
-    durationMs: durationMs.toFixed(2),
-    correlationId
-  });
+  console.log(
+    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
+    {
+      type: msg.type,
+      tabId,
+      outcome,
+      durationMs: durationMs.toFixed(2),
+      correlationId
+    }
+  );
 }
 
 /**
@@ -5889,36 +5961,42 @@ function handleContentScriptPortMessage(tabId, msg, port) {
 function handleSidebarPortMessage(msg, port) {
   const handlerStartTime = performance.now();
   const correlationId = msg.correlationId || `sidebar-${msg.type}-${Date.now()}`;
-  
+
   // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
-  console.log(`[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
-    type: msg.type,
-    correlationId,
-    source: 'sidebar',
-    payloadKeys: Object.keys(msg)
-  });
-  
+  console.log(
+    `[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    {
+      type: msg.type,
+      correlationId,
+      source: 'sidebar',
+      payloadKeys: Object.keys(msg)
+    }
+  );
+
   // Store correlationId on port for downstream handlers
   port._lastCorrelationId = correlationId;
 
   const handler = _sidebarMessageHandlers[msg.type];
   let outcome = 'unknown_type';
-  
+
   if (handler) {
     handler(msg, port);
     outcome = 'success';
   } else {
     _sendUnknownMessageError(port, 'sidebar', msg.type);
   }
-  
+
   // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
   const durationMs = performance.now() - handlerStartTime;
-  console.log(`[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`, {
-    type: msg.type,
-    outcome,
-    durationMs: durationMs.toFixed(2),
-    correlationId
-  });
+  console.log(
+    `[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`,
+    {
+      type: msg.type,
+      outcome,
+      durationMs: durationMs.toFixed(2),
+      correlationId
+    }
+  );
 }
 
 /**
@@ -5930,14 +6008,18 @@ function handleSidebarPortMessage(msg, port) {
 function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
   // v1.6.3.12-v5 - FIX Issue #3: Add handler ENTRY/EXIT logging
   const handlerStartTime = performance.now();
-  const correlationId = sidebarPort._lastCorrelationId || `sidebar-close-${quickTabId}-${Date.now()}`;
-  
-  console.log(`[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
-    quickTabId,
-    correlationId,
-    handlerType: 'SIDEBAR_CLOSE_QUICK_TAB',
-    source: 'sidebar'
-  });
+  const correlationId =
+    sidebarPort._lastCorrelationId || `sidebar-close-${quickTabId}-${Date.now()}`;
+
+  console.log(
+    `[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`,
+    {
+      quickTabId,
+      correlationId,
+      handlerType: 'SIDEBAR_CLOSE_QUICK_TAB',
+      source: 'sidebar'
+    }
+  );
 
   const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
 
@@ -5948,18 +6030,21 @@ function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
   _notifyContentScriptOfCommand(ownerTabId, found, 'CLOSE_QUICK_TAB_COMMAND', quickTabId);
   _sendQuickTabAck(sidebarPort, 'CLOSE_QUICK_TAB_ACK', found, quickTabId);
   notifySidebarOfStateChange();
-  
+
   // v1.6.3.12-v5 - FIX Issue #3: Handler EXIT log with outcome and duration
   const durationMs = performance.now() - handlerStartTime;
   const outcome = found ? 'success' : 'not_found';
-  console.log(`[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`, {
-    quickTabId,
-    outcome,
-    durationMs: durationMs.toFixed(2),
-    correlationId,
-    ownerTabId,
-    globalTabsRemaining: globalQuickTabState.tabs.length
-  });
+  console.log(
+    `[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`,
+    {
+      quickTabId,
+      outcome,
+      durationMs: durationMs.toFixed(2),
+      correlationId,
+      ownerTabId,
+      globalTabsRemaining: globalQuickTabState.tabs.length
+    }
+  );
 }
 
 /**
@@ -6028,8 +6113,18 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
  * @private
  */
 const _sidebarMinimizeConfig = {
-  true: { commandType: 'MINIMIZE_QUICK_TAB_COMMAND', ackType: 'MINIMIZE_QUICK_TAB_ACK', logLabel: 'SIDEBAR_MINIMIZE_QUICK_TAB', timestampField: 'minimizedAt' },
-  false: { commandType: 'RESTORE_QUICK_TAB_COMMAND', ackType: 'RESTORE_QUICK_TAB_ACK', logLabel: 'SIDEBAR_RESTORE_QUICK_TAB', timestampField: 'restoredAt' }
+  true: {
+    commandType: 'MINIMIZE_QUICK_TAB_COMMAND',
+    ackType: 'MINIMIZE_QUICK_TAB_ACK',
+    logLabel: 'SIDEBAR_MINIMIZE_QUICK_TAB',
+    timestampField: 'minimizedAt'
+  },
+  false: {
+    commandType: 'RESTORE_QUICK_TAB_COMMAND',
+    ackType: 'RESTORE_QUICK_TAB_ACK',
+    logLabel: 'SIDEBAR_RESTORE_QUICK_TAB',
+    timestampField: 'restoredAt'
+  }
 };
 
 /**
@@ -6158,13 +6253,13 @@ function _createContentPortDisconnectHandler(tabId, cookieStoreId) {
 function _setupContentScriptPort(tabId, port) {
   const existingPort = quickTabsSessionState.contentScriptPorts[tabId];
   const cookieStoreId = port.sender?.tab?.cookieStoreId || 'unknown';
-  
+
   if (existingPort) {
     _logContentPortReplacement(tabId, cookieStoreId);
   }
-  
+
   quickTabsSessionState.contentScriptPorts[tabId] = port;
-  
+
   if (!quickTabsSessionState.quickTabsByTab[tabId]) {
     quickTabsSessionState.quickTabsByTab[tabId] = [];
   }
@@ -6208,14 +6303,14 @@ function _createSidebarPortDisconnectHandler() {
  */
 function _setupSidebarPort(port) {
   const previousSidebarPort = quickTabsSessionState.sidebarPort;
-  
+
   if (previousSidebarPort) {
     console.log('[Background] PORT_ROUTING: Replacing existing sidebar port', {
       reason: 'new_connection',
       previousPortExists: true
     });
   }
-  
+
   quickTabsSessionState.sidebarPort = port;
 
   port.onMessage.addListener(msg => handleSidebarPortMessage(msg, port));
@@ -6225,7 +6320,7 @@ function _setupSidebarPort(port) {
     timestamp: Date.now(),
     connectedContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts).length
   });
-  
+
   handleSidebarReady(port);
 }
 
@@ -6242,7 +6337,12 @@ function handleQuickTabsPortConnect(port) {
   const isContentScript = tabId !== undefined;
   const isSidebar = sender.url?.includes('sidebar');
 
-  console.log('[Background] QUICK_TABS_PORT_CONNECT:', { isContentScript, isSidebar, tabId, url: sender.url });
+  console.log('[Background] QUICK_TABS_PORT_CONNECT:', {
+    isContentScript,
+    isSidebar,
+    tabId,
+    url: sender.url
+  });
 
   if (isContentScript && tabId) {
     _setupContentScriptPort(tabId, port);

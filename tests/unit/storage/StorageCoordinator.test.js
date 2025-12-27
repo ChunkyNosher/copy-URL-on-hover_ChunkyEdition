@@ -257,7 +257,10 @@ describe('StorageCoordinator', () => {
       // Check status while blocked
       const statusWhileBlocked = coordinator.getStatus();
       // v1.6.3.12-v5 - FIX Issue #16: pendingHandlers now returns objects with handler, priority, waitTimeMs
-      expect(statusWhileBlocked.pendingHandlers.map(p => p.handler)).toEqual(['PendingHandler1', 'PendingHandler2']);
+      expect(statusWhileBlocked.pendingHandlers.map(p => p.handler)).toEqual([
+        'PendingHandler1',
+        'PendingHandler2'
+      ]);
 
       // Release blocked write
       resolveFirst();
@@ -410,30 +413,46 @@ describe('StorageCoordinator', () => {
       });
 
       // Queue a blocker to hold the queue
-      const blocker = coordinator.queueWrite('Blocker', async () => {
-        await blockerPromise;
-        executionOrder.push('Blocker');
-        return true;
-      }, 2); // MEDIUM priority
+      const blocker = coordinator.queueWrite(
+        'Blocker',
+        async () => {
+          await blockerPromise;
+          executionOrder.push('Blocker');
+          return true;
+        },
+        2
+      ); // MEDIUM priority
 
       // Wait for blocker to start
       await new Promise(resolve => setTimeout(resolve, 10));
 
       // Queue operations with different priorities (1=HIGH, 2=MEDIUM, 3=LOW)
-      const low = coordinator.queueWrite('LowHandler', async () => {
-        executionOrder.push('Low');
-        return true;
-      }, 3);
+      const low = coordinator.queueWrite(
+        'LowHandler',
+        async () => {
+          executionOrder.push('Low');
+          return true;
+        },
+        3
+      );
 
-      const high = coordinator.queueWrite('HighHandler', async () => {
-        executionOrder.push('High');
-        return true;
-      }, 1);
+      const high = coordinator.queueWrite(
+        'HighHandler',
+        async () => {
+          executionOrder.push('High');
+          return true;
+        },
+        1
+      );
 
-      const medium = coordinator.queueWrite('MediumHandler', async () => {
-        executionOrder.push('Medium');
-        return true;
-      }, 2);
+      const medium = coordinator.queueWrite(
+        'MediumHandler',
+        async () => {
+          executionOrder.push('Medium');
+          return true;
+        },
+        2
+      );
 
       // Release blocker
       resolveBlocker();
@@ -449,10 +468,14 @@ describe('StorageCoordinator', () => {
         resolveBlocker = resolve;
       });
 
-      const blocker = coordinator.queueWrite('Blocker', async () => {
-        await blockerPromise;
-        return true;
-      }, 2);
+      const blocker = coordinator.queueWrite(
+        'Blocker',
+        async () => {
+          await blockerPromise;
+          return true;
+        },
+        2
+      );
 
       // Wait for blocker to start
       await new Promise(resolve => setTimeout(resolve, 10));

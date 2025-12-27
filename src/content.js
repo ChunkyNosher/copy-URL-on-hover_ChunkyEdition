@@ -1746,7 +1746,11 @@ let quickTabRequestIdCounter = 0;
  * @param {number} timeoutMs - Timeout in milliseconds (default: QUICK_TABS_REQUEST_TIMEOUT_MS)
  * @returns {Promise<Object>} Response from background
  */
-function queryQuickTabsBackground(messageType, payload = {}, timeoutMs = QUICK_TABS_REQUEST_TIMEOUT_MS) {
+function queryQuickTabsBackground(
+  messageType,
+  payload = {},
+  timeoutMs = QUICK_TABS_REQUEST_TIMEOUT_MS
+) {
   return new Promise((resolve, reject) => {
     if (!quickTabsPort) {
       reject(new Error('Quick Tabs port not connected'));
@@ -1818,7 +1822,7 @@ function _isStateUpdateMessage(type) {
  */
 function _handlePendingRequest(requestId, message) {
   if (!requestId || !pendingQuickTabRequests.has(requestId)) return false;
-  
+
   const pending = pendingQuickTabRequests.get(requestId);
   clearTimeout(pending.timeoutId);
   pendingQuickTabRequests.delete(requestId);
@@ -1861,7 +1865,7 @@ function handleQuickTabsPortResponse(message) {
  */
 function handleQuickTabsStateUpdate(message) {
   const { quickTabs } = message;
-  
+
   if (Array.isArray(quickTabs)) {
     sessionQuickTabs.clear();
     for (const qt of quickTabs) {
@@ -1878,9 +1882,9 @@ function handleQuickTabsStateUpdate(message) {
  * @private
  */
 const _quickTabCommandHandlers = {
-  CLOSE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.closeById?.(id),
-  MINIMIZE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.minimizeById?.(id),
-  RESTORE_QUICK_TAB_COMMAND: (id) => quickTabsManager?.restoreById?.(id)
+  CLOSE_QUICK_TAB_COMMAND: id => quickTabsManager?.closeById?.(id),
+  MINIMIZE_QUICK_TAB_COMMAND: id => quickTabsManager?.minimizeById?.(id),
+  RESTORE_QUICK_TAB_COMMAND: id => quickTabsManager?.restoreById?.(id)
 };
 
 /**
@@ -1890,7 +1894,7 @@ const _quickTabCommandHandlers = {
  */
 function handleQuickTabsCommand(message) {
   const { type, quickTabId } = message;
-  
+
   console.log(`[Content] Received Quick Tabs command: ${type}`, { quickTabId });
 
   const handler = _quickTabCommandHandlers[type];
@@ -1909,7 +1913,7 @@ function handleQuickTabsCommand(message) {
 function _handleQuickTabsPortDisconnect() {
   console.warn('[Content] Quick Tabs port disconnected from background');
   quickTabsPort = null;
-  
+
   // Attempt reconnection after a delay
   setTimeout(_attemptQuickTabsPortReconnection, QUICK_TABS_RECONNECT_DELAY_MS);
 }
@@ -1922,7 +1926,7 @@ function _handleQuickTabsPortDisconnect() {
 function _attemptQuickTabsPortReconnection() {
   if (quickTabsPort) return; // Already connected
   if (document.visibilityState === 'hidden') return; // Page not visible
-  
+
   console.log('[Content] Attempting Quick Tabs port reconnection');
   initializeQuickTabsPort().catch(err => {
     console.error('[Content] Quick Tabs port reconnection failed:', err.message);
@@ -1938,7 +1942,7 @@ async function _hydrateQuickTabsFromBackground() {
   try {
     const response = await queryQuickTabsBackground('HYDRATE_ON_LOAD', {});
     if (!response?.quickTabs) return;
-    
+
     sessionQuickTabs.clear();
     for (const qt of response.quickTabs) {
       sessionQuickTabs.set(qt.id, qt);
@@ -1998,7 +2002,7 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
 
   const correlationId = _generateContentCorrelationId();
   const sentAt = Date.now();
-  
+
   // v1.6.4 - Gap #7: Log content script state change initiated
   console.log('[Content] STATE_SYNC_PATH_INITIATED:', {
     timestamp: sentAt,
@@ -2015,9 +2019,9 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
       timestamp: sentAt,
       correlationId // v1.6.4 - Gap #8: Include correlation ID
     });
-    
+
     if (cacheUpdater) cacheUpdater();
-    
+
     // v1.6.4 - Gap #7: Log state serialized and sent
     console.log('[Content] STATE_SYNC_PATH_SENT:', {
       timestamp: Date.now(),
@@ -2026,7 +2030,7 @@ function _executeQuickTabPortOperation(operationType, payload, cacheUpdater) {
       quickTabId: payload.quickTabId || payload.quickTab?.id,
       latencyMs: Date.now() - sentAt
     });
-    
+
     return true;
   } catch (err) {
     console.error(`[Content] Failed to ${operationType} via port:`, err.message);
@@ -2252,15 +2256,17 @@ function _handleTabIdAcquired(tabId, cookieStoreId = null) {
   // v1.6.3.12 - Option 4: Initialize Quick Tabs port for in-memory storage
   // This is the new port-based communication that replaces storage.session
   console.log('[INIT][Content] QUICK_TABS_PORT_START:', { tabId, cookieStoreId });
-  initializeQuickTabsPort().then(() => {
-    console.log('[INIT][Content] QUICK_TABS_PORT_CONNECTED:', { tabId, cookieStoreId });
-  }).catch(err => {
-    console.warn('[INIT][Content] QUICK_TABS_PORT_FAILED:', { 
-      tabId, 
-      cookieStoreId, 
-      error: err.message 
+  initializeQuickTabsPort()
+    .then(() => {
+      console.log('[INIT][Content] QUICK_TABS_PORT_CONNECTED:', { tabId, cookieStoreId });
+    })
+    .catch(err => {
+      console.warn('[INIT][Content] QUICK_TABS_PORT_FAILED:', {
+        tabId,
+        cookieStoreId,
+        error: err.message
+      });
     });
-  });
 }
 
 /**

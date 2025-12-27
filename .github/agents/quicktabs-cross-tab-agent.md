@@ -51,7 +51,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v4 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2 compatibility
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **v1.6.3.12 Architecture (Option 4):**
@@ -73,12 +74,12 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 **Key Timing Constants:**
 
-| Constant                              | Value | Purpose                              |
-| ------------------------------------- | ----- | ------------------------------------ |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5   | Failures before circuit trips        |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`    | 30000 | Test write interval for recovery     |
-| `POST_FAILURE_MIN_DELAY_MS`           | 5000  | Delay after failure before dequeue   |
-| `TIMEOUT_BACKOFF_DELAYS`              | Array | [1000, 3000, 5000]ms                 |
+| Constant                                | Value | Purpose                            |
+| --------------------------------------- | ----- | ---------------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5     | Failures before circuit trips      |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
+| `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
+| `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
 
 **Message Types:**
 

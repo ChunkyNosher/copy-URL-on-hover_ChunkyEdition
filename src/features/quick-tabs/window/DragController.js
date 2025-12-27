@@ -95,12 +95,15 @@ export class DragController {
     this.element.setPointerCapture(e.pointerId);
 
     // v1.6.3.12-v4 - FIX Issue #10: Log drag initiation with emergency save context
-    console.log('[DRAG][INITIATED] Drag operation started, emergency save will trigger if tab switch detected', {
-      initialPosition: { x: this.currentX, y: this.currentY },
-      pointerId: e.pointerId,
-      hasOnDragCancel: !!this.onDragCancel,
-      timestamp: new Date().toISOString()
-    });
+    console.log(
+      '[DRAG][INITIATED] Drag operation started, emergency save will trigger if tab switch detected',
+      {
+        initialPosition: { x: this.currentX, y: this.currentY },
+        pointerId: e.pointerId,
+        hasOnDragCancel: !!this.onDragCancel,
+        timestamp: new Date().toISOString()
+      }
+    );
 
     if (this.onDragStart) {
       this.onDragStart(this.currentX, this.currentY);
@@ -206,12 +209,15 @@ export class DragController {
     if (!this.isDragging) return;
 
     // v1.6.3.12-v4 - FIX Issue #10: Log tab switch detection during drag (emergency save trigger)
-    console.log('[DRAG][EMERGENCY_SAVE] Tab switch detected during drag, triggering emergency save', {
-      position: { x: this.currentX, y: this.currentY },
-      reason: 'pointercancel_event',
-      isDragging: this.isDragging,
-      timestamp: new Date().toISOString()
-    });
+    console.log(
+      '[DRAG][EMERGENCY_SAVE] Tab switch detected during drag, triggering emergency save',
+      {
+        position: { x: this.currentX, y: this.currentY },
+        reason: 'pointercancel_event',
+        isDragging: this.isDragging,
+        timestamp: new Date().toISOString()
+      }
+    );
 
     this.isDragging = false;
 

@@ -40,7 +40,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v5 Features (NEW):**
 
-- **Circuit Breaker** - Trips after 5 failures, recovers via test write every 30s
+- **Circuit Breaker** - Trips after 5 failures, recovers via test write every
+  30s
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
 - **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
 - **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
@@ -72,10 +73,10 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Key Modules:**
 
-| Module                           | Purpose                       |
-| -------------------------------- | ----------------------------- |
-| `sidebar/quick-tabs-manager.js`  | Manager UI and port handling  |
-| `background.js`                  | Port handlers, state push     |
+| Module                          | Purpose                      |
+| ------------------------------- | ---------------------------- |
+| `sidebar/quick-tabs-manager.js` | Manager UI and port handling |
+| `background.js`                 | Port handlers, state push    |
 
 ---
 

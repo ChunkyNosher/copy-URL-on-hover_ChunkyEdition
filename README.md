@@ -1,15 +1,15 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for
-quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
-**Container Isolation**, and Session-Only Quick Tabs.
+**Version 1.6.3.12-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+for quick URL copying and advanced Quick Tab management with **Per-Tab
+Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v5 Status:** Circuit Breaker ✅ | Priority Queue ✅ | Timeout Backoff ✅ |
-Rolling Heartbeat ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v5 Status:** Circuit Breaker ✅ | Priority Queue ✅ | Timeout
+Backoff ✅ | Rolling Heartbeat ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -29,15 +29,19 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Rolling Heartbeat** - Window of 5 responses for retry decisions
 - ✅ **Storage Backend Tracking** - `currentStorageBackend` state tracking
 - ✅ **Error Discrimination** - API unavailable vs quota vs transient errors
-- ✅ **Container Validation** - Unified `_validateContainerForOperation()` helper
+- ✅ **Container Validation** - Unified `_validateContainerForOperation()`
+  helper
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.12-v4:** storage.session API removal, cache staleness detection, startup cleanup  
-**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager refresh fix  
-**v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port roundtrip tracking  
+**v1.6.3.12-v4:** storage.session API removal, cache staleness detection,
+startup cleanup  
+**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager
+refresh fix  
+**v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port
+roundtrip tracking  
 **v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
@@ -136,7 +140,8 @@ npm run lint                    # Lint
 
 ## 📝 Notes
 
-- Quick Tabs are session-only and cleared on browser restart (`storage.local` + startup cleanup)
+- Quick Tabs are session-only and cleared on browser restart (`storage.local` +
+  startup cleanup)
 - Container isolation prevents cross-container state leaks
 - Port messaging ensures reliable Quick Tabs sync across tabs
 - Background script is single source of truth for all Quick Tabs data

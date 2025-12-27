@@ -55,8 +55,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness:**
 
-- **storage.session API Removal** - All calls replaced with `browser.storage.local`
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **storage.session API Removal** - All calls replaced with
+  `browser.storage.local`
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **v1.6.3.11-v7 Features - Orphan Quick Tabs Fix:**
@@ -219,7 +221,7 @@ port.postMessage({
 // v1.6.3.12-v5: Circuit breaker + priority queue
 // browser.storage.session COMPLETELY REMOVED - use storage.local only
 // Session-only behavior via startup cleanup: _clearQuickTabsOnStartup()
-await browser.storage.local.set(data);  // Only storage API used
+await browser.storage.local.set(data); // Only storage API used
 
 // Circuit breaker trips after 5 failures
 if (circuitBreakerFailures >= CIRCUIT_BREAKER_TRANSACTION_THRESHOLD) {

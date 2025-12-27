@@ -61,35 +61,37 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v4 Features:**
 
-- **storage.session API Removal** - Uses `storage.local` only for MV2 compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 **Key Timing Constants (v1.6.3.12-v5+):**
 
-| Constant                              | Value | Purpose                              |
-| ------------------------------------- | ----- | ------------------------------------ |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5   | Failures before circuit trips        |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`    | 30000 | Test write interval for recovery     |
-| `POST_FAILURE_MIN_DELAY_MS`           | 5000  | Delay after failure before dequeue   |
-| `TIMEOUT_BACKOFF_DELAYS`              | Array | [1000, 3000, 5000]ms                 |
+| Constant                                | Value | Purpose                            |
+| --------------------------------------- | ----- | ---------------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5     | Failures before circuit trips      |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
+| `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
+| `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
 
 **Key Architecture Components:**
 
-| Component                  | Purpose                          |
-| -------------------------- | -------------------------------- |
-| `quickTabsSessionState`    | Memory-based state in background |
-| `contentScriptPorts`       | Tab ID → Port mapping            |
-| `sidebarPort`              | Manager sidebar port             |
-| `notifySidebarOfStateChange()` | Push updates to sidebar      |
+| Component                      | Purpose                          |
+| ------------------------------ | -------------------------------- |
+| `quickTabsSessionState`        | Memory-based state in background |
+| `contentScriptPorts`           | Tab ID → Port mapping            |
+| `sidebarPort`                  | Manager sidebar port             |
+| `notifySidebarOfStateChange()` | Push updates to sidebar          |
 
 **Key Modules:**
 
-| Module                            | Purpose                             |
-| --------------------------------- | ----------------------------------- |
-| `background.js`                   | Port handlers, memory state         |
-| `src/content.js`                  | Content script port connection      |
-| `sidebar/quick-tabs-manager.js`   | Sidebar port connection             |
+| Module                          | Purpose                        |
+| ------------------------------- | ------------------------------ |
+| `background.js`                 | Port handlers, memory state    |
+| `src/content.js`                | Content script port connection |
+| `sidebar/quick-tabs-manager.js` | Sidebar port connection        |
 
 ---
 

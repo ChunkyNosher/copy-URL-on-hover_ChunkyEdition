@@ -32,10 +32,13 @@ const METHOD_HANDLERS = {
   getManagerState: testBridge => testBridge.getManagerState(),
   // v1.6.4 - J2: Container isolation verification
   getContainerInfo: testBridge => testBridge.getContainerInfo(),
-  verifyContainerIsolation: (testBridge, data) => testBridge.verifyContainerIsolation(data.id1, data.id2),
-  verifyContainerIsolationById: (testBridge, data) => testBridge.verifyContainerIsolationById(data.containerId),
+  verifyContainerIsolation: (testBridge, data) =>
+    testBridge.verifyContainerIsolation(data.id1, data.id2),
+  verifyContainerIsolationById: (testBridge, data) =>
+    testBridge.verifyContainerIsolationById(data.containerId),
   getContainerLabel: (testBridge, data) => testBridge.getContainerLabel(data.containerId),
-  verifyCrossTabIsolation: (testBridge, data) => testBridge.verifyCrossTabIsolation(data.originTabId)
+  verifyCrossTabIsolation: (testBridge, data) =>
+    testBridge.verifyCrossTabIsolation(data.originTabId)
 };
 
 /**

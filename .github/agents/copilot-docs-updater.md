@@ -86,8 +86,10 @@ nothing.
 
 ### v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness
 
-- **storage.session API Removal** - All calls replaced with `browser.storage.local`
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
+- **storage.session API Removal** - All calls replaced with
+  `browser.storage.local`
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
 
 ### v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps
@@ -116,14 +118,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                              |
-| ------------------------ | -------------------------------- |
-| v1.6.3.12-v4 or earlier  | Update to 1.6.3.12-v5            |
-| "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
-| "Pin to Page"            | REMOVE - Feature DELETED in v12  |
-| Cross-session persist    | REMOVE - Session-only in v12     |
-| Direct storage writes    | Use Single Writer Authority      |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6        |
+| Error                   | Fix                             |
+| ----------------------- | ------------------------------- |
+| v1.6.3.12-v4 or earlier | Update to 1.6.3.12-v5           |
+| "Solo/Mute" references  | REMOVE - Feature DELETED in v12 |
+| "Pin to Page"           | REMOVE - Feature DELETED in v12 |
+| Cross-session persist   | REMOVE - Session-only in v12    |
+| Direct storage writes   | Use Single Writer Authority     |
+| BroadcastChannel refs   | REMOVE - BC DELETED in v6       |
 
 ---
 

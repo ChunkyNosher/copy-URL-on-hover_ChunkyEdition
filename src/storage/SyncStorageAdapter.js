@@ -173,7 +173,9 @@ export class SyncStorageAdapter extends StorageAdapter {
    */
   _setCurrentStorageBackend(backend) {
     if (this.currentStorageBackend !== backend) {
-      console.log(`[STORAGE_BACKEND_SWITCH] Changed from ${this.currentStorageBackend} to ${backend}`);
+      console.log(
+        `[STORAGE_BACKEND_SWITCH] Changed from ${this.currentStorageBackend} to ${backend}`
+      );
       this.currentStorageBackend = backend;
     }
   }
@@ -754,7 +756,9 @@ export class SyncStorageAdapter extends StorageAdapter {
     // v1.6.3.12-v5 - FIX Issue #10: Use tracked backend
     const storage = this._getActiveStorage();
     await storage.remove(this.STORAGE_KEY);
-    console.log(`[SyncStorageAdapter] Cleared all Quick Tabs from ${this.currentStorageBackend} storage`);
+    console.log(
+      `[SyncStorageAdapter] Cleared all Quick Tabs from ${this.currentStorageBackend} storage`
+    );
   }
 
   /**
