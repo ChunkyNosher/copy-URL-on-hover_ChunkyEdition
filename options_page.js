@@ -123,17 +123,19 @@ async function updateStorageInfo() {
  * Check if session storage is available
  */
 function checkSessionStorageAvailability() {
-  const hasSessionStorage =
+  // v1.6.3.12-v5 - storage.session does NOT exist in Firefox MV2
+  // Session-only behavior is achieved via explicit startup cleanup
+  const hasLocalStorage =
     typeof browser !== 'undefined' &&
     browser.storage &&
-    typeof browser.storage.session !== 'undefined';
+    typeof browser.storage.local !== 'undefined';
 
   const statusElement = document.getElementById('sessionStorageStatus');
-  if (hasSessionStorage) {
-    statusElement.textContent = '✓ Available (Firefox 115+)';
+  if (hasLocalStorage) {
+    statusElement.textContent = '✓ Available (storage.local - session-scoped via cleanup)';
     statusElement.style.color = '#155724';
   } else {
-    statusElement.textContent = '✗ Not Available (requires Firefox 115+)';
+    statusElement.textContent = '✗ Not Available';
     statusElement.style.color = '#856404';
   }
 }
@@ -158,10 +160,9 @@ async function clearStorage() {
     // Also clear from sync storage for backward compatibility
     await browser.storage.sync.remove(STATE_KEY);
 
-    // Clear from session storage if available
-    if (typeof browser.storage.session !== 'undefined') {
-      await browser.storage.session.remove(SESSION_KEY);
-    }
+    // Clear session key from local storage as well
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    await browser.storage.local.remove(SESSION_KEY);
 
     showStatus(
       'All Quick Tabs cleared! Your settings and keyboard shortcuts are preserved.',

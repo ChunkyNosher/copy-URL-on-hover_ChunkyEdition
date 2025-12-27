@@ -9,13 +9,18 @@
 
 ## Executive Summary
 
-The Quick Tabs feature is completely non-functional due to **three critical interconnected failures**:
+The Quick Tabs feature is completely non-functional due to **three critical
+interconnected failures**:
 
-1. **Storage API Misuse:** Attempt to access `browser.storage.session` from content scripts without proper access level configuration
-2. **Missing Fallback Architecture:** No graceful degradation when primary storage mechanism fails
-3. **Comprehensive Logging Gaps:** User actions and intermediate operations are not logged, making diagnosis impossible
+1. **Storage API Misuse:** Attempt to access `browser.storage.session` from
+   content scripts without proper access level configuration
+2. **Missing Fallback Architecture:** No graceful degradation when primary
+   storage mechanism fails
+3. **Comprehensive Logging Gaps:** User actions and intermediate operations are
+   not logged, making diagnosis impossible
 
-This report documents all identified issues, their root causes in the codebase, inherent API limitations, and the interaction between these failures.
+This report documents all identified issues, their root causes in the codebase,
+inherent API limitations, and the interaction between these failures.
 
 ---
 
@@ -30,13 +35,17 @@ This report documents all identified issues, their root causes in the codebase, 
 
 According to official Mozilla and Chrome documentation:
 
-- **By default**, `browser.storage.session` is only accessible in **trusted contexts** (background scripts, popup scripts, options pages, etc.)
-- **Content scripts are untrusted contexts** by design (security boundary isolation)
-- Content scripts attempting to access `storage.session` directly receive an error or the promise silently fails
-- **To enable content script access**, the background script must explicitly call:
+- **By default**, `browser.storage.session` is only accessible in **trusted
+  contexts** (background scripts, popup scripts, options pages, etc.)
+- **Content scripts are untrusted contexts** by design (security boundary
+  isolation)
+- Content scripts attempting to access `storage.session` directly receive an
+  error or the promise silently fails
+- **To enable content script access**, the background script must explicitly
+  call:
   ```
-  browser.storage.session.setAccessLevel({ 
-    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' 
+  browser.storage.session.setAccessLevel({
+    accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
   })
   ```
 
@@ -44,12 +53,15 @@ According to official Mozilla and Chrome documentation:
 
 **File:** `src/storage/SessionStorageAdapter.js`
 
-The codebase attempts to access `browser.storage.session` directly from the content script (`src/content.js`) without:
+The codebase attempts to access `browser.storage.session` directly from the
+content script (`src/content.js`) without:
+
 1. Verifying the context (content script vs background script)
 2. Establishing proper access levels in the background script
 3. Checking if `browser.storage.session` even exists in the current context
 
 **Evidence from Logs:**
+
 ```
 [WARN] [QuickTabsManager] storage.session unavailable
 [WARN] STEP 6: State hydration skipped or failed
@@ -57,18 +69,22 @@ The codebase attempts to access `browser.storage.session` directly from the cont
 
 ### Browser Compatibility Issue
 
-**Critical Discovery:** Firefox does NOT support `browser.storage.session` at all (as of current version).
+**Critical Discovery:** Firefox does NOT support `browser.storage.session` at
+all (as of current version).
 
 According to MDN compatibility table for `storage/session`:
+
 - ✅ Chrome/Chromium: Supported (with access level restrictions)
 - ❌ Firefox: **NOT SUPPORTED**
 - ✅ Edge: Supported
 
-The extension targets Firefox primarily (based on manifest.json `gecko` configuration), yet attempts to use an API that doesn't exist in that browser.
+The extension targets Firefox primarily (based on manifest.json `gecko`
+configuration), yet attempts to use an API that doesn't exist in that browser.
 
 ### Architectural Problem
 
 The migration from `browser.storage.local` to `browser.storage.session` assumes:
+
 1. Session storage is universally available ❌
 2. Content scripts can access it directly ❌
 3. No fallback exists if access fails ❌
@@ -86,24 +102,30 @@ This violates fundamental WebExtensions API principles about context isolation.
 
 ### What Should Exist
 
-**File Location:** `src/background/` (likely `index.js` or initialization module)
+**File Location:** `src/background/` (likely `index.js` or initialization
+module)
 
 The background script should execute during startup:
+
 ```
-browser.storage.session.setAccessLevel({ 
-  accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' 
+browser.storage.session.setAccessLevel({
+  accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS'
 })
 ```
 
-This call must happen BEFORE any content scripts attempt to access `storage.session`.
+This call must happen BEFORE any content scripts attempt to access
+`storage.session`.
 
 ### What Actually Exists
 
-There is **no evidence** in the repository scan that this call exists anywhere in the background scripts. The initialization sequence proceeds directly to Quick Tabs facade initialization without configuring storage access levels.
+There is **no evidence** in the repository scan that this call exists anywhere
+in the background scripts. The initialization sequence proceeds directly to
+Quick Tabs facade initialization without configuring storage access levels.
 
 ### Timing Problem
 
 Even if the call exists elsewhere, there's a critical race condition:
+
 1. Content script loads (`run_at: "document_end"`)
 2. Content script tries to read from `storage.session`
 3. Background script may not have called `setAccessLevel()` yet
@@ -121,6 +143,7 @@ Even if the call exists elsewhere, there's a critical race condition:
 ### Current Architecture
 
 When `storage.session` access fails, the code:
+
 1. Logs a warning ✓
 2. **Does nothing else** ❌
 3. Continues initialization with zero Quick Tabs loaded ❌
@@ -129,22 +152,26 @@ When `storage.session` access fails, the code:
 ### Missing Fallback Levels
 
 **Level 1 Fallback (Should exist):** `browser.storage.local`
+
 - **Availability:** Universal across Firefox and Chrome
 - **Access from content scripts:** Yes (by default)
 - **Status in codebase:** NOT USED as fallback
 
 **Level 2 Fallback (Should exist):** In-memory storage in background script
+
 - **Why:** If local storage is also inaccessible
 - **Mechanism:** Port-based messaging to sync state
 - **Status in codebase:** NOT IMPLEMENTED
 
 **Level 3 Fallback (Should exist):** Graceful degradation
+
 - **Behavior:** Display warning to user about limited Quick Tabs functionality
 - **Status in codebase:** NOT IMPLEMENTED
 
 ### Storage Decision Logic
 
 **Current Decision Tree:**
+
 ```
 Try storage.session
   └─ Fails
@@ -152,6 +179,7 @@ Try storage.session
 ```
 
 **Required Decision Tree:**
+
 ```
 Try storage.session (if available in context)
   └─ Fails or unavailable
@@ -169,13 +197,15 @@ Try storage.session (if available in context)
 ### Issue #4: No User Action Logging
 
 **Severity:** 🟠 HIGH  
-**Impact:** Cannot determine if Quick Tab creation is triggered or silently failing
+**Impact:** Cannot determine if Quick Tab creation is triggered or silently
+failing
 
 ### Missing Log Operations
 
 **When user creates a Quick Tab (Scenario 1 from issue-47-revised.md):**
 
 Expected logs (SHOULD exist but DON'T):
+
 1. `[LOG] Keyboard event detected: key 'Q' pressed`
 2. `[LOG] Quick Tab creation triggered for URL: [URL]`
 3. `[LOG] TabManager.createQuickTab() invoked with metadata: {...}`
@@ -193,6 +223,7 @@ Actual logs: **NONE**
 **When user opens Quick Tabs Manager (Scenario 2 from issue-47-revised.md):**
 
 Expected logs (SHOULD exist but DON'T):
+
 1. `[LOG] Manager sidebar script loaded and initialized`
 2. `[LOG] Requesting current Quick Tabs state from content script`
 3. `[LOG] Received state: quick_tabs=[{...}], minimized=[...]`
@@ -208,6 +239,7 @@ Actual logs: **NONE**
 **When user minimizes/restores a Quick Tab (Scenarios 5-6):**
 
 Expected logs (SHOULD exist but DON'T):
+
 1. `[LOG] Minimize button clicked for tab [ID]`
 2. `[LOG] MinimizedManager.add() invoked`
 3. `[LOG] Z-index incremented: [old] → [new]`
@@ -226,7 +258,8 @@ Storage heartbeat entries: ~200+
 Feature operation entries: ~40  
 Actual Quick Tabs operation entries: **0**
 
-The logging system is inverted: health checks dominate while feature operations are completely absent.
+The logging system is inverted: health checks dominate while feature operations
+are completely absent.
 
 ---
 
@@ -239,9 +272,11 @@ The logging system is inverted: health checks dominate while feature operations 
 
 ### Missing Evidence
 
-The log export contains **NO entries** from a sidebar script context (no `[Sidebar]`, `[Manager]`, `[ManagerUI]` prefixes).
+The log export contains **NO entries** from a sidebar script context (no
+`[Sidebar]`, `[Manager]`, `[ManagerUI]` prefixes).
 
 This indicates either:
+
 1. Sidebar script is not loading at all
 2. Sidebar script is loading but logging is disabled
 3. Sidebar script is failing silently before first log
@@ -252,6 +287,7 @@ This indicates either:
 **File:** `sidebar/settings.html` and corresponding JavaScript
 
 On browser startup:
+
 1. Sidebar script loads
 2. Initializes event listeners for manager panel
 3. Requests initial Quick Tabs state from content script
@@ -264,12 +300,14 @@ On browser startup:
 ### Port Communication Issue
 
 Port established:
+
 ```
 [LOG] PORT_LIFECYCLE [content-tab-19] [open]
 [LOG] PORT_STATE_TRANSITION: CONNECTING → CONNECTED
 ```
 
 But no subsequent logs showing:
+
 - Messages sent through port
 - State updates received
 - Sidebar rendering triggered
@@ -291,6 +329,7 @@ This suggests the port is open but communication over it is not logged.
 **File:** `src/features/quick-tabs/state-machine.js`
 
 The state machine should transition states on user actions:
+
 - IDLE → CREATING → ACTIVE (on tab creation)
 - ACTIVE → MINIMIZED (on minimize)
 - MINIMIZED → ACTIVE (on restore)
@@ -299,13 +338,15 @@ The state machine should transition states on user actions:
 ### Evidence from Logs
 
 No state transition logs appear at any point:
+
 - ❌ No `CREATING` events
-- ❌ No `ACTIVE` events  
+- ❌ No `ACTIVE` events
 - ❌ No `MINIMIZING` events
 - ❌ No `DESTROYING` events
 - ❌ No state change callbacks triggered
 
 This indicates either:
+
 1. State machine transitions are not being triggered by user actions
 2. Transitions are happening but not logged
 3. Event handlers are not connected to trigger transitions
@@ -327,6 +368,7 @@ This indicates either:
 ```
 
 This is logged successfully, indicating:
+
 - UICoordinator is initialized ✓
 - Render cycle executes ✓
 - But `renderedTabs` map is empty ❌
@@ -338,7 +380,8 @@ This is logged successfully, indicating:
 3. UICoordinator renders 0 tabs
 4. User sees empty Quick Tab Manager
 
-The UICoordinator is not responsible for this failure; it's performing correctly given an empty state. The real issue is upstream (failed hydration).
+The UICoordinator is not responsible for this failure; it's performing correctly
+given an empty state. The real issue is upstream (failed hydration).
 
 ---
 
@@ -358,6 +401,7 @@ The UICoordinator is not responsible for this failure; it's performing correctly
 ```
 
 This confirms:
+
 - Port channel established ✓
 - Bidirectional communication channel ready ✓
 
@@ -366,6 +410,7 @@ This confirms:
 **Evidence:** ZERO
 
 No logs indicating:
+
 - Messages sent through port
 - `postMessage()` calls
 - State synchronization events
@@ -374,11 +419,13 @@ No logs indicating:
 ### Implications
 
 Either:
+
 1. State updates are not being posted to the port
 2. Port message posting is not being logged
 3. Sidebar is not listening on the correct port
 
-Without logging of port messages, diagnosing state synchronization is impossible.
+Without logging of port messages, diagnosing state synchronization is
+impossible.
 
 ---
 
@@ -392,6 +439,7 @@ Without logging of port messages, diagnosing state synchronization is impossible
 ### Missing Diagnostic Data
 
 Logs should include (but don't):
+
 1. Current script context (content script, background, etc.)
 2. Available storage APIs in current context
 3. Browser identification and version
@@ -432,6 +480,7 @@ This missing diagnostic prevents immediate identification of the core problem.
 ### Pattern Identified
 
 When `storage.session` access fails:
+
 1. Promise rejection or error is caught ❓
 2. Single warning logged ✓
 3. **No error object logged** ❌
@@ -449,7 +498,8 @@ try {
 // Continue initialization regardless
 ```
 
-This pattern treats errors as expected conditions rather than actual failures requiring investigation.
+This pattern treats errors as expected conditions rather than actual failures
+requiring investigation.
 
 ---
 
@@ -457,18 +507,20 @@ This pattern treats errors as expected conditions rather than actual failures re
 
 ### Firefox vs Chrome API Support
 
-| Feature | Firefox | Chrome | Status |
-|---------|---------|--------|--------|
-| `storage.local` | ✅ | ✅ | Universal |
-| `storage.sync` | ✅ | ✅ | Universal |
-| `storage.session` | ❌ **NOT SUPPORTED** | ✅ | Firefox FAILS |
-| `storage.session.setAccessLevel()` | N/A | ✅ | Chrome context issue |
-| Port messaging | ✅ | ✅ | Universal |
-| Sidebar API | ✅ | ❌ | Firefox only |
+| Feature                            | Firefox              | Chrome | Status               |
+| ---------------------------------- | -------------------- | ------ | -------------------- |
+| `storage.local`                    | ✅                   | ✅     | Universal            |
+| `storage.sync`                     | ✅                   | ✅     | Universal            |
+| `storage.session`                  | ❌ **NOT SUPPORTED** | ✅     | Firefox FAILS        |
+| `storage.session.setAccessLevel()` | N/A                  | ✅     | Chrome context issue |
+| Port messaging                     | ✅                   | ✅     | Universal            |
+| Sidebar API                        | ✅                   | ❌     | Firefox only         |
 
 ### Critical Realization
 
-The extension targets Firefox (from `manifest.json` gecko config) but attempts to use `browser.storage.session`, which doesn't exist in Firefox. This is a **fundamental architectural mismatch**.
+The extension targets Firefox (from `manifest.json` gecko config) but attempts
+to use `browser.storage.session`, which doesn't exist in Firefox. This is a
+**fundamental architectural mismatch**.
 
 ---
 
@@ -521,6 +573,7 @@ Each failure is **silent and masked by misleading success reporting**.
 **Location:** `src/storage/SessionStorageAdapter.js`
 
 Problem: Attempts to access `browser.storage.session` without:
+
 - Checking if it exists in current context
 - Verifying access levels have been set
 - Providing fallback mechanism
@@ -531,25 +584,31 @@ Problem: Attempts to access `browser.storage.session` without:
 
 **Location:** `src/features/quick-tabs/index.js` (STEP 6 hydration)
 
-Problem: When storage read fails, logs warning but continues initialization as if successful.
+Problem: When storage read fails, logs warning but continues initialization as
+if successful.
 
-**Should:** Propagate initialization failures with proper error boundaries and recovery strategies.
+**Should:** Propagate initialization failures with proper error boundaries and
+recovery strategies.
 
 ### Pattern 3: No Operation Logging for User Actions
 
 **Location:** `src/features/quick-tabs/handlers/*`
 
-Problem: Click handlers and keyboard event handlers exist but produce no logs indicating they fired.
+Problem: Click handlers and keyboard event handlers exist but produce no logs
+indicating they fired.
 
-**Should:** Log entry and exit points for all user action handlers, including parameters and results.
+**Should:** Log entry and exit points for all user action handlers, including
+parameters and results.
 
 ### Pattern 4: Port Communication Logging Only at Lifecycle Level
 
 **Location:** `src/content.js` (port connection code)
 
-Problem: Port opening/closing is logged but message traffic through port is not logged.
+Problem: Port opening/closing is logged but message traffic through port is not
+logged.
 
-**Should:** Log every message sent and received on port with payload (sanitized of sensitive data).
+**Should:** Log every message sent and received on port with payload (sanitized
+of sensitive data).
 
 ### Pattern 5: Sidebar State Isolation
 
@@ -557,7 +616,8 @@ Problem: Port opening/closing is logged but message traffic through port is not 
 
 Problem: Sidebar script appears to have no connection to main logging system.
 
-**Should:** Share logging infrastructure with content script for unified troubleshooting.
+**Should:** Share logging infrastructure with content script for unified
+troubleshooting.
 
 ---
 
@@ -566,6 +626,7 @@ Problem: Sidebar script appears to have no connection to main logging system.
 ### What Tests Can't Detect
 
 The test suite (if run in Chrome/Chromium environment) would:
+
 - Pass on `storage.session` tests ✅
 - Fail to detect Firefox incompatibility ❌
 - Miss the missing `setAccessLevel()` call ❌
@@ -575,11 +636,14 @@ The test suite (if run in Chrome/Chromium environment) would:
 ### What Tests Should Verify
 
 1. **Cross-browser compatibility:** Run tests in both Firefox and Chrome
-2. **Storage access level configuration:** Verify `setAccessLevel()` called before content script access
-3. **Fallback chain execution:** Simulate each storage failure, verify fallback triggers
+2. **Storage access level configuration:** Verify `setAccessLevel()` called
+   before content script access
+3. **Fallback chain execution:** Simulate each storage failure, verify fallback
+   triggers
 4. **Operation logging completeness:** Create tab, verify logs at each step
 5. **Sidebar synchronization:** Verify port messages logged and sidebar updated
-6. **Error handling:** Verify errors caught, logged with context, recovery attempted
+6. **Error handling:** Verify errors caught, logged with context, recovery
+   attempted
 
 ---
 
@@ -621,34 +685,43 @@ The test suite (if run in Chrome/Chromium environment) would:
 
 ## Conclusion
 
-The Quick Tabs feature suffers from **three independent but interconnected failures**:
+The Quick Tabs feature suffers from **three independent but interconnected
+failures**:
 
-1. **API Misuse:** `browser.storage.session` access from content scripts in Firefox (API doesn't exist)
+1. **API Misuse:** `browser.storage.session` access from content scripts in
+   Firefox (API doesn't exist)
 2. **Architecture Gap:** No fallback when primary storage fails
 3. **Observability Failure:** User actions and state changes not logged
 
-These failures combine to create a feature that appears to initialize successfully but cannot function. The extension's logging system provides excellent health monitoring (storage heartbeats) but complete blindness to actual feature operations.
+These failures combine to create a feature that appears to initialize
+successfully but cannot function. The extension's logging system provides
+excellent health monitoring (storage heartbeats) but complete blindness to
+actual feature operations.
 
-**Remediation requires addressing all three areas:** fixing the storage architecture, implementing fallback mechanisms, and adding comprehensive operation logging.
+**Remediation requires addressing all three areas:** fixing the storage
+architecture, implementing fallback mechanisms, and adding comprehensive
+operation logging.
 
 ---
 
 ## Files Requiring Immediate Analysis & Modification
 
 ### Priority 1 (Critical Path):
+
 - `src/storage/SessionStorageAdapter.js` — Storage access strategy
 - `src/storage/SyncStorageAdapter.js` — Fallback storage implementation
 - `src/features/quick-tabs/index.js` — Hydration & initialization logic
 - `src/background/` (initialization module) — Access level configuration
 
 ### Priority 2 (Operation Visibility):
+
 - `src/features/quick-tabs/handlers/*` — User action handlers
 - `src/features/quick-tabs/coordinators/*` — UI update coordinators
 - `src/content.js` — Port message logging
 - `sidebar/` (JavaScript files) — Sidebar state synchronization logging
 
 ### Priority 3 (Error Handling):
+
 - `src/utils/logger.js` — Enhance error context capture
 - `src/features/quick-tabs/index.js` — Error boundary implementation
 - `src/core/` (state management) — Error propagation
-

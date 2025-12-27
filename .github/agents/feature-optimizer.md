@@ -61,52 +61,31 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
-- **Code Health Improvements** - All core files now at Code Health 8.0+:
-  - `sidebar/quick-tabs-manager.js` - Score 8.26
-  - `src/utils/storage-utils.js` - Score 7.78
-  - `src/content.js` - Score 9.09
-  - `background.js` - Score 8.40
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
 
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
-quota monitoring, code health 9.0+, render queue priority, dead code removal
+**v1.6.3.12-v4 Features:**
 
-**v1.6.3.6 Fixes:**
-
-1. **Cross-Tab Filtering** -
-   `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()` check
-   quickTabsMap/minimizedManager before processing
-2. **Transaction Timeout Reduction** - `STORAGE_TIMEOUT_MS` and
-   `TRANSACTION_FALLBACK_CLEANUP_MS` reduced from 5000ms to 2000ms
-3. **Button Handler Logging** - `closeAllTabs()` logs button click, pre-action
-   state, dispatch, response, cleanup, timing
-
-**v1.6.3.6 Architecture:**
-
-- **QuickTabStateMachine** - State tracking and validation
-- **QuickTabMediator** - Operation coordination
-- **MapTransactionManager** - Atomic Map operations (2000ms timeout)
-- **Content.js** - Cross-tab filtering in
-  `_handleRestoreQuickTab()`/`_handleMinimizeQuickTab()`
-- **UICoordinator** - `_shouldRenderOnThisTab()`, `setHandlers()`
-- **VisibilityHandler** - `_applyZIndexUpdate()`, `_applyZIndexViaFallback()`
-- **QuickTabWindow** - `__quickTabWindow` property, `_logIfStateDesync()`
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 
 **Performance Targets:**
 
 - Bundle size: content.js <500KB, background.js <300KB
 - Test execution: <2 seconds for full suite
 - Quick Tab rendering: <100ms
-- Cross-tab sync via storage.onChanged: <100ms latency
+- Cross-tab sync via port messaging: <100ms latency
 - First restore after idle: <500ms (down from 2-3s)
 
 **Storage:**

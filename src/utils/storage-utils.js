@@ -42,11 +42,10 @@
  *   - Issue L: Label transaction IDs when identity is unknown
  *   - Issue V: Document rollbackTransaction() dead code (kept for future error recovery)
  *   - Issue W: Log retry attempts with attempt number for correlation
- * v1.6.4.18 - FIX: Switch Quick Tabs from storage.local to storage.session
- *   - Quick Tabs are now session-only (cleared on browser restart)
- *   - All Quick Tab state operations use storage.session instead of storage.local
- *   - z-index counter and heartbeat still use storage.local (UI state persistence)
- *   - User settings/preferences remain in storage.local (persistent)
+ * v1.6.3.12-v5 - FIX: Remove storage.session entirely (not available in Firefox MV2)
+ *   - All Quick Tab state operations use storage.local exclusively
+ *   - Session-only behavior achieved via explicit startup cleanup (_clearQuickTabsOnStartup)
+ *   - z-index counter, heartbeat, settings all use storage.local
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab only writes state for Quick Tabs it owns (originTabId matches)
@@ -247,6 +246,51 @@ const CIRCUIT_BREAKER_THRESHOLD = 15;
 const CIRCUIT_BREAKER_RESET_THRESHOLD = 10; // Auto-reset when queue drains below this
 let circuitBreakerTripped = false;
 let circuitBreakerTripTime = null;
+
+// =============================================================================
+// v1.6.3.12-v5 - FIX Issues #1, #5, #8: Enhanced Circuit Breaker and Fallback Mode
+// =============================================================================
+
+// v1.6.3.12-v5 - FIX Issue #1: Transaction-level circuit breaker
+// Trips after consecutive TRANSACTIONS fail (not just retries within a transaction)
+const CIRCUIT_BREAKER_TRANSACTION_THRESHOLD = 5; // 5 consecutive failed transactions
+
+// v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism via periodic test writes
+const CIRCUIT_BREAKER_TEST_INTERVAL_MS = 30000; // Test write every 30s during fallback
+
+// v1.6.3.12-v5 - FIX Issue #1: Post-failure backoff
+const POST_FAILURE_MIN_DELAY_MS = 5000; // Min 5s delay after ALL_RETRIES_EXHAUSTED
+
+// v1.6.3.12-v5 - FIX Issue #8: Timeout backoff delays (exponential)
+const TIMEOUT_BACKOFF_DELAYS = [1000, 3000, 5000]; // 1s → 3s → 5s
+
+// v1.6.3.12-v5 - FIX Code Review: Explicit constant for max consecutive timeouts
+const MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP = TIMEOUT_BACKOFF_DELAYS.length;
+
+// v1.6.3.12-v5 - Transaction-level failure tracking
+let consecutiveFailedTransactions = 0;
+let lastTransactionFailureTime = null;
+
+// v1.6.3.12-v5 - Timeout tracking for exponential backoff
+let consecutiveTimeouts = 0;
+let timeoutBackoffIndex = 0;
+
+// v1.6.3.12-v5 - Fallback mode state
+/**
+ * Circuit breaker modes for storage failure handling
+ * @enum {string}
+ */
+export const CIRCUIT_BREAKER_MODE = {
+  NORMAL: 'NORMAL', // Storage writes enabled
+  TRIPPED: 'TRIPPED', // Circuit breaker activated - writes bypassed
+  FALLBACK: 'FALLBACK', // Fallback mode - using in-memory only
+  RECOVERING: 'RECOVERING' // Testing if storage is available again
+};
+
+let circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+let fallbackActivatedTime = null;
+let testWriteIntervalId = null;
+let lastSuccessfulWriteTime = null;
 
 // v1.6.3.10-v10 - FIX Issue K: Ownership filter reason codes
 /**
@@ -1329,41 +1373,114 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
  * @returns {boolean} True if this is a self-write that should be skipped
  */
+/**
+ * Options for _logSelfWriteDetected
+ * @typedef {Object} SelfWriteLogOptions
+ * @property {Object} newValue - New storage value
+ * @property {string} matchedBy - Heuristic that matched
+ * @property {number} priority - Priority of matched heuristic
+ * @property {number|null} currentTabId - Current tab ID
+ * @property {Object} heuristicsMatched - All heuristics results
+ */
+
+/**
+ * Log self-write detection result
+ * v1.6.3.12-v5 - FIX Issue #6: Extracted to reduce isSelfWrite complexity
+ * v1.6.3.12-v6 - FIX CodeScene: Converted to options object (was 5 args)
+ * @private
+ * @param {SelfWriteLogOptions} options - Self-write log options
+ */
+function _logSelfWriteDetected(options) {
+  const { newValue, matchedBy, priority, currentTabId, heuristicsMatched } = options;
+  const transactionId = newValue.transactionId || 'missing';
+
+  console.log(
+    `[SELF_WRITE_CHECK] transactionId=${transactionId}, result=SELF_WRITE, key=quick_tabs_state_v2, timestamp=${Date.now()}`,
+    {
+      transactionId,
+      result: 'SELF_WRITE',
+      matchedBy,
+      priority
+    }
+  );
+
+  console.log(`[SelfWrite] DETECTED (matched: ${matchedBy}):`, {
+    matchedBy,
+    priority,
+    transactionId: matchedBy === 'transactionId' ? newValue.transactionId : undefined,
+    instanceId: matchedBy === 'instanceId' ? WRITING_INSTANCE_ID : undefined,
+    tabId: matchedBy === 'tabId' ? (currentTabId ?? currentWritingTabId) : undefined,
+    allMatches: heuristicsMatched
+  });
+}
+
+/**
+ * Log external change detection result
+ * v1.6.3.12-v5 - FIX Issue #6: Extracted to reduce isSelfWrite complexity
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {number|null} currentTabId - Current tab ID
+ * @param {Object} heuristicsMatched - All heuristics results
+ */
+function _logExternalChange(newValue, currentTabId, heuristicsMatched) {
+  const transactionId = newValue.transactionId || 'missing';
+
+  console.log(
+    `[SELF_WRITE_CHECK] transactionId=${transactionId}, result=EXTERNAL_CHANGE, key=quick_tabs_state_v2, timestamp=${Date.now()}`,
+    {
+      transactionId,
+      result: 'EXTERNAL_CHANGE',
+      writingInstanceId: newValue.writingInstanceId,
+      writingTabId: newValue.writingTabId,
+      ourInstanceId: WRITING_INSTANCE_ID,
+      ourTabId: currentTabId ?? currentWritingTabId,
+      heuristicsMatched
+    }
+  );
+}
+
 export function isSelfWrite(newValue, currentTabId = null) {
   if (!newValue) return false;
 
   const heuristicsMatched = _checkSelfWriteHeuristics(newValue, currentTabId);
 
   // v1.6.3.10-v10 - FIX Gap 8.1: Log which heuristic determined the result
+  // v1.6.3.12-v5 - FIX Issue #6: Add SELF_WRITE_CHECK log for every call
   if (heuristicsMatched.transactionId) {
-    console.log('[SelfWrite] DETECTED (matched: transactionId):', {
+    _logSelfWriteDetected({
+      newValue,
       matchedBy: 'transactionId',
       priority: 1,
-      transactionId: newValue.transactionId,
-      allMatches: heuristicsMatched
+      currentTabId,
+      heuristicsMatched
     });
     return true;
   }
 
   if (heuristicsMatched.instanceId) {
-    console.log('[SelfWrite] DETECTED (matched: instanceId):', {
+    _logSelfWriteDetected({
+      newValue,
       matchedBy: 'instanceId',
       priority: 2,
-      instanceId: WRITING_INSTANCE_ID,
-      allMatches: heuristicsMatched
+      currentTabId,
+      heuristicsMatched
     });
     return true;
   }
 
   if (heuristicsMatched.tabId) {
-    console.log('[SelfWrite] DETECTED (matched: tabId):', {
+    _logSelfWriteDetected({
+      newValue,
       matchedBy: 'tabId',
       priority: 3,
-      tabId: currentTabId ?? currentWritingTabId,
-      allMatches: heuristicsMatched
+      currentTabId,
+      heuristicsMatched
     });
     return true;
   }
+
+  // v1.6.3.12-v5 - FIX Issue #6: Log when isSelfWrite returns false (EXTERNAL_CHANGE)
+  _logExternalChange(newValue, currentTabId, heuristicsMatched);
 
   return false;
 }
@@ -1719,7 +1836,10 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
   // v1.6.3.12-v4 - FIX Issue #9: Log each excluded tab with reason
   filteredTabs.forEach(tab => {
     const normalizedOriginTabId = normalizeOriginTabId(tab.originTabId, '_logOwnershipFiltering');
-    const normalizedOriginContainerId = normalizeOriginContainerId(tab.originContainerId, '_logOwnershipFiltering');
+    const normalizedOriginContainerId = normalizeOriginContainerId(
+      tab.originContainerId,
+      '_logOwnershipFiltering'
+    );
 
     let reason = 'unknown';
     if (normalizedOriginTabId === null) {
@@ -1728,7 +1848,10 @@ function _logOwnershipFiltering(tabs, ownedTabs, tabId, containerId = null) {
     } else if (normalizedOriginTabId !== tabId) {
       reason = 'tab_id_mismatch';
       exclusionReasons.tabIdMismatch++;
-    } else if (normalizedOriginContainerId !== null && normalizedOriginContainerId !== normalizedCurrentContainerId) {
+    } else if (
+      normalizedOriginContainerId !== null &&
+      normalizedOriginContainerId !== normalizedCurrentContainerId
+    ) {
       reason = 'container_mismatch';
       exclusionReasons.containerMismatch++;
     }
@@ -2151,16 +2274,16 @@ function _handleSnapshotError(err, operationId, startTime, logPrefix) {
  * v1.6.3.4-v9 - FIX Issue #16, #17: Transaction pattern implementation
  * v1.6.3.6-v5 - FIX Issue #4b: Added storage read logging
  * v1.6.4.8 - FIX CodeScene: Reduce complexity by extracting helpers
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs state (session-only)
+ * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
  *
  * @param {string} logPrefix - Prefix for log messages
  * @returns {Promise<Object|null>} Captured state snapshot or null on error
  */
 export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
   const browserAPI = getBrowserStorageAPI();
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  if (!browserAPI?.storage?.session) {
-    console.warn(`${logPrefix} Cannot capture snapshot: storage.session API unavailable`);
+  // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+  if (!browserAPI?.storage?.local) {
+    console.warn(`${logPrefix} Cannot capture snapshot: storage.local API unavailable`);
     return null;
   }
 
@@ -2170,8 +2293,8 @@ export async function captureStateSnapshot(logPrefix = '[StorageUtils]') {
   logStorageRead(operationId, STATE_KEY, 'start');
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    const result = await browserAPI.storage.session.get(STATE_KEY);
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    const result = await browserAPI.storage.local.get(STATE_KEY);
     return _processSnapshotResult(result, operationId, startTime, logPrefix);
   } catch (err) {
     _handleSnapshotError(err, operationId, startTime, logPrefix);
@@ -2333,8 +2456,8 @@ export async function rollbackTransaction(logPrefix = '[StorageUtils]', reason =
   });
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    await browserAPI.storage.session.set({ [STATE_KEY]: stateSnapshot });
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    await browserAPI.storage.local.set({ [STATE_KEY]: stateSnapshot });
 
     stateSnapshot = null;
     transactionActive = false;
@@ -2654,8 +2777,8 @@ export async function validateStorageIntegrity(expectedState, transactionId = 'u
   }
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    const result = await browserAPI.storage.session.get(STATE_KEY);
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    const result = await browserAPI.storage.local.get(STATE_KEY);
     const storedState = result?.[STATE_KEY];
 
     // Check structure
@@ -3762,7 +3885,10 @@ function createTimeoutPromise(ms, operation) {
   let timeoutId = null;
   const promise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
-      reject(new Error(`${operation} timed out after ${ms}ms`));
+      // v1.6.3.12-v5 - FIX Code Review: Include marker for robust timeout detection
+      const error = new Error(`${operation} timed out after ${ms}ms`);
+      error._isCircuitBreakerTimeout = true; // Custom property for reliable detection
+      reject(error);
     }, ms);
   });
   // v1.6.3.4-v4 - FIX: Only clear if timeoutId was set (safety check)
@@ -3946,26 +4072,35 @@ function _sleep(ms) {
 /**
  * Attempt a single storage write operation
  * v1.6.3.10-v6 - FIX Issue A20: Extracted from _executeStorageWrite for retry support
- * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
+ * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+ * v1.6.3.12-v5 - FIX Issue #8: Detect timeout errors for exponential backoff
  * @private
  * @param {Object} browserAPI - Browser storage API
  * @param {Object} stateWithTxn - State with transaction metadata
  * @param {string} logPrefix - Log prefix
  * @param {number} attemptNumber - Current attempt (1-based)
- * @returns {Promise<boolean>} True if write succeeded
+ * @returns {Promise<{success: boolean, isTimeout: boolean}>} Write result with timeout indicator
  */
 async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attemptNumber) {
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.session.set');
+  // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+  const timeout = createTimeoutPromise(STORAGE_TIMEOUT_MS, 'storage.local.set');
 
   try {
-    // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-    const storagePromise = browserAPI.storage.session.set({ [STATE_KEY]: stateWithTxn });
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    const storagePromise = browserAPI.storage.local.set({ [STATE_KEY]: stateWithTxn });
     await Promise.race([storagePromise, timeout.promise]);
-    return true;
+    return { success: true, isTimeout: false };
   } catch (err) {
-    console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, err.message || err);
-    return false;
+    // v1.6.3.12-v5 - FIX Issue #8: Detect timeout errors for backoff
+    // v1.6.3.12-v5 - FIX Code Review: Use custom property for robust detection (not string matching)
+    const isTimeout =
+      err._isCircuitBreakerTimeout === true || (err.message && err.message.includes('timed out'));
+    console.warn(`${logPrefix} Storage write attempt ${attemptNumber} failed:`, {
+      error: err.message || err,
+      isTimeout,
+      attemptNumber
+    });
+    return { success: false, isTimeout };
   } finally {
     timeout.clear();
   }
@@ -3986,6 +4121,7 @@ async function _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt
  * Handle successful storage write - update state and log
  * v1.6.3.10-v6 - FIX Issue A20: Extracted to reduce _executeStorageWrite complexity
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #1: Record transaction success to reset failure counters
  * @private
  * @param {SuccessfulWriteOptions} options - Write options
  */
@@ -4012,6 +4148,9 @@ function _handleSuccessfulWrite({
 
   // v1.6.3.6-v3 - FIX Issue #2: Reset circuit breaker if queue has drained below threshold
   _checkCircuitBreakerReset();
+
+  // v1.6.3.12-v5 - FIX Issue #1: Record transaction success to reset failure counters
+  recordTransactionSuccess(transactionId);
 
   // v1.6.3.6-v5 - Log storage write complete (success)
   logStorageWrite(operationId, STATE_KEY, 'complete', {
@@ -4047,6 +4186,416 @@ function _checkCircuitBreakerReset() {
       `[StorageUtils] Circuit breaker RESET - queue drained (was tripped for ${tripDuration}ms)`
     );
   }
+}
+
+// =============================================================================
+// v1.6.3.12-v5 - FIX Issues #1, #5, #8: Circuit Breaker and Fallback Management
+// =============================================================================
+
+/**
+ * Get current circuit breaker mode
+ * v1.6.3.12-v5 - FIX Issue #5: Expose mode for fallback decisions
+ * @returns {string} Current circuit breaker mode from CIRCUIT_BREAKER_MODE enum
+ */
+export function getCircuitBreakerMode() {
+  return circuitBreakerMode;
+}
+
+/**
+ * Check if storage writes are currently blocked by circuit breaker
+ * v1.6.3.12-v5 - FIX Issue #5: Check if writes should be bypassed
+ * @returns {boolean} True if storage writes are blocked
+ */
+export function isStorageWriteBlocked() {
+  return circuitBreakerMode !== CIRCUIT_BREAKER_MODE.NORMAL;
+}
+
+/**
+ * Record a successful transaction and reset failure counters
+ * v1.6.3.12-v5 - FIX Issue #1: Reset counters on success
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ */
+export function recordTransactionSuccess(transactionId = '') {
+  const previousFailures = consecutiveFailedTransactions;
+  const previousTimeouts = consecutiveTimeouts;
+
+  // Reset all failure counters
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = Date.now();
+
+  // Log if recovering from failures
+  if (previousFailures > 0 || previousTimeouts > 0) {
+    console.log('[CIRCUITBREAKER] SUCCESS_COUNTERS_RESET:', {
+      transactionId,
+      previousFailedTransactions: previousFailures,
+      previousTimeouts: previousTimeouts,
+      circuitBreakerMode,
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+/**
+ * Record a failed transaction and check if circuit breaker should trip
+ * v1.6.3.12-v5 - FIX Issue #1: Track consecutive failures and trip circuit breaker
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ * @param {string} [reason='unknown'] - Reason for failure
+ * @returns {boolean} True if circuit breaker tripped as a result
+ */
+export function recordTransactionFailure(transactionId = '', reason = 'unknown') {
+  consecutiveFailedTransactions++;
+  lastTransactionFailureTime = Date.now();
+
+  console.warn('[CIRCUITBREAKER] TRANSACTION_FAILED:', {
+    transactionId,
+    reason,
+    consecutiveFailures: consecutiveFailedTransactions,
+    threshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    circuitBreakerMode,
+    timestamp: new Date().toISOString()
+  });
+
+  // Check if circuit breaker should trip
+  if (consecutiveFailedTransactions >= CIRCUIT_BREAKER_TRANSACTION_THRESHOLD) {
+    _tripCircuitBreakerForFailures(transactionId, reason);
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Record a timeout and apply exponential backoff
+ * v1.6.3.12-v5 - FIX Issue #8: Track timeouts and apply backoff
+ * v1.6.3.12-v5 - FIX Code Review: Use explicit constant for max timeouts
+ * @param {string} [transactionId=''] - Transaction ID for logging
+ * @returns {{ backoffMs: number, shouldTripCircuitBreaker: boolean }}
+ */
+export function recordTimeoutAndGetBackoff(transactionId = '') {
+  consecutiveTimeouts++;
+
+  // v1.6.3.12-v5 - FIX Code Review: Cap index more clearly with Math.min
+  const cappedIndex = Math.min(timeoutBackoffIndex, TIMEOUT_BACKOFF_DELAYS.length - 1);
+  const backoffMs = TIMEOUT_BACKOFF_DELAYS[cappedIndex];
+
+  console.warn('[TIMEOUT_BACKOFF_APPLIED]:', {
+    transactionId,
+    consecutiveTimeouts,
+    backoffIndex: cappedIndex,
+    backoffDelayMs: backoffMs,
+    maxIndex: TIMEOUT_BACKOFF_DELAYS.length - 1,
+    timestamp: new Date().toISOString()
+  });
+
+  // Advance backoff index for next timeout (cap at max)
+  if (timeoutBackoffIndex < TIMEOUT_BACKOFF_DELAYS.length - 1) {
+    timeoutBackoffIndex++;
+  }
+
+  // v1.6.3.12-v5 - FIX Code Review: Use explicit constant for clarity
+  const shouldTripCircuitBreaker = consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP;
+
+  if (shouldTripCircuitBreaker) {
+    console.error('[CIRCUITBREAKER] MAX_TIMEOUTS_REACHED:', {
+      transactionId,
+      consecutiveTimeouts,
+      maxTimeouts: MAX_CONSECUTIVE_TIMEOUTS_BEFORE_TRIP,
+      action: 'TRIPPING_CIRCUIT_BREAKER',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  return { backoffMs, shouldTripCircuitBreaker };
+}
+
+/**
+ * Trip the circuit breaker due to consecutive transaction failures
+ * v1.6.3.12-v5 - FIX Issue #1: Activate fallback mode
+ * @private
+ * @param {string} transactionId - Transaction ID for logging
+ * @param {string} reason - Reason for tripping
+ */
+function _tripCircuitBreakerForFailures(transactionId, reason) {
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.TRIPPED;
+  fallbackActivatedTime = Date.now();
+
+  console.error('[CIRCUITBREAKER_TRIPPED]:', {
+    transactionId,
+    reason,
+    consecutiveFailures: consecutiveFailedTransactions,
+    threshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    previousMode: CIRCUIT_BREAKER_MODE.NORMAL,
+    newMode: CIRCUIT_BREAKER_MODE.TRIPPED,
+    timestamp: new Date().toISOString()
+  });
+
+  // Activate fallback mode
+  _activateFallbackMode(transactionId, reason);
+
+  // Start periodic test writes to detect recovery
+  _startCircuitBreakerRecoveryTests();
+}
+
+/**
+ * Activate fallback mode (in-memory only)
+ * v1.6.3.12-v5 - FIX Issue #5: Switch to fallback when storage unavailable
+ * @private
+ * @param {string} transactionId - Transaction ID for logging
+ * @param {string} reason - Reason for fallback
+ */
+function _activateFallbackMode(transactionId, reason) {
+  if (circuitBreakerMode === CIRCUIT_BREAKER_MODE.FALLBACK) {
+    return; // Already in fallback mode
+  }
+
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+  fallbackActivatedTime = Date.now();
+
+  console.error('[FALLBACK_ACTIVATED]:', {
+    transactionId,
+    reason,
+    mode: 'in-memory-only',
+    storageWritesBlocked: true,
+    portMessagingActive: true,
+    recoveryTestIntervalMs: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+    timestamp: new Date().toISOString()
+  });
+}
+
+/**
+ * Start periodic test writes to detect storage recovery
+ * v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism
+ * @private
+ */
+function _startCircuitBreakerRecoveryTests() {
+  // Clear any existing interval
+  if (testWriteIntervalId) {
+    clearInterval(testWriteIntervalId);
+  }
+
+  console.log('[CIRCUITBREAKER_TEST_WRITE] RECOVERY_TESTS_STARTED:', {
+    intervalMs: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+    timestamp: new Date().toISOString()
+  });
+
+  // Schedule periodic test writes
+  testWriteIntervalId = setInterval(() => {
+    _performCircuitBreakerTestWrite();
+  }, CIRCUIT_BREAKER_TEST_INTERVAL_MS);
+}
+
+/**
+ * Stop periodic test writes
+ * v1.6.3.12-v5 - FIX Issue #5: Cleanup recovery mechanism
+ * @private
+ */
+function _stopCircuitBreakerRecoveryTests() {
+  if (testWriteIntervalId) {
+    clearInterval(testWriteIntervalId);
+    testWriteIntervalId = null;
+    console.log('[CIRCUITBREAKER_TEST_WRITE] RECOVERY_TESTS_STOPPED:', {
+      timestamp: new Date().toISOString()
+    });
+  }
+}
+
+/**
+ * Perform a test write to check if storage is available again
+ * v1.6.3.12-v5 - FIX Issue #5: Test write for recovery detection
+ * @private
+ */
+async function _performCircuitBreakerTestWrite() {
+  if (circuitBreakerMode === CIRCUIT_BREAKER_MODE.NORMAL) {
+    _stopCircuitBreakerRecoveryTests();
+    return;
+  }
+
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.RECOVERING;
+
+  console.log('[CIRCUITBREAKER_TEST_WRITE] ATTEMPTING:', {
+    previousMode: CIRCUIT_BREAKER_MODE.FALLBACK,
+    timestamp: new Date().toISOString()
+  });
+
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[CIRCUITBREAKER_TEST_WRITE] FAILED: Storage API unavailable');
+    circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+    return;
+  }
+
+  const testKey = '_circuit_breaker_test_';
+  const testValue = { timestamp: Date.now(), test: true };
+
+  try {
+    // Attempt a small test write
+    await browserAPI.storage.local.set({ [testKey]: testValue });
+
+    // If we get here, storage is working again!
+    console.log('[CIRCUITBREAKER_TEST_WRITE] SUCCESS:', {
+      timestamp: new Date().toISOString()
+    });
+
+    // v1.6.3.12-v5 - FIX Code Review: Wrap cleanup in try-catch to ensure recovery proceeds
+    try {
+      await browserAPI.storage.local.remove(testKey);
+    } catch (cleanupErr) {
+      // Log but don't block recovery - test key cleanup is not critical
+      console.warn(
+        '[CIRCUITBREAKER_TEST_WRITE] CLEANUP_WARNING: Failed to remove test key:',
+        cleanupErr.message
+      );
+    }
+
+    // Recover from circuit breaker
+    _recoverFromCircuitBreaker();
+  } catch (err) {
+    console.warn('[CIRCUITBREAKER_TEST_WRITE] FAILED:', {
+      error: err.message,
+      remainingInFallback: true,
+      nextTestIn: CIRCUIT_BREAKER_TEST_INTERVAL_MS,
+      timestamp: new Date().toISOString()
+    });
+
+    // Stay in fallback mode
+    circuitBreakerMode = CIRCUIT_BREAKER_MODE.FALLBACK;
+  }
+}
+
+/**
+ * Recover from circuit breaker state when storage becomes available
+ * v1.6.3.12-v5 - FIX Issue #5: Recovery mechanism
+ * @private
+ */
+function _recoverFromCircuitBreaker() {
+  const fallbackDuration = fallbackActivatedTime ? Date.now() - fallbackActivatedTime : 0;
+
+  console.log('[CIRCUITBREAKER_RECOVERED]:', {
+    fallbackDurationMs: fallbackDuration,
+    previousMode: circuitBreakerMode,
+    newMode: CIRCUIT_BREAKER_MODE.NORMAL,
+    timestamp: new Date().toISOString()
+  });
+
+  console.log('[FALLBACK_DEACTIVATED]:', {
+    reason: 'storage_recovered',
+    fallbackDurationMs: fallbackDuration,
+    timestamp: new Date().toISOString()
+  });
+
+  // Reset all state
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+  fallbackActivatedTime = null;
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = Date.now();
+
+  // Also reset the old circuit breaker
+  circuitBreakerTripped = false;
+  circuitBreakerTripTime = null;
+
+  // Stop recovery tests
+  _stopCircuitBreakerRecoveryTests();
+}
+
+/**
+ * Get the required delay before next queue dequeue after failure
+ * v1.6.3.12-v5 - FIX Issue #1: Post-failure minimum delay
+ * @returns {number} Delay in milliseconds
+ */
+export function getPostFailureDelay() {
+  if (lastTransactionFailureTime === null) {
+    return 0;
+  }
+
+  const timeSinceFailure = Date.now() - lastTransactionFailureTime;
+  const requiredDelay = POST_FAILURE_MIN_DELAY_MS;
+
+  if (timeSinceFailure < requiredDelay) {
+    const remainingDelay = requiredDelay - timeSinceFailure;
+    console.log('[CIRCUITBREAKER] POST_FAILURE_DELAY_APPLIED:', {
+      timeSinceFailureMs: timeSinceFailure,
+      requiredDelayMs: requiredDelay,
+      remainingDelayMs: remainingDelay,
+      timestamp: new Date().toISOString()
+    });
+    return remainingDelay;
+  }
+
+  return 0;
+}
+
+/**
+ * Check if writes should be bypassed due to circuit breaker or timeout backoff
+ * v1.6.3.12-v5 - FIX Issues #1, #5, #8: Unified bypass check
+ * @param {string} [_transactionId=''] - Transaction ID for logging (reserved for future use)
+ * @returns {{ bypass: boolean, reason: string|null, delayMs: number }}
+ */
+export function checkWriteBypassOrDelay(_transactionId = '') {
+  // Check circuit breaker mode
+  if (circuitBreakerMode !== CIRCUIT_BREAKER_MODE.NORMAL) {
+    return {
+      bypass: true,
+      reason: `circuit_breaker_${circuitBreakerMode.toLowerCase()}`,
+      delayMs: 0
+    };
+  }
+
+  // Check post-failure delay
+  const postFailureDelay = getPostFailureDelay();
+  if (postFailureDelay > 0) {
+    return {
+      bypass: false,
+      reason: 'post_failure_backoff',
+      delayMs: postFailureDelay
+    };
+  }
+
+  return {
+    bypass: false,
+    reason: null,
+    delayMs: 0
+  };
+}
+
+/**
+ * Get circuit breaker status for diagnostics
+ * v1.6.3.12-v5 - FIX Issue #5: Diagnostic information
+ * @returns {Object} Circuit breaker status
+ */
+export function getCircuitBreakerStatus() {
+  return {
+    mode: circuitBreakerMode,
+    consecutiveFailedTransactions,
+    transactionThreshold: CIRCUIT_BREAKER_TRANSACTION_THRESHOLD,
+    consecutiveTimeouts,
+    timeoutBackoffIndex,
+    fallbackActivatedTime,
+    lastSuccessfulWriteTime,
+    lastTransactionFailureTime,
+    testWriteIntervalActive: testWriteIntervalId !== null
+  };
+}
+
+/**
+ * Reset circuit breaker state for testing purposes only
+ * v1.6.3.12-v5 - FIX: Test helper to reset state between tests
+ * @private - For testing only, not exported in production builds
+ */
+export function _resetCircuitBreakerForTesting() {
+  circuitBreakerMode = CIRCUIT_BREAKER_MODE.NORMAL;
+  fallbackActivatedTime = null;
+  consecutiveFailedTransactions = 0;
+  consecutiveTimeouts = 0;
+  timeoutBackoffIndex = 0;
+  lastSuccessfulWriteTime = null;
+  lastTransactionFailureTime = null;
+  circuitBreakerTripped = false;
+  circuitBreakerTripTime = null;
+  _stopCircuitBreakerRecoveryTests();
 }
 
 /**
@@ -4163,6 +4712,7 @@ function _initStorageWriteContext(stateWithTxn, tabCount, transactionId, logPref
  * Handle failed storage write after all retries
  * v1.6.3.10-v9 - FIX Issue W: Extracted from _executeStorageWrite
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #1: Record transaction failure for circuit breaker
  * @private
  * @param {FailedWriteOptions} options - Write failure options
  */
@@ -4188,6 +4738,9 @@ function _handleFailedWrite({
     totalAttempts,
     durationMs
   });
+
+  // v1.6.3.12-v5 - FIX Issue #1: Record transaction failure for circuit breaker
+  recordTransactionFailure(transactionId, 'ALL_RETRIES_EXHAUSTED');
 }
 
 /**
@@ -4293,6 +4846,7 @@ function _logRetriesExhausted(context, transactionId, tabCount, totalAttempts) {
  * v1.6.3.10-v10 - FIX Gap 3.1: Add write lifecycle SUCCESS logging
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting logging helpers
  * v1.6.3.12 - FIX CodeScene: Converted to options object (was 6 args)
+ * v1.6.3.12-v5 - FIX Issue #8: Handle timeout backoff for cascading timeouts
  * @private
  * @param {WriteRetryLoopOptions} options - Retry loop options
  */
@@ -4305,29 +4859,117 @@ async function _executeWriteRetryLoop({
   tabCount
 }) {
   const totalAttempts = STORAGE_MAX_RETRIES + 1;
+  let hadTimeout = false;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
-    if (attempt > 1) {
-      _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
+    const attemptResult = await _executeWriteAttempt({
+      browserAPI,
+      stateWithTxn,
+      logPrefix,
+      transactionId,
+      context,
+      tabCount,
+      attempt,
+      totalAttempts
+    });
+
+    if (attemptResult.shouldReturn) {
+      return attemptResult.returnValue;
     }
 
-    const success = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
-    if (success) {
-      _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
-      _handleSuccessfulWrite({
-        operationId: context.operationId,
-        transactionId,
-        tabCount,
-        startTime: context.startTime,
-        attempt,
-        logPrefix
-      });
-      return true;
+    if (attemptResult.hadTimeout) {
+      hadTimeout = true;
     }
 
     // Wait before retry if more attempts remain
-    if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
-      await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+    _applyRetryDelay(attempt, totalAttempts);
+  }
+
+  _handleAllRetriesExhausted({
+    hadTimeout,
+    transactionId,
+    context,
+    tabCount,
+    totalAttempts,
+    logPrefix
+  });
+  return false;
+}
+
+/**
+ * Execute a single write attempt
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {Object} options - Attempt options
+ * @returns {Promise<{shouldReturn: boolean, returnValue?: boolean, hadTimeout?: boolean}>}
+ */
+async function _executeWriteAttempt({
+  browserAPI,
+  stateWithTxn,
+  logPrefix,
+  transactionId,
+  context,
+  tabCount,
+  attempt,
+  totalAttempts
+}) {
+  if (attempt > 1) {
+    _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
+  }
+
+  const result = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+
+  if (result.success) {
+    _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
+    _handleSuccessfulWrite({
+      operationId: context.operationId,
+      transactionId,
+      tabCount,
+      startTime: context.startTime,
+      attempt,
+      logPrefix
+    });
+    return { shouldReturn: true, returnValue: true };
+  }
+
+  return { shouldReturn: false, hadTimeout: result.isTimeout };
+}
+
+/**
+ * Apply delay before retry attempt
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {number} attempt - Current attempt number
+ * @param {number} totalAttempts - Total number of attempts
+ */
+async function _applyRetryDelay(attempt, totalAttempts) {
+  const hasMoreAttempts = attempt < totalAttempts;
+  const hasDelayConfigured = attempt - 1 < STORAGE_RETRY_DELAYS_MS.length;
+
+  if (hasMoreAttempts && hasDelayConfigured) {
+    await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+  }
+}
+
+/**
+ * Handle when all retry attempts are exhausted
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {Object} options - Options for handling exhausted retries
+ */
+function _handleAllRetriesExhausted({
+  hadTimeout,
+  transactionId,
+  context,
+  tabCount,
+  totalAttempts,
+  logPrefix
+}) {
+  // v1.6.3.12-v5 - FIX Issue #8: Apply timeout backoff if retries exhausted due to timeouts
+  if (hadTimeout) {
+    const backoffInfo = recordTimeoutAndGetBackoff(transactionId);
+    if (backoffInfo.shouldTripCircuitBreaker) {
+      recordTransactionFailure(transactionId, 'MAX_CONSECUTIVE_TIMEOUTS');
     }
   }
 
@@ -4340,7 +4982,6 @@ async function _executeWriteRetryLoop({
     totalAttempts,
     logPrefix
   });
-  return false;
 }
 
 /**
@@ -4405,8 +5046,8 @@ async function _executeStorageWrite({
   context.writeCorrelationId = writeCorrelationId;
   context.writeStartTime = actualStartTime;
 
-  // v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-  _logWritePhase(logPrefix, 'WRITE_API_PHASE', 'Executing storage.session.set', {
+  // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+  _logWritePhase(logPrefix, 'WRITE_API_PHASE', 'Executing storage.local.set', {
     writeCorrelationId,
     transactionId,
     tabCount
@@ -4672,6 +5313,7 @@ async function _waitForIdentityBeforeWrite(logPrefix, transactionId) {
  * v1.6.3.10-v9 - FIX Issue F: Recovery logic for stalled queue / unload edge cases (refactored)
  * v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write queue execution
  * v1.6.3.12 - FIX CodeScene: Extract identity wait to fix bumpy road
+ * v1.6.3.12-v5 - FIX Issues #1, #5, #8: Enhanced circuit breaker with fallback mode and backoff
  * @param {Function} writeOperation - Async function to execute
  * @param {string} [logPrefix='[StorageUtils]'] - Prefix for logging (optional)
  * @param {string} [transactionId=''] - Transaction ID for logging (optional)
@@ -4684,7 +5326,23 @@ export function queueStorageWrite(
 ) {
   _checkAndRecoverStalledQueue(logPrefix, transactionId);
 
-  // Circuit breaker check
+  // v1.6.3.12-v5 - FIX Issues #1, #5, #8: Check circuit breaker mode and apply delays
+  const bypassCheck = checkWriteBypassOrDelay(transactionId);
+  if (bypassCheck.bypass) {
+    console.warn('[CIRCUITBREAKER] WRITE_BYPASSED:', {
+      transactionId,
+      reason: bypassCheck.reason,
+      circuitBreakerMode,
+      timestamp: new Date().toISOString()
+    });
+    _logQueueStateTransition(logPrefix, transactionId, 'blocked', {
+      reason: bypassCheck.reason,
+      circuitBreakerMode
+    });
+    return Promise.resolve(false);
+  }
+
+  // Circuit breaker check (legacy queue depth check)
   if (pendingWriteCount >= CIRCUIT_BREAKER_THRESHOLD) {
     if (!circuitBreakerTripped) _tripCircuitBreaker(transactionId, CIRCUIT_BREAKER_THRESHOLD);
     _logQueueStateTransition(logPrefix, transactionId, 'blocked', { reason: 'circuit_breaker' });
@@ -4700,6 +5358,18 @@ export function queueStorageWrite(
   // Chain operation to queue
   storageWriteQueuePromise = storageWriteQueuePromise
     .then(async () => {
+      // v1.6.3.12-v5 - FIX Issue #1: Apply post-failure delay before dequeue
+      const delayMs = bypassCheck.delayMs;
+      if (delayMs > 0) {
+        console.log('[CIRCUITBREAKER] APPLYING_POST_FAILURE_DELAY:', {
+          transactionId,
+          delayMs,
+          reason: bypassCheck.reason,
+          timestamp: new Date().toISOString()
+        });
+        await _sleep(delayMs);
+      }
+
       _logQueueStateTransition(logPrefix, transactionId, 'dequeue_start');
 
       // v1.6.3.11-v9 - FIX Issue D: Identity precondition check before write execution
@@ -5319,17 +5989,43 @@ function _executePersistWrite(state, context, logPrefix) {
 // =============================================================================
 // STORAGE COORDINATOR
 // v1.6.3.12 - FIX Issue #14: Centralized storage write coordination
+// v1.6.3.12-v5 - FIX Issue #16: Priority-based queue with non-blocking timeout eviction
 // Serializes all writes - only ONE write operation in-flight at a time
 // =============================================================================
 
 /**
+ * Operation priority levels for queue ordering
+ * v1.6.3.12-v5 - FIX Issue #16: State changes have higher priority than position updates
+ * @enum {number}
+ */
+export const QUEUE_PRIORITY = {
+  HIGH: 1, // minimize/restore state changes - process first
+  MEDIUM: 2, // position/size updates
+  LOW: 3 // diagnostic writes, z-index persistence
+};
+
+/**
+ * Default timeout for queue operations (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #16: Stalled operations evicted after this timeout
+ */
+const QUEUE_OPERATION_TIMEOUT_MS = 2000;
+
+/**
+ * Maximum wait time in queue before eviction (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #16: Operations waiting longer than this are evicted
+ */
+const QUEUE_MAX_WAIT_MS = 5000;
+
+/**
  * StorageCoordinator - Centralized manager for storage writes
  * v1.6.3.12 - FIX Issue #14: Prevents concurrent write race conditions
+ * v1.6.3.12-v5 - FIX Issue #16: Non-blocking queue with priority and timeout eviction
  *
  * This class ensures that:
  * 1. Only ONE storage write is in-flight at a time
- * 2. Write requests are queued and processed in order
- * 3. Queue status is logged for debugging
+ * 2. Write requests are queued and processed by priority
+ * 3. Stalled operations are evicted instead of blocking the queue
+ * 4. Queue status is logged for debugging
  *
  * @class StorageCoordinator
  */
@@ -5339,29 +6035,43 @@ class StorageCoordinator {
     this._isWriting = false;
     this._writeCount = 0;
     this._currentHandler = null;
+    this._currentOperationStartTime = null;
+    this._evictedCount = 0;
   }
 
   /**
-   * Queue a storage write operation
+   * Queue a storage write operation with priority
+   * v1.6.3.12-v5 - FIX Issue #16: Added priority parameter for queue ordering
    * @param {string} handlerName - Name of handler requesting write (e.g., 'VisibilityHandler')
    * @param {Function} writeOperation - Async function that performs the actual write
+   * @param {number} [priority=QUEUE_PRIORITY.MEDIUM] - Operation priority (1=HIGH, 2=MEDIUM, 3=LOW)
    * @returns {Promise<boolean>} Promise resolving to write success status
    */
-  queueWrite(handlerName, writeOperation) {
+  queueWrite(handlerName, writeOperation, priority = QUEUE_PRIORITY.MEDIUM) {
     return new Promise((resolve, reject) => {
-      this._writeQueue.push({
+      const queueEntry = {
         handlerName,
         writeOperation,
         resolve,
         reject,
-        queuedAt: Date.now()
-      });
+        queuedAt: Date.now(),
+        priority,
+        id: `${handlerName}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
+      };
+
+      // v1.6.3.12-v5 - FIX Issue #16: Evict stale entries before adding new one
+      this._evictStaleEntries();
+
+      // v1.6.3.12-v5 - FIX Issue #16: Insert based on priority (lower number = higher priority)
+      this._insertByPriority(queueEntry);
 
       console.log('[WRITE_QUEUE] ENQUEUED:', {
         handler: handlerName,
+        priority,
         queueSize: this._writeQueue.length,
         isWriting: this._isWriting,
         currentHandler: this._currentHandler,
+        entryId: queueEntry.id,
         timestamp: new Date().toISOString()
       });
 
@@ -5370,7 +6080,177 @@ class StorageCoordinator {
   }
 
   /**
-   * Process the write queue sequentially
+   * Insert queue entry by priority (higher priority = lower number = earlier in queue)
+   * v1.6.3.12-v5 - FIX Issue #16: Priority-based insertion
+   * @private
+   */
+  _insertByPriority(entry) {
+    // Find insertion point: insert before first entry with lower priority (higher number)
+    const insertIndex = this._writeQueue.findIndex(e => e.priority > entry.priority);
+    if (insertIndex === -1) {
+      // No lower priority entries, append to end
+      this._writeQueue.push(entry);
+    } else {
+      // Insert before the first lower priority entry
+      this._writeQueue.splice(insertIndex, 0, entry);
+    }
+  }
+
+  /**
+   * Evict stale entries that have been waiting too long
+   * v1.6.3.12-v5 - FIX Issue #16: Non-blocking queue - remove stalled operations
+   * v1.6.3.12-v6 - FIX CodeScene: Flatten bumpy road with helper methods
+   * @private
+   */
+  _evictStaleEntries() {
+    const now = Date.now();
+    const { staleEntries, freshEntries } = this._partitionEntriesByFreshness(now);
+
+    if (staleEntries.length === 0) {
+      return;
+    }
+
+    this._writeQueue = freshEntries;
+    this._evictedCount += staleEntries.length;
+    this._resolveEvictedEntries(staleEntries, now);
+  }
+
+  /**
+   * Partition queue entries into stale and fresh
+   * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _evictStaleEntries complexity
+   * @private
+   * @param {number} now - Current timestamp
+   * @returns {{staleEntries: Array, freshEntries: Array}}
+   */
+  _partitionEntriesByFreshness(now) {
+    const staleEntries = [];
+    const freshEntries = [];
+
+    for (const entry of this._writeQueue) {
+      const isStale = now - entry.queuedAt > QUEUE_MAX_WAIT_MS;
+      (isStale ? staleEntries : freshEntries).push(entry);
+    }
+
+    return { staleEntries, freshEntries };
+  }
+
+  /**
+   * Log and resolve evicted entries
+   * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _evictStaleEntries complexity
+   * @private
+   * @param {Array} staleEntries - Entries to evict
+   * @param {number} now - Current timestamp
+   */
+  _resolveEvictedEntries(staleEntries, now) {
+    for (const entry of staleEntries) {
+      console.warn('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        waitTimeMs: now - entry.queuedAt,
+        maxWaitMs: QUEUE_MAX_WAIT_MS,
+        reason: 'exceeded_max_wait_time',
+        totalEvicted: this._evictedCount,
+        timestamp: new Date().toISOString()
+      });
+      // Resolve with false to indicate operation was not completed
+      entry.resolve(false);
+    }
+  }
+
+  /**
+   * Create a timeout promise for queue operations
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * The timeout is cleared when clear() is called, preventing memory leaks
+   * @private
+   * @param {string} handlerName - Handler name
+   * @param {string} id - Entry ID
+   * @param {number} priority - Priority level
+   * @returns {{ promise: Promise, clear: Function, didTimeout: () => boolean }}
+   */
+  _createOperationTimeout(handlerName, id, priority) {
+    let timeoutId = null;
+    let timedOut = false;
+
+    const promise = new Promise((_resolve, _reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        console.error('[WRITE_QUEUE] OPERATION_TIMEOUT:', {
+          handler: handlerName,
+          entryId: id,
+          priority,
+          timeoutMs: QUEUE_OPERATION_TIMEOUT_MS,
+          timestamp: new Date().toISOString()
+        });
+        _reject(new Error(`Operation timeout after ${QUEUE_OPERATION_TIMEOUT_MS}ms`));
+      }, QUEUE_OPERATION_TIMEOUT_MS);
+    });
+
+    return {
+      promise,
+      // Clear timeout to prevent memory leaks - the promise becomes orphaned but harmless
+      clear: () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+      },
+      didTimeout: () => timedOut
+    };
+  }
+
+  /**
+   * Handle operation success
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * @private
+   */
+  _handleOperationSuccess(entry, result) {
+    console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
+      handler: entry.handlerName,
+      entryId: entry.id,
+      priority: entry.priority,
+      writeNumber: this._writeCount,
+      queueSize: this._writeQueue.length,
+      durationMs: Date.now() - this._currentOperationStartTime,
+      timestamp: new Date().toISOString()
+    });
+    entry.resolve(result);
+  }
+
+  /**
+   * Handle operation failure
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce _processQueue line count
+   * @private
+   */
+  _handleOperationFailure(entry, error, didTimeout) {
+    if (didTimeout) {
+      this._evictedCount++;
+      console.error('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        reason: 'operation_timeout',
+        timeoutMs: QUEUE_OPERATION_TIMEOUT_MS,
+        totalEvicted: this._evictedCount,
+        timestamp: new Date().toISOString()
+      });
+      entry.resolve(false);
+    } else {
+      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        writeNumber: this._writeCount,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      entry.reject(error);
+    }
+  }
+
+  /**
+   * Process the write queue sequentially with timeout protection
+   * v1.6.3.12-v5 - FIX Issue #16: Timeout eviction instead of blocking
    * @private
    */
   async _processQueue() {
@@ -5378,47 +6258,40 @@ class StorageCoordinator {
       return;
     }
 
+    this._evictStaleEntries();
+    if (this._writeQueue.length === 0) return;
+
     this._isWriting = true;
-    const { handlerName, writeOperation, resolve, reject, queuedAt } = this._writeQueue.shift();
-    this._currentHandler = handlerName;
+    const entry = this._writeQueue.shift();
+    this._currentHandler = entry.handlerName;
+    this._currentOperationStartTime = Date.now();
     this._writeCount++;
 
-    const waitTimeMs = Date.now() - queuedAt;
     console.log('[WRITE_QUEUE] DEQUEUE_START:', {
-      handler: handlerName,
+      handler: entry.handlerName,
+      entryId: entry.id,
+      priority: entry.priority,
       writeNumber: this._writeCount,
       queueSize: this._writeQueue.length,
-      waitTimeMs,
+      waitTimeMs: Date.now() - entry.queuedAt,
       timestamp: new Date().toISOString()
     });
 
+    const timeout = this._createOperationTimeout(entry.handlerName, entry.id, entry.priority);
+
     try {
-      const result = await writeOperation();
-
-      console.log('[WRITE_QUEUE] WRITE_SUCCESS:', {
-        handler: handlerName,
-        writeNumber: this._writeCount,
-        queueSize: this._writeQueue.length,
-        nextWriteIn: this._writeQueue.length > 0 ? '0ms' : 'N/A',
-        timestamp: new Date().toISOString()
-      });
-
-      resolve(result);
+      const result = await Promise.race([entry.writeOperation(), timeout.promise]);
+      timeout.clear();
+      this._handleOperationSuccess(entry, result);
     } catch (error) {
-      console.error('[WRITE_QUEUE] WRITE_FAILED:', {
-        handler: handlerName,
-        writeNumber: this._writeCount,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      reject(error);
+      timeout.clear();
+      this._handleOperationFailure(entry, error, timeout.didTimeout());
     } finally {
       this._isWriting = false;
       this._currentHandler = null;
+      this._currentOperationStartTime = null;
 
-      // Process next write immediately if queue has items
       if (this._writeQueue.length > 0) {
-        // Use setImmediate/setTimeout(0) to avoid call stack growth
         setTimeout(() => this._processQueue(), 0);
       }
     }
@@ -5426,6 +6299,7 @@ class StorageCoordinator {
 
   /**
    * Get current queue status
+   * v1.6.3.12-v5 - FIX Issue #16: Added priority and eviction stats
    * @returns {Object} Queue status information
    */
   getStatus() {
@@ -5434,7 +6308,12 @@ class StorageCoordinator {
       isWriting: this._isWriting,
       currentHandler: this._currentHandler,
       totalWrites: this._writeCount,
-      pendingHandlers: this._writeQueue.map(w => w.handlerName)
+      totalEvicted: this._evictedCount,
+      pendingHandlers: this._writeQueue.map(w => ({
+        handler: w.handlerName,
+        priority: w.priority,
+        waitTimeMs: Date.now() - w.queuedAt
+      }))
     };
   }
 
@@ -5470,10 +6349,20 @@ export function getStorageCoordinator() {
 // =============================================================================
 // STORAGE LISTENER HEALTH MONITOR
 // v1.6.3.12 - FIX Issue #15: Detect storage listener disconnection
+// v1.6.3.12-v5 - FIX Issue #18: Heartbeat response tracking for fallback decisions
 // =============================================================================
 
 /**
+ * Heartbeat response tracking configuration
+ * v1.6.3.12-v5 - FIX Issue #18: Rolling window for decision making
+ */
+const HEARTBEAT_ROLLING_WINDOW_SIZE = 5; // Track last 5 heartbeat responses
+const HEARTBEAT_STALE_THRESHOLD_MS = 300000; // 5 minutes - heartbeat considered stale
+const HEARTBEAT_MIN_HEALTHY_COUNT = 2; // Need at least 2 successful in window
+
+/**
  * Storage listener health monitor state
+ * v1.6.3.12-v5 - FIX Issue #18: Added heartbeatResponses rolling window
  * @private
  */
 const _storageListenerHealthState = {
@@ -5484,12 +6373,130 @@ const _storageListenerHealthState = {
   heartbeatIntervalId: null,
   heartbeatTimeoutId: null,
   missedHeartbeats: 0,
-  reregistrationCount: 0
+  reregistrationCount: 0,
+  // v1.6.3.12-v5 - FIX Issue #18: Rolling window of heartbeat responses
+  heartbeatResponses: [], // Array of { success: boolean, timestamp: number }
+  fallbackActivated: false,
+  fallbackActivatedAt: null
 };
+
+/**
+ * Record a heartbeat result in the rolling window
+ * v1.6.3.12-v5 - FIX Issue #18: Track heartbeat success/failure for decision making
+ * @private
+ * @param {boolean} success - Whether heartbeat succeeded
+ * @param {number} [timestamp=Date.now()] - Timestamp of the result
+ */
+function _recordHeartbeatResult(success, timestamp = Date.now()) {
+  _storageListenerHealthState.heartbeatResponses.push({ success, timestamp });
+
+  // Keep only the last N responses (rolling window) - typically only removes one element
+  if (_storageListenerHealthState.heartbeatResponses.length > HEARTBEAT_ROLLING_WINDOW_SIZE) {
+    _storageListenerHealthState.heartbeatResponses.shift();
+  }
+
+  console.log('[STORAGE_HEARTBEAT] RESULT_RECORDED:', {
+    success,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
+    timestamp: new Date(timestamp).toISOString()
+  });
+}
+
+/**
+ * Check if heartbeat is healthy for storage operations
+ * v1.6.3.12-v5 - FIX Issue #18: Use rolling window to determine health status
+ * @returns {boolean} True if heartbeat is healthy (at least N successful in last M minutes)
+ */
+export function isHeartbeatHealthy() {
+  const now = Date.now();
+  const recentThreshold = now - HEARTBEAT_STALE_THRESHOLD_MS;
+
+  // Count recent successful heartbeats
+  const recentSuccesses = _storageListenerHealthState.heartbeatResponses.filter(
+    h => h.success && h.timestamp > recentThreshold
+  );
+
+  const isHealthy = recentSuccesses.length >= HEARTBEAT_MIN_HEALTHY_COUNT;
+
+  console.log('[HEARTBEAT_STATUS_CHECK]:', {
+    result: isHealthy ? 'HEALTHY' : 'STALE',
+    recentSuccessCount: recentSuccesses.length,
+    requiredCount: HEARTBEAT_MIN_HEALTHY_COUNT,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
+    staleThresholdMs: HEARTBEAT_STALE_THRESHOLD_MS,
+    fallbackActivated: _storageListenerHealthState.fallbackActivated,
+    timestamp: new Date().toISOString()
+  });
+
+  return isHealthy;
+}
+
+/**
+ * Check heartbeat health and decide whether to retry or fallback
+ * v1.6.3.12-v5 - FIX Issue #18: Decision point for storage operation failure handling
+ * @param {string} operationId - ID of the failing operation for logging
+ * @returns {{ shouldRetry: boolean, reason: string }}
+ */
+export function checkHeartbeatForRetryDecision(operationId) {
+  const isHealthy = isHeartbeatHealthy();
+
+  if (isHealthy) {
+    console.log('[HEARTBEAT_DECISION] RETRY:', {
+      operationId,
+      reason: 'heartbeat_healthy',
+      action: 'retrying_operation',
+      timestamp: new Date().toISOString()
+    });
+    return { shouldRetry: true, reason: 'heartbeat_healthy' };
+  }
+
+  // Heartbeat is stale - activate fallback instead of retrying
+  if (!_storageListenerHealthState.fallbackActivated) {
+    _storageListenerHealthState.fallbackActivated = true;
+    _storageListenerHealthState.fallbackActivatedAt = Date.now();
+
+    console.warn('[HEARTBEAT_STALE] FALLBACK_ACTIVATED:', {
+      operationId,
+      reason: 'heartbeat_stale',
+      action: 'activating_fallback',
+      fallbackActivatedAt: new Date().toISOString()
+    });
+  }
+
+  console.warn('[HEARTBEAT_DECISION] NO_RETRY:', {
+    operationId,
+    reason: 'heartbeat_stale',
+    action: 'fallback_mode',
+    fallbackActivatedAt: _storageListenerHealthState.fallbackActivatedAt
+      ? new Date(_storageListenerHealthState.fallbackActivatedAt).toISOString()
+      : null,
+    timestamp: new Date().toISOString()
+  });
+
+  return { shouldRetry: false, reason: 'heartbeat_stale' };
+}
+
+/**
+ * Reset fallback mode after successful storage operation
+ * v1.6.3.12-v5 - FIX Issue #18: Allow recovery from fallback mode
+ */
+export function resetHeartbeatFallback() {
+  if (_storageListenerHealthState.fallbackActivated) {
+    console.log('[HEARTBEAT_FALLBACK] RESET:', {
+      previousActivatedAt: _storageListenerHealthState.fallbackActivatedAt
+        ? new Date(_storageListenerHealthState.fallbackActivatedAt).toISOString()
+        : null,
+      timestamp: new Date().toISOString()
+    });
+    _storageListenerHealthState.fallbackActivated = false;
+    _storageListenerHealthState.fallbackActivatedAt = null;
+  }
+}
 
 /**
  * Handle heartbeat storage change
  * v1.6.3.12 - FIX Issue #15: Detect heartbeat response
+ * v1.6.3.12-v5 - FIX Issue #18: Record successful response in rolling window
  * @private
  * @param {Object} changes - Storage changes
  * @param {string} _areaName - Storage area name (unused, kept for signature)
@@ -5502,6 +6509,9 @@ function _handleHeartbeatChange(changes, _areaName) {
   _storageListenerHealthState.lastHeartbeatReceived = Date.now();
   _storageListenerHealthState.missedHeartbeats = 0;
 
+  // v1.6.3.12-v5 - FIX Issue #18: Record successful heartbeat in rolling window
+  _recordHeartbeatResult(true);
+
   // Clear timeout since we received response
   if (_storageListenerHealthState.heartbeatTimeoutId) {
     clearTimeout(_storageListenerHealthState.heartbeatTimeoutId);
@@ -5510,6 +6520,7 @@ function _handleHeartbeatChange(changes, _areaName) {
 
   console.log('[STORAGE_HEARTBEAT] Received:', {
     latencyMs: latency,
+    windowSize: _storageListenerHealthState.heartbeatResponses.length,
     timestamp: new Date().toISOString()
   });
 }
@@ -5544,21 +6555,28 @@ async function _sendHeartbeat() {
     }, STORAGE_LISTENER_HEARTBEAT_TIMEOUT_MS);
   } catch (err) {
     console.error('[STORAGE_HEARTBEAT] Send failed:', err.message);
+    // v1.6.3.12-v5 - FIX Issue #18: Record failed heartbeat
+    _recordHeartbeatResult(false);
   }
 }
 
 /**
  * Handle missed heartbeat response
  * v1.6.3.12 - FIX Issue #15: Re-register listener if heartbeat not received
+ * v1.6.3.12-v5 - FIX Issue #18: Record failure in rolling window
  * @private
  */
 function _handleMissedHeartbeat() {
   _storageListenerHealthState.missedHeartbeats++;
 
+  // v1.6.3.12-v5 - FIX Issue #18: Record failed heartbeat in rolling window
+  _recordHeartbeatResult(false);
+
   console.warn('[STORAGE_LISTENER_DEAD] No heartbeat received:', {
     missedCount: _storageListenerHealthState.missedHeartbeats,
     lastSent: _storageListenerHealthState.lastHeartbeatSent,
     lastReceived: _storageListenerHealthState.lastHeartbeatReceived,
+    windowHealth: isHeartbeatHealthy() ? 'HEALTHY' : 'STALE',
     timestamp: new Date().toISOString()
   });
 
@@ -5670,23 +6688,50 @@ export function stopStorageListenerHealthMonitor() {
 /**
  * Get storage listener health status
  * v1.6.3.12 - FIX Issue #15: Diagnostic info
+ * v1.6.3.12-v5 - FIX Issue #18: Include heartbeat rolling window stats
  * @returns {Object} Health status
  */
 export function getStorageListenerHealthStatus() {
+  const now = Date.now();
+  const recentThreshold = now - HEARTBEAT_STALE_THRESHOLD_MS;
+
+  // Calculate rolling window stats
+  const windowResponses = _storageListenerHealthState.heartbeatResponses;
+  const recentSuccesses = windowResponses.filter(
+    h => h.success && h.timestamp > recentThreshold
+  ).length;
+  const recentFailures = windowResponses.filter(
+    h => !h.success && h.timestamp > recentThreshold
+  ).length;
+
   return {
     isRegistered: _storageListenerHealthState.isRegistered,
     listenerAddress: _storageListenerHealthState.listenerAddress,
     lastHeartbeatSent: _storageListenerHealthState.lastHeartbeatSent,
     lastHeartbeatReceived: _storageListenerHealthState.lastHeartbeatReceived,
     missedHeartbeats: _storageListenerHealthState.missedHeartbeats,
-    reregistrationCount: _storageListenerHealthState.reregistrationCount
+    reregistrationCount: _storageListenerHealthState.reregistrationCount,
+    // v1.6.3.12-v5 - FIX Issue #18: Rolling window stats
+    heartbeatWindowSize: windowResponses.length,
+    heartbeatRecentSuccesses: recentSuccesses,
+    heartbeatRecentFailures: recentFailures,
+    isHeartbeatHealthy: recentSuccesses >= HEARTBEAT_MIN_HEALTHY_COUNT,
+    fallbackActivated: _storageListenerHealthState.fallbackActivated,
+    fallbackActivatedAt: _storageListenerHealthState.fallbackActivatedAt
   };
 }
 
 // =============================================================================
 // Z-INDEX COUNTER PERSISTENCE
 // v1.6.3.12 - FIX Issue #17: Persist z-index counter across reloads
+// v1.6.3.12-v5 - FIX Issue #17: Atomic z-index persistence with acknowledgment
 // =============================================================================
+
+/**
+ * Z-index persistence timeout (milliseconds)
+ * v1.6.3.12-v5 - FIX Issue #17: Max time to wait for persistence acknowledgment
+ */
+const ZINDEX_PERSIST_TIMEOUT_MS = 1000;
 
 /**
  * Load z-index counter from storage
@@ -5722,8 +6767,9 @@ export async function loadZIndexCounter(defaultValue = 1000) {
 }
 
 /**
- * Save z-index counter to storage
+ * Save z-index counter to storage (fire-and-forget pattern)
  * v1.6.3.12 - FIX Issue #17: Persist counter value after increment
+ * NOTE: For atomic persistence with confirmation, use saveZIndexCounterWithAck
  * @param {number} value - Counter value to persist
  * @returns {Promise<boolean>} True if saved successfully
  */
@@ -5748,6 +6794,83 @@ export async function saveZIndexCounter(value) {
     return true;
   } catch (err) {
     console.error('[ZINDEX_PERSIST] Failed to save:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Save z-index counter to storage with acknowledgment (atomic pattern)
+ * v1.6.3.12-v5 - FIX Issue #17: Atomic persistence - confirms write succeeded before returning
+ * Uses timeout to prevent indefinite blocking if storage is unresponsive.
+ *
+ * This should be called when increment reliability is critical:
+ * - Counter should only be incremented AFTER this function returns true
+ * - If it returns false, caller should NOT increment the in-memory counter
+ *
+ * @param {number} value - Counter value to persist
+ * @returns {Promise<boolean>} True if saved and verified successfully
+ */
+export async function saveZIndexCounterWithAck(value) {
+  const browserAPI = getBrowserStorageAPI();
+  if (!browserAPI?.storage?.local) {
+    console.warn('[Z_INDEX_PERSIST_FAILED] Storage API unavailable');
+    return false;
+  }
+
+  const startTime = Date.now();
+
+  try {
+    // Create a timeout promise
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => {
+        reject(new Error('Z-index persistence timeout'));
+      }, ZINDEX_PERSIST_TIMEOUT_MS);
+    });
+
+    // Race the storage write against timeout
+    await Promise.race([
+      browserAPI.storage.local.set({ [ZINDEX_COUNTER_KEY]: value }),
+      timeoutPromise
+    ]);
+
+    // Verify the write by reading back
+    const verifyResult = await Promise.race([
+      browserAPI.storage.local.get(ZINDEX_COUNTER_KEY),
+      new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Z-index verify timeout')), ZINDEX_PERSIST_TIMEOUT_MS);
+      })
+    ]);
+
+    const verifiedValue = verifyResult[ZINDEX_COUNTER_KEY];
+    const writeVerified = verifiedValue === value;
+
+    if (!writeVerified) {
+      console.error('[Z_INDEX_PERSIST_FAILED] Verification failed:', {
+        expectedValue: value,
+        actualValue: verifiedValue,
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+      return false;
+    }
+
+    // Log periodically (every 100 increments) to avoid log spam
+    if (value % 100 === 0) {
+      console.log('[ZINDEX_PERSIST_ACK] Counter saved with verification:', {
+        value,
+        durationMs: Date.now() - startTime,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[Z_INDEX_PERSIST_FAILED] Error during atomic save:', {
+      value,
+      error: err.message,
+      durationMs: Date.now() - startTime,
+      timestamp: new Date().toISOString()
+    });
     return false;
   }
 }

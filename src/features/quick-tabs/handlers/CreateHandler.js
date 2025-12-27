@@ -9,7 +9,10 @@
  */
 
 // v1.6.3.12-v3 - FIX Issue A: Import getWritingContainerId to get current container from Identity system
-import { validateOriginTabIdForSerialization, getWritingContainerId } from '@utils/storage-utils.js';
+import {
+  validateOriginTabIdForSerialization,
+  getWritingContainerId
+} from '@utils/storage-utils.js';
 import browser from 'webextension-polyfill';
 
 import { createQuickTabWindow } from '../window.js';

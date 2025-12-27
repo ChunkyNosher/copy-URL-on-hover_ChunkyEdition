@@ -60,34 +60,29 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v5 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
+**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
 
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **storage.session API Fix** - Properly guards MV2 incompatible code
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
-- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Post-Failure Delay** - 5s delay before next queue dequeue
+- **Fallback Mode** - Bypasses storage writes when circuit trips
+- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **Container Validation** - Unified `_validateContainerForOperation()` helper
 
-**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix:**
+**v1.6.3.12-v4 Features - storage.session Removal:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, handler deferral,
-adoption lock timeout, identity gating, storage quota monitoring, code health
-9.0+, container isolation, atomic ops
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 
 **Key Architecture Layers:**
 
@@ -252,11 +247,11 @@ handling
 
 See QuickTab domain for Solo/Mute implementation patterns.
 
-### Port-Based Messaging Pattern (v1.6.3.8-v8)
+### Port-Based Messaging Pattern (v1.6.3.12+)
 
 ```javascript
 // Primary cross-tab sync via runtime.Port
-const port = browser.runtime.connect({ name: 'sidebar' });
+const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 port.postMessage({
   type: 'ACTION_REQUEST',
   action: 'TOGGLE_MINIMIZE',
@@ -265,15 +260,15 @@ port.postMessage({
 });
 ```
 
-### Storage Routing Pattern (v1.6.3.7-v3)
+### Storage Routing Pattern (v1.6.3.12-v5+)
 
 ```javascript
-// Session: permanent: false → storage.session
-// Permanent: permanent: true → storage.local
-const storage =
-  quickTab.permanent === false
-    ? browser.storage.session
-    : browser.storage.local;
+// v1.6.3.12-v5: Circuit breaker + priority queue
+// browser.storage.session COMPLETELY REMOVED - use storage.local only
+await browser.storage.local.set(data);
+
+// Priority queue for write ordering
+const priority = QUEUE_PRIORITY.HIGH; // or MEDIUM, LOW
 ```
 
 ---

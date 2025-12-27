@@ -16,10 +16,7 @@
  */
 
 import { QuickTabState, getStateMachine } from './state-machine.js';
-import {
-  quickTabsMediatorLogger,
-  generateCorrelationId
-} from '../../utils/structured-logger.js';
+import { quickTabsMediatorLogger, generateCorrelationId } from '../../utils/structured-logger.js';
 
 /**
  * @typedef {Object} StateTransitionLogOptions
@@ -343,7 +340,16 @@ export class QuickTabMediator {
    * @returns {OperationResult}
    */
   _handleVisibilityFailure(params, result) {
-    const { id, source, containerId, correlationId, logger, eventName, validFromState, transitionState } = params;
+    const {
+      id,
+      source,
+      containerId,
+      correlationId,
+      logger,
+      eventName,
+      validFromState,
+      transitionState
+    } = params;
 
     this._stateMachine.transition(id, validFromState, {
       source: 'mediator-rollback',
@@ -375,11 +381,18 @@ export class QuickTabMediator {
    */
   _executeVisibilityOperation(config, options) {
     const { id, source, containerId, correlationId, logger } = options;
-    const { eventName, operationName, validFromState, transitionState, finalState, handlerMethod } = config;
+    const { eventName, operationName, validFromState, transitionState, finalState, handlerMethod } =
+      config;
 
     // Validate current state
     const validation = this._validateVisibilityState({
-      id, source, containerId, logger, eventName, operationName, validFromState
+      id,
+      source,
+      containerId,
+      logger,
+      eventName,
+      operationName,
+      validFromState
     });
     if (!validation.valid) {
       return validation.error;
@@ -412,7 +425,16 @@ export class QuickTabMediator {
 
     if (!result.success) {
       return this._handleVisibilityFailure(
-        { id, source, containerId, correlationId, logger, eventName, validFromState, transitionState },
+        {
+          id,
+          source,
+          containerId,
+          correlationId,
+          logger,
+          eventName,
+          validFromState,
+          transitionState
+        },
         result
       );
     }
@@ -456,7 +478,8 @@ export class QuickTabMediator {
       id,
       source,
       context,
-      executeCallback: (options) => this._executeVisibilityOperation(OPERATION_CONFIGS.minimize, options)
+      executeCallback: options =>
+        this._executeVisibilityOperation(OPERATION_CONFIGS.minimize, options)
     });
   }
 
@@ -477,7 +500,8 @@ export class QuickTabMediator {
       id,
       source,
       context,
-      executeCallback: (options) => this._executeVisibilityOperation(OPERATION_CONFIGS.restore, options)
+      executeCallback: options =>
+        this._executeVisibilityOperation(OPERATION_CONFIGS.restore, options)
     });
   }
 
@@ -498,7 +522,7 @@ export class QuickTabMediator {
       id,
       source,
       context,
-      executeCallback: (options) => this._executeDestroyInternal(options)
+      executeCallback: options => this._executeDestroyInternal(options)
     });
   }
 

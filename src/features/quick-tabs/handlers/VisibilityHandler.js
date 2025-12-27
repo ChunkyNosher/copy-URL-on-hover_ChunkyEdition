@@ -81,7 +81,9 @@ import {
   getBrowserStorageAPI,
   getWritingContainerId, // v1.6.3.11-v9 - FIX Issue 5: Container validation in runtime ops
   getStorageCoordinator, // v1.6.3.12 - FIX Issue #14: Centralized write coordination
-  saveZIndexCounter // v1.6.3.12 - FIX Issue #17: Z-index counter persistence
+  saveZIndexCounter, // v1.6.3.12 - FIX Issue #17: Z-index counter persistence
+  saveZIndexCounterWithAck, // v1.6.3.12-v5 - FIX Issue #17: Atomic z-index persistence
+  QUEUE_PRIORITY // v1.6.3.12-v5 - FIX Issue #16: Queue priority constants
 } from '@utils/storage-utils.js';
 
 // v1.6.3.4-v5 - FIX Issue #6: Adjusted timing to ensure state:updated event fires BEFORE storage persistence
@@ -183,9 +185,62 @@ export class VisibilityHandler {
   }
 
   /**
+   * Unified container validation helper for all operations
+   * v1.6.3.12-v5 - FIX Issue #20: Single source of truth for container validation logic
+   * Ensures consistent behavior across all code paths:
+   * - Case 1: currentContainerId is null/undefined → fail-closed (deny operation for safety)
+   * - Case 2: Legacy Quick Tab (no originContainerId) → allow for backward compatibility
+   * - Case 3: Container IDs must match → allow if match, deny if mismatch
+   * @private
+   * @param {Object} quickTab - Quick Tab window instance
+   * @param {string} operation - Operation name for logging
+   * @returns {{ valid: boolean, reason: string }}
+   */
+  _validateContainerForOperation(quickTab, operation) {
+    const logPrefix = `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}`;
+
+    // Case 1: Current container ID unknown - fail-closed for safety
+    // This handles the edge case where identity system hasn't initialized
+    if (this.currentContainerId === null || this.currentContainerId === undefined) {
+      // Only log warning if Quick Tab has container info (not legacy)
+      if (quickTab?.originContainerId) {
+        console.warn(`${logPrefix}: currentContainerId is null - denying operation for safety`, {
+          quickTabId: quickTab?.id,
+          originContainerId: quickTab?.originContainerId
+        });
+      }
+      return { valid: false, reason: 'currentContainerId_unknown' };
+    }
+
+    // Case 2: Legacy Quick Tab (no container info) - allow for backward compatibility
+    // Quick Tabs created before container tracking was added won't have originContainerId
+    if (quickTab?.originContainerId === null || quickTab?.originContainerId === undefined) {
+      console.log(`${logPrefix}: Legacy Quick Tab (no originContainerId) - allowing`, {
+        quickTabId: quickTab?.id,
+        currentContainerId: this.currentContainerId
+      });
+      return { valid: true, reason: 'legacy_quicktab' };
+    }
+
+    // Case 3: Container IDs must match for container isolation
+    const matches = quickTab.originContainerId === this.currentContainerId;
+    if (!matches) {
+      console.warn(`${logPrefix}: Container mismatch - blocking`, {
+        quickTabId: quickTab.id,
+        originContainerId: quickTab.originContainerId,
+        currentContainerId: this.currentContainerId
+      });
+      return { valid: false, reason: 'container_mismatch' };
+    }
+
+    return { valid: true, reason: 'container_match' };
+  }
+
+  /**
    * Check if a tabWindow is owned by the current tab
    * v1.6.3.10-v4 - FIX Issue #9: Extracted to reduce duplication (Code Review feedback)
    * v1.6.3.11-v9 - FIX Issue 5: Now also validates container ID for container isolation
+   * v1.6.3.12-v5 - FIX Issue #20: Now uses unified _validateContainerForOperation helper
    * @private
    * @param {Object} tabWindow - Quick Tab window instance
    * @returns {boolean} True if owned by current tab or ownership is unset
@@ -201,74 +256,33 @@ export class VisibilityHandler {
       return false;
     }
 
-    // v1.6.3.11-v9 - FIX Issue 5: Also validate container ID for container isolation
-    // If originContainerId is not set, consider it owned (legacy Quick Tab)
-    if (tabWindow.originContainerId === null || tabWindow.originContainerId === undefined) {
-      return true;
-    }
-    // If current container ID is not known, fail-closed (block operation)
-    if (this.currentContainerId === null) {
-      console.warn(
-        `${this._logPrefix} [CONTAINER_VALIDATION] Blocked - current container unknown:`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId
-        }
-      );
-      return false;
-    }
-    // Check if originContainerId matches current container
-    const containerMatch = tabWindow.originContainerId === this.currentContainerId;
-    if (!containerMatch) {
-      console.log(`${this._logPrefix} [CONTAINER_VALIDATION] Container mismatch:`, {
-        quickTabId: tabWindow.id,
-        originContainerId: tabWindow.originContainerId,
-        currentContainerId: this.currentContainerId
-      });
-    }
-    return containerMatch;
+    // v1.6.3.12-v5 - FIX Issue #20: Use unified container validation helper
+    const containerValidation = this._validateContainerForOperation(tabWindow, 'ownership_check');
+    return containerValidation.valid;
   }
 
   /**
    * Validate container isolation for an operation
    * v1.6.3.11-v9 - FIX Issue 5: Container validation for runtime operations
+   * v1.6.3.12-v5 - FIX Issue #20: Now uses unified _validateContainerForOperation helper
    * @private
    * @param {Object} tabWindow - Quick Tab window instance
    * @param {string} operation - Operation name for logging
    * @returns {{ valid: boolean, reason?: string }}
    */
   _validateContainerIsolation(tabWindow, operation) {
-    // If no container ID on Quick Tab, it's a legacy Quick Tab - allow
-    if (!tabWindow?.originContainerId) {
-      return { valid: true };
+    // v1.6.3.12-v5 - FIX Issue #20: Delegate to unified helper
+    const result = this._validateContainerForOperation(tabWindow, operation);
+    // Transform reason to match legacy format for backward compatibility
+    if (!result.valid) {
+      if (result.reason === 'currentContainerId_unknown') {
+        return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
+      }
+      if (result.reason === 'container_mismatch') {
+        return { valid: false, reason: 'CONTAINER_MISMATCH' };
+      }
     }
-
-    // If current container unknown, fail-closed
-    if (!this.currentContainerId) {
-      console.warn(
-        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Current container unknown - blocking`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId
-        }
-      );
-      return { valid: false, reason: 'CURRENT_CONTAINER_UNKNOWN' };
-    }
-
-    // Compare container IDs
-    if (tabWindow.originContainerId !== this.currentContainerId) {
-      console.log(
-        `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}: Container mismatch - blocking`,
-        {
-          quickTabId: tabWindow.id,
-          originContainerId: tabWindow.originContainerId,
-          currentContainerId: this.currentContainerId
-        }
-      );
-      return { valid: false, reason: 'CONTAINER_MISMATCH' };
-    }
-
-    return { valid: true };
+    return { valid: result.valid };
   }
 
   /**
@@ -699,10 +713,12 @@ export class VisibilityHandler {
    */
   async _sendMinimizeMessage(id, minimized, source) {
     try {
-      console.log(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`,
-        { id, minimized, source, originTabId: this.currentTabId }
-      );
+      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`, {
+        id,
+        minimized,
+        source,
+        originTabId: this.currentTabId
+      });
 
       await browser.runtime.sendMessage({
         type: 'QUICKTAB_MINIMIZED',
@@ -713,16 +729,13 @@ export class VisibilityHandler {
         timestamp: Date.now()
       });
 
-      console.log(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`,
-        { id, minimized }
-      );
+      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`, { id, minimized });
     } catch (err) {
       // Background may not be available - this is non-critical
-      console.debug(
-        `${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`,
-        { id, error: err.message }
-      );
+      console.debug(`${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`, {
+        id,
+        error: err.message
+      });
     }
   }
 
@@ -1591,6 +1604,83 @@ export class VisibilityHandler {
   }
 
   /**
+   * Validate cross-tab focus ownership
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce handleFocus complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @returns {boolean} True if focus is allowed
+   */
+  _validateFocusOwnership(id, tabWindow) {
+    // v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
+    // Only allow focus from owning tab to prevent z-index leakage
+    if (tabWindow.originTabId === null || tabWindow.originTabId === undefined) {
+      return true; // No ownership set, allow
+    }
+    if (tabWindow.originTabId === this.currentTabId) {
+      return true; // Owned by this tab
+    }
+    console.log(`${this._logPrefix}[handleFocus] Cross-tab focus rejected:`, {
+      id,
+      originTabId: tabWindow.originTabId,
+      currentTabId: this.currentTabId
+    });
+    return false;
+  }
+
+  /**
+   * Perform atomic z-index increment with persistence
+   * v1.6.3.12-v5 - FIX CodeScene: Extract to reduce handleFocus complexity
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Tab window instance
+   * @returns {Promise<{success: boolean, newZIndex: number|null}>}
+   */
+  async _atomicZIndexIncrement(id, tabWindow) {
+    const oldZIndex = tabWindow.zIndex;
+    const oldCounterValue = this.currentZIndex.value;
+    const newZIndex = this.currentZIndex.value + 1;
+
+    console.log(`${this._logPrefix}[handleFocus] Z-index increment attempt:`, {
+      id,
+      oldZIndex,
+      proposedNewZIndex: newZIndex,
+      currentCounterValue: oldCounterValue
+    });
+
+    // Persist to storage FIRST with acknowledgment
+    const persistSuccess = await saveZIndexCounterWithAck(newZIndex);
+
+    if (!persistSuccess) {
+      console.error(
+        `${this._logPrefix}[handleFocus] [Z_INDEX_PERSIST_FAILED] Reverting to last known good value:`,
+        {
+          id,
+          attemptedValue: newZIndex,
+          revertedValue: oldCounterValue,
+          tabWindowZIndex: oldZIndex,
+          timestamp: new Date().toISOString()
+        }
+      );
+      return { success: false, newZIndex: null };
+    }
+
+    // Persistence confirmed - update in-memory state
+    this.currentZIndex.value = newZIndex;
+    tabWindow.zIndex = newZIndex;
+
+    console.log(`${this._logPrefix}[handleFocus] Z-index increment SUCCESS:`, {
+      id,
+      oldZIndex,
+      newZIndex,
+      counterValue: this.currentZIndex.value,
+      persistenceConfirmed: true
+    });
+
+    return { success: true, newZIndex };
+  }
+
+  /**
    * Handle Quick Tab focus (bring to front)
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
@@ -1600,10 +1690,17 @@ export class VisibilityHandler {
    *   - Issue #9: Comprehensive z-index operation logging
    * v1.6.3.5-v12 - FIX Issue #2: Add fallback DOM query for z-index update
    * v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
+   * v1.6.3.12-v5 - FIX Issue #17: Use atomic z-index persistence pattern
+   *
+   * NOTE: This method changed from sync to async in v1.6.3.12-v5 for atomic z-index
+   * persistence. Callers should not depend on synchronous completion. The method
+   * fires-and-forgets for UI responsiveness - the returned Promise can be awaited
+   * if the caller needs to know when persistence completes.
    *
    * @param {string} id - Quick Tab ID
+   * @returns {Promise<void>}
    */
-  handleFocus(id) {
+  async handleFocus(id) {
     // Check debounce
     if (this._shouldDebounceFocus(id)) return;
 
@@ -1618,48 +1715,25 @@ export class VisibilityHandler {
 
     const { tabWindow, hasContainer, isAttachedToDOM } = validation;
 
-    // v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
-    // Only allow focus from owning tab to prevent z-index leakage
-    if (tabWindow.originTabId !== null && tabWindow.originTabId !== undefined) {
-      if (tabWindow.originTabId !== this.currentTabId) {
-        console.log(`${this._logPrefix}[handleFocus] Cross-tab focus rejected:`, {
-          id,
-          originTabId: tabWindow.originTabId,
-          currentTabId: this.currentTabId
-        });
-        return;
-      }
-    }
+    // Check ownership
+    if (!this._validateFocusOwnership(id, tabWindow)) return;
 
     // v1.6.3.10-v10 - FIX Issue 3.2: Recycle z-indices if threshold exceeded
     if (this.currentZIndex.value >= Z_INDEX_RECYCLE_THRESHOLD) {
-      this._recycleZIndices();
+      await this._recycleZIndicesAtomic();
     }
 
-    // Store old z-index for logging
-    const oldZIndex = tabWindow.zIndex;
-
-    // Increment z-index counter and update entity
-    this.currentZIndex.value++;
-    const newZIndex = this.currentZIndex.value;
-
-    console.log(`${this._logPrefix}[handleFocus] Z-index increment:`, {
-      id,
-      oldZIndex,
-      newZIndex,
-      counterValue: this.currentZIndex.value
-    });
-
-    tabWindow.zIndex = newZIndex;
-
-    // v1.6.3.12 - FIX Issue #17: Persist z-index counter after increment
-    // Use fire-and-forget pattern to avoid blocking focus operation
-    saveZIndexCounter(newZIndex).catch(err => {
-      console.warn(`${this._logPrefix}[handleFocus] Z-index persist failed:`, err.message);
-    });
+    // v1.6.3.12-v5 - FIX Issue #17: Atomic z-index persistence
+    const incrementResult = await this._atomicZIndexIncrement(id, tabWindow);
+    if (!incrementResult.success) return;
 
     // Apply z-index via helper
-    this._applyZIndexUpdate(id, { tabWindow, newZIndex, hasContainer, isAttachedToDOM });
+    this._applyZIndexUpdate(id, {
+      tabWindow,
+      newZIndex: incrementResult.newZIndex,
+      hasContainer,
+      isAttachedToDOM
+    });
 
     // Emit focus event
     if (this.eventBus && this.Events) {
@@ -1676,10 +1750,71 @@ export class VisibilityHandler {
   }
 
   /**
+   * Recycle z-indices atomically to prevent unbounded growth
+   * v1.6.3.12-v5 - FIX Issue #17: Atomic version of _recycleZIndices
+   * @private
+   */
+  async _recycleZIndicesAtomic() {
+    console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Counter exceeded threshold`, {
+      currentValue: this.currentZIndex.value,
+      threshold: Z_INDEX_RECYCLE_THRESHOLD
+    });
+
+    // Sort tabs by current z-index to maintain stacking order
+    const sortedTabs = Array.from(this.quickTabsMap.entries()).sort(
+      ([, a], [, b]) => (a.zIndex || 0) - (b.zIndex || 0)
+    );
+
+    // Calculate new counter value after recycling
+    const baseValue = 1000;
+    const newCounterValue = baseValue + sortedTabs.length;
+
+    // v1.6.3.12-v5 - FIX Issue #17: Persist recycled counter FIRST
+    const persistSuccess = await saveZIndexCounterWithAck(newCounterValue);
+
+    if (!persistSuccess) {
+      console.error(
+        `${this._logPrefix} Z-INDEX_RECYCLE: Counter persist failed, aborting recycle`,
+        {
+          attemptedValue: newCounterValue
+        }
+      );
+      return; // Don't recycle if we can't persist
+    }
+
+    // Reset counter to base value
+    this.currentZIndex.value = baseValue;
+
+    // Reassign z-indices maintaining relative order
+    for (const [id, tabWindow] of sortedTabs) {
+      this.currentZIndex.value++;
+      const newZIndex = this.currentZIndex.value;
+      tabWindow.zIndex = newZIndex;
+
+      // Update DOM if container and style exist
+      if (tabWindow.container?.style) {
+        tabWindow.container.style.zIndex = newZIndex.toString();
+      }
+
+      console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Reassigned`, {
+        id,
+        newZIndex
+      });
+    }
+
+    console.log(`${this._logPrefix} Z-INDEX_RECYCLE: Complete`, {
+      newCounterValue: this.currentZIndex.value,
+      tabsRecycled: sortedTabs.length,
+      persistenceConfirmed: true
+    });
+  }
+
+  /**
    * Recycle z-indices to prevent unbounded growth
    * v1.6.3.10-v10 - FIX Issue 3.2: Reset z-index counter and reassign to all Quick Tabs
    * v1.6.3.11-v9 - FIX: Add defensive check for container.style
    * v1.6.3.12 - FIX Issue #17: Persist z-index counter after recycle
+   * v1.6.3.12-v5 - DEPRECATED: Use _recycleZIndicesAtomic for atomic persistence
    * @private
    */
   _recycleZIndices() {
@@ -1935,8 +2070,24 @@ export class VisibilityHandler {
 
     try {
       await Promise.race([this._persistToStorage(), timeoutPromise]);
-      // Reset timeout count on success
+      // v1.6.3.12-v5 - FIX Issue #12: Reset timeout count on success with logging
+      if (this._storageTimeoutCount > 0) {
+        console.log(
+          `${this._logPrefix} [TIMEOUT_COUNTER_RESET] Reset to 0 after successful write`,
+          {
+            previousCount: this._storageTimeoutCount,
+            storageAvailable: this._storageAvailable
+          }
+        );
+      }
       this._storageTimeoutCount = 0;
+      // v1.6.3.12-v5 - FIX Issue #12: Also reset storage availability if it was marked unavailable
+      if (!this._storageAvailable) {
+        console.log(
+          `${this._logPrefix} [STORAGE_RECOVERY] Storage marked available after successful write`
+        );
+        this._storageAvailable = true;
+      }
     } catch (err) {
       if (err.message === 'Storage persist timeout') {
         this._handleStorageTimeout();
@@ -2062,11 +2213,14 @@ export class VisibilityHandler {
     );
 
     // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
+    // v1.6.3.12-v5 - FIX Issue #16: Use HIGH priority for state change operations
     const coordinator = getStorageCoordinator();
     try {
-      const success = await coordinator.queueWrite('VisibilityHandler', () => {
-        return persistStateToStorage(state, '[VisibilityHandler]');
-      });
+      const success = await coordinator.queueWrite(
+        'VisibilityHandler',
+        () => persistStateToStorage(state, '[VisibilityHandler]'),
+        QUEUE_PRIORITY.HIGH // State changes are high priority
+      );
 
       if (!success) {
         // v1.6.3.4-v4 - FIX: More descriptive error message about potential causes

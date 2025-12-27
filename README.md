@@ -1,44 +1,48 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
-quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
-**Container Isolation**, and Session-Only Quick Tabs.
+**Version 1.6.3.12-v5** - A feature-rich **Firefox/Chrome/Chromium** extension
+for quick URL copying and advanced Quick Tab management with **Per-Tab
+Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v4 Status:** Option 4 Architecture ✅ | storage.local Only ✅ |
-Cache Staleness Detection ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v5 Status:** Circuit Breaker ✅ | Priority Queue ✅ | Timeout
+Backoff ✅ | Rolling Heartbeat ✅ | Code Health 10.0 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v4
+## 🎉 What's New in v1.6.3.12-v5
 
-**🔧 storage.session Removal + Cache Staleness Detection ✅**
+**🔧 Circuit Breaker Pattern + Priority Queue + Comprehensive Logging ✅**
 
-- ✅ **storage.session API Removal** - All `browser.storage.session` calls replaced
-  with `browser.storage.local` for full Firefox MV2 compatibility
-- ✅ **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
-  behavior (clears Quick Tabs on browser restart)
-- ✅ **Port Disconnect Fix** - Captures `lastError` immediately for debugging
-- ✅ **Cache Staleness Detection** - 30s warning, 60s auto-sync for reliable state
-- ✅ **Comprehensive Logging** - Hydration, debounce timing, ownership filter logs
-- ✅ **Code Health 10.0** - SyncStorageAdapter refactored from 8.91 to 10.0
+- ✅ **Circuit Breaker** - Trips after 5 consecutive failed transactions
+- ✅ **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- ✅ **Post-Failure Delay** - 5 seconds before next queue dequeue
+- ✅ **Fallback Mode** - Bypasses storage writes when circuit trips
+- ✅ **Test Write Recovery** - Probes every 30s for recovery detection
+- ✅ **Priority Queue** - HIGH/MEDIUM/LOW priority for write ordering
+- ✅ **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- ✅ **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- ✅ **Storage Backend Tracking** - `currentStorageBackend` state tracking
+- ✅ **Error Discrimination** - API unavailable vs quota vs transient errors
+- ✅ **Container Validation** - Unified `_validateContainerForOperation()`
+  helper
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager refresh fix  
-**v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port roundtrip
-tracking  
-**v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state,
-push notifications  
-**v1.6.3.11-v12:** Solo/Mute removed, session-only Quick Tabs, version-based log
-cleanup
+**v1.6.3.12-v4:** storage.session API removal, cache staleness detection,
+startup cleanup  
+**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager
+refresh fix  
+**v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port
+roundtrip tracking  
+**v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -136,11 +140,13 @@ npm run lint                    # Lint
 
 ## 📝 Notes
 
-- Quick Tabs are session-only and cleared on browser restart (`storage.local` + startup cleanup)
+- Quick Tabs are session-only and cleared on browser restart (`storage.local` +
+  startup cleanup)
 - Container isolation prevents cross-container state leaks
 - Port messaging ensures reliable Quick Tabs sync across tabs
 - Background script is single source of truth for all Quick Tabs data
-- Cache staleness detection auto-syncs if no updates for 60s
+- Circuit breaker trips after 5 failures, recovers via test write every 30s
+- Priority queue ensures critical writes (HIGH) are processed first
 
 ## 📄 License
 
@@ -148,6 +154,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

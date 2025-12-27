@@ -37,28 +37,29 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v4 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v5 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v4 Features (NEW) - storage.session Removal + Cache Staleness:**
+**v1.6.3.12-v5 Features (NEW) - Circuit Breaker + Priority Queue:**
 
-- **storage.session API Removal** - All `browser.storage.session` calls replaced
-  with `browser.storage.local` for Firefox MV2 compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
-- **Port Disconnect Fix** - Captures `lastError` immediately on first line of handler
+- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Post-Failure Delay** - 5s delay before next queue dequeue
+- **Fallback Mode** - Bypasses storage writes when circuit trips
+- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **Container Validation** - Unified `_validateContainerForOperation()` helper
+
+**v1.6.3.12-v4 Features - storage.session Removal + Cache Staleness:**
+
+- **storage.session API Removal** - All calls replaced with
+  `browser.storage.local`
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
-- **SyncStorageAdapter 10.0** - Refactored from 8.91 to 10.0 Code Health
-
-**v1.6.3.12-v3 Features - Critical Bug Fixes + Logging Gaps:**
-
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
 
 **v1.6.3.11-v7 Features - Orphan Quick Tabs Fix:**
 
@@ -214,12 +215,19 @@ port.postMessage({
 });
 ```
 
-### Storage Routing Pattern (v1.6.3.12-v4+)
+### Storage Routing Pattern (v1.6.3.12-v5+)
 
 ```javascript
-// v1.6.3.12-v4: browser.storage.session REMOVED - use storage.local only
+// v1.6.3.12-v5: Circuit breaker + priority queue
+// browser.storage.session COMPLETELY REMOVED - use storage.local only
 // Session-only behavior via startup cleanup: _clearQuickTabsOnStartup()
-await browser.storage.local.set(data);  // Only storage API used
+await browser.storage.local.set(data); // Only storage API used
+
+// Circuit breaker trips after 5 failures
+if (circuitBreakerFailures >= CIRCUIT_BREAKER_TRANSACTION_THRESHOLD) {
+  // Fallback mode - bypass storage writes
+  console.warn('[CIRCUITBREAKER_TRIPPED]');
+}
 
 // Port disconnect: capture lastError IMMEDIATELY on first line
 quickTabsPort.onDisconnect.addListener(() => {

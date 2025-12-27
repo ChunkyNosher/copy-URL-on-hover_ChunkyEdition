@@ -41,7 +41,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v3 Features (NEW):**
 
-- **Container ID Resolution** - CreateHandler queries Identity system at creation
+- **Container ID Resolution** - CreateHandler queries Identity system at
+  creation
 - **Context Detection Fix** - `setWritingTabId()` receives proper context
 - **Logging Gaps Fixed** - Port lifecycle, correlation IDs
 
@@ -101,5 +102,5 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.12-v3 port messaging,
-memory-based state, container ID resolution, per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.12-v3 port
+messaging, memory-based state, container ID resolution, per-tab scoping.**

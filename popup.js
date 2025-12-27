@@ -812,11 +812,9 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
       // v1.6.3 - Backward compatibility: also clear from sync storage (legacy location)
       await browserAPI.storage.sync.remove('quick_tabs_state_v2');
 
-      // Clear session storage if available
-      // eslint-disable-next-line max-depth
-      if (typeof browserAPI.storage.session !== 'undefined') {
-        await browserAPI.storage.session.remove('quick_tabs_session');
-      }
+      // Clear session key from local storage as well
+      // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+      await browserAPI.storage.local.remove('quick_tabs_session');
 
       // v1.6.3 - FIX: Notify background to reset globalQuickTabState cache
       await browserAPI.runtime.sendMessage({ action: 'RESET_GLOBAL_QUICK_TAB_STATE' });

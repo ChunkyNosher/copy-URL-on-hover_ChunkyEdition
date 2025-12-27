@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v3), memory-based state (`quickTabsSessionState`),
-  real-time port updates, container ID resolution via Identity system, scenario logging, FIFO EventBus
+  sync with Single Writer Authority (v1.6.3.12-v5), memory-based state (`quickTabsSessionState`),
+  circuit breaker pattern, priority queue, timeout backoff, rolling heartbeat window
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v4 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v5 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,66 +47,51 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v4 Features (NEW):**
+**v1.6.3.12-v5 Features (NEW):**
 
-- **storage.session API Removal** - All `browser.storage.session` calls replaced
-  with `browser.storage.local` for Firefox MV2 compatibility
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only behavior
-- **Port Disconnect Fix** - Captures `lastError` immediately on first line of handler
-- **Correlation ID Propagation** - Full propagation with FIFO ordering documented
+- **Circuit Breaker** - Trips after 5 consecutive failed transactions
+- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
+- **Post-Failure Delay** - 5s delay before next queue dequeue
+- **Fallback Mode** - Bypasses storage writes when circuit trips
+- **Test Write Recovery** - Every 30s probe for recovery detection
+- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
+- **Atomic Z-Index** - `saveZIndexCounterWithAck()` for persistence
+- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **Container Validation** - Unified `_validateContainerForOperation()` helper
+
+**v1.6.3.12-v4 Features:**
+
+- **storage.session API Removal** - Uses `storage.local` only for MV2
+  compatibility
+- **Startup Cleanup** - `_clearQuickTabsOnStartup()` simulates session-only
+  behavior
 - **Cache Staleness Detection** - 30s warning, 60s auto-sync
-- **SyncStorageAdapter 10.0** - Refactored from 8.91 to 10.0 Code Health
 
-**v1.6.3.12-v3 Features:**
+**Key Timing Constants (v1.6.3.12-v5+):**
 
-- **Container ID Resolution** - CreateHandler queries Identity system via
-  `getWritingContainerId()` at creation time (not stale constructor values)
-- **Context Detection Fix** - `setWritingTabId()` receives proper context
-- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
-- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
-- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
-- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
-
-**v1.6.3.12-v2 Features (Port Diagnostics):**
-
-- **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards events
-- **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
-- **Enhanced Port Logging** - Disconnect reasons, timestamps, pending counts
-
-**v1.6.3.12 Features (Option 4 Architecture):**
-
-- **Port Messaging** - `browser.runtime.connect({ name: 'quick-tabs-port' })`
-- **Memory-Based State** - `quickTabsSessionState` in background.js
-- **browser.storage.local Only** - Uses `storage.local` + startup cleanup (MV2)
-- **Real-Time Port Updates** - State changes pushed via port.postMessage()
-- **Message Types** - CREATE_QUICK_TAB, MINIMIZE_QUICK_TAB, DELETE_QUICK_TAB,
-  QUICKTAB_MINIMIZED (v1.6.3.12-v2)
-
-**Key Timing Constants (v1.6.3.12-v4+):**
-
-| Constant                       | Value | Purpose                     |
-| ------------------------------ | ----- | --------------------------- |
-| `CACHE_STALENESS_ALERT_MS`     | 30000 | Warn if no sync for 30s     |
-| `CACHE_STALENESS_EMERGENCY_MS` | 60000 | Auto-request sync after 60s |
+| Constant                                | Value | Purpose                            |
+| --------------------------------------- | ----- | ---------------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5     | Failures before circuit trips      |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
+| `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
+| `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
 
 **Key Architecture Components:**
 
-| Component                  | Purpose                          |
-| -------------------------- | -------------------------------- |
-| `quickTabsSessionState`    | Memory-based state in background |
-| `contentScriptPorts`       | Tab ID → Port mapping            |
-| `sidebarPort`              | Manager sidebar port             |
-| `notifySidebarOfStateChange()` | Push updates to sidebar      |
-| `notifyContentScriptOfStateChange()` | Push updates to tabs   |
+| Component                      | Purpose                          |
+| ------------------------------ | -------------------------------- |
+| `quickTabsSessionState`        | Memory-based state in background |
+| `contentScriptPorts`           | Tab ID → Port mapping            |
+| `sidebarPort`                  | Manager sidebar port             |
+| `notifySidebarOfStateChange()` | Push updates to sidebar          |
 
 **Key Modules:**
 
-| Module                            | Purpose                             |
-| --------------------------------- | ----------------------------------- |
-| `background.js`                   | Port handlers, memory state         |
-| `src/content.js`                  | Content script port connection      |
-| `sidebar/quick-tabs-manager.js`   | Sidebar port connection             |
-| `src/utils/event-bus.js`          | EventBus with native EventTarget    |
+| Module                          | Purpose                        |
+| ------------------------------- | ------------------------------ |
+| `background.js`                 | Port handlers, memory state    |
+| `src/content.js`                | Content script port connection |
+| `sidebar/quick-tabs-manager.js` | Sidebar port connection        |
 
 ---
 
@@ -123,22 +108,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Circuit breaker trips after 5 failures
+- [ ] Timeout backoff works (1s → 3s → 5s)
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] Memory state works (`quickTabsSessionState`)
-- [ ] Port handlers work (CREATE_QUICK_TAB, MINIMIZE_QUICK_TAB, etc.)
-- [ ] Sidebar receives state updates via port
-- [ ] Content scripts receive updates via port
-- [ ] Single Writer Authority - Manager sends commands, not storage writes
-- [ ] All tests pass (`npm test`, `npm run lint`) ⭐
+- [ ] Priority queue orders writes correctly
+- [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
 **Deprecated:**
 
-- ❌ `browser.storage.session` - REMOVED in v1.6.3.12-v4 (uses `storage.local` + startup cleanup)
+- ❌ `browser.storage.session` - COMPLETELY REMOVED (uses `storage.local`)
 - ❌ `runtime.sendMessage` - Replaced by port messaging for state sync
-- ❌ `storage.onChanged` with `'session'` - Use `'local'` area as fallback
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v4 storage.local,
-port messaging, cache staleness detection, and startup cleanup for session-only behavior.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v5 circuit breaker,
+priority queue, timeout backoff, and rolling heartbeat window.**

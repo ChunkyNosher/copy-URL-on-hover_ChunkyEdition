@@ -360,7 +360,9 @@ export const quickTabsMediatorLogger = new StructuredLogger(LOG_COMPONENT.QUICK_
  * Quick Tabs State Machine logger
  * v1.6.4 - State machine transition logging
  */
-export const quickTabsStateMachineLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_STATE_MACHINE);
+export const quickTabsStateMachineLogger = new StructuredLogger(
+  LOG_COMPONENT.QUICK_TABS_STATE_MACHINE
+);
 
 /**
  * Quick Tabs Minimized Manager logger

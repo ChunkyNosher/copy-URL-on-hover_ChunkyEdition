@@ -81,7 +81,7 @@ describe('SyncStorageAdapter', () => {
 
       const saveId = await adapter.save([quickTab]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
@@ -110,13 +110,13 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save([quickTab]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalled();
       expect(browser.storage.sync.set).not.toHaveBeenCalled();
     });
 
     test('should throw error when session storage fails', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(new Error('Session storage failed'));
 
       const quickTab = QuickTab.create({
@@ -148,7 +148,7 @@ describe('SyncStorageAdapter', () => {
 
       await adapter.save([quickTab1, quickTab2]);
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
@@ -162,7 +162,7 @@ describe('SyncStorageAdapter', () => {
     test('should handle storage errors gracefully', async () => {
       // v1.6.3.11-v7 - Restored to v1.6.3.10-v10 behavior: save() throws on storage errors
       // Write verification was added in v1.6.3.11-v3 but removed in restoration
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.set.mockRejectedValue(new Error('Storage quota exceeded'));
 
       const quickTab = QuickTab.create({
@@ -178,7 +178,7 @@ describe('SyncStorageAdapter', () => {
 
   describe('load()', () => {
     test('should load Quick Tabs from unified format', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-1', url: 'https://example.com' }],
@@ -198,7 +198,7 @@ describe('SyncStorageAdapter', () => {
       // v1.6.3.11-v3 - Updated test for atomic migration with verification
       // The migration reads state twice (first in load, then in _executeMigration)
       // and writes the migrated data, then verifies by reading again
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
 
       const containerData = {
         quick_tabs_state_v2: {
@@ -254,7 +254,7 @@ describe('SyncStorageAdapter', () => {
     });
 
     test('should return null when no data', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({});
       browser.storage.sync.get.mockResolvedValue({});
 
@@ -266,7 +266,7 @@ describe('SyncStorageAdapter', () => {
 
   describe('delete()', () => {
     test('should delete Quick Tab from unified format', async () => {
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [
@@ -291,8 +291,103 @@ describe('SyncStorageAdapter', () => {
     test('should clear all Quick Tabs', async () => {
       await adapter.clear();
 
-      // v1.6.4.17 - Updated: SyncStorageAdapter now uses storage.session
+      // v1.6.3.12-v5 - Updated: SyncStorageAdapter now uses storage.local
       expect(browser.storage.local.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
+    });
+  });
+
+  // v1.6.3.12-v5 - Tests for Issues #10, #11, #13, #14, #15, #19
+
+  describe('Issue #10 - Storage Backend Tracking', () => {
+    test('should initialize with local backend', () => {
+      expect(adapter.currentStorageBackend).toBe('local');
+    });
+
+    test('should track backend state', () => {
+      expect(adapter._getActiveStorage()).toBeDefined();
+    });
+  });
+
+  describe('Issue #11 - Event Ordering Validation', () => {
+    test('should validate event ordering with valid sequence', async () => {
+      const result = await adapter.validateEventOrdering('save-123', Date.now());
+      expect(result).toBe(true);
+    });
+
+    test('should detect out-of-order events', async () => {
+      const saveId = 'save-456';
+      const now = Date.now();
+
+      // First event with later timestamp
+      await adapter.validateEventOrdering(saveId, now + 1000);
+
+      // Second event with earlier timestamp - should detect out-of-order
+      browser.storage.local.get.mockResolvedValue({
+        quick_tabs_state_v2: { tabs: [], timestamp: now }
+      });
+
+      const result = await adapter.validateEventOrdering(saveId, now);
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Issue #13 - Error Type Classification', () => {
+    test('should classify TypeError as api_unavailable', () => {
+      const error = new TypeError("Cannot read property 'set' of undefined");
+      expect(adapter._classifyError(error)).toBe('api_unavailable');
+    });
+
+    test('should classify quota error as quota_exceeded', () => {
+      const error = new Error('Storage quota exceeded');
+      expect(adapter._classifyError(error)).toBe('quota_exceeded');
+    });
+
+    test('should classify other errors as transient', () => {
+      const error = new Error('Network error');
+      expect(adapter._classifyError(error)).toBe('transient');
+    });
+  });
+
+  describe('Issues #14, #15, #19 - Feature Detection', () => {
+    test('should initialize with feature check timestamp', () => {
+      expect(adapter.lastFeatureCheck).toBeLessThanOrEqual(Date.now());
+      expect(adapter.operationCount).toBe(0);
+    });
+
+    test('should track operation count', async () => {
+      browser.storage.local.get.mockResolvedValue({});
+
+      await adapter.load();
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should check if feature recheck is needed after threshold operations', async () => {
+      // Reset counters
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now();
+
+      // Should not need recheck initially
+      expect(adapter._shouldRecheckFeature()).toBe(false);
+
+      // Simulate reaching threshold
+      adapter.operationCount = 10;
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should check if feature recheck is needed after time threshold', () => {
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now() - 70000; // 70 seconds ago
+
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should recheck feature availability', () => {
+      const previousCheck = adapter.lastFeatureCheck;
+
+      adapter._recheckFeatureAvailability();
+
+      expect(adapter.lastFeatureCheck).toBeGreaterThanOrEqual(previousCheck);
+      expect(adapter.operationCount).toBe(0);
     });
   });
 });

@@ -206,7 +206,10 @@ export class UpdateHandler {
    */
   _handlePropertyChangeEnd(id, values, updateType, eventName, sendMessageFn) {
     // Log callback invocation for debugging
-    console.log(`[UpdateHandler] handle${updateType === 'position' ? 'Position' : 'Size'}ChangeEnd called:`, { id, ...values });
+    console.log(
+      `[UpdateHandler] handle${updateType === 'position' ? 'Position' : 'Size'}ChangeEnd called:`,
+      { id, ...values }
+    );
 
     // Round all values
     const roundedValues = {};
@@ -251,11 +254,14 @@ export class UpdateHandler {
    */
   _handleMissingTabOnChangeEnd(id, updateType, roundedValues) {
     const domExists = this._checkDOMExists(id);
-    console.warn(`[UpdateHandler] ${updateType === 'position' ? 'Position' : 'Size'} update skipped:`, {
-      id,
-      reason: 'tab not in quickTabsMap',
-      inDOM: domExists
-    });
+    console.warn(
+      `[UpdateHandler] ${updateType === 'position' ? 'Position' : 'Size'} update skipped:`,
+      {
+        id,
+        reason: 'tab not in quickTabsMap',
+        inDOM: domExists
+      }
+    );
 
     if (domExists) {
       this._emitOrphanedTabEvent(id, updateType, roundedValues);
