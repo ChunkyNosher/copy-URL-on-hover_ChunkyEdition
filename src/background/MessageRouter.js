@@ -696,7 +696,14 @@ export class MessageRouter {
 
     try {
       // v1.6.3.12-v8 - FIX Code Health: Use options object instead of 6 args
-      await this._executeHandler({ handler, message, sender, sendResponse, action, routeStartTime });
+      await this._executeHandler({
+        handler,
+        message,
+        sender,
+        sendResponse,
+        action,
+        routeStartTime
+      });
       return true;
     } catch (error) {
       this._handleExecutionError(error, action, routeStartTime, sendResponse);

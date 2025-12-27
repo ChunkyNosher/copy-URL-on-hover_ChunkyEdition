@@ -8,8 +8,8 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v8 Status:** Bulk Close ✅ | Circuit Breaker Auto-Reset ✅ | Code Health
-10.0 ✅ | 1,971+ Tests Passing
+**🔧 v1.6.3.12-v8 Status:** Bulk Close ✅ | Circuit Breaker Auto-Reset ✅ | Code
+Health 10.0 ✅ | 1,971+ Tests Passing
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -19,19 +19,27 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **🔧 Bulk Close Operations + Circuit Breaker Auto-Reset ✅**
 
-- ✅ **Bulk Close Operations** - `closeAllQuickTabsViaPort()`, `closeMinimizedQuickTabsViaPort()`
-- ✅ **Circuit Breaker Auto-Reset** - 60-second timer auto-resets tripped circuit breaker
-- ✅ **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS, RESET_GLOBAL_QUICK_TAB_STATE
-- ✅ **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second timeout
-- ✅ **Listener Registration Guard** - `_messageListenerRegistered` prevents duplicates
-- ✅ **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
+- ✅ **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- ✅ **Circuit Breaker Auto-Reset** - 60-second timer auto-resets tripped
+  circuit breaker
+- ✅ **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
+  RESET_GLOBAL_QUICK_TAB_STATE
+- ✅ **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
+  timeout
+- ✅ **Listener Registration Guard** - `_messageListenerRegistered` prevents
+  duplicates
+- ✅ **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
+  settings.js: 10.0
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.12-v7:** Message Routing Fixes, VALID_MESSAGE_ACTIONS, Code Health 10.0  
-**v1.6.3.12-v6:** Manager Sync, Port Resilience, Sequence Tracking, Circuit Breaker  
+**v1.6.3.12-v7:** Message Routing Fixes, VALID_MESSAGE_ACTIONS, Code Health
+10.0  
+**v1.6.3.12-v6:** Manager Sync, Port Resilience, Sequence Tracking, Circuit
+Breaker  
 **v1.6.3.12-v5:** Circuit Breaker pattern, Priority Queue, Timeout Backoff,
 Rolling Heartbeat  
 **v1.6.3.12-v4:** storage.session API removal, cache staleness detection,

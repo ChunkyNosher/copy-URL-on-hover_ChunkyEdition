@@ -6071,7 +6071,15 @@ function _logPortHandlerExit({ msgType, outcome, durationMs, correlationId, tabI
  * @param {Function} options.invokeHandler - Function to invoke the handler
  * @param {number} [options.tabId] - Tab ID (optional, for content script messages)
  */
-function _handlePortMessage({ msg, port, source, correlationPrefix, handlers, invokeHandler, tabId }) {
+function _handlePortMessage({
+  msg,
+  port,
+  source,
+  correlationPrefix,
+  handlers,
+  invokeHandler,
+  tabId
+}) {
   const handlerStartTime = performance.now();
   const correlationId = msg.correlationId || `${correlationPrefix}-${msg.type}-${Date.now()}`;
 

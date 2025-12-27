@@ -22,18 +22,27 @@
 
 **v1.6.3.12-v8 Features (NEW) - Bulk Close + Circuit Breaker Auto-Reset:**
 
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`, `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
-- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS, RESET_GLOBAL_QUICK_TAB_STATE
-- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second timeout protection
-- **Listener Registration Guard** - `_messageListenerRegistered` prevents duplicate listeners
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer
+  (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
+- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
+  RESET_GLOBAL_QUICK_TAB_STATE
+- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
+  timeout protection
+- **Listener Registration Guard** - `_messageListenerRegistered` prevents
+  duplicate listeners
+- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
+  settings.js: 10.0
 
 **v1.6.3.12-v7 Features - Message Routing Fixes + Code Health:**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`, `minimizeQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab closed from UI
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
+  COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`,
+  `minimizeQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab
+  closed from UI
 
 **v1.6.3.12-v6 Features - Manager Sync + Port Resilience:**
 
@@ -117,17 +126,23 @@ const quickTabsSessionState = {
 
 ### v1.6.3.12-v8 Patterns (Current)
 
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`, `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer resets tripped circuit breaker
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer resets tripped circuit
+  breaker
 - **Settings Timeout Protection** - `sendMessageWithTimeout()` with 5s timeout
-- **Listener Guard** - `_messageListenerRegistered` prevents duplicate registration
+- **Listener Guard** - `_messageListenerRegistered` prevents duplicate
+  registration
 - **Code Health** - settings.js: 10.0, MessageRouter.js: 10.0
 
 ### v1.6.3.12-v7 Patterns
 
-- **VALID_MESSAGE_ACTIONS** - Complete allowlist (EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS)
-- **Port-Based Manager Buttons** - `closeQuickTabViaPort`, `minimizeQuickTabViaPort`, `restoreQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab closed from UI
+- **VALID_MESSAGE_ACTIONS** - Complete allowlist (EXPORT_LOGS,
+  COORDINATED_CLEAR_ALL_QUICK_TABS)
+- **Port-Based Manager Buttons** - `closeQuickTabViaPort`,
+  `minimizeQuickTabViaPort`, `restoreQuickTabViaPort`
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab
+  closed from UI
 
 ### v1.6.3.12-v6 Patterns
 
@@ -154,7 +169,8 @@ const quickTabsSessionState = {
 
 - **Option 4 Architecture** - Background script in-memory storage (v1.6.3.12)
 - **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
-- **Container ID Resolution** - Identity system via `getWritingContainerId()` (v3)
+- **Container ID Resolution** - Identity system via `getWritingContainerId()`
+  (v3)
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK (v2)
 
 ### Previous Version Patterns (Consolidated)
@@ -253,8 +269,8 @@ error telemetry, originTabId resolution, container isolation, z-index recycling,
 port messaging, factory patterns, lookup tables, generic wrapper functions,
 in-memory state, push notifications, port roundtrip tracking, circuit breaker,
 priority queue, timeout backoff, rolling heartbeat window, sequence number
-tracking, port reconnection circuit breaker, defensive input validation,
-circuit breaker auto-reset, listener registration guards, message timeout protection.
+tracking, port reconnection circuit breaker, defensive input validation, circuit
+breaker auto-reset, listener registration guards, message timeout protection.
 
 ---
 
@@ -348,7 +364,8 @@ startup cleanup for session-only behavior.
 
 **Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
 `SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`,
-`SIDEBAR_RESTORE_QUICK_TAB`, `CLOSE_ALL_QUICK_TABS`, `CLOSE_MINIMIZED_QUICK_TABS`
+`SIDEBAR_RESTORE_QUICK_TAB`, `CLOSE_ALL_QUICK_TABS`,
+`CLOSE_MINIMIZED_QUICK_TABS`
 
 **Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`,
 `ORIGIN_TAB_CLOSED`, `CLOSE_MINIMIZED_QUICK_TABS_ACK`

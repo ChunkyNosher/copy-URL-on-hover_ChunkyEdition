@@ -73,16 +73,23 @@ nothing.
 
 ### v1.6.3.12-v8 Features (NEW) - Bulk Close + Circuit Breaker Auto-Reset
 
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`, `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
-- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS, RESET_GLOBAL_QUICK_TAB_STATE
-- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second timeout
-- **Listener Registration Guard** - `_messageListenerRegistered` prevents duplicates
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
+  `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer
+  (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
+- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
+  RESET_GLOBAL_QUICK_TAB_STATE
+- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
+  timeout
+- **Listener Registration Guard** - `_messageListenerRegistered` prevents
+  duplicates
+- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
+  settings.js: 10.0
 
 ### v1.6.3.12-v7 Features - Message Routing Fixes + Code Health
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
+  COORDINATED_CLEAR_ALL_QUICK_TABS
 - **Manager Port Messaging** - Buttons use port-based messaging methods
 - **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
 

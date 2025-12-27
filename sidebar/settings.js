@@ -28,7 +28,7 @@ const MESSAGE_TIMEOUT_MS = 5000;
  */
 function sendMessageWithTimeout(message, timeoutMs = MESSAGE_TIMEOUT_MS) {
   let timeoutId;
-  
+
   const timeoutPromise = new Promise((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error(`Operation timed out after ${timeoutMs}ms. Please try again.`));
@@ -1237,7 +1237,7 @@ async function handleClearLogHistory() {
  */
 function setupButtonHandler(buttonId, handler, options = {}) {
   const button = document.getElementById(buttonId);
-  
+
   // v1.6.4 - FIX Issue 8: Defensive null check with logging
   if (!button) {
     console.warn(`[Settings][INIT] Button element not found: ${buttonId}. Listener not attached.`);
@@ -1327,7 +1327,9 @@ function initializeTabSwitching() {
   // v1.6.4 - FIX Issue 10: Guard against duplicate listener registration
   // Firefox sidebars can reload, and listeners stack up without cleanup
   if (_messageListenerRegistered) {
-    console.debug('[Settings] Message listener already registered, skipping duplicate registration');
+    console.debug(
+      '[Settings] Message listener already registered, skipping duplicate registration'
+    );
     return;
   }
 
