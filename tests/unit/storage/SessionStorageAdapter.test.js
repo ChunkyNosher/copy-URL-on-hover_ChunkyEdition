@@ -319,4 +319,106 @@ describe('SessionStorageAdapter', () => {
       );
     });
   });
+
+  // v1.6.3.12-v5 - Tests for Issues #13, #14, #15, #19
+
+  describe('Issue #13 - Error Type Classification', () => {
+    test('should classify TypeError as api_unavailable', () => {
+      const error = new TypeError("Cannot read property 'set' of undefined");
+      expect(adapter._classifyError(error)).toBe('api_unavailable');
+    });
+
+    test('should classify quota error as quota_exceeded', () => {
+      const error = new Error('Storage quota exceeded');
+      expect(adapter._classifyError(error)).toBe('quota_exceeded');
+    });
+
+    test('should classify other errors as transient', () => {
+      const error = new Error('Network error');
+      expect(adapter._classifyError(error)).toBe('transient');
+    });
+
+    test('should handle error with "is not defined" message', () => {
+      const error = new Error('browser.storage.session is not defined');
+      expect(adapter._classifyError(error)).toBe('api_unavailable');
+    });
+  });
+
+  describe('Issues #14, #15, #19 - Feature Detection', () => {
+    test('should initialize with feature check timestamp', () => {
+      expect(adapter.lastFeatureCheck).toBeLessThanOrEqual(Date.now());
+      expect(adapter.operationCount).toBe(0);
+    });
+
+    test('should track operation count on save', async () => {
+      const quickTab = QuickTab.create({
+        id: 'qt-123',
+        url: 'https://example.com',
+        position: { left: 100, top: 100 },
+        size: { width: 400, height: 300 }
+      });
+
+      await adapter.save([quickTab]);
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should track operation count on load', async () => {
+      adapter.operationCount = 0;
+      browser.storage.local.get.mockResolvedValue({});
+
+      await adapter.load();
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should track operation count on delete', async () => {
+      adapter.operationCount = 0;
+      browser.storage.local.get.mockResolvedValue({
+        quick_tabs_state_v2: {
+          tabs: [{ id: 'qt-1' }],
+          timestamp: Date.now()
+        }
+      });
+
+      await adapter.delete('qt-1');
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should track operation count on clear', async () => {
+      adapter.operationCount = 0;
+
+      await adapter.clear();
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should check if feature recheck is needed after threshold operations', () => {
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now();
+
+      expect(adapter._shouldRecheckFeature()).toBe(false);
+
+      adapter.operationCount = 10;
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should check if feature recheck is needed after time threshold', () => {
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now() - 70000; // 70 seconds ago
+
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should recheck feature availability', () => {
+      adapter.operationCount = 5;
+      const previousCheck = adapter.lastFeatureCheck;
+
+      adapter._recheckFeatureAvailability();
+
+      expect(adapter.lastFeatureCheck).toBeGreaterThanOrEqual(previousCheck);
+      expect(adapter.operationCount).toBe(0);
+    });
+
+    test('should initialize isLocalAvailable', () => {
+      expect(adapter.isLocalAvailable).toBe(true);
+    });
+  });
 });

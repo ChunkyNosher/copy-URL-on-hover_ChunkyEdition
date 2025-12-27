@@ -295,4 +295,99 @@ describe('SyncStorageAdapter', () => {
       expect(browser.storage.local.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
     });
   });
+
+  // v1.6.3.12-v5 - Tests for Issues #10, #11, #13, #14, #15, #19
+
+  describe('Issue #10 - Storage Backend Tracking', () => {
+    test('should initialize with local backend', () => {
+      expect(adapter.currentStorageBackend).toBe('local');
+    });
+
+    test('should track backend state', () => {
+      expect(adapter._getActiveStorage()).toBeDefined();
+    });
+  });
+
+  describe('Issue #11 - Event Ordering Validation', () => {
+    test('should validate event ordering with valid sequence', async () => {
+      const result = await adapter.validateEventOrdering('save-123', Date.now());
+      expect(result).toBe(true);
+    });
+
+    test('should detect out-of-order events', async () => {
+      const saveId = 'save-456';
+      const now = Date.now();
+
+      // First event with later timestamp
+      await adapter.validateEventOrdering(saveId, now + 1000);
+
+      // Second event with earlier timestamp - should detect out-of-order
+      browser.storage.local.get.mockResolvedValue({
+        quick_tabs_state_v2: { tabs: [], timestamp: now }
+      });
+
+      const result = await adapter.validateEventOrdering(saveId, now);
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('Issue #13 - Error Type Classification', () => {
+    test('should classify TypeError as api_unavailable', () => {
+      const error = new TypeError("Cannot read property 'set' of undefined");
+      expect(adapter._classifyError(error)).toBe('api_unavailable');
+    });
+
+    test('should classify quota error as quota_exceeded', () => {
+      const error = new Error('Storage quota exceeded');
+      expect(adapter._classifyError(error)).toBe('quota_exceeded');
+    });
+
+    test('should classify other errors as transient', () => {
+      const error = new Error('Network error');
+      expect(adapter._classifyError(error)).toBe('transient');
+    });
+  });
+
+  describe('Issues #14, #15, #19 - Feature Detection', () => {
+    test('should initialize with feature check timestamp', () => {
+      expect(adapter.lastFeatureCheck).toBeLessThanOrEqual(Date.now());
+      expect(adapter.operationCount).toBe(0);
+    });
+
+    test('should track operation count', async () => {
+      browser.storage.local.get.mockResolvedValue({});
+
+      await adapter.load();
+      expect(adapter.operationCount).toBeGreaterThan(0);
+    });
+
+    test('should check if feature recheck is needed after threshold operations', async () => {
+      // Reset counters
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now();
+
+      // Should not need recheck initially
+      expect(adapter._shouldRecheckFeature()).toBe(false);
+
+      // Simulate reaching threshold
+      adapter.operationCount = 10;
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should check if feature recheck is needed after time threshold', () => {
+      adapter.operationCount = 0;
+      adapter.lastFeatureCheck = Date.now() - 70000; // 70 seconds ago
+
+      expect(adapter._shouldRecheckFeature()).toBe(true);
+    });
+
+    test('should recheck feature availability', () => {
+      const previousCheck = adapter.lastFeatureCheck;
+
+      adapter._recheckFeatureAvailability();
+
+      expect(adapter.lastFeatureCheck).toBeGreaterThanOrEqual(previousCheck);
+      expect(adapter.operationCount).toBe(0);
+    });
+  });
 });
