@@ -502,40 +502,56 @@ const _portMessageHandlers = {
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v2 - FIX Issue #16-17: Enhanced port message logging
  * v1.6.4 - Gap #3: Port message handler entry/exit logging
+ * v1.6.3.12-v5 - FIX Issue #7: Use performance.now() for accurate duration
  * @param {Object} message - Message from background
  */
 function handleQuickTabsPortMessage(message) {
   const { type, timestamp: msgTimestamp, correlationId } = message;
-  const handlerStartTime = Date.now();
+  const handlerStartTime = performance.now();
+  const entryTimestamp = Date.now();
   
-  // v1.6.4 - Gap #3: Log handler entry with message type and payload size
-  console.log('[Sidebar] PORT_MESSAGE_HANDLER_ENTRY:', {
+  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log with format matching acceptance criteria
+  console.log(`[PORT_HANDLER_ENTRY] type=${type}, correlationId=${correlationId || 'none'}, timestamp=${entryTimestamp}`, {
     type,
     correlationId: correlationId || null,
-    timestamp: handlerStartTime,
+    timestamp: entryTimestamp,
     messageTimestamp: msgTimestamp || null,
-    payloadSize: JSON.stringify(message).length
+    payloadSize: JSON.stringify(message).length,
+    source: 'background'
   });
 
   const handler = _portMessageHandlers[type];
+  let outcome = 'unknown_type';
+  let errorMessage = null;
+  
   if (handler) {
-    handler(message);
-    // v1.6.4 - Gap #3: Log handler exit on success
-    console.log('[Sidebar] PORT_MESSAGE_HANDLER_EXIT:', {
-      type,
-      correlationId: correlationId || null,
-      outcome: 'success',
-      durationMs: Date.now() - handlerStartTime
-    });
-  } else {
-    // v1.6.4 - Gap #3: Log handler exit on unknown type
-    console.log('[Sidebar] PORT_MESSAGE_HANDLER_EXIT:', {
-      type,
-      correlationId: correlationId || null,
-      outcome: 'unknown_type',
-      durationMs: Date.now() - handlerStartTime
-    });
+    try {
+      handler(message);
+      outcome = 'success';
+    } catch (err) {
+      outcome = 'error';
+      errorMessage = err.message;
+      console.error('[Sidebar] PORT_MESSAGE_HANDLER_ERROR:', {
+        type,
+        correlationId: correlationId || null,
+        error: err.message
+      });
+    }
   }
+  
+  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log with format matching acceptance criteria
+  const durationMs = performance.now() - handlerStartTime;
+  const exitLogData = {
+    type,
+    correlationId: correlationId || null,
+    outcome,
+    durationMs: durationMs.toFixed(2)
+  };
+  // Only include error field when there's an actual error
+  if (errorMessage) {
+    exitLogData.error = errorMessage;
+  }
+  console.log(`[PORT_HANDLER_EXIT] type=${type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`, exitLogData);
 }
 
 /**

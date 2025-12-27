@@ -5629,7 +5629,16 @@ function handleRestoreQuickTabPort(tabId, quickTabId, port) {
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleDeleteQuickTabPort(tabId, quickTabId, port) {
-  console.log(`[Background] DELETE_QUICK_TAB from tab ${tabId}:`, { quickTabId });
+  // v1.6.3.12-v5 - FIX Issue #3: Add handler ENTRY/EXIT logging
+  const handlerStartTime = performance.now();
+  const correlationId = port._lastCorrelationId || `delete-${quickTabId}-${Date.now()}`;
+  
+  console.log(`[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
+    quickTabId,
+    tabId,
+    correlationId,
+    handlerType: 'DELETE_QUICK_TAB'
+  });
 
   const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
@@ -5646,6 +5655,19 @@ function handleDeleteQuickTabPort(tabId, quickTabId, port) {
 
   _sendQuickTabAck(port, 'DELETE_QUICK_TAB_ACK', found, quickTabId);
   if (found) notifySidebarOfStateChange();
+  
+  // v1.6.3.12-v5 - FIX Issue #3: Handler EXIT log with outcome and duration
+  const durationMs = performance.now() - handlerStartTime;
+  const outcome = found ? 'success' : 'not_found';
+  console.log(`[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`, {
+    quickTabId,
+    tabId,
+    outcome,
+    durationMs: durationMs.toFixed(2),
+    correlationId,
+    tabsRemainingInTab: tabQuickTabs.length,
+    globalTabsRemaining: globalQuickTabState.tabs.length
+  });
 }
 
 /**
@@ -5815,36 +5837,88 @@ function _sendUnknownMessageError(port, source, msgType) {
 /**
  * Handle content script port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
  * @param {number} tabId - Tab ID of the content script
  * @param {Object} msg - Message from content script
  * @param {browser.runtime.Port} port - Source port
  */
 function handleContentScriptPortMessage(tabId, msg, port) {
-  console.log(`[Background] Message from tab ${tabId}:`, msg.type);
+  const handlerStartTime = performance.now();
+  const correlationId = msg.correlationId || `cs-${msg.type}-${Date.now()}`;
+  
+  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
+  console.log(`[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
+    type: msg.type,
+    tabId,
+    correlationId,
+    source: 'content-script',
+    payloadKeys: Object.keys(msg)
+  });
+  
+  // Store correlationId on port for downstream handlers
+  port._lastCorrelationId = correlationId;
 
   const handler = _contentScriptMessageHandlers[msg.type];
+  let outcome = 'unknown_type';
+  
   if (handler) {
     handler(tabId, msg, port);
+    outcome = 'success';
   } else {
     _sendUnknownMessageError(port, `tab ${tabId}`, msg.type);
   }
+  
+  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
+  const durationMs = performance.now() - handlerStartTime;
+  console.log(`[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`, {
+    type: msg.type,
+    tabId,
+    outcome,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
 }
 
 /**
  * Handle sidebar port message
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarPortMessage(msg, port) {
-  console.log('[Background] Message from sidebar:', msg.type);
+  const handlerStartTime = performance.now();
+  const correlationId = msg.correlationId || `sidebar-${msg.type}-${Date.now()}`;
+  
+  // v1.6.3.12-v5 - FIX Issue #7: Handler ENTRY log
+  console.log(`[PORT_HANDLER_ENTRY] type=${msg.type}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
+    type: msg.type,
+    correlationId,
+    source: 'sidebar',
+    payloadKeys: Object.keys(msg)
+  });
+  
+  // Store correlationId on port for downstream handlers
+  port._lastCorrelationId = correlationId;
 
   const handler = _sidebarMessageHandlers[msg.type];
+  let outcome = 'unknown_type';
+  
   if (handler) {
     handler(msg, port);
+    outcome = 'success';
   } else {
     _sendUnknownMessageError(port, 'sidebar', msg.type);
   }
+  
+  // v1.6.3.12-v5 - FIX Issue #7: Handler EXIT log
+  const durationMs = performance.now() - handlerStartTime;
+  console.log(`[PORT_HANDLER_EXIT] type=${msg.type}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}`, {
+    type: msg.type,
+    outcome,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
 }
 
 /**
@@ -5854,7 +5928,16 @@ function handleSidebarPortMessage(msg, port) {
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
 function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
-  console.log('[Background] SIDEBAR_CLOSE_QUICK_TAB:', { quickTabId });
+  // v1.6.3.12-v5 - FIX Issue #3: Add handler ENTRY/EXIT logging
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `sidebar-close-${quickTabId}-${Date.now()}`;
+  
+  console.log(`[QUICKTABREMOVED_HANDLER_ENTRY] id=${quickTabId}, correlationId=${correlationId}, timestamp=${Date.now()}`, {
+    quickTabId,
+    correlationId,
+    handlerType: 'SIDEBAR_CLOSE_QUICK_TAB',
+    source: 'sidebar'
+  });
 
   const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
 
@@ -5865,6 +5948,18 @@ function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
   _notifyContentScriptOfCommand(ownerTabId, found, 'CLOSE_QUICK_TAB_COMMAND', quickTabId);
   _sendQuickTabAck(sidebarPort, 'CLOSE_QUICK_TAB_ACK', found, quickTabId);
   notifySidebarOfStateChange();
+  
+  // v1.6.3.12-v5 - FIX Issue #3: Handler EXIT log with outcome and duration
+  const durationMs = performance.now() - handlerStartTime;
+  const outcome = found ? 'success' : 'not_found';
+  console.log(`[QUICKTABREMOVED_HANDLER_EXIT] id=${quickTabId}, outcome=${outcome}, durationMs=${durationMs.toFixed(2)}, correlationId=${correlationId}`, {
+    quickTabId,
+    outcome,
+    durationMs: durationMs.toFixed(2),
+    correlationId,
+    ownerTabId,
+    globalTabsRemaining: globalQuickTabState.tabs.length
+  });
 }
 
 /**

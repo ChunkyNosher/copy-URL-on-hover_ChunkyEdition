@@ -1373,42 +1373,83 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
  * @param {number|null} currentTabId - Current tab's ID (optional, uses cached if null)
  * @returns {boolean} True if this is a self-write that should be skipped
  */
+/**
+ * Log self-write detection result
+ * v1.6.3.12-v5 - FIX Issue #6: Extracted to reduce isSelfWrite complexity
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {string} matchedBy - Heuristic that matched
+ * @param {number} priority - Priority of matched heuristic
+ * @param {number|null} currentTabId - Current tab ID
+ * @param {Object} heuristicsMatched - All heuristics results
+ */
+function _logSelfWriteDetected(newValue, matchedBy, priority, currentTabId, heuristicsMatched) {
+  const transactionId = newValue.transactionId || 'missing';
+  
+  console.log(`[SELF_WRITE_CHECK] transactionId=${transactionId}, result=SELF_WRITE, key=quick_tabs_state_v2, timestamp=${Date.now()}`, {
+    transactionId,
+    result: 'SELF_WRITE',
+    matchedBy,
+    priority
+  });
+  
+  console.log(`[SelfWrite] DETECTED (matched: ${matchedBy}):`, {
+    matchedBy,
+    priority,
+    transactionId: matchedBy === 'transactionId' ? newValue.transactionId : undefined,
+    instanceId: matchedBy === 'instanceId' ? WRITING_INSTANCE_ID : undefined,
+    tabId: matchedBy === 'tabId' ? (currentTabId ?? currentWritingTabId) : undefined,
+    allMatches: heuristicsMatched
+  });
+}
+
+/**
+ * Log external change detection result
+ * v1.6.3.12-v5 - FIX Issue #6: Extracted to reduce isSelfWrite complexity
+ * @private
+ * @param {Object} newValue - New storage value
+ * @param {number|null} currentTabId - Current tab ID
+ * @param {Object} heuristicsMatched - All heuristics results
+ */
+function _logExternalChange(newValue, currentTabId, heuristicsMatched) {
+  const transactionId = newValue.transactionId || 'missing';
+  
+  console.log(`[SELF_WRITE_CHECK] transactionId=${transactionId}, result=EXTERNAL_CHANGE, key=quick_tabs_state_v2, timestamp=${Date.now()}`, {
+    transactionId,
+    result: 'EXTERNAL_CHANGE',
+    writingInstanceId: newValue.writingInstanceId,
+    writingTabId: newValue.writingTabId,
+    ourInstanceId: WRITING_INSTANCE_ID,
+    ourTabId: currentTabId ?? currentWritingTabId,
+    heuristicsMatched
+  });
+}
+
 export function isSelfWrite(newValue, currentTabId = null) {
   if (!newValue) return false;
 
   const heuristicsMatched = _checkSelfWriteHeuristics(newValue, currentTabId);
 
   // v1.6.3.10-v10 - FIX Gap 8.1: Log which heuristic determined the result
+  // v1.6.3.12-v5 - FIX Issue #6: Add SELF_WRITE_CHECK log for every call
   if (heuristicsMatched.transactionId) {
-    console.log('[SelfWrite] DETECTED (matched: transactionId):', {
-      matchedBy: 'transactionId',
-      priority: 1,
-      transactionId: newValue.transactionId,
-      allMatches: heuristicsMatched
-    });
+    _logSelfWriteDetected(newValue, 'transactionId', 1, currentTabId, heuristicsMatched);
     return true;
   }
 
   if (heuristicsMatched.instanceId) {
-    console.log('[SelfWrite] DETECTED (matched: instanceId):', {
-      matchedBy: 'instanceId',
-      priority: 2,
-      instanceId: WRITING_INSTANCE_ID,
-      allMatches: heuristicsMatched
-    });
+    _logSelfWriteDetected(newValue, 'instanceId', 2, currentTabId, heuristicsMatched);
     return true;
   }
 
   if (heuristicsMatched.tabId) {
-    console.log('[SelfWrite] DETECTED (matched: tabId):', {
-      matchedBy: 'tabId',
-      priority: 3,
-      tabId: currentTabId ?? currentWritingTabId,
-      allMatches: heuristicsMatched
-    });
+    _logSelfWriteDetected(newValue, 'tabId', 3, currentTabId, heuristicsMatched);
     return true;
   }
 
+  // v1.6.3.12-v5 - FIX Issue #6: Log when isSelfWrite returns false (EXTERNAL_CHANGE)
+  _logExternalChange(newValue, currentTabId, heuristicsMatched);
+  
   return false;
 }
 
