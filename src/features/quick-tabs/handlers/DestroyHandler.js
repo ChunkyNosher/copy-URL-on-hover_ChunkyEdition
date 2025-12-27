@@ -334,6 +334,10 @@ export class DestroyHandler {
   /**
    * Debounced persist to storage
    * v1.6.3.4-v5 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
+   * v1.6.3.12-v5 - FIX Issue #2: Set forceEmpty=true when quickTabsMap is empty
+   *   When debounced persist fires after closing tabs and map becomes empty (0 tabs),
+   *   we must pass forceEmpty=true to allow the empty state to persist.
+   *   Otherwise, storage validation rejects "Empty write rejected, forceEmpty required".
    * @private
    */
   _debouncedPersistToStorage() {
@@ -345,7 +349,14 @@ export class DestroyHandler {
     // Set new debounced timer
     this._storageDebounceTimer = setTimeout(() => {
       this._storageDebounceTimer = null;
-      this._persistToStorage();
+      // v1.6.3.12-v5 - FIX Issue #2: Set forceEmpty=true when quickTabsMap is empty
+      // This ensures empty state persists when last Quick Tab is closed
+      const forceEmpty = this.quickTabsMap.size === 0;
+      console.log('[DestroyHandler] [CLOSE_ALL_PERSIST] Debounced persist triggered', {
+        tabCount: this.quickTabsMap.size,
+        forceEmpty
+      });
+      this._persistToStorage(forceEmpty);
     }, STORAGE_DEBOUNCE_DELAY);
   }
 
