@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v7.
+  documentation. Current version: v1.6.3.12-v8.
 tools: ['*']
 ---
 
@@ -69,14 +69,22 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v7)
+## Current Extension State (v1.6.3.12-v8)
 
-### v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health
+### v1.6.3.12-v8 Features (NEW) - Bulk Close + Circuit Breaker Auto-Reset
+
+- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`, `closeMinimizedQuickTabsViaPort()`
+- **Circuit Breaker Auto-Reset** - 60-second timer (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
+- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS, RESET_GLOBAL_QUICK_TAB_STATE
+- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second timeout
+- **Listener Registration Guard** - `_messageListenerRegistered` prevents duplicates
+- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
+
+### v1.6.3.12-v7 Features - Message Routing Fixes + Code Health
 
 - **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
 - **Manager Port Messaging** - Buttons use port-based messaging methods
 - **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 
 ### v1.6.3.12-v6 Features - Manager Sync + Port Resilience
 
@@ -102,8 +110,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v7
-- [ ] **v1.6.3.12-v7:** Message Routing Fixes documented
+- [ ] Version numbers match 1.6.3.12-v8
+- [ ] **v1.6.3.12-v8:** Bulk Close + Circuit Breaker Auto-Reset documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -113,7 +121,7 @@ nothing.
 
 | Error                   | Fix                             |
 | ----------------------- | ------------------------------- |
-| v1.6.3.12-v6 or earlier | Update to 1.6.3.12-v7           |
+| v1.6.3.12-v7 or earlier | Update to 1.6.3.12-v8           |
 | "Solo/Mute" references  | REMOVE - Feature DELETED in v12 |
 | "Pin to Page"           | REMOVE - Feature DELETED in v12 |
 | Cross-session persist   | REMOVE - Session-only in v12    |
