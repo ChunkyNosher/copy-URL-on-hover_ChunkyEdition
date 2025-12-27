@@ -7112,21 +7112,20 @@ function _isCloseMinimizedSuccessful(response) {
   return response?.success || response?.timedOut;
 }
 
-async function closeMinimizedTabs() {
+function closeMinimizedTabs() {
   console.log('[Manager] Close Minimized Tabs requested');
 
   try {
-    // v1.6.3.12-v7 - FIX Issue A: Send command to background instead of direct storage write
-    const response = await _sendActionRequest('CLOSE_MINIMIZED_TABS', {
-      timestamp: Date.now()
-    });
+    // v1.6.3.12-v8 - FIX Issue #1: Use port messaging via closeMinimizedQuickTabsViaPort()
+    // This ensures the operation uses the same port architecture as other Quick Tab operations
+    // The actual state update will come via STATE_CHANGED message from background
+    const success = closeMinimizedQuickTabsViaPort();
 
-    if (_isCloseMinimizedSuccessful(response)) {
-      _logCloseMinimizedSuccess(response);
-      // Re-render UI to reflect the change
-      scheduleRender('close-minimized-success');
+    if (success) {
+      console.log('[Manager] CLOSE_MINIMIZED_QUICK_TABS sent via port successfully');
+      // Note: Re-render will be triggered by STATE_CHANGED message from background
     } else {
-      _logCloseMinimizedFailure(response);
+      console.warn('[Manager] Failed to send CLOSE_MINIMIZED_QUICK_TABS - port not connected');
     }
   } catch (err) {
     console.error('[Manager] Error sending close minimized command:', err);
