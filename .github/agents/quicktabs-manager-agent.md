@@ -3,8 +3,8 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v2), scheduleRender() with revision dedup, memory-based state,
-  real-time port updates, QUICKTAB_MINIMIZED reception, port roundtrip tracking, MANAGER pattern actions
+  (v1.6.3.12-v3), scheduleRender() with revision dedup, memory-based state,
+  real-time port updates, container labeling, correlation IDs, scenario logging, MANAGER pattern actions
 tools: ['*']
 ---
 
@@ -36,16 +36,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v2 Features (NEW):**
+**v1.6.3.12-v3 Features (NEW):**
 
-- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`) as
-  fallback for port messaging (Firefox MV2 has no storage.session)
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Container Labeling** - Container ID/label logging in Manager
+- **Logging Gaps #1-8** - Port lifecycle, storage.onChanged, correlation IDs
+- **Test Bridge API** - `getManagerState()` for E2E testing
+- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
+- **Code Health 9.09** - quick-tabs-manager.js refactored
+
+**v1.6.3.12-v2 Features (Port Diagnostics):**
+
 - **QUICKTAB_MINIMIZED Reception** - Receives minimize/restore events from background
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
 - **State Hash Timing** - Hash recomputed at render time, not on message receipt
-- **Debounce Timing** - 100ms for Manager (intentional difference from UpdateHandler)
 
 **Key Manager Features:**
 
@@ -112,5 +118,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v2 port messaging,
-real-time state push, QUICKTAB_MINIMIZED reception, MANAGER pattern actions.**
+**Your strength: Manager coordination with v1.6.3.12-v3 port messaging,
+real-time state push, container labeling, scenario logging, MANAGER pattern actions.**

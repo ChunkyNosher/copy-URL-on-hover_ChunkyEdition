@@ -60,23 +60,20 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v3 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
 UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
 
-- **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
-  `handleCreate()` in `QuickTabHandler.js`
-- **Helper Methods** - `_resolveOriginTabId()`, `_validateTabId()`,
-  `_extractTabIdFromPattern()`
-- **Code Health 8.0+** - All core files now at Code Health 8.0 or higher
-- **Checkpoint System** - `createCheckpoint()`, `rollbackToCheckpoint()`
-- **Message Timeout** - `withTimeout()` utility, `MESSAGE_TIMEOUT_MS` = 5000
-
-**v1.6.3.10-v10 Base (Restored):** Tab ID acquisition, identity gating, storage
-quota monitoring, code health 9.0+, render queue priority, dead code removal
+- **Container ID Resolution** - CreateHandler queries Identity system via
+  `getWritingContainerId()` at creation time (not stale constructor values)
+- **storage.session API Fix** - Properly guards MV2 incompatible code
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
+- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
 
 **Storage Format:**
 
@@ -84,7 +81,7 @@ quota monitoring, code health 9.0+, render queue priority, dead code removal
 { tabs: [{ id, originTabId, ... }], saveId: '...', timestamp: ... }
 ```
 
-**CRITICAL:** Use `storage.local` for Quick Tab state AND UID setting
+**CRITICAL:** Use port messaging (`'quick-tabs-port'`) for Quick Tab state sync
 
 **v1.6.3.6 Fixes:**
 

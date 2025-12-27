@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v2), memory-based state (`quickTabsSessionState`), real-time port updates,
-  per-tab port management, port roundtrip tracking, QUICKTAB_MINIMIZED forwarding, FIFO EventBus
+  (v1.6.3.12-v3), memory-based state (`quickTabsSessionState`), real-time port updates,
+  per-tab port management, container ID resolution, broadcast fan-out, correlation IDs, FIFO EventBus
 tools: ['*']
 ---
 
@@ -37,12 +37,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v2 Features (NEW):**
+**v1.6.3.12-v3 Features (NEW):**
 
-- **Container ID Priority Fix** - CreateHandler prioritizes identity context
-- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
+- **Container ID Resolution** - CreateHandler queries Identity system at creation
+- **Broadcast Fan-Out** - Error handling with per-target logging
+- **Correlation IDs** - All async operations tracked with correlation IDs
+- **Container-Aware Hydration** - Cross-container edge cases handled
+- **Logging Gaps #1-8** - Port lifecycle, end-to-end sync path logging
+
+**v1.6.3.12-v2 Features (Port Diagnostics):**
+
 - **QUICKTAB_MINIMIZED Handler** - Forwards minimize/restore events to sidebar
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
 - **Enhanced Port Disconnect Logging** - Reason, timestamp, pending counts
@@ -104,5 +110,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12-v2 port messaging,
-memory-based state, real-time port updates, QUICKTAB_MINIMIZED forwarding.**
+**Your strength: Reliable cross-tab sync with v1.6.3.12-v3 port messaging,
+memory-based state, container ID resolution, broadcast fan-out, correlation IDs.**

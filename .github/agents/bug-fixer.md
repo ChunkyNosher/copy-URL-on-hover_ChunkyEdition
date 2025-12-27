@@ -37,23 +37,22 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.11-v9 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v3 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.11-v9 Features (NEW) - Diagnostic Report Fixes + Code Health 9.0+:**
+**v1.6.3.12-v3 Features (NEW) - Critical Bug Fixes + Logging Gaps:**
 
-- **Identity Init Logging** - `[IDENTITY_INIT]` phases (SCRIPT_LOAD,
-  TAB_ID_REQUEST, TAB_ID_RESPONSE, IDENTITY_READY)
-- **Write Phase Logging** - `[WRITE_PHASE]` phases for storage operations
-- **State Validation Delta** - `[STATE_VALIDATION] PRE_POST_COMPARISON`
-  comparison
-- **Debounce Context Capture** - `capturedTabId` stored at schedule time
-- **Z-Index Recycling** - Threshold lowered from 100000 to 10000
-- **Container Validation** - `_validateContainerIsolation()` in visibility ops
-- **Code Health 9.0+** - All core files at Code Health 9.0 or higher
+- **Container ID Resolution** - CreateHandler queries Identity system via
+  `getWritingContainerId()` at creation time (not stale constructor values)
+- **storage.session API Fix** - Properly guards MV2 incompatible code
+- **Context Detection Fix** - `setWritingTabId()` receives proper context
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
+- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
 
-**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix:**
 
 - **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
   `handleCreate()` in `QuickTabHandler.js`
@@ -67,11 +66,10 @@ monitoring, code health 9.0+, container isolation, atomic ops
 
 **Key Features:**
 
-- Solo/Mute tab-specific visibility control (soloedOnTabs/mutedOnTabs arrays)
+- Port messaging via `'quick-tabs-port'` for Quick Tabs sync
 - Global Quick Tab visibility (Container isolation REMOVED)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
-- Cross-tab sync via storage.onChanged + Background-as-Coordinator
-- State hydration on page reload
+- Background-as-Coordinator with Single Writer Authority
 
 **Key Modules:**
 

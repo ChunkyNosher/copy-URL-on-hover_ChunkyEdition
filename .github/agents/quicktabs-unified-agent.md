@@ -3,8 +3,8 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v2), memory-based state (`quickTabsSessionState`),
-  real-time port updates, QUICKTAB_MINIMIZED forwarding, port roundtrip tracking, FIFO EventBus
+  sync with Single Writer Authority (v1.6.3.12-v3), memory-based state (`quickTabsSessionState`),
+  real-time port updates, container ID resolution via Identity system, scenario logging, FIFO EventBus
 tools: ['*']
 ---
 
@@ -36,7 +36,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,14 +47,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v2 Features (NEW):**
+**v1.6.3.12-v3 Features (NEW):**
 
-- **Container ID Priority Fix** - CreateHandler prioritizes identity context
-- **Storage.onChanged Fallback Fix** - Uses `'local'` area (not `'session'`)
+- **Container ID Resolution** - CreateHandler queries Identity system via
+  `getWritingContainerId()` at creation time (not stale constructor values)
+- **storage.session API Fix** - Properly guards MV2 incompatible code
+- **Context Detection Fix** - `setWritingTabId()` receives proper context
+- **Manager Refresh Fix** - UICoordinator notifies sidebar via STATE_CHANGED
+- **Logging Gaps #1-8** - Port lifecycle, correlation IDs, health monitoring
+- **Test Bridge API** - `getManagerState()`, `verifyContainerIsolationById()`
+- **Scenario Logging** - `enableScenarioLogging()`, `logScenarioStep()`
+- **Code Health 9.0+** - background.js 9.09, quick-tabs-manager.js 9.09
+
+**v1.6.3.12-v2 Features (Port Diagnostics):**
+
 - **QUICKTAB_MINIMIZED Handler** - `handleQuickTabMinimizedMessage()` forwards events
 - **Port Roundtrip Tracking** - `_quickTabPortOperationTimestamps` for ACK timing
 - **Enhanced Port Logging** - Disconnect reasons, timestamps, pending counts
-- **Debounce Timing** - 100ms for Manager, 200-300ms for UpdateHandler (intentional)
 
 **v1.6.3.12 Features (Option 4 Architecture):**
 
@@ -116,5 +125,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v2 port messaging,
-memory-based state, real-time port updates, QUICKTAB_MINIMIZED forwarding.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v3 port messaging,
+memory-based state, container ID resolution via Identity system, scenario logging.**
