@@ -143,7 +143,7 @@ import {
   determineRestoreSource,
   STATE_KEY
 } from './utils/tab-operations.js';
-import { filterInvalidTabs } from './utils/validation.js';
+import { filterInvalidTabs, validateQuickTabObject } from './utils/validation.js';
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
@@ -883,38 +883,13 @@ function _isValidQuickTabsField(quickTabs) {
 /**
  * Validate individual Quick Tab object has required fields
  * v1.6.4 - FIX Issue #15: Add Quick Tab object validation
+ * v1.6.4-v2 - Delegates to utils/validation.js to reduce function count
  * @private
  * @param {*} qt - Quick Tab object to validate
  * @returns {{ valid: boolean, errors: string[] }}
  */
 function _validateQuickTabObject(qt) {
-  const errors = [];
-
-  if (!qt || typeof qt !== 'object') {
-    return { valid: false, errors: ['Quick Tab is not an object'] };
-  }
-
-  // Required field: id (string)
-  if (typeof qt.id !== 'string' || qt.id.length === 0) {
-    errors.push(`id must be a non-empty string (got ${typeof qt.id})`);
-  }
-
-  // Required field: originTabId (number)
-  if (typeof qt.originTabId !== 'number') {
-    errors.push(`originTabId must be a number (got ${typeof qt.originTabId})`);
-  }
-
-  // Required field: url (string)
-  if (typeof qt.url !== 'string') {
-    errors.push(`url must be a string (got ${typeof qt.url})`);
-  }
-
-  // Optional field: minimized (boolean or undefined)
-  if (qt.minimized !== undefined && typeof qt.minimized !== 'boolean') {
-    errors.push(`minimized must be boolean or undefined (got ${typeof qt.minimized})`);
-  }
-
-  return { valid: errors.length === 0, errors };
+  return validateQuickTabObject(qt);
 }
 
 /**
@@ -2960,23 +2935,44 @@ function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId
 }
 
 /**
- * Log when render is scheduled
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
- * v1.6.3.12-v9 - FIX Issue #4: Enhanced logging for Manager update tracking
+ * Count Quick Tabs and minimized tabs from state
+ * v1.6.4-v2 - Extracted for complexity reduction
  * @private
+ * @returns {{ tabCount: number, minimizedCount: number }}
  */
-function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
+function _computeTabCounts() {
   const tabCount = quickTabsState?.tabs?.length ?? 0;
   const minimizedCount = quickTabsState?.tabs?.filter(t => t.minimized)?.length ?? 0;
+  return { tabCount, minimizedCount };
+}
 
+/**
+ * Log render scheduled box header to console
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {string} source - Source of render request
+ * @param {number} tabCount - Total tab count
+ * @param {number} minimizedCount - Minimized tab count
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logRenderScheduledBox(source, tabCount, minimizedCount, correlationId) {
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
   console.log('[Manager] │ RENDER_SCHEDULED');
   console.log('[Manager] │ Source:', source);
   console.log('[Manager] │ TabCount:', tabCount, '(minimized:', minimizedCount + ')');
   console.log('[Manager] │ CorrelationId:', correlationId || 'none');
   console.log('[Manager] └─────────────────────────────────────────────────────────');
+}
 
+/**
+ * Log debounce scheduled event
+ * v1.6.4-v2 - Extracted for complexity reduction
+ * @private
+ * @param {number} scheduleTimestamp - Timestamp when render was scheduled
+ * @param {string} source - Source of render request
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logDebounceScheduled(scheduleTimestamp, source, correlationId) {
   console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
     timestamp: scheduleTimestamp,
     source,
@@ -2985,6 +2981,25 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
     delayMs: RENDER_DEBOUNCE_MS,
     reason: 'hash_changed'
   });
+}
+
+/**
+ * @typedef {Object} RenderLogContext
+ * @property {string} source - Source of render request
+ * @property {string|null} currentHash - Current state hash
+ * @property {number} tabCount - Total tab count
+ * @property {number} minimizedCount - Minimized tab count
+ * @property {string|null} correlationId - Correlation ID for tracing
+ */
+
+/**
+ * Log render scheduled structured event
+ * v1.6.4-v2 - Extracted for complexity reduction, uses options object
+ * @private
+ * @param {RenderLogContext} context - Render log context
+ */
+function _logRenderScheduledStructured(context) {
+  const { source, currentHash, tabCount, minimizedCount, correlationId } = context;
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     correlationId: correlationId || null,
@@ -2994,6 +3009,21 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
     minimizedCount,
     timestamp: Date.now()
   });
+}
+
+/**
+ * Log when render is scheduled
+ * v1.6.3.12-v7 - Extracted for complexity reduction
+ * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * v1.6.3.12-v9 - FIX Issue #4: Enhanced logging for Manager update tracking
+ * v1.6.4-v2 - Refactored to reduce cyclomatic complexity by extracting log helpers
+ * @private
+ */
+function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId = null) {
+  const { tabCount, minimizedCount } = _computeTabCounts();
+  _logRenderScheduledBox(source, tabCount, minimizedCount, correlationId);
+  _logDebounceScheduled(scheduleTimestamp, source, correlationId);
+  _logRenderScheduledStructured({ source, currentHash, tabCount, minimizedCount, correlationId });
 }
 
 /**
@@ -6951,16 +6981,23 @@ function _setupHeaderButtons() {
 }
 
 /**
+ * @typedef {Object} QuickTabActionOptions
+ * @property {string} action - The action type (goToTab, minimize, restore, close, adoptToCurrentTab)
+ * @property {string} quickTabId - The Quick Tab ID
+ * @property {string} tabId - The browser tab ID (for goToTab action)
+ * @property {HTMLButtonElement} button - The clicked button element
+ * @property {number} clickTimestamp - When the click occurred
+ */
+
+/**
  * Dispatch Quick Tab action based on button action type
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4-v2 - Refactored to use options object to reduce argument count
  * @private
- * @param {string} action - The action type
- * @param {string} quickTabId - The Quick Tab ID
- * @param {string} tabId - The browser tab ID (for goToTab action)
- * @param {HTMLButtonElement} button - The clicked button element
- * @param {number} clickTimestamp - When the click occurred
+ * @param {QuickTabActionOptions} options - Action options
  */
-async function _dispatchQuickTabAction(action, quickTabId, tabId, button, clickTimestamp) {
+async function _dispatchQuickTabAction(options) {
+  const { action, quickTabId, tabId, button, clickTimestamp } = options;
   switch (action) {
     case 'goToTab':
       console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
@@ -7039,7 +7076,7 @@ async function _handleQuickTabActionClick(e) {
   });
 
   _applyOptimisticUIUpdate(action, quickTabId, button);
-  await _dispatchQuickTabAction(action, quickTabId, tabId, button, clickTimestamp);
+  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp });
 }
 
 /**
