@@ -476,11 +476,52 @@ function _handleQuickTabPortAck(msg, ackType) {
 }
 
 /**
+ * Validate message has required fields for state update handlers
+ * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * @private
+ * @param {Object} msg - Message to validate
+ * @param {string} _handlerName - Handler name for logging (unused, for signature consistency)
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function _validateStateUpdateMessage(msg, _handlerName) {
+  if (!msg || typeof msg !== 'object') {
+    return { valid: false, error: 'Message is not an object' };
+  }
+  // quickTabs can be undefined/null (will be handled by _handleQuickTabsStateUpdate)
+  // but if present, it should be an array
+  if (msg.quickTabs !== undefined && msg.quickTabs !== null && !Array.isArray(msg.quickTabs)) {
+    return { valid: false, error: `quickTabs field is not an array (got ${typeof msg.quickTabs})` };
+  }
+  return { valid: true };
+}
+
+/**
+ * Validate message has required fields for ACK handlers
+ * v1.6.4.0 - FIX Issue #9: Defensive input validation for port message handlers
+ * @private
+ * @param {Object} msg - Message to validate
+ * @param {string} handlerName - Handler name for logging
+ * @returns {{ valid: boolean, error?: string }}
+ */
+function _validateAckMessage(msg, handlerName) {
+  if (!msg || typeof msg !== 'object') {
+    return { valid: false, error: 'Message is not an object' };
+  }
+  // ACK messages should have success field (boolean)
+  if (typeof msg.success !== 'boolean') {
+    // Not a hard error - some ACKs may not have success field
+    console.warn(`[Sidebar] PORT_MESSAGE_VALIDATION_WARN: ${handlerName} - success field missing or not boolean (got ${typeof msg.success})`);
+  }
+  return { valid: true };
+}
+
+/**
  * Quick Tabs port message handlers lookup table
  * v1.6.3.12-v2 - FIX Code Health: Replace switch with lookup table
  * v1.6.3.12-v2 - FIX Issue #16-17: ACK handlers now log roundtrip time
  * v1.6.3.12-v4 - Gap #5: Pass correlationId through handler chain
  * v1.6.3.12-v4 - Gap #6: Document FIFO ordering assumption
+ * v1.6.4.0 - FIX Issue #9: Handlers now include input validation
  *
  * IMPORTANT - MESSAGE ORDERING ASSUMPTION (Gap #6):
  * This handler assumes that port messages arrive in FIFO (First-In-First-Out) order.
@@ -498,15 +539,96 @@ function _handleQuickTabPortAck(msg, ackType) {
  * @private
  */
 const _portMessageHandlers = {
-  SIDEBAR_STATE_SYNC: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
-  GET_ALL_QUICK_TABS_RESPONSE: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId),
-  STATE_CHANGED: msg =>
-    _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification', msg.correlationId),
-  CLOSE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'CLOSE'),
-  MINIMIZE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'MINIMIZE'),
-  RESTORE_QUICK_TAB_ACK: msg => _handleQuickTabPortAck(msg, 'RESTORE')
+  SIDEBAR_STATE_SYNC: msg => {
+    const validation = _validateStateUpdateMessage(msg, 'SIDEBAR_STATE_SYNC');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'SIDEBAR_STATE_SYNC',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId);
+  },
+  GET_ALL_QUICK_TABS_RESPONSE: msg => {
+    const validation = _validateStateUpdateMessage(msg, 'GET_ALL_QUICK_TABS_RESPONSE');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'GET_ALL_QUICK_TABS_RESPONSE',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabsStateUpdate(msg.quickTabs, 'quick-tabs-port-sync', msg.correlationId);
+  },
+  STATE_CHANGED: msg => {
+    const validation = _validateStateUpdateMessage(msg, 'STATE_CHANGED');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'STATE_CHANGED',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabsStateUpdate(msg.quickTabs, 'state-changed-notification', msg.correlationId);
+  },
+  CLOSE_QUICK_TAB_ACK: msg => {
+    const validation = _validateAckMessage(msg, 'CLOSE_QUICK_TAB_ACK');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'CLOSE_QUICK_TAB_ACK',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabPortAck(msg, 'CLOSE');
+  },
+  MINIMIZE_QUICK_TAB_ACK: msg => {
+    const validation = _validateAckMessage(msg, 'MINIMIZE_QUICK_TAB_ACK');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'MINIMIZE_QUICK_TAB_ACK',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabPortAck(msg, 'MINIMIZE');
+  },
+  RESTORE_QUICK_TAB_ACK: msg => {
+    const validation = _validateAckMessage(msg, 'RESTORE_QUICK_TAB_ACK');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'RESTORE_QUICK_TAB_ACK',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    _handleQuickTabPortAck(msg, 'RESTORE');
+  },
+  CLOSE_ALL_QUICK_TABS_ACK: msg => {
+    // v1.6.4.0 - FIX Issue #15: Handle Close All ACK from background
+    const validation = _validateAckMessage(msg, 'CLOSE_ALL_QUICK_TABS_ACK');
+    if (!validation.valid) {
+      console.error('[Sidebar] PORT_MESSAGE_VALIDATION_ERROR:', {
+        type: 'CLOSE_ALL_QUICK_TABS_ACK',
+        correlationId: msg?.correlationId || null,
+        error: validation.error
+      });
+      return;
+    }
+    console.log('[Sidebar] CLOSE_ALL_QUICK_TABS_ACK received:', {
+      success: msg.success,
+      closedCount: msg.closedCount || 0,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+  }
 };
 
 /**
@@ -6540,12 +6662,47 @@ function _logPreActionState({ clearedIds, originTabIds }) {
 }
 
 /**
- * Send COORDINATED_CLEAR_ALL_QUICK_TABS message to background
+ * Send CLOSE_ALL_QUICK_TABS message to background via port
+ * v1.6.4.0 - FIX Issue #15: Use port messaging for Close All operation
  * @private
  * @returns {Promise<Object>} Response from background
  */
 function _sendClearAllMessage() {
-  console.log('[Manager] Close All: Dispatching COORDINATED_CLEAR_ALL_QUICK_TABS to background...');
+  console.log('[Manager] Close All: Dispatching CLOSE_ALL_QUICK_TABS via port...', {
+    portConnected: !!quickTabsPort,
+    timestamp: Date.now()
+  });
+
+  // v1.6.4.0 - FIX Issue #15: Use port messaging (Option 4 architecture)
+  if (quickTabsPort) {
+    const correlationId = _generatePortCorrelationId();
+    const sentAt = Date.now();
+
+    // Track operation for roundtrip calculation
+    _quickTabPortOperationTimestamps.set('close-all', {
+      sentAt,
+      messageType: 'CLOSE_ALL_QUICK_TABS',
+      correlationId
+    });
+
+    quickTabsPort.postMessage({
+      type: 'CLOSE_ALL_QUICK_TABS',
+      timestamp: sentAt,
+      correlationId
+    });
+
+    console.log('[Sidebar] CLOSE_ALL_QUICK_TABS sent via port:', {
+      correlationId,
+      timestamp: sentAt
+    });
+
+    // Return a promise that resolves after a short delay
+    // The actual state update will come via STATE_CHANGED message
+    return Promise.resolve({ success: true, method: 'port', correlationId });
+  }
+
+  // Fallback to runtime.sendMessage if port not connected
+  console.warn('[Manager] Close All: Port not connected, falling back to runtime.sendMessage');
   return browser.runtime.sendMessage({
     action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
   });

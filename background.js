@@ -5884,7 +5884,9 @@ const _sidebarMessageHandlers = {
   SIDEBAR_READY: (_msg, port) => handleSidebarReady(port),
   CLOSE_QUICK_TAB: (msg, port) => handleSidebarCloseQuickTab(msg.quickTabId, port),
   MINIMIZE_QUICK_TAB: (msg, port) => handleSidebarMinimizeQuickTab(msg.quickTabId, port),
-  RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port)
+  RESTORE_QUICK_TAB: (msg, port) => handleSidebarRestoreQuickTab(msg.quickTabId, port),
+  // v1.6.4.0 - FIX Issue #15: Add Close All Quick Tabs handler
+  CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port)
 };
 
 /**
@@ -6172,6 +6174,72 @@ function handleSidebarMinimizeQuickTab(quickTabId, sidebarPort) {
  */
 function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
   _handleSidebarMinimizedToggle(quickTabId, false, sidebarPort);
+}
+
+/**
+ * Handle sidebar request to close all Quick Tabs
+ * v1.6.4.0 - FIX Issue #15: Implement Close All button via port messaging
+ * @param {Object} msg - Message from sidebar
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
+  const handlerStartTime = performance.now();
+  // Use msg.correlationId if available, otherwise generate a new one
+  const correlationId = msg.correlationId || `close-all-${Date.now()}`;
+
+  console.log('[Background] SIDEBAR_CLOSE_ALL_QUICK_TABS:', {
+    correlationId,
+    timestamp: Date.now(),
+    currentQuickTabCount: getAllQuickTabsFromMemory().length
+  });
+
+  // Count Quick Tabs before clearing
+  const allQuickTabs = getAllQuickTabsFromMemory();
+  const closedCount = allQuickTabs.length;
+  const quickTabIds = allQuickTabs.map(qt => qt.id);
+
+  // Notify all content scripts to close their Quick Tabs
+  for (const quickTab of allQuickTabs) {
+    const ownerTabId = quickTab.originTabId;
+    if (ownerTabId) {
+      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+    }
+  }
+
+  // Clear all Quick Tabs from session state
+  quickTabsSessionState.quickTabsByTab = {};
+
+  // Clear global state
+  globalQuickTabState.tabs = [];
+  globalQuickTabState.lastUpdate = Date.now();
+  globalQuickTabState.saveId = `close-all-${Date.now()}`;
+
+  // Clear Quick Tab host tracking
+  quickTabHostTabs.clear();
+
+  // Send ACK to sidebar
+  if (sidebarPort) {
+    sidebarPort.postMessage({
+      type: 'CLOSE_ALL_QUICK_TABS_ACK',
+      success: true,
+      closedCount,
+      quickTabIds,
+      correlationId,
+      timestamp: Date.now()
+    });
+  }
+
+  // Notify sidebar of state change (empty state)
+  notifySidebarOfStateChange();
+
+  // Log completion
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] CLOSE_ALL_QUICK_TABS completed:', {
+    correlationId,
+    closedCount,
+    durationMs: durationMs.toFixed(2),
+    globalTabsRemaining: globalQuickTabState.tabs.length
+  });
 }
 
 /**
