@@ -332,7 +332,7 @@ export function findTabInState(quickTabId, quickTabsState) {
 
 /**
  * Resolve target tab ID for restore operation
- * v1.6.4.13 - FIX BUG #4: Prioritize originTabId from storage over hostInfo
+ * v1.6.3.12-v7 - FIX BUG #4: Prioritize originTabId from storage over hostInfo
  *
  * After adoption, storage contains the correct originTabId but hostInfo
  * may still have the old host tab ID. We should prioritize storage (tabData.originTabId)
@@ -344,7 +344,7 @@ export function findTabInState(quickTabId, quickTabsState) {
  * @returns {number|null} Target tab ID or null
  */
 function _resolveTargetTabId(hostInfo, tabData) {
-  // v1.6.4.13 - FIX BUG #4: Prioritize storage originTabId over hostInfo
+  // v1.6.3.12-v7 - FIX BUG #4: Prioritize storage originTabId over hostInfo
   // After adoption, storage has the correct originTabId but hostInfo may be stale
   if (tabData.originTabId) {
     return tabData.originTabId;
@@ -392,7 +392,7 @@ function _handleTargetedRestoreResponse(response, targetTabId, quickTabId, quick
 
 /**
  * Determine the source of the restore target
- * v1.6.4.13 - Extracted to improve readability and reduce code duplication
+ * v1.6.3.12-v7 - Extracted to improve readability and reduce code duplication
  * @param {Object} tabData - Tab data with originTabId
  * @param {Object} hostInfo - Host info from map
  * @returns {string} Source description
@@ -409,7 +409,7 @@ export function determineRestoreSource(tabData, hostInfo) {
 
 /**
  * Send restore message to target tab with confirmation tracking
- * v1.6.4.13 - FIX BUG #4: Updated logging to show correct source of truth
+ * v1.6.3.12-v7 - FIX BUG #4: Updated logging to show correct source of truth
  * @param {string} quickTabId - Quick Tab ID
  * @param {Object} tabData - Tab data with originTabId
  * @param {Map} quickTabHostInfo - Map of Quick Tab host info
@@ -419,7 +419,7 @@ export async function sendRestoreMessage(quickTabId, tabData, quickTabHostInfo) 
   const hostInfo = quickTabHostInfo?.get(quickTabId);
   const targetTabId = _resolveTargetTabId(hostInfo, tabData);
 
-  // v1.6.4.13 - Extracted source determination for readability
+  // v1.6.3.12-v7 - Extracted source determination for readability
   const source = determineRestoreSource(tabData, hostInfo);
 
   console.log('[Manager] 🎯 RESTORE_TARGET_RESOLUTION:', {
@@ -428,7 +428,7 @@ export async function sendRestoreMessage(quickTabId, tabData, quickTabHostInfo) 
     hostInfoTabId: hostInfo?.hostTabId,
     originTabId: tabData.originTabId,
     source,
-    // v1.6.4.13 - Show if hostInfo was overridden by storage originTabId
+    // v1.6.3.12-v7 - Show if hostInfo was overridden by storage originTabId
     hostInfoOverridden:
       hostInfo?.hostTabId && tabData.originTabId && hostInfo.hostTabId !== tabData.originTabId
   });

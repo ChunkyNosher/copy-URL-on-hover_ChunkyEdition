@@ -58,7 +58,7 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
 
       // v1.6.3.4-v4 - Updated: Logs include snapshot details
-      // v1.6.4 - Updated: Logs now include savedOriginTabId
+      // v1.6.3.12 - Updated: Logs now include savedOriginTabId
       // v1.6.3.6-v8 - Updated: New log format with SNAPSHOT_CAPTURED prefix and wasRecoveredFromIdPattern
       // v1.6.3.10-v4 - Updated: Include savedOriginContainerId for Firefox Multi-Account Container isolation
       expect(console.log).toHaveBeenCalledWith('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {

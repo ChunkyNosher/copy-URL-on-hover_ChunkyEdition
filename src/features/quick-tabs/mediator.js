@@ -2,8 +2,8 @@
  * QuickTabMediator - Centralized coordinator for multi-step Quick Tab operations
  *
  * v1.6.3.5 - New module for Phase 2 of Architecture Refactor
- * v1.6.4 - Scenario-aware logging hooks for state transitions
- * v1.6.4.1 - Code Health 9.0+ refactor: reduced duplication, options objects
+ * v1.6.3.12 - Scenario-aware logging hooks for state transitions
+ * v1.6.3.12-v7 - Code Health 9.0+ refactor: reduced duplication, options objects
  *
  * Responsibilities:
  * - Single entry point for all minimize/restore/destroy operations
@@ -217,8 +217,8 @@ export class QuickTabMediator {
 
   /**
    * Log state transition event
-   * v1.6.4 - Extracted to reduce method complexity
-   * v1.6.4.1 - Refactored to use options object instead of 7 positional arguments
+   * v1.6.3.12 - Extracted to reduce method complexity
+   * v1.6.3.12-v7 - Refactored to use options object instead of 7 positional arguments
    * @private
    * @param {Object} logger - Logger instance
    * @param {StateTransitionLogOptions} options - Logging options
@@ -255,8 +255,8 @@ export class QuickTabMediator {
 
   /**
    * Common entry point for minimize/restore/destroy operations
-   * v1.6.4.1 - Extracted to reduce duplication across minimize/restore/destroy
-   * v1.6.4.2 - Refactored to use options object (reduces from 6 to 1 argument)
+   * v1.6.3.12-v7 - Extracted to reduce duplication across minimize/restore/destroy
+   * v1.6.3.12-v7 - Refactored to use options object (reduces from 6 to 1 argument)
    * @private
    * @param {ExecuteOperationConfig} config - Operation configuration
    * @returns {OperationResult}
@@ -299,7 +299,7 @@ export class QuickTabMediator {
 
   /**
    * Validate state for visibility operation
-   * v1.6.4.2 - Extracted from _executeVisibilityOperation to reduce method size
+   * v1.6.3.12-v7 - Extracted from _executeVisibilityOperation to reduce method size
    * @private
    * @param {Object} params - Validation parameters
    * @returns {{ valid: boolean, currentState: string, error?: OperationResult }}
@@ -333,7 +333,7 @@ export class QuickTabMediator {
 
   /**
    * Handle visibility operation failure with rollback
-   * v1.6.4.2 - Extracted from _executeVisibilityOperation to reduce method size
+   * v1.6.3.12-v7 - Extracted from _executeVisibilityOperation to reduce method size
    * @private
    * @param {Object} params - Failure handling parameters
    * @param {Object} result - The failed operation result
@@ -372,8 +372,8 @@ export class QuickTabMediator {
 
   /**
    * Execute a minimize/restore operation using shared logic
-   * v1.6.4.1 - Extracted to eliminate duplication between minimize/restore
-   * v1.6.4.2 - Reduced size by extracting validation and failure handling
+   * v1.6.3.12-v7 - Extracted to eliminate duplication between minimize/restore
+   * v1.6.3.12-v7 - Reduced size by extracting validation and failure handling
    * @private
    * @param {OperationConfig} config - Operation configuration
    * @param {ExecuteOperationOptions} options - Execution options
@@ -463,9 +463,9 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a minimize operation
-   * v1.6.4 - Scenario-aware logging with structured state transition logging
-   * v1.6.4.1 - Refactored to use shared _executeOperation helper
-   * v1.6.4.2 - Uses config object for _executeOperation
+   * v1.6.3.12 - Scenario-aware logging with structured state transition logging
+   * v1.6.3.12-v7 - Refactored to use shared _executeOperation helper
+   * v1.6.3.12-v7 - Uses config object for _executeOperation
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
    * @param {Object} [context] - Optional context with containerId and tabId
@@ -485,9 +485,9 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a restore operation
-   * v1.6.4 - Scenario-aware logging with structured state transition logging
-   * v1.6.4.1 - Refactored to use shared _executeOperation helper
-   * v1.6.4.2 - Uses config object for _executeOperation
+   * v1.6.3.12 - Scenario-aware logging with structured state transition logging
+   * v1.6.3.12-v7 - Refactored to use shared _executeOperation helper
+   * v1.6.3.12-v7 - Uses config object for _executeOperation
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
    * @param {Object} [context] - Optional context with containerId and tabId
@@ -507,9 +507,9 @@ export class QuickTabMediator {
 
   /**
    * Coordinate a destroy operation
-   * v1.6.4 - Scenario-aware logging with structured state transition logging
-   * v1.6.4.1 - Refactored to use shared _executeOperation helper
-   * v1.6.4.2 - Uses config object for _executeOperation
+   * v1.6.3.12 - Scenario-aware logging with structured state transition logging
+   * v1.6.3.12-v7 - Refactored to use shared _executeOperation helper
+   * v1.6.3.12-v7 - Uses config object for _executeOperation
    * @param {string} id - Quick Tab ID
    * @param {string} source - Who initiated the operation
    * @param {Object} [context] - Optional context with containerId and tabId
@@ -528,7 +528,7 @@ export class QuickTabMediator {
 
   /**
    * Check if minimized manager has snapshot
-   * v1.6.4.1 - Extracted to simplify complex conditional in _executeDestroyInternal
+   * v1.6.3.12-v7 - Extracted to simplify complex conditional in _executeDestroyInternal
    * @private
    * @param {string} id - Quick Tab ID
    * @returns {boolean}
@@ -543,7 +543,7 @@ export class QuickTabMediator {
 
   /**
    * Execute destroy operation internal logic
-   * v1.6.4.1 - Refactored to use options object and extracted predicates
+   * v1.6.3.12-v7 - Refactored to use options object and extracted predicates
    * @private
    * @param {ExecuteOperationOptions} options - Execution options
    * @returns {OperationResult}

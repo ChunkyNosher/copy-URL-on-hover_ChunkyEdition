@@ -51,7 +51,7 @@
  *   - Issue 3.2: Z-index recycling threshold lowered from 100000 to 10000
  *   - Issue 5: Container isolation validation added to all visibility operations
  *   - Issue I: Debounce timer captures currentTabId at schedule time, not fire time
- * v1.6.4 - Removed Solo/Mute visibility control (Quick Tabs always visible on all tabs)
+ * v1.6.3.12 - Removed Solo/Mute visibility control (Quick Tabs always visible on all tabs)
  *
  * Architecture (Single-Tab Model v1.6.3+):
  * - Each tab manages visibility only for Quick Tabs it owns (originTabId matches)
@@ -965,7 +965,7 @@ export class VisibilityHandler {
   /**
    * Re-wire callbacks on tabWindow after restore
    * v1.6.3.5-v11 - FIX Issue #2: Missing callback re-wiring after restore
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    * Creates fresh callback functions that capture CURRENT handler context
    * @private
    * @param {Object} tabWindow - QuickTabWindow instance
@@ -983,7 +983,7 @@ export class VisibilityHandler {
 
     // v1.6.3.10-v10 - FIX Issue 2.1: Build fresh callbacks that capture current handler context
     // These replace any stale closures from initial construction
-    // v1.6.4 - Removed Solo/Mute callbacks
+    // v1.6.3.12 - Removed Solo/Mute callbacks
     const freshCallbacks = {
       onMinimize: tabId => this.handleMinimize(tabId, 'UI'),
       onFocus: tabId => this.handleFocus(tabId)

@@ -2,7 +2,7 @@
  * QuickTabStateMachine - Explicit lifecycle state tracking and transition validation
  *
  * v1.6.3.5 - New module for Phase 1 of Architecture Refactor
- * v1.6.4 - Scenario-aware logging hooks for state transitions
+ * v1.6.3.12 - Scenario-aware logging hooks for state transitions
  *
  * Responsibilities:
  * - Track each Quick Tab's current state (VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED)
@@ -132,7 +132,7 @@ export class QuickTabStateMachine {
 
   /**
    * Perform a state transition with validation and logging
-   * v1.6.4 - Scenario-aware logging with structured state transition events
+   * v1.6.3.12 - Scenario-aware logging with structured state transition events
    * @param {string} id - Quick Tab ID
    * @param {string} toState - Target state
    * @param {Object} options - Transition options
@@ -160,7 +160,7 @@ export class QuickTabStateMachine {
     if (!this.canTransition(id, toState)) {
       const error = `Invalid transition: ${fromState} → ${toState}`;
 
-      // v1.6.4 - Structured logging for rejected transitions
+      // v1.6.3.12 - Structured logging for rejected transitions
       quickTabsStateMachineLogger.warn('TRANSITION_REJECTED', {
         quickTabId: id,
         fromState,
@@ -195,7 +195,7 @@ export class QuickTabStateMachine {
     // Add to history
     this._addToHistory(id, transitionEntry);
 
-    // v1.6.4 - Structured logging for successful transitions
+    // v1.6.3.12 - Structured logging for successful transitions
     quickTabsStateMachineLogger.info('TRANSITION_COMPLETE', {
       quickTabId: id,
       fromState,
@@ -253,7 +253,7 @@ export class QuickTabStateMachine {
   /**
    * Initialize a Quick Tab in a specific state
    * Useful for hydration from storage
-   * v1.6.4 - Scenario-aware logging for state initialization
+   * v1.6.3.12 - Scenario-aware logging for state initialization
    * @param {string} id - Quick Tab ID
    * @param {string} state - Initial state
    * @param {string} source - Who initialized it
@@ -289,7 +289,7 @@ export class QuickTabStateMachine {
       metadata: { type: 'initialize', containerId, tabId }
     });
 
-    // v1.6.4 - Structured logging for state initialization
+    // v1.6.3.12 - Structured logging for state initialization
     quickTabsStateMachineLogger.info('INIT_COMPLETE', {
       quickTabId: id,
       initialState: state,

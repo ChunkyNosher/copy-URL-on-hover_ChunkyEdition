@@ -6,12 +6,12 @@ import { StorageAdapter } from './StorageAdapter.js';
  * SyncStorageAdapter - Storage adapter for browser.storage.local API (session-scoped)
  * v1.6.2.2 - ISSUE #35/#51 FIX: Unified storage format (no container separation)
  * v1.6.3.10-v10 - FIX Issue P: Atomic migration with version field and locking
- * v1.6.4.17 - FIX: Switch from storage.local to storage.session for session-scoped Quick Tabs
+ * v1.6.3.12-v7 - FIX: Switch from storage.local to storage.session for session-scoped Quick Tabs
  * v1.6.3.12-v4 - FIX: Replace browser.storage.session with browser.storage.local (Firefox MV2 compatibility)
  * v1.6.3.12-v5 - FIX Issues #10, #11, #13, #14, #15, #19: Storage backend tracking, event ordering,
  *                error discrimination, and runtime feature detection
  *
- * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
+ * v1.6.3.12-v7 - FIX Issue #27: Storage Adapter Documentation
  * v1.6.3.12-v4 - UPDATED: Quick Tabs use storage.local with explicit startup cleanup (session-scoped behavior)
  *
  * CANONICAL ADAPTER SELECTION:

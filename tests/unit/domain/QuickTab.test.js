@@ -2,7 +2,7 @@
  * QuickTab Domain Entity Tests
  * v1.6.0 - Unit tests for pure business logic
  * v1.6.2.2 - Updated for unified format (container field removed)
- * v1.6.4 - Removed Solo/Mute tests (functionality removed)
+ * v1.6.3.12 - Removed Solo/Mute tests (functionality removed)
  *
  * Target: 100% coverage (branches, functions, lines, statements)
  */
@@ -11,7 +11,7 @@ import { QuickTab } from '../../../src/domain/QuickTab.js';
 
 describe('QuickTab Domain Entity', () => {
   describe('Construction', () => {
-    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from visibility
+    // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs from visibility
     test('should create QuickTab with valid parameters', () => {
       const quickTab = new QuickTab({
         id: 'qt-123',
@@ -91,7 +91,7 @@ describe('QuickTab Domain Entity', () => {
     });
   });
 
-  // v1.6.4 - Simplified visibility logic (only minimized state matters)
+  // v1.6.3.12 - Simplified visibility logic (only minimized state matters)
   describe('Visibility Logic (shouldBeVisible)', () => {
     test('should be visible by default', () => {
       const quickTab = new QuickTab({
@@ -118,12 +118,12 @@ describe('QuickTab Domain Entity', () => {
       expect(quickTab.shouldBeVisible(123)).toBe(false);
     });
 
-    // v1.6.4 - Solo/Mute visibility tests removed (functionality removed)
+    // v1.6.3.12 - Solo/Mute visibility tests removed (functionality removed)
     // Quick Tabs are now always visible on all tabs (when not minimized)
   });
 
-  // v1.6.4 - Solo Operations tests removed (functionality removed)
-  // v1.6.4 - Mute Operations tests removed (functionality removed)
+  // v1.6.3.12 - Solo Operations tests removed (functionality removed)
+  // v1.6.3.12 - Mute Operations tests removed (functionality removed)
 
   describe('Minimized Operations', () => {
     let quickTab;
@@ -227,11 +227,11 @@ describe('QuickTab Domain Entity', () => {
     });
   });
 
-  // v1.6.4 - Dead Tab Cleanup tests removed (Solo/Mute functionality removed)
+  // v1.6.3.12 - Dead Tab Cleanup tests removed (Solo/Mute functionality removed)
 
   // v1.6.2.2 - Container Operations removed (container field removed for global visibility)
 
-  // v1.6.4 - Serialization tests updated for Solo/Mute removal
+  // v1.6.3.12 - Serialization tests updated for Solo/Mute removal
   describe('Serialization', () => {
     test('serialize should create plain object', () => {
       const quickTab = new QuickTab({
@@ -265,7 +265,7 @@ describe('QuickTab Domain Entity', () => {
       });
     });
 
-    // v1.6.4 - Updated for Solo/Mute removal
+    // v1.6.3.12 - Updated for Solo/Mute removal
     test('serialize should include slot when set', () => {
       const quickTab = new QuickTab({
         id: 'qt-123',
@@ -281,7 +281,7 @@ describe('QuickTab Domain Entity', () => {
       expect(serialized.slot).toBe(5);
     });
 
-    // v1.6.4 - Updated clone test for Solo/Mute removal
+    // v1.6.3.12 - Updated clone test for Solo/Mute removal
     test('serialize should clone arrays and objects', () => {
       const quickTab = new QuickTab({
         id: 'qt-123',
@@ -305,7 +305,7 @@ describe('QuickTab Domain Entity', () => {
 
   describe('Static Factories', () => {
     describe('fromStorage', () => {
-      // v1.6.4 - Updated for Solo/Mute removal
+      // v1.6.3.12 - Updated for Solo/Mute removal
       test('should hydrate from storage format', () => {
         const data = {
           id: 'qt-123',

@@ -1,6 +1,6 @@
 /**
  * Error Telemetry Infrastructure
- * v1.6.4.17 - FIX Issues #8, #13: Comprehensive error tracking and threshold alerting
+ * v1.6.3.12-v7 - FIX Issues #8, #13: Comprehensive error tracking and threshold alerting
  *
  * Provides:
  * - Error counter per error type (handler failures, port timeouts, notification failures, etc.)

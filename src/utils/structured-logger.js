@@ -57,7 +57,7 @@ export const LOG_COMPONENT = {
   RATE_LIMIT: 'RateLimit',
   RETRY: 'Retry',
   LIFECYCLE_TRACE: 'LifecycleTrace',
-  // v1.6.4 - Scenario-aware logging for Quick Tabs state machine
+  // v1.6.3.12 - Scenario-aware logging for Quick Tabs state machine
   QUICK_TABS: 'QuickTabs',
   QUICK_TABS_MEDIATOR: 'QuickTabs-Mediator',
   QUICK_TABS_STATE_MACHINE: 'QuickTabs-StateMachine',
@@ -346,19 +346,19 @@ export const storageAdapterLogger = new StructuredLogger(LOG_COMPONENT.STORAGE_A
 
 /**
  * Quick Tabs logger
- * v1.6.4 - Scenario-aware logging
+ * v1.6.3.12 - Scenario-aware logging
  */
 export const quickTabsLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS);
 
 /**
  * Quick Tabs Mediator logger
- * v1.6.4 - State transition logging at mediator boundaries
+ * v1.6.3.12 - State transition logging at mediator boundaries
  */
 export const quickTabsMediatorLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_MEDIATOR);
 
 /**
  * Quick Tabs State Machine logger
- * v1.6.4 - State machine transition logging
+ * v1.6.3.12 - State machine transition logging
  */
 export const quickTabsStateMachineLogger = new StructuredLogger(
   LOG_COMPONENT.QUICK_TABS_STATE_MACHINE
@@ -366,7 +366,7 @@ export const quickTabsStateMachineLogger = new StructuredLogger(
 
 /**
  * Quick Tabs Minimized Manager logger
- * v1.6.4 - Minimized state change logging
+ * v1.6.3.12 - Minimized state change logging
  */
 export const quickTabsMinimizedLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_MINIMIZED);
 

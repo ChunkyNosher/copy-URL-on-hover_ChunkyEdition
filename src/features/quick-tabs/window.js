@@ -96,7 +96,7 @@ export class QuickTabWindow {
   /**
    * Initialize visibility-related properties (minimized state)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
-   * v1.6.4 - Removed Solo/Mute functionality
+   * v1.6.3.12 - Removed Solo/Mute functionality
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
@@ -108,7 +108,7 @@ export class QuickTabWindow {
   /**
    * Initialize lifecycle and event callbacks
    * v1.6.0 Phase 2.4 - Table-driven to reduce complexity
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    */
   _initializeCallbacks(options) {
     const noop = () => {};
@@ -130,7 +130,7 @@ export class QuickTabWindow {
   /**
    * Re-wire callbacks after restore to capture fresh execution context
    * v1.6.3.5-v11 - FIX Issue #1: Stale closure references after restore
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    *
    * After browser restart with hydration OR minimize/restore cycle, the original
    * callbacks may reference stale closure variables from construction time.
@@ -173,8 +173,8 @@ export class QuickTabWindow {
    * Initialize internal state properties
    * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
    * v1.6.3.5-v11 - FIX Issue #4: Add isMinimizing, isRestoring operation-specific flags
-   * v1.6.4.16 - FIX Issue #24/#28: Add state sync and sidebar lifecycle tracking
-   * v1.6.4 - Removed Solo/Mute button references
+   * v1.6.3.12-v7 - FIX Issue #24/#28: Add state sync and sidebar lifecycle tracking
+   * v1.6.3.12 - Removed Solo/Mute button references
    */
   _initializeState() {
     this.container = null;
@@ -200,12 +200,12 @@ export class QuickTabWindow {
     this.isMinimizing = false;
     this.isRestoring = false;
 
-    // v1.6.4.16 - FIX Issue #24: State synchronization tracking
+    // v1.6.3.12-v7 - FIX Issue #24: State synchronization tracking
     // Track last confirmed state for bidirectional sync
     this._lastSyncedState = null;
     this._pendingStateSync = false;
 
-    // v1.6.4.16 - FIX Issue #28: Sidebar lifecycle tracking
+    // v1.6.3.12-v7 - FIX Issue #28: Sidebar lifecycle tracking
     // Track origin tab ID for lifecycle monitoring
     this.originTabId = null;
     this._lifecycleHandlerBound = false;
@@ -213,7 +213,7 @@ export class QuickTabWindow {
 
   /**
    * Set the origin tab ID for lifecycle tracking
-   * v1.6.4.16 - FIX Issue #28: Window.js sidebar lifecycle tracking
+   * v1.6.3.12-v7 - FIX Issue #28: Window.js sidebar lifecycle tracking
    * @param {number} tabId - Origin tab ID
    */
   setOriginTabId(tabId) {
@@ -226,7 +226,7 @@ export class QuickTabWindow {
 
   /**
    * Acknowledge state sync from content script
-   * v1.6.4.16 - FIX Issue #24: State synchronization acknowledgment
+   * v1.6.3.12-v7 - FIX Issue #24: State synchronization acknowledgment
    * @param {Object} state - Confirmed state from content script
    */
   acknowledgeStateSync(state) {
@@ -243,7 +243,7 @@ export class QuickTabWindow {
 
   /**
    * Mark state sync as pending
-   * v1.6.4.16 - FIX Issue #24: Track pending state sync
+   * v1.6.3.12-v7 - FIX Issue #24: Track pending state sync
    */
   markStateSyncPending() {
     this._pendingStateSync = true;
@@ -255,7 +255,7 @@ export class QuickTabWindow {
 
   /**
    * Check if state sync is pending
-   * v1.6.4.16 - FIX Issue #24: Check pending state
+   * v1.6.3.12-v7 - FIX Issue #24: Check pending state
    * @returns {boolean} True if state sync is pending
    */
   isStateSyncPending() {
@@ -906,7 +906,7 @@ export class QuickTabWindow {
   /**
    * Clear all DOM references after minimize
    * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
-   * v1.6.4 - Removed Solo/Mute button references
+   * v1.6.3.12 - Removed Solo/Mute button references
    * @private
    */
   _clearDOMReferences() {
@@ -1379,7 +1379,7 @@ export class QuickTabWindow {
    * v1.6.3.2 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
    *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
    * v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists before calling, with logging
-   * v1.6.4.16 - FIX Area C: Enhanced listener cleanup logging
+   * v1.6.3.12-v7 - FIX Area C: Enhanced listener cleanup logging
    */
   destroy() {
     console.log('[QuickTabWindow] Destroying:', this.id);
@@ -1387,7 +1387,7 @@ export class QuickTabWindow {
     // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
     this.destroyed = true;
 
-    // v1.6.4.16 - FIX Area C: Track cleaned up listeners
+    // v1.6.3.12-v7 - FIX Area C: Track cleaned up listeners
     let cleanedListenerCount = 0;
 
     // v1.6.0 Phase 2.9 - Cleanup drag controller FIRST (removes drag event listeners)
@@ -1415,7 +1415,7 @@ export class QuickTabWindow {
       this.titlebarBuilder = null;
     }
 
-    // v1.6.4.16 - FIX Issue #24/#28: Clear state sync tracking
+    // v1.6.3.12-v7 - FIX Issue #24/#28: Clear state sync tracking
     this._lastSyncedState = null;
     this._pendingStateSync = false;
     this._lifecycleHandlerBound = false;
@@ -1429,7 +1429,7 @@ export class QuickTabWindow {
       console.log('[QuickTabWindow] Removed DOM element');
     }
 
-    // v1.6.4.16 - FIX Area C: Log listener cleanup summary
+    // v1.6.3.12-v7 - FIX Area C: Log listener cleanup summary
     console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
       quickTabId: this.id,
       estimatedListenersRemoved: cleanedListenerCount,
@@ -1460,7 +1460,7 @@ export class QuickTabWindow {
   /**
    * Get current state for persistence
    * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    */
   getState() {
     return {

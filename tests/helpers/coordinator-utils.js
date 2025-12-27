@@ -2,7 +2,7 @@
  * Coordinator Test Utilities
  * Provides utilities for testing coordination between components
  *
- * v1.6.4 - New test helper for comprehensive Jest testing infrastructure
+ * v1.6.3.12 - New test helper for comprehensive Jest testing infrastructure
  *
  * Features:
  * - Mock subordinate components

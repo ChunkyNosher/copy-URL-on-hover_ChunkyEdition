@@ -307,7 +307,7 @@ export class CreateHandler {
    * Get default option values
    * v1.6.3.5-v2 - FIX Report 1 Issue #2: Add originTabId default
    * v1.6.3.10-v4 - FIX Issue #13: Add originContainerId default for container isolation
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    */
   _getDefaults() {
@@ -452,7 +452,7 @@ export class CreateHandler {
    * @deprecated v1.6.3.12-v3 - Replaced by _getContainerIdSourceV3 which queries Identity system.
    *   This method only checks constructor/options values which may be stale.
    *   The V3 version adds getWritingContainerId() as a priority source.
-   *   Kept for backward compatibility - safe to remove in v1.6.4+.
+   *   Kept for backward compatibility - safe to remove in v1.6.3.12+.
    */
   _getContainerIdSource(originContainerId, options) {
     // v1.6.3.12-v3 - DEPRECATED: Replaced by _getContainerIdSourceV3
@@ -575,7 +575,7 @@ export class CreateHandler {
     // v1.6.3.10-v4 - FIX Issue #13: Capture origin container ID for Firefox Multi-Account Container isolation
     const originContainerId = this._getOriginContainerId(options, defaults, quickTabId);
 
-    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+    // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
     return {
       minimized: options.minimized ?? defaults.minimized,
       showDebugId: options.showDebugId ?? this.showDebugIdSetting,
@@ -589,7 +589,7 @@ export class CreateHandler {
   /**
    * Extract callback options
    * v1.6.3.2 - Extracted to reduce _buildTabOptions complexity
-   * v1.6.4 - Removed Solo/Mute callbacks
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    * @private
    */
   _extractCallbacks(options) {

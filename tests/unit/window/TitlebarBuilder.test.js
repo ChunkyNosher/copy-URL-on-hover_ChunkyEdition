@@ -3,7 +3,7 @@
  *
  * Tests for TitlebarBuilder component extracted from QuickTabWindow
  * Ensures all titlebar functionality is preserved during refactoring
- * v1.6.4 - Removed Solo/Mute tests (functionality removed)
+ * v1.6.3.12 - Removed Solo/Mute tests (functionality removed)
  *
  * @created 2025-11-19
  * @refactoring Phase 2.9 Task 4
@@ -28,7 +28,7 @@ describe('TitlebarBuilder', () => {
     mockIframe = document.createElement('iframe');
     mockIframe.src = 'https://example.com/page';
 
-    // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from config
+    // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs from config
     config = {
       title: 'Test Page',
       url: 'https://example.com/page',
@@ -36,7 +36,7 @@ describe('TitlebarBuilder', () => {
       iframe: mockIframe
     };
 
-    // v1.6.4 - Removed onSolo/onMute callbacks
+    // v1.6.3.12 - Removed onSolo/onMute callbacks
     callbacks = {
       onClose: jest.fn(),
       onMinimize: jest.fn(),
@@ -47,7 +47,7 @@ describe('TitlebarBuilder', () => {
   });
 
   describe('Constructor', () => {
-    // v1.6.4 - Removed Solo/Mute button tests
+    // v1.6.3.12 - Removed Solo/Mute button tests
     test('should initialize with config and callbacks', () => {
       const builder = new TitlebarBuilder(config, callbacks);
 
@@ -113,7 +113,7 @@ describe('TitlebarBuilder', () => {
       expect(builder.titleElement.textContent).toBe('Test Page');
     });
 
-    // v1.6.4 - Solo/Mute button tests removed
+    // v1.6.3.12 - Solo/Mute button tests removed
 
     test('should create navigation buttons', () => {
       const builder = new TitlebarBuilder(config, callbacks);
@@ -154,8 +154,8 @@ describe('TitlebarBuilder', () => {
     });
   });
 
-  // v1.6.4 - updateSoloButton() and updateMuteButton() tests removed
-  // v1.6.4 - Solo/Mute State Detection tests removed
+  // v1.6.3.12 - updateSoloButton() and updateMuteButton() tests removed
+  // v1.6.3.12 - Solo/Mute State Detection tests removed
 
   describe('Button Callbacks', () => {
     test('should call onClose when close button clicked', () => {
@@ -184,7 +184,7 @@ describe('TitlebarBuilder', () => {
       expect(callbacks.onMinimize).toHaveBeenCalledTimes(1);
     });
 
-    // v1.6.4 - onSolo/onMute tests removed
+    // v1.6.3.12 - onSolo/onMute tests removed
 
     test('should call onOpenInTab when open button clicked', () => {
       const builder = new TitlebarBuilder(config, callbacks);
@@ -510,7 +510,7 @@ describe('TitlebarBuilder', () => {
   });
 
   describe('Integration', () => {
-    // v1.6.4 - Updated for Solo/Mute removal
+    // v1.6.3.12 - Updated for Solo/Mute removal
     test('should build complete functional titlebar', () => {
       const builder = new TitlebarBuilder(config, callbacks);
       const titlebar = builder.build();
@@ -518,7 +518,7 @@ describe('TitlebarBuilder', () => {
       // Verify structure
       expect(titlebar.children).toHaveLength(2); // Left + Right sections
 
-      // Verify all elements accessible (Solo/Mute buttons removed in v1.6.4)
+      // Verify all elements accessible (Solo/Mute buttons removed in v1.6.3.12)
       expect(builder.titleElement).toBeTruthy();
       expect(builder.faviconElement).toBeTruthy();
       expect(builder.zoomDisplay).toBeTruthy();
@@ -529,7 +529,7 @@ describe('TitlebarBuilder', () => {
       expect(builder.zoomDisplay.textContent).toBe('100%');
     });
 
-    // v1.6.4 - Updated for Solo/Mute removal
+    // v1.6.3.12 - Updated for Solo/Mute removal
     test('should handle all callbacks correctly', () => {
       const builder = new TitlebarBuilder(config, callbacks);
       const titlebar = builder.build();
@@ -544,7 +544,7 @@ describe('TitlebarBuilder', () => {
       minimizeBtn.click();
       closeBtn.click();
 
-      // Verify all callbacks invoked (Solo/Mute callbacks removed in v1.6.4)
+      // Verify all callbacks invoked (Solo/Mute callbacks removed in v1.6.3.12)
       expect(callbacks.onMinimize).toHaveBeenCalled();
       expect(callbacks.onClose).toHaveBeenCalled();
     });

@@ -2,7 +2,7 @@
  * QuickTab Domain Entity
  * v1.6.0 - Pure business logic, no browser APIs or UI dependencies
  * v1.6.3 - Added slot property for global ID persistence
- * v1.6.4 - Removed Solo/Mute visibility control (always visible on all tabs)
+ * v1.6.3.12 - Removed Solo/Mute visibility control (always visible on all tabs)
  *
  * Represents a Quick Tab with its state and behavior.
  * Extracted from QuickTabsManager to separate domain logic from infrastructure.
@@ -101,7 +101,7 @@ export class QuickTab {
     // "Quick Tab 1" always refers to the Quick Tab with slot=1
     this.slot = slot;
 
-    // Visibility state (v1.6.4 - Solo/Mute removed, only minimized state remains)
+    // Visibility state (v1.6.3.12 - Solo/Mute removed, only minimized state remains)
     this.visibility = {
       minimized: visibility?.minimized || false
     };
@@ -109,7 +109,7 @@ export class QuickTab {
 
   /**
    * Determine if this Quick Tab should be visible on a specific tab
-   * v1.6.4 - Simplified: Only checks minimized state (Solo/Mute removed)
+   * v1.6.3.12 - Simplified: Only checks minimized state (Solo/Mute removed)
    *
    * Business Rules:
    * 1. If minimized, never visible
@@ -124,7 +124,7 @@ export class QuickTab {
       return false;
     }
 
-    // Default: visible everywhere (Solo/Mute removed in v1.6.4)
+    // Default: visible everywhere (Solo/Mute removed in v1.6.3.12)
     return true;
   }
 
@@ -221,7 +221,7 @@ export class QuickTab {
    * v1.6.1.5 - Include lastModified timestamp
    * v1.6.2.2 - Removed container field for global visibility
    * v1.6.3 - Include slot for global ID persistence
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @returns {Object} - Plain object suitable for storage
    */
@@ -260,7 +260,7 @@ export class QuickTab {
    * v1.6.1.5 - Extract to reduce complexity
    * v1.6.2.2 - Removed container field for global visibility
    * v1.6.3 - Include slot for global ID persistence
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @private
    * @param {Object} data - Raw storage data
@@ -292,7 +292,7 @@ export class QuickTab {
    * Convenience factory method for creating new Quick Tabs
    * v1.6.2.2 - Removed container parameter for global visibility
    * v1.6.3 - Added slot parameter for global ID persistence
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    *
    * @param {Object} params - Partial parameters
    * @param {number} [params.slot] - Global slot number (should be assigned by StateManager)

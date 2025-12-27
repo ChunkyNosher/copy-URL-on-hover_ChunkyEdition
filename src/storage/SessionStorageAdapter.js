@@ -8,7 +8,7 @@ import { StorageAdapter } from './StorageAdapter.js';
  * v1.6.3.12-v4 - FIX: Replace browser.storage.session with browser.storage.local (Firefox MV2 compatibility)
  * v1.6.3.12-v5 - FIX Issues #13, #14, #15, #19: Error discrimination and runtime feature detection
  *
- * v1.6.4.16 - FIX Issue #27: Storage Adapter Documentation
+ * v1.6.3.12-v7 - FIX Issue #27: Storage Adapter Documentation
  *
  * CANONICAL ADAPTER SELECTION:
  * - **SyncStorageAdapter** is the CANONICAL adapter for Quick Tab persistence

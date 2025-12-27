@@ -1,7 +1,7 @@
 /**
  * ReactiveQuickTab - Proxy-wrapped Quick Tab with automatic change detection
  * v1.6.2.1 - NEW: Reactive state management for Quick Tabs
- * v1.6.4 - Removed Solo/Mute functionality (always visible on all tabs)
+ * v1.6.3.12 - Removed Solo/Mute functionality (always visible on all tabs)
  *
  * Features:
  * - Automatic change detection via Proxy
@@ -75,7 +75,7 @@ export class ReactiveQuickTab {
     this._computedDirty = new Set();
 
     // Track dependencies: computed property → Set of data properties
-    // v1.6.4 - Simplified: Only isVisible depends on minimized (Solo/Mute removed)
+    // v1.6.3.12 - Simplified: Only isVisible depends on minimized (Solo/Mute removed)
     /** @private @type {Map<string, Set<string>>} */
     this._dependencies = new Map();
     this._dependencies.set('isVisible', new Set(['minimized']));
@@ -95,7 +95,7 @@ export class ReactiveQuickTab {
 
   /**
    * Normalize data with defaults
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    * @param {Object} data - Raw data
    * @returns {ReactiveQuickTabData} - Normalized data
@@ -247,7 +247,7 @@ export class ReactiveQuickTab {
 
   /**
    * Validation rules for each property type
-   * v1.6.4 - Removed tabArray validator (Solo/Mute removed)
+   * v1.6.3.12 - Removed tabArray validator (Solo/Mute removed)
    * @private
    */
   static _validators = {
@@ -261,7 +261,7 @@ export class ReactiveQuickTab {
 
   /**
    * Property to validator mapping
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @private
    */
   static _validatorMap = {
@@ -297,7 +297,7 @@ export class ReactiveQuickTab {
 
   /**
    * Check if property is computed
-   * v1.6.4 - Simplified: Only isVisible (Solo/Mute removed)
+   * v1.6.3.12 - Simplified: Only isVisible (Solo/Mute removed)
    * @private
    * @param {string|symbol} prop - Property name
    * @returns {boolean} - True if computed
@@ -308,7 +308,7 @@ export class ReactiveQuickTab {
 
   /**
    * Get computed property value (with caching)
-   * v1.6.4 - Simplified: Only isVisible (Solo/Mute removed)
+   * v1.6.3.12 - Simplified: Only isVisible (Solo/Mute removed)
    * @private
    * @param {string} prop - Computed property name
    * @returns {any} - Computed value
@@ -337,7 +337,7 @@ export class ReactiveQuickTab {
 
   /**
    * Compute visibility based on minimized state
-   * v1.6.4 - Simplified: Only checks minimized (Solo/Mute removed)
+   * v1.6.3.12 - Simplified: Only checks minimized (Solo/Mute removed)
    * @private
    * @returns {boolean} - True if visible
    */
@@ -347,7 +347,7 @@ export class ReactiveQuickTab {
     // Minimized = always hidden
     if (minimized) return false;
 
-    // Global mode = always visible (Solo/Mute removed in v1.6.4)
+    // Global mode = always visible (Solo/Mute removed in v1.6.3.12)
     return true;
   }
 
@@ -472,7 +472,7 @@ export class ReactiveQuickTab {
 
   /**
    * Serialize for storage (strip Proxy wrapper)
-   * v1.6.4 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    * @returns {Object} - Plain object suitable for JSON serialization
    */
   toJSON() {
@@ -494,7 +494,7 @@ export class ReactiveQuickTab {
 
   /**
    * Update current tab ID (for visibility computation)
-   * v1.6.4 - Simplified: Only invalidates isVisible (Solo/Mute removed)
+   * v1.6.3.12 - Simplified: Only invalidates isVisible (Solo/Mute removed)
    * @param {number} tabId - New current tab ID
    */
   updateCurrentTabId(tabId) {

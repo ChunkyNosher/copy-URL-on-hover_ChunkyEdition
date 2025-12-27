@@ -2,7 +2,7 @@
  * Manager Mock Factory
  * Provides factory functions for creating mock managers for testing
  *
- * v1.6.4 - New test helper for comprehensive Jest testing infrastructure
+ * v1.6.3.12 - New test helper for comprehensive Jest testing infrastructure
  *
  * Each factory creates a Jest mock with:
  * - All methods mocked by default

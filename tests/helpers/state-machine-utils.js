@@ -2,7 +2,7 @@
  * State Machine Test Utilities
  * Provides utilities for testing finite state machines
  *
- * v1.6.4 - New test helper for comprehensive Jest testing infrastructure
+ * v1.6.3.12 - New test helper for comprehensive Jest testing infrastructure
  *
  * Features:
  * - Verify all valid transitions

@@ -3,7 +3,7 @@
  *
  * Comprehensive tests for QuickTabWindow component
  * Target: 70%+ coverage (render method is complex, focus on critical paths)
- * v1.6.4 - Removed Solo/Mute tests (functionality removed)
+ * v1.6.3.12 - Removed Solo/Mute tests (functionality removed)
  *
  * @created 2025-11-19
  * @refactoring Phase 4.5 - Feature Layer Test Coverage
@@ -34,7 +34,7 @@ describe('QuickTabWindow', () => {
     // Clear all mocks
     jest.clearAllMocks();
 
-    // Setup default options (v1.6.4 - Removed soloedOnTabs/mutedOnTabs and onSolo/onMute)
+    // Setup default options (v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs and onSolo/onMute)
     options = {
       id: 'test-tab-1',
       url: 'https://example.com',
@@ -54,7 +54,7 @@ describe('QuickTabWindow', () => {
       onSizeChangeEnd: jest.fn()
     };
 
-    // Mock TitlebarBuilder (v1.6.4 - Removed soloButton/muteButton)
+    // Mock TitlebarBuilder (v1.6.3.12 - Removed soloButton/muteButton)
     mockTitlebarBuilder = {
       config: {},
       build: jest.fn(() => {
@@ -155,7 +155,7 @@ describe('QuickTabWindow', () => {
       });
     });
 
-    // v1.6.4 - Solo/Mute Visibility Properties tests removed
+    // v1.6.3.12 - Solo/Mute Visibility Properties tests removed
     describe('Visibility Properties', () => {
       test('should initialize visibility properties', () => {
         const window = new QuickTabWindow(options);
@@ -175,7 +175,7 @@ describe('QuickTabWindow', () => {
       });
     });
 
-    // v1.6.4 - Removed onSolo/onMute callbacks tests
+    // v1.6.3.12 - Removed onSolo/onMute callbacks tests
     describe('Callbacks', () => {
       test('should assign all callbacks from options', () => {
         const window = new QuickTabWindow(options);
@@ -208,7 +208,7 @@ describe('QuickTabWindow', () => {
       });
     });
 
-    // v1.6.4 - Removed soloButton/muteButton from internal state
+    // v1.6.3.12 - Removed soloButton/muteButton from internal state
     describe('Internal State', () => {
       test('should initialize internal state properties', () => {
         const window = new QuickTabWindow(options);
@@ -289,13 +289,13 @@ describe('QuickTabWindow', () => {
       const window = new QuickTabWindow(options);
       window.render();
 
-      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from builderConfig
+      // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs from builderConfig
       const builderConfig = TitlebarBuilder.mock.calls[0][0];
       expect(builderConfig.title).toBe('Test Page');
       expect(builderConfig.url).toBe('https://example.com');
     });
 
-    // v1.6.4 - Removed onSolo/onMute callbacks test
+    // v1.6.3.12 - Removed onSolo/onMute callbacks test
     test('should pass correct callbacks to TitlebarBuilder', () => {
       const window = new QuickTabWindow(options);
       window.render();
@@ -306,7 +306,7 @@ describe('QuickTabWindow', () => {
       expect(builderCallbacks.onOpenInTab).toBeDefined();
     });
 
-    // v1.6.4 - Removed soloButton/muteButton test
+    // v1.6.3.12 - Removed soloButton/muteButton test
 
     test('should create iframe element', () => {
       const window = new QuickTabWindow(options);
@@ -800,7 +800,7 @@ describe('QuickTabWindow', () => {
 
       const state = window.getState();
 
-      // v1.6.4 - Removed soloedOnTabs/mutedOnTabs from state
+      // v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs from state
       expect(state).toEqual({
         id: 'test-tab-1',
         url: 'https://example.com',
@@ -830,7 +830,7 @@ describe('QuickTabWindow', () => {
       expect(state.height).toBe(800);
     });
 
-    // v1.6.4 - Removed solo/mute arrays test
+    // v1.6.3.12 - Removed solo/mute arrays test
 
     test('should include minimized state', () => {
       const window = new QuickTabWindow(options);
@@ -843,7 +843,7 @@ describe('QuickTabWindow', () => {
     });
   });
 
-  // v1.6.4 - Removed entire Solo/Mute Functionality describe block
+  // v1.6.3.12 - Removed entire Solo/Mute Functionality describe block
 
   describe('createQuickTabWindow() factory', () => {
     test('should create and render window', () => {
