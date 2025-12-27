@@ -567,23 +567,23 @@ class QuickTabsManager {
   /**
    * Read state from storage and log result
    * v1.6.3.4-v8 - FIX Issue #8: Extracted to reduce _hydrateStateFromStorage complexity
-   * v1.6.4.18 - FIX: Use storage.session for Quick Tabs (session-only)
-   * v1.6.3.12-v3 - FIX Issue D: Remove storage.session usage for Firefox MV2 compatibility
-   *   Firefox MV2 does NOT have browser.storage.session. The extension uses Option 4
-   *   architecture with port-based messaging (quickTabsSessionState in background).
-   *   Hydration should happen via content.js port messaging, not storage.session.
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+   *   Quick Tabs now use storage.local with explicit startup cleanup for session-scoped behavior.
+   *   Hydration can also happen via content.js port messaging (Option 4 architecture).
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
   /**
-   * Read from storage.session if available
+   * Read from storage.local if available (session-scoped via explicit cleanup)
    * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
    * @private
    */
   async _tryReadStorageSession() {
-    console.log('[QuickTabsManager] storage.session available, attempting read');
+    console.log('[QuickTabsManager] storage.local available, attempting read');
     try {
-      const result = await browser.storage.session.get(STATE_KEY);
+      // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+      const result = await browser.storage.local.get(STATE_KEY);
       const storedState = result[STATE_KEY];
       console.log('[QuickTabsManager] Storage read result:', {
         found: !!storedState,
@@ -593,18 +593,19 @@ class QuickTabsManager {
       });
       return storedState;
     } catch (err) {
-      console.warn('[QuickTabsManager] storage.session read failed:', err.message);
+      console.warn('[QuickTabsManager] storage.local read failed:', err.message);
       return null;
     }
   }
 
   /**
-   * Log storage session unavailable
+   * Log storage unavailable
    * v1.6.4.19 - Extracted for complexity reduction
+   * v1.6.3.12-v4 - FIX: Updated for storage.local (storage.session not available in Firefox MV2)
    * @private
    */
   _logStorageSessionUnavailable() {
-    console.log('[QuickTabsManager] v1.6.3.12-v3 storage.session unavailable', {
+    console.log('[QuickTabsManager] v1.6.3.12-v4 storage.local unavailable', {
       action: 'Returning null - hydration handled by content.js port messaging',
       portName: 'quick-tabs-port',
       messageType: 'HYDRATE_ON_LOAD'
@@ -612,13 +613,14 @@ class QuickTabsManager {
   }
 
   async _readAndLogStorageState() {
-    console.log('[QuickTabsManager] v1.6.3.12-v3 _readAndLogStorageState: Checking storage.session availability', {
-      storageSessionAvailable: typeof browser?.storage?.session !== 'undefined',
+    console.log('[QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability', {
+      storageLocalAvailable: typeof browser?.storage?.local !== 'undefined',
       hydrationMethod: 'port-based (Option 4 architecture)',
-      note: 'Quick Tabs state is stored in background memory, not storage.session'
+      note: 'Quick Tabs state is stored in background memory and storage.local (session-scoped)'
     });
 
-    if (typeof browser?.storage?.session !== 'undefined') {
+    // v1.6.3.12-v4 - FIX: Use storage.local (storage.session not available in Firefox MV2)
+    if (typeof browser?.storage?.local !== 'undefined') {
       // Return the async result - _tryReadStorageSession handles the await internally
       return this._tryReadStorageSession();
     }

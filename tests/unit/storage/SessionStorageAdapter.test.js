@@ -1,7 +1,8 @@
 // Mock webextension-polyfill
+// v1.6.3.12-v4 - FIX: Mock storage.local instead of storage.session (Firefox MV2 compatibility)
 jest.mock('webextension-polyfill', () => ({
   storage: {
-    session: {
+    local: {
       get: jest.fn(),
       set: jest.fn(),
       remove: jest.fn()
@@ -35,9 +36,9 @@ describe('SessionStorageAdapter', () => {
     jest.clearAllMocks();
 
     // Default mock implementations
-    browser.storage.session.get.mockResolvedValue({});
-    browser.storage.session.set.mockResolvedValue(undefined);
-    browser.storage.session.remove.mockResolvedValue(undefined);
+    browser.storage.local.get.mockResolvedValue({});
+    browser.storage.local.set.mockResolvedValue(undefined);
+    browser.storage.local.remove.mockResolvedValue(undefined);
   });
 
   describe('save()', () => {
@@ -51,7 +52,7 @@ describe('SessionStorageAdapter', () => {
 
       const saveId = await adapter.save([quickTab]);
 
-      expect(browser.storage.session.set).toHaveBeenCalledWith({
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
             expect.objectContaining({
@@ -70,7 +71,7 @@ describe('SessionStorageAdapter', () => {
     test('should save empty array when no Quick Tabs', async () => {
       await adapter.save([]);
 
-      expect(browser.storage.session.set).toHaveBeenCalledWith({
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: [],
           saveId: expect.stringMatching(/^\d+-[a-z0-9]+$/),
@@ -87,7 +88,7 @@ describe('SessionStorageAdapter', () => {
 
       await adapter.save([rawTab]);
 
-      expect(browser.storage.session.set).toHaveBeenCalledWith({
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([
             expect.objectContaining({
@@ -102,7 +103,7 @@ describe('SessionStorageAdapter', () => {
 
   describe('load()', () => {
     test('should load Quick Tabs from unified format', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-1', url: 'https://example.com' }],
           timestamp: Date.now()
@@ -120,7 +121,7 @@ describe('SessionStorageAdapter', () => {
     });
 
     test('should migrate from legacy container format', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -141,11 +142,11 @@ describe('SessionStorageAdapter', () => {
       });
 
       // Should have saved migrated format
-      expect(browser.storage.session.set).toHaveBeenCalled();
+      expect(browser.storage.local.set).toHaveBeenCalled();
     });
 
     test('should return null when storage is empty', async () => {
-      browser.storage.session.get.mockResolvedValue({});
+      browser.storage.local.get.mockResolvedValue({});
 
       const result = await adapter.load();
 
@@ -153,7 +154,7 @@ describe('SessionStorageAdapter', () => {
     });
 
     test('should return null when tabs array is empty', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [],
           timestamp: Date.now()
@@ -168,7 +169,7 @@ describe('SessionStorageAdapter', () => {
 
   describe('loadAll()', () => {
     test('should return same as load() in unified format', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-1' }, { id: 'qt-2' }],
           timestamp: Date.now()
@@ -187,7 +188,7 @@ describe('SessionStorageAdapter', () => {
     });
 
     test('should return null when no tabs exist', async () => {
-      browser.storage.session.get.mockResolvedValue({});
+      browser.storage.local.get.mockResolvedValue({});
 
       const result = await adapter.loadAll();
 
@@ -197,7 +198,7 @@ describe('SessionStorageAdapter', () => {
 
   describe('delete()', () => {
     test('should delete specific Quick Tab from unified format', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [
             { id: 'qt-1', url: 'https://one.com' },
@@ -210,20 +211,20 @@ describe('SessionStorageAdapter', () => {
       await adapter.delete('qt-1');
 
       // Should save with only qt-2
-      expect(browser.storage.session.set).toHaveBeenCalledWith({
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
         })
       });
 
       // Should not contain qt-1
-      const setCall = browser.storage.session.set.mock.calls[0][0];
+      const setCall = browser.storage.local.set.mock.calls[0][0];
       const tabs = setCall.quick_tabs_state_v2.tabs;
       expect(tabs.find(t => t.id === 'qt-1')).toBeUndefined();
     });
 
     test('should do nothing when tab not found', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           tabs: [{ id: 'qt-1' }],
           timestamp: Date.now()
@@ -233,11 +234,11 @@ describe('SessionStorageAdapter', () => {
       await adapter.delete('qt-nonexistent');
 
       // Should not call set since nothing changed
-      expect(browser.storage.session.set).not.toHaveBeenCalled();
+      expect(browser.storage.local.set).not.toHaveBeenCalled();
     });
 
     test('should migrate from legacy format when deleting', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
@@ -253,7 +254,7 @@ describe('SessionStorageAdapter', () => {
       await adapter.delete('qt-1');
 
       // Should save in unified format
-      expect(browser.storage.session.set).toHaveBeenCalledWith({
+      expect(browser.storage.local.set).toHaveBeenCalledWith({
         quick_tabs_state_v2: expect.objectContaining({
           tabs: expect.arrayContaining([expect.objectContaining({ id: 'qt-2' })])
         })
@@ -265,13 +266,13 @@ describe('SessionStorageAdapter', () => {
     test('should remove all Quick Tabs from storage', async () => {
       await adapter.clear();
 
-      expect(browser.storage.session.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
+      expect(browser.storage.local.remove).toHaveBeenCalledWith('quick_tabs_state_v2');
     });
   });
 
   describe('Error Handling', () => {
     test('should return null when storage.get fails', async () => {
-      browser.storage.session.get.mockRejectedValue(new Error('Storage error'));
+      browser.storage.local.get.mockRejectedValue(new Error('Storage error'));
 
       const result = await adapter.loadAll();
 
@@ -279,7 +280,7 @@ describe('SessionStorageAdapter', () => {
     });
 
     test('should throw error when storage.set fails', async () => {
-      browser.storage.session.set.mockRejectedValue(new Error('Storage error'));
+      browser.storage.local.set.mockRejectedValue(new Error('Storage error'));
 
       const quickTab = QuickTab.create({
         id: 'qt-123',
@@ -294,7 +295,7 @@ describe('SessionStorageAdapter', () => {
 
   describe('Legacy Format Migration', () => {
     test('should migrate multiple containers to single tabs array', async () => {
-      browser.storage.session.get.mockResolvedValue({
+      browser.storage.local.get.mockResolvedValue({
         quick_tabs_state_v2: {
           containers: {
             'firefox-default': {
