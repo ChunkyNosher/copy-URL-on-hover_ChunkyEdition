@@ -388,7 +388,10 @@ async function getExportFilterSettings() {
       return result.exportLogCategoriesEnabled;
     }
   } catch (error) {
-    console.error('[Settings] getExportFilterSettings: Failed to load export filter settings:', error);
+    console.error(
+      '[Settings] getExportFilterSettings: Failed to load export filter settings:',
+      error
+    );
   }
 
   // Default: all categories enabled
@@ -1278,7 +1281,7 @@ async function handleExportAllLogs() {
 async function handleClearLogHistory() {
   console.log('[Settings] BUTTON_CLICKED: clearLogsBtn');
   console.log('[Settings] handleClearLogHistory: Sending CLEAR_CONSOLE_LOGS to background...');
-  
+
   const response = await sendMessageWithTimeout({
     action: 'CLEAR_CONSOLE_LOGS'
   });
@@ -1387,7 +1390,7 @@ function setupButtonHandler(buttonId, handler, options = {}) {
  */
 function initializeTabSwitching() {
   console.log('[Settings][INIT] Initializing tab switching...');
-  
+
   // Primary tab switching
   document.querySelectorAll('.primary-tab-button').forEach(btn => {
     btn.addEventListener('click', event => {
@@ -1756,10 +1759,10 @@ async function refreshLiveConsoleFiltersInAllTabs() {
   try {
     const tabs = await browserAPI.tabs.query({});
     console.log(`[Settings] refreshLiveConsoleFiltersInAllTabs: Found ${tabs.length} tabs`);
-    
+
     let successCount = 0;
     let failCount = 0;
-    
+
     const messagePromises = tabs.map(tab =>
       browserAPI.tabs
         .sendMessage(tab.id, {
@@ -1774,7 +1777,9 @@ async function refreshLiveConsoleFiltersInAllTabs() {
         })
     );
     await Promise.all(messagePromises);
-    console.log(`[Settings] refreshLiveConsoleFiltersInAllTabs: Notified ${successCount} tabs (${failCount} without content script)`);
+    console.log(
+      `[Settings] refreshLiveConsoleFiltersInAllTabs: Notified ${successCount} tabs (${failCount} without content script)`
+    );
   } catch (error) {
     console.error('[Settings] refreshLiveConsoleFiltersInAllTabs: Failed:', error);
   }

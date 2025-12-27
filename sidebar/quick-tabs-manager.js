@@ -3049,7 +3049,7 @@ function scheduleRender(source = 'unknown', correlationId = null) {
   _stateVersionAtSchedule = _stateVersion;
 
   _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
-  
+
   // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
   // This ensures DOM mutations are batched efficiently and prevents layout thrashing
   requestAnimationFrame(() => {
@@ -4769,9 +4769,12 @@ async function _performBrowserTabCacheAudit() {
 
   // If entries were invalidated (tabs closed), trigger re-render for orphan detection
   if (invalidatedEntries.length > 0) {
-    console.log('[Manager] BROWSER_TAB_CACHE_AUDIT: Tabs closed, scheduling render for orphan detection', {
-      closedTabIds: invalidatedEntries
-    });
+    console.log(
+      '[Manager] BROWSER_TAB_CACHE_AUDIT: Tabs closed, scheduling render for orphan detection',
+      {
+        closedTabIds: invalidatedEntries
+      }
+    );
     scheduleRender('cache-audit-invalidation');
   }
 }
@@ -4910,7 +4913,7 @@ async function _sendManagerCommand(command, quickTabId) {
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
   const initStartTimestamp = Date.now();
-  
+
   // v1.6.4 - FIX Issue #22: Register storage.onChanged listener FIRST
   // This must happen BEFORE any async operations to ensure we don't miss
   // any storage changes that occur during initialization.
@@ -5862,10 +5865,13 @@ async function _renderUIImmediate() {
   // v1.6.4 - FIX Issue #19: Check if render is already in progress
   if (_isRenderInProgress) {
     _pendingRerenderRequested = true;
-    console.log('[Manager] RENDER_SKIPPED: Render already in progress, scheduling re-render after completion', {
-      timestamp: Date.now(),
-      consecutiveRerenderCount: _consecutiveRerenderCount
-    });
+    console.log(
+      '[Manager] RENDER_SKIPPED: Render already in progress, scheduling re-render after completion',
+      {
+        timestamp: Date.now(),
+        consecutiveRerenderCount: _consecutiveRerenderCount
+      }
+    );
     return;
   }
 
@@ -5900,11 +5906,14 @@ function _handlePendingRerender() {
 
   // v1.6.4 - Code Review: Prevent infinite re-render loops
   if (_consecutiveRerenderCount > MAX_CONSECUTIVE_RERENDERS) {
-    console.warn('[Manager] RENDER_RERENDER_LIMIT_REACHED: Stopping re-renders to prevent infinite loop', {
-      timestamp: Date.now(),
-      consecutiveRerenderCount: _consecutiveRerenderCount,
-      maxAllowed: MAX_CONSECUTIVE_RERENDERS
-    });
+    console.warn(
+      '[Manager] RENDER_RERENDER_LIMIT_REACHED: Stopping re-renders to prevent infinite loop',
+      {
+        timestamp: Date.now(),
+        consecutiveRerenderCount: _consecutiveRerenderCount,
+        maxAllowed: MAX_CONSECUTIVE_RERENDERS
+      }
+    );
     _consecutiveRerenderCount = 0;
     return;
   }
@@ -6867,7 +6876,10 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
         quickTabItem.classList.add('operation-pending');
         button.disabled = true;
         button.title = 'Minimizing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', { quickTabId, classes: 'minimizing, operation-pending' });
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', {
+          quickTabId,
+          classes: 'minimizing, operation-pending'
+        });
         break;
 
       case 'restore':
@@ -6876,7 +6888,10 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
         quickTabItem.classList.add('operation-pending');
         button.disabled = true;
         button.title = 'Restoring...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', { quickTabId, classes: 'restoring, operation-pending' });
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', {
+          quickTabId,
+          classes: 'restoring, operation-pending'
+        });
         break;
 
       case 'close':
@@ -6885,12 +6900,18 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
         quickTabItem.classList.add('operation-pending');
         button.disabled = true;
         button.title = 'Closing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', { quickTabId, classes: 'closing, operation-pending' });
+        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', {
+          quickTabId,
+          classes: 'closing, operation-pending'
+        });
         break;
 
       default:
         // No optimistic update for other actions
-        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', { action, quickTabId });
+        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', {
+          action,
+          quickTabId
+        });
         break;
     }
   } catch (err) {
@@ -7002,30 +7023,63 @@ async function _dispatchQuickTabAction(options) {
     case 'goToTab':
       console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
       await goToTab(parseInt(tabId));
-      console.log('[Manager] ACTION_COMPLETE: goToTab', { tabId, durationMs: Date.now() - clickTimestamp });
+      console.log('[Manager] ACTION_COMPLETE: goToTab', {
+        tabId,
+        durationMs: Date.now() - clickTimestamp
+      });
       break;
     case 'minimize':
-      console.log('[Manager] ACTION_DISPATCH: minimize via port', { quickTabId, timestamp: Date.now() });
+      console.log('[Manager] ACTION_DISPATCH: minimize via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
       minimizeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: minimize', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      console.log('[Manager] ACTION_SENT: minimize', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
       break;
     case 'restore':
-      console.log('[Manager] ACTION_DISPATCH: restore via port', { quickTabId, timestamp: Date.now() });
+      console.log('[Manager] ACTION_DISPATCH: restore via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
       restoreQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: restore', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      console.log('[Manager] ACTION_SENT: restore', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
       break;
     case 'close':
-      console.log('[Manager] ACTION_DISPATCH: close via port', { quickTabId, timestamp: Date.now() });
+      console.log('[Manager] ACTION_DISPATCH: close via port', {
+        quickTabId,
+        timestamp: Date.now()
+      });
       closeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: close', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      console.log('[Manager] ACTION_SENT: close', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
       break;
     case 'adoptToCurrentTab':
-      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', { quickTabId, targetTabId: button.dataset.targetTabId, timestamp: Date.now() });
+      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
+        quickTabId,
+        targetTabId: button.dataset.targetTabId,
+        timestamp: Date.now()
+      });
       await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
+        quickTabId,
+        durationMs: Date.now() - clickTimestamp
+      });
       break;
     default:
-      console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
+      console.warn('[Manager] UNKNOWN_ACTION:', {
+        action,
+        quickTabId,
+        tabId,
+        timestamp: Date.now()
+      });
   }
 }
 

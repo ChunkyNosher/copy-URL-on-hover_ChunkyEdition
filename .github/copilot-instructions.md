@@ -86,8 +86,8 @@ QUICKTAB_MINIMIZED, Port Roundtrip Tracking, Message Routing Fixes
 MessageBuilder, StructuredLogger, MessageRouter
 
 **Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-`browser.storage.session` (v4), `runtime.sendMessage` for Quick Tabs (v1.6.3.12),
-Solo/Mute (v12)
+`browser.storage.session` (v4), `runtime.sendMessage` for Quick Tabs
+(v1.6.3.12), Solo/Mute (v12)
 
 ---
 
@@ -247,9 +247,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:`, `[Manager] OPTIMISTIC_UI_*:`,
-`[Manager] VALIDATE_QUICK_TAB:`, `[Manager] ORPHAN_DETECTED:`,
-`[Manager] RENDER_LOCK:`, `[Manager] STATE_VERSION:`, `[Settings][INIT]`
+**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:`,
+`[Manager] OPTIMISTIC_UI_*:`, `[Manager] VALIDATE_QUICK_TAB:`,
+`[Manager] ORPHAN_DETECTED:`, `[Manager] RENDER_LOCK:`,
+`[Manager] STATE_VERSION:`, `[Settings][INIT]`
 
 **v1.6.3.12-v5 to v8:** `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`,
 `[SEQUENCE_TRACKING]`, `[TIMEOUT_BACKOFF_*]`, `[FALLBACK_*]`

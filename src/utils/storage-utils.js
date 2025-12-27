@@ -6105,9 +6105,10 @@ class StorageCoordinator {
         entryId: queueEntry.id,
         // v1.6.4 - FIX Issue #6: Add concurrency stats
         peakQueueSize: this._peakQueueSize,
-        avgQueueTimeMs: this._operationsProcessed > 0 
-          ? Math.round(this._totalQueueTime / this._operationsProcessed)
-          : 0,
+        avgQueueTimeMs:
+          this._operationsProcessed > 0
+            ? Math.round(this._totalQueueTime / this._operationsProcessed)
+            : 0,
         timestamp: new Date().toISOString()
       });
 
@@ -6244,7 +6245,7 @@ class StorageCoordinator {
   _handleOperationSuccess(entry, result) {
     const operationDuration = Date.now() - this._currentOperationStartTime;
     const queueWaitTime = this._currentOperationStartTime - entry.queuedAt;
-    
+
     // v1.6.4 - FIX Issue #6: Track queue times for latency analysis
     this._totalQueueTime += queueWaitTime;
     this._operationsProcessed++;
@@ -6360,9 +6361,10 @@ class StorageCoordinator {
       // v1.6.4 - FIX Issue #6: Concurrency tracking stats
       peakQueueSize: this._peakQueueSize,
       operationsProcessed: this._operationsProcessed,
-      avgQueueWaitMs: this._operationsProcessed > 0 
-        ? Math.round(this._totalQueueTime / this._operationsProcessed)
-        : 0,
+      avgQueueWaitMs:
+        this._operationsProcessed > 0
+          ? Math.round(this._totalQueueTime / this._operationsProcessed)
+          : 0,
       pendingHandlers: this._writeQueue.map(w => ({
         handler: w.handlerName,
         priority: w.priority,
