@@ -49,8 +49,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.3.12-v7 Features (NEW):**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS, COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`, `minimizeQuickTabViaPort`
+- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
+  COORDINATED_CLEAR_ALL_QUICK_TABS
+- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`,
+  `minimizeQuickTabViaPort`
 - **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
 - **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
 

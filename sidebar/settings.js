@@ -9,15 +9,53 @@ if (!browserAPI) {
   console.error('[Popup] Browser API not available. Extension may not work properly.');
 }
 
+// ==================== v1.6.4 FIX ISSUE 10: LISTENER REGISTRATION GUARD ====================
+// Prevent duplicate message listener registration when sidebar reloads
+let _messageListenerRegistered = false;
+// ==================== END LISTENER REGISTRATION GUARD ====================
+
+// ==================== v1.6.4 FIX ISSUE 9: TIMEOUT PROTECTION ====================
+// Default timeout for async browser.runtime.sendMessage operations
+const MESSAGE_TIMEOUT_MS = 5000;
+
+/**
+ * Send message to background script with timeout protection
+ * v1.6.4 - FIX Issue 9: Prevent indefinite hangs when background doesn't respond
+ * @param {Object} message - Message to send
+ * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
+ * @returns {Promise<Object>} Response from background script
+ * @throws {Error} If timeout exceeded or message fails
+ */
+function sendMessageWithTimeout(message, timeoutMs = MESSAGE_TIMEOUT_MS) {
+  let timeoutId;
+
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`Operation timed out after ${timeoutMs}ms. Please try again.`));
+    }, timeoutMs);
+  });
+
+  const messagePromise = browserAPI.runtime.sendMessage(message);
+
+  // Clean up the timer regardless of which promise resolves first
+  return Promise.race([messagePromise, timeoutPromise]).finally(() => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  });
+}
+// ==================== END TIMEOUT PROTECTION ====================
+
 // ==================== LOG EXPORT FUNCTIONS ====================
 
 /**
  * Request logs from background script
+ * v1.6.4 - FIX Issue 9: Added timeout protection
  * @returns {Promise<Array>} Array of log entries
  */
 async function getBackgroundLogs() {
   try {
-    const response = await browserAPI.runtime.sendMessage({
+    const response = await sendMessageWithTimeout({
       action: 'GET_BACKGROUND_LOGS'
     });
     return response && response.logs ? response.logs : [];
@@ -223,13 +261,14 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
 
 /**
  * Delegate log export to background script
+ * v1.6.4 - FIX Issue 9: Added timeout protection
  * @param {string} logText - Formatted log text
  * @param {string} filename - Export filename
  */
 async function _delegateLogExport(logText, filename) {
   console.log('[Popup] Delegating export to background script (v1.5.9.7 fix)');
 
-  const response = await browserAPI.runtime.sendMessage({
+  const response = await sendMessageWithTimeout({
     action: 'EXPORT_LOGS',
     logText: logText,
     filename: filename
@@ -902,6 +941,7 @@ function _handleClearResponse(response) {
 
 // Clear Quick Tab storage button
 // v1.6.3.4 - FIX Bug #5: Coordinate through background script to prevent storage write storm
+// v1.6.4 - FIX Issue 9: Added timeout protection
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   const confirmed = confirm(
     'This will clear Quick Tab positions and state. Your settings and keybinds will be preserved. Are you sure?'
@@ -915,7 +955,8 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     // v1.6.3.4 - FIX Bug #5: Send coordinated clear to background script
     // Background will: 1) Clear storage once 2) Broadcast QUICK_TABS_CLEARED to all tabs
     // This prevents N tabs from all trying to clear storage simultaneously
-    const response = await browserAPI.runtime.sendMessage({
+    // v1.6.4 - FIX Issue 9: Use timeout-protected message sending
+    const response = await sendMessageWithTimeout({
       action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
     });
     _handleClearResponse(response);
@@ -1169,9 +1210,10 @@ async function handleExportAllLogs() {
 /**
  * Handle clear logs button click
  * v1.6.1.4 - Extracted from DOMContentLoaded
+ * v1.6.4 - FIX Issue 9: Added timeout protection
  */
 async function handleClearLogHistory() {
-  const response = await browserAPI.runtime.sendMessage({
+  const response = await sendMessageWithTimeout({
     action: 'CLEAR_CONSOLE_LOGS'
   });
 
@@ -1188,13 +1230,19 @@ async function handleClearLogHistory() {
 /**
  * Setup button with async handler that shows loading/success/error states
  * v1.6.1.4 - Extracted from DOMContentLoaded
+ * v1.6.4 - FIX Issue 8: Added defensive null checks and initialization logging
  * @param {string} buttonId - Button element ID
  * @param {Function} handler - Async handler function
  * @param {Object} options - Configuration options
  */
 function setupButtonHandler(buttonId, handler, options = {}) {
   const button = document.getElementById(buttonId);
-  if (!button) return;
+
+  // v1.6.4 - FIX Issue 8: Defensive null check with logging
+  if (!button) {
+    console.warn(`[Settings][INIT] Button element not found: ${buttonId}. Listener not attached.`);
+    return;
+  }
 
   const {
     loadingText = '⏳ Loading...',
@@ -1244,12 +1292,16 @@ function setupButtonHandler(buttonId, handler, options = {}) {
       }, errorDuration);
     }
   });
+
+  // v1.6.4 - FIX Issue 8: Log successful listener attachment
+  console.log(`[Settings][INIT] Button listener attached: ${buttonId}`);
 }
 
 /**
  * Initialize tab switching event handlers
  * v1.6.1.4 - Extracted to fix max-lines-per-function eslint warning
  * v1.6.3.4-v3 - FIX Bug #3: Check storage for requested tab on initialization
+ * v1.6.4 - FIX Issue 10: Added listener registration guard to prevent duplicates
  */
 function initializeTabSwitching() {
   // Primary tab switching
@@ -1272,6 +1324,15 @@ function initializeTabSwitching() {
   // Background script sets _requestedPrimaryTab before opening sidebar
   _checkAndApplyRequestedTab();
 
+  // v1.6.4 - FIX Issue 10: Guard against duplicate listener registration
+  // Firefox sidebars can reload, and listeners stack up without cleanup
+  if (_messageListenerRegistered) {
+    console.debug(
+      '[Settings] Message listener already registered, skipping duplicate registration'
+    );
+    return;
+  }
+
   // Listen for messages from background script to switch tabs
   browserAPI.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.debug('[Settings] Received message:', message.type);
@@ -1286,11 +1347,16 @@ function initializeTabSwitching() {
     }
   });
 
+  // v1.6.4 - FIX Issue 10: Mark listener as registered
+  _messageListenerRegistered = true;
   console.debug('[Settings] Tab switching initialized, message listener registered');
 }
 
 // Tab switching logic
+// v1.6.4 - FIX Issue 8: Added initialization logging
 document.addEventListener('DOMContentLoaded', () => {
+  console.log('[Settings][INIT] DOMContentLoaded fired, starting initialization');
+
   // Initialize two-layer tab system
   initializeTabSwitching();
 
@@ -1333,6 +1399,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initCollapsibleGroups();
   loadFilterSettings();
   // ==================== END COLLAPSIBLE FILTER GROUPS ====================
+
+  console.log('[Settings][INIT] DOMContentLoaded initialization complete');
 });
 
 // ==================== FILTER SETTINGS FUNCTIONS ====================

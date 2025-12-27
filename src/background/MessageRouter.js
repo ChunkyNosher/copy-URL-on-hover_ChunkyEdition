@@ -42,9 +42,14 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   'GET_BACKGROUND_LOGS',
   'GET_ALL_LOGS',
   'CLEAR_ALL_LOGS',
+  'EXPORT_LOGS',
+  'CLEAR_CONSOLE_LOGS',
   // Tab management
   'GET_TABS',
   'SWITCH_TAB',
+  // Storage operations
+  'COORDINATED_CLEAR_ALL_QUICK_TABS',
+  'RESET_GLOBAL_QUICK_TAB_STATE',
   // Keepalive
   'KEEPALIVE_PING'
 ]);
@@ -691,7 +696,14 @@ export class MessageRouter {
 
     try {
       // v1.6.3.12-v8 - FIX Code Health: Use options object instead of 6 args
-      await this._executeHandler({ handler, message, sender, sendResponse, action, routeStartTime });
+      await this._executeHandler({
+        handler,
+        message,
+        sender,
+        sendResponse,
+        action,
+        routeStartTime
+      });
       return true;
     } catch (error) {
       this._handleExecutionError(error, action, routeStartTime, sendResponse);
