@@ -1374,16 +1374,24 @@ function _checkSelfWriteHeuristics(newValue, currentTabId) {
  * @returns {boolean} True if this is a self-write that should be skipped
  */
 /**
+ * Options for _logSelfWriteDetected
+ * @typedef {Object} SelfWriteLogOptions
+ * @property {Object} newValue - New storage value
+ * @property {string} matchedBy - Heuristic that matched
+ * @property {number} priority - Priority of matched heuristic
+ * @property {number|null} currentTabId - Current tab ID
+ * @property {Object} heuristicsMatched - All heuristics results
+ */
+
+/**
  * Log self-write detection result
  * v1.6.3.12-v5 - FIX Issue #6: Extracted to reduce isSelfWrite complexity
+ * v1.6.3.12-v6 - FIX CodeScene: Converted to options object (was 5 args)
  * @private
- * @param {Object} newValue - New storage value
- * @param {string} matchedBy - Heuristic that matched
- * @param {number} priority - Priority of matched heuristic
- * @param {number|null} currentTabId - Current tab ID
- * @param {Object} heuristicsMatched - All heuristics results
+ * @param {SelfWriteLogOptions} options - Self-write log options
  */
-function _logSelfWriteDetected(newValue, matchedBy, priority, currentTabId, heuristicsMatched) {
+function _logSelfWriteDetected(options) {
+  const { newValue, matchedBy, priority, currentTabId, heuristicsMatched } = options;
   const transactionId = newValue.transactionId || 'missing';
   
   console.log(`[SELF_WRITE_CHECK] transactionId=${transactionId}, result=SELF_WRITE, key=quick_tabs_state_v2, timestamp=${Date.now()}`, {
@@ -1433,17 +1441,17 @@ export function isSelfWrite(newValue, currentTabId = null) {
   // v1.6.3.10-v10 - FIX Gap 8.1: Log which heuristic determined the result
   // v1.6.3.12-v5 - FIX Issue #6: Add SELF_WRITE_CHECK log for every call
   if (heuristicsMatched.transactionId) {
-    _logSelfWriteDetected(newValue, 'transactionId', 1, currentTabId, heuristicsMatched);
+    _logSelfWriteDetected({ newValue, matchedBy: 'transactionId', priority: 1, currentTabId, heuristicsMatched });
     return true;
   }
 
   if (heuristicsMatched.instanceId) {
-    _logSelfWriteDetected(newValue, 'instanceId', 2, currentTabId, heuristicsMatched);
+    _logSelfWriteDetected({ newValue, matchedBy: 'instanceId', priority: 2, currentTabId, heuristicsMatched });
     return true;
   }
 
   if (heuristicsMatched.tabId) {
-    _logSelfWriteDetected(newValue, 'tabId', 3, currentTabId, heuristicsMatched);
+    _logSelfWriteDetected({ newValue, matchedBy: 'tabId', priority: 3, currentTabId, heuristicsMatched });
     return true;
   }
 
@@ -4821,37 +4829,95 @@ async function _executeWriteRetryLoop({
   let hadTimeout = false;
 
   for (let attempt = 1; attempt <= totalAttempts; attempt++) {
-    if (attempt > 1) {
-      _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
-    }
-
-    // v1.6.3.12-v5 - FIX Issue #8: Handle new return format with timeout indicator
-    const result = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+    const attemptResult = await _executeWriteAttempt({
+      browserAPI,
+      stateWithTxn,
+      logPrefix,
+      transactionId,
+      context,
+      tabCount,
+      attempt,
+      totalAttempts
+    });
     
-    if (result.success) {
-      _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
-      _handleSuccessfulWrite({
-        operationId: context.operationId,
-        transactionId,
-        tabCount,
-        startTime: context.startTime,
-        attempt,
-        logPrefix
-      });
-      return true;
+    if (attemptResult.shouldReturn) {
+      return attemptResult.returnValue;
     }
     
-    // v1.6.3.12-v5 - FIX Issue #8: Track if any attempt timed out
-    if (result.isTimeout) {
+    if (attemptResult.hadTimeout) {
       hadTimeout = true;
     }
 
     // Wait before retry if more attempts remain
-    if (attempt < totalAttempts && attempt - 1 < STORAGE_RETRY_DELAYS_MS.length) {
-      await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
-    }
+    _applyRetryDelay(attempt, totalAttempts);
   }
 
+  _handleAllRetriesExhausted({ hadTimeout, transactionId, context, tabCount, totalAttempts, logPrefix });
+  return false;
+}
+
+/**
+ * Execute a single write attempt
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {Object} options - Attempt options
+ * @returns {Promise<{shouldReturn: boolean, returnValue?: boolean, hadTimeout?: boolean}>}
+ */
+async function _executeWriteAttempt({
+  browserAPI,
+  stateWithTxn,
+  logPrefix,
+  transactionId,
+  context,
+  tabCount,
+  attempt,
+  totalAttempts
+}) {
+  if (attempt > 1) {
+    _logWriteRetryAttempt(context, transactionId, attempt, totalAttempts);
+  }
+
+  const result = await _attemptStorageWrite(browserAPI, stateWithTxn, logPrefix, attempt);
+  
+  if (result.success) {
+    _logWriteSuccess({ context, transactionId, tabCount, attempt, totalAttempts });
+    _handleSuccessfulWrite({
+      operationId: context.operationId,
+      transactionId,
+      tabCount,
+      startTime: context.startTime,
+      attempt,
+      logPrefix
+    });
+    return { shouldReturn: true, returnValue: true };
+  }
+  
+  return { shouldReturn: false, hadTimeout: result.isTimeout };
+}
+
+/**
+ * Apply delay before retry attempt
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {number} attempt - Current attempt number
+ * @param {number} totalAttempts - Total number of attempts
+ */
+async function _applyRetryDelay(attempt, totalAttempts) {
+  const hasMoreAttempts = attempt < totalAttempts;
+  const hasDelayConfigured = attempt - 1 < STORAGE_RETRY_DELAYS_MS.length;
+  
+  if (hasMoreAttempts && hasDelayConfigured) {
+    await _sleep(STORAGE_RETRY_DELAYS_MS[attempt - 1]);
+  }
+}
+
+/**
+ * Handle when all retry attempts are exhausted
+ * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _executeWriteRetryLoop complexity
+ * @private
+ * @param {Object} options - Options for handling exhausted retries
+ */
+function _handleAllRetriesExhausted({ hadTimeout, transactionId, context, tabCount, totalAttempts, logPrefix }) {
   // v1.6.3.12-v5 - FIX Issue #8: Apply timeout backoff if retries exhausted due to timeouts
   if (hadTimeout) {
     const backoffInfo = recordTimeoutAndGetBackoff(transactionId);
@@ -4869,7 +4935,6 @@ async function _executeWriteRetryLoop({
     totalAttempts,
     logPrefix
   });
-  return false;
 }
 
 /**
@@ -5987,40 +6052,62 @@ class StorageCoordinator {
   /**
    * Evict stale entries that have been waiting too long
    * v1.6.3.12-v5 - FIX Issue #16: Non-blocking queue - remove stalled operations
+   * v1.6.3.12-v6 - FIX CodeScene: Flatten bumpy road with helper methods
    * @private
    */
   _evictStaleEntries() {
     const now = Date.now();
+    const { staleEntries, freshEntries } = this._partitionEntriesByFreshness(now);
+
+    if (staleEntries.length === 0) {
+      return;
+    }
+
+    this._writeQueue = freshEntries;
+    this._evictedCount += staleEntries.length;
+    this._resolveEvictedEntries(staleEntries, now);
+  }
+
+  /**
+   * Partition queue entries into stale and fresh
+   * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _evictStaleEntries complexity
+   * @private
+   * @param {number} now - Current timestamp
+   * @returns {{staleEntries: Array, freshEntries: Array}}
+   */
+  _partitionEntriesByFreshness(now) {
     const staleEntries = [];
     const freshEntries = [];
 
     for (const entry of this._writeQueue) {
-      const waitTime = now - entry.queuedAt;
-      if (waitTime > QUEUE_MAX_WAIT_MS) {
-        staleEntries.push(entry);
-      } else {
-        freshEntries.push(entry);
-      }
+      const isStale = now - entry.queuedAt > QUEUE_MAX_WAIT_MS;
+      (isStale ? staleEntries : freshEntries).push(entry);
     }
 
-    if (staleEntries.length > 0) {
-      this._writeQueue = freshEntries;
-      this._evictedCount += staleEntries.length;
+    return { staleEntries, freshEntries };
+  }
 
-      for (const entry of staleEntries) {
-        console.warn('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
-          handler: entry.handlerName,
-          entryId: entry.id,
-          priority: entry.priority,
-          waitTimeMs: now - entry.queuedAt,
-          maxWaitMs: QUEUE_MAX_WAIT_MS,
-          reason: 'exceeded_max_wait_time',
-          totalEvicted: this._evictedCount,
-          timestamp: new Date().toISOString()
-        });
-        // Resolve with false to indicate operation was not completed
-        entry.resolve(false);
-      }
+  /**
+   * Log and resolve evicted entries
+   * v1.6.3.12-v6 - FIX CodeScene: Extracted to reduce _evictStaleEntries complexity
+   * @private
+   * @param {Array} staleEntries - Entries to evict
+   * @param {number} now - Current timestamp
+   */
+  _resolveEvictedEntries(staleEntries, now) {
+    for (const entry of staleEntries) {
+      console.warn('[WRITE_QUEUE] QUEUE_ENTRY_EVICTED:', {
+        handler: entry.handlerName,
+        entryId: entry.id,
+        priority: entry.priority,
+        waitTimeMs: now - entry.queuedAt,
+        maxWaitMs: QUEUE_MAX_WAIT_MS,
+        reason: 'exceeded_max_wait_time',
+        totalEvicted: this._evictedCount,
+        timestamp: new Date().toISOString()
+      });
+      // Resolve with false to indicate operation was not completed
+      entry.resolve(false);
     }
   }
 
