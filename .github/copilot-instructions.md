@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v9  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,21 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI:**
+**v1.6.4 Features (NEW) - Storage Transaction Fixes:**
+
+- **Issue #5 Fix** - Self-write confirmation now uses storage.local.set() promise
+  resolution (not storage.onChanged). Per MDN: storage.onChanged is for EXTERNAL
+  writes only. Transaction cleanup moved to `_handleSuccessfulWrite()`.
+- **Issue #6 Fix** - StorageCoordinator tracks concurrency metrics: peak queue
+  size, average queue wait time, operations processed count.
+- **Issue #21 Fix** - State version tracking for render transaction boundaries.
+  `_stateVersion` incremented on external state updates. `scheduleRender()` uses
+  `requestAnimationFrame()` for DOM mutation batching.
+- **Issue #22 Fix** - Storage.onChanged listener now registered FIRST in
+  DOMContentLoaded, BEFORE any async operations. Prevents missing early state
+  updates.
+
+**v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI:**
 
 - **Button Click Logging** - Comprehensive logging for all Manager buttons
   (Close, Minimize, Restore, Close All, Close Minimized)
@@ -140,7 +154,20 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v8 Patterns (Current)
+### v1.6.4 Patterns (Current)
+
+- **Self-Write Confirmation** - Uses storage.local.set() promise resolution, NOT
+  storage.onChanged. Transaction cleanup in `_handleSuccessfulWrite()`.
+- **Concurrency Tracking** - StorageCoordinator tracks `_peakQueueSize`,
+  `_totalQueueTime`, `_operationsProcessed` for latency diagnosis.
+- **State Version Tracking** - `_stateVersion` incremented on external updates,
+  `_stateVersionAtSchedule` for render drift detection.
+- **Listener Registration Order** - storage.onChanged registered FIRST in
+  DOMContentLoaded, BEFORE async operations.
+- **requestAnimationFrame Rendering** - `scheduleRender()` uses rAF for DOM
+  mutation batching.
+
+### v1.6.3.12-v8 Patterns
 
 - **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
   `closeMinimizedQuickTabsViaPort()`

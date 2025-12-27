@@ -239,6 +239,11 @@ let previousBrowserTabId = null;
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
 
+// v1.6.4 - FIX Issue #21: State version tracking for render transaction boundaries
+// Tracks the state version when a render is scheduled vs when it executes
+let _stateVersion = 0; // Incremented on every state change
+let _stateVersionAtSchedule = 0; // Version when render was scheduled
+
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
 // v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
 //   This cache exists as a FALLBACK to protect against storage storms/corruption.
@@ -295,6 +300,22 @@ const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
 
 // Browser tab info cache
 const browserTabInfoCache = new Map();
+
+/**
+ * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
+ * Call this when state is updated from external sources (port messages, storage.onChanged)
+ * This allows scheduleRender to detect if state changed between scheduling and rendering.
+ * @private
+ * @param {string} source - Source of state update for logging
+ */
+function _incrementStateVersion(source) {
+  _stateVersion++;
+  console.log('[Manager] v1.6.4 STATE_VERSION_INCREMENT:', {
+    newVersion: _stateVersion,
+    source,
+    timestamp: Date.now()
+  });
+}
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -2978,6 +2999,7 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
 /**
  * Schedule UI render with deduplication
  * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
+ * v1.6.4 - FIX Issue #21: Track state version for render transaction boundaries
  * @param {string} [source='unknown'] - Source of render request
  * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
@@ -2992,8 +3014,27 @@ function scheduleRender(source = 'unknown', correlationId = null) {
     return;
   }
 
+  // v1.6.4 - FIX Issue #21: Capture state version at schedule time
+  // This allows us to detect if state changed between scheduling and rendering
+  _stateVersionAtSchedule = _stateVersion;
+
   _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
-  renderUI();
+  
+  // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
+  // This ensures DOM mutations are batched efficiently and prevents layout thrashing
+  requestAnimationFrame(() => {
+    // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
+    if (_stateVersion !== _stateVersionAtSchedule) {
+      console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
+        scheduledVersion: _stateVersionAtSchedule,
+        currentVersion: _stateVersion,
+        versionDrift: _stateVersion - _stateVersionAtSchedule,
+        source,
+        note: 'State changed between schedule and render - rendering latest state'
+      });
+    }
+    renderUI();
+  });
 }
 
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
@@ -4838,6 +4879,19 @@ async function _sendManagerCommand(command, quickTabId) {
 
 // Initialize
 document.addEventListener('DOMContentLoaded', async () => {
+  const initStartTimestamp = Date.now();
+  
+  // v1.6.4 - FIX Issue #22: Register storage.onChanged listener FIRST
+  // This must happen BEFORE any async operations to ensure we don't miss
+  // any storage changes that occur during initialization.
+  // CRITICAL: The order is important - listener registration must be synchronous
+  // and happen before connectToBackground() or loadQuickTabsState()
+  _setupStorageOnChangedListener();
+  console.log('[Manager] v1.6.4 STORAGE_LISTENER_REGISTERED_FIRST:', {
+    timestamp: initStartTimestamp,
+    note: 'Registered before any async operations'
+  });
+
   // Cache DOM elements
   containersList = document.getElementById('containersList');
   emptyState = document.getElementById('emptyState');
@@ -4855,6 +4909,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     console.warn('[Manager] Could not get current tab ID:', err);
   }
 
+  // v1.6.4 - FIX Issue #22: Log hydration request timestamp for comparison with listener
+  const hydrationRequestTimestamp = Date.now();
+  console.log('[Manager] v1.6.4 HYDRATION_REQUEST_TIMING:', {
+    listenerRegisteredAt: initStartTimestamp,
+    hydrationRequestAt: hydrationRequestTimestamp,
+    deltaMs: hydrationRequestTimestamp - initStartTimestamp,
+    note: 'Listener was registered before this point'
+  });
+
   // v1.6.3.6-v11 - FIX Issue #11: Establish persistent port connection
   connectToBackground();
 
@@ -4870,7 +4933,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Render initial UI
   renderUI();
 
-  // Setup event listeners
+  // Setup event listeners (NOTE: storage.onChanged already registered above)
   setupEventListeners();
 
   // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
@@ -5445,6 +5508,9 @@ function _processStorageState(state, loadStartTime) {
 
   quickTabsState = state;
   filterInvalidTabs(quickTabsState);
+
+  // v1.6.4 - FIX Issue #21: Increment state version for render transaction tracking
+  _incrementStateVersion('loadQuickTabsState');
 
   // v1.6.3.5-v7 - FIX Issue #7: Update lastLocalUpdateTime when we receive new state from storage
   lastLocalUpdateTime = Date.now();
@@ -7017,12 +7083,21 @@ function setupEventListeners() {
     closeAllElement: !!document.getElementById('closeAll')
   });
 
-  _setupStorageOnChangedListener();
+  // v1.6.4 - FIX Issue #22: storage.onChanged listener is now registered at the
+  // start of DOMContentLoaded BEFORE any async operations. This ensures we don't
+  // miss storage changes that occur during initialization.
+  // _setupStorageOnChangedListener() is now called from DOMContentLoaded directly.
 }
 
 /**
  * Setup storage.onChanged listener as fallback mechanism
  * v1.6.3.12 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4 - FIX Issue #22: NOW CALLED AT START OF DOMContentLoaded
+ *   CRITICAL: This listener MUST be registered BEFORE any async operations
+ *   to ensure we don't miss storage changes that occur during initialization.
+ *   The background script may send state updates via storage.local while
+ *   the manager is still initializing, and missing these updates causes
+ *   state divergence.
  * @private
  */
 function _setupStorageOnChangedListener() {
@@ -7439,6 +7514,7 @@ function _checkTabChanges(oldTabs, newTabs) {
 /**
  * Update local state cache without triggering renderUI()
  * v1.6.3.7 - FIX Issue #3: Keep local state in sync during metadata-only updates
+ * v1.6.4 - FIX Issue #21: Increment state version for render transaction tracking
  * @private
  * @param {Object} newValue - New storage value
  */
@@ -7446,6 +7522,8 @@ function _updateLocalStateCache(newValue) {
   if (newValue?.tabs) {
     quickTabsState = newValue;
     _updateInMemoryCache(newValue.tabs);
+    // v1.6.4 - FIX Issue #21: Increment state version
+    _incrementStateVersion('_updateLocalStateCache');
   }
 }
 
