@@ -415,26 +415,34 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason) {
  * @param {Object} msg - ACK message from background
  * @param {string} ackType - Type of ACK (e.g., 'CLOSE', 'MINIMIZE', 'RESTORE')
  */
-function _handleQuickTabPortAck(msg, ackType) {
-  const { quickTabId, success, timestamp: responseTimestamp, correlationId: responseCorrelationId } = msg;
-  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+/**
+ * Build ACK log data
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _buildAckLogData(msg, sentInfo) {
+  const { success, timestamp: responseTimestamp, correlationId: responseCorrelationId } = msg;
   const roundtripMs = sentInfo ? Date.now() - sentInfo.sentAt : null;
-  
-  // v1.6.4 - Gap #8: Log correlation ID match
-  const correlationMatch = sentInfo?.correlationId === responseCorrelationId;
-  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
-    quickTabId,
+  return {
     success,
     roundtripMs,
     responseTimestamp,
     sentAt: sentInfo?.sentAt || null,
-    // v1.6.4 - Gap #8: Correlation tracking
     sentCorrelationId: sentInfo?.correlationId || null,
     responseCorrelationId: responseCorrelationId || null,
-    correlationMatch
+    correlationMatch: sentInfo?.correlationId === responseCorrelationId
+  };
+}
+
+function _handleQuickTabPortAck(msg, ackType) {
+  const { quickTabId } = msg;
+  const sentInfo = _quickTabPortOperationTimestamps.get(quickTabId);
+  
+  console.log(`[Sidebar] QUICK_TAB_ACK_RECEIVED: ${ackType}`, {
+    quickTabId,
+    ..._buildAckLogData(msg, sentInfo)
   });
   
-  // Clean up tracking
   if (quickTabId) {
     _quickTabPortOperationTimestamps.delete(quickTabId);
   }
@@ -1742,11 +1750,12 @@ function _handleStateSyncResponse(response) {
  * v1.6.4.0 - FIX Issue B: Single entry point prevents cascading render triggers
  * @param {string} source - Source of render trigger for logging
  */
-function scheduleRender(source = 'unknown') {
-  const scheduleTimestamp = Date.now();
-  const currentHash = computeStateHash(quickTabsState);
-  
-  // v1.6.4 - Gap #6: Log hash computation with fields included
+/**
+ * Log hash computation for render scheduling
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logHashComputation(scheduleTimestamp, source, currentHash) {
   console.log('[Sidebar] DEBOUNCE_HASH_COMPUTED:', {
     timestamp: scheduleTimestamp,
     source,
@@ -1756,28 +1765,46 @@ function scheduleRender(source = 'unknown') {
     stateTabCount: quickTabsState?.tabs?.length || 0,
     fieldsInHash: ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId']
   });
+}
 
-  // v1.6.4.0 - FIX Issue B: Deduplicate renders by hash comparison
-  if (currentHash === lastRenderedStateHash) {
-    console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
-      source,
-      hash: currentHash
-    });
-    // v1.6.4 - Gap #6: Log when skipping due to hash match with state summary
-    console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
-      timestamp: scheduleTimestamp,
-      source,
-      hash: currentHash,
-      tabCount: quickTabsState?.tabs?.length || 0,
-      stateSummary: {
-        totalTabs: quickTabsState?.tabs?.length || 0,
-        minimizedTabs: (quickTabsState?.tabs || []).filter(t => t.minimized).length
-      }
-    });
-    return;
-  }
-  
-  // v1.6.4 - Gap #6: Log debounce scheduled
+/**
+ * Log when render is skipped due to hash match
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+/**
+ * Build state summary for logging
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _buildStateSummary() {
+  const tabs = quickTabsState?.tabs || [];
+  return {
+    totalTabs: tabs.length,
+    minimizedTabs: tabs.filter(t => t.minimized).length
+  };
+}
+
+function _logRenderSkipped(scheduleTimestamp, source, currentHash) {
+  console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
+    source,
+    hash: currentHash
+  });
+  console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
+    timestamp: scheduleTimestamp,
+    source,
+    hash: currentHash,
+    tabCount: quickTabsState?.tabs?.length || 0,
+    stateSummary: _buildStateSummary()
+  });
+}
+
+/**
+ * Log when render is scheduled
+ * v1.6.4.19 - Extracted for complexity reduction
+ * @private
+ */
+function _logRenderScheduled(scheduleTimestamp, source, currentHash) {
   console.log('[Sidebar] DEBOUNCE_SCHEDULED:', {
     timestamp: scheduleTimestamp,
     source,
@@ -1785,15 +1812,26 @@ function scheduleRender(source = 'unknown') {
     delayMs: RENDER_DEBOUNCE_MS,
     reason: 'hash_changed'
   });
-
   console.log('[Manager] RENDER_SCHEDULED:', {
     source,
     newHash: currentHash,
     previousHash: lastRenderedStateHash,
     timestamp: Date.now()
   });
+}
 
-  // Route to the debounced renderUI
+function scheduleRender(source = 'unknown') {
+  const scheduleTimestamp = Date.now();
+  const currentHash = computeStateHash(quickTabsState);
+  
+  _logHashComputation(scheduleTimestamp, source, currentHash);
+
+  if (currentHash === lastRenderedStateHash) {
+    _logRenderSkipped(scheduleTimestamp, source, currentHash);
+    return;
+  }
+  
+  _logRenderScheduled(scheduleTimestamp, source, currentHash);
   renderUI();
 }
 
@@ -2905,52 +2943,52 @@ function _dispatchQuickTabMessage({ emoji, logLabel, logFields, handler, message
 }
 
 /**
- * Handle QUICKTAB_MOVED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
+ * Message dispatcher configuration
+ * v1.6.4.19 - Use lookup table to eliminate code duplication
  * @private
  */
-function _handleMovedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
+const _messageDispatcherConfig = {
+  MOVED: {
     emoji: '📍',
     logLabel: 'QUICKTAB_MOVED',
-    logFields: { quickTabId: message.quickTabId, left: message.left, top: message.top, originTabId: message.originTabId },
-    handler: handleQuickTabMovedMessage,
-    message,
-    sendResponse
-  });
-}
-
-/**
- * Handle QUICKTAB_RESIZED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
- * @private
- */
-function _handleResizedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, left: msg.left, top: msg.top, originTabId: msg.originTabId }),
+    handler: handleQuickTabMovedMessage
+  },
+  RESIZED: {
     emoji: '📐',
     logLabel: 'QUICKTAB_RESIZED',
-    logFields: { quickTabId: message.quickTabId, width: message.width, height: message.height, originTabId: message.originTabId },
-    handler: handleQuickTabResizedMessage,
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, width: msg.width, height: msg.height, originTabId: msg.originTabId }),
+    handler: handleQuickTabResizedMessage
+  },
+  MINIMIZED: {
+    emoji: '🔽',
+    logLabel: 'QUICKTAB_MINIMIZED',
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, minimized: msg.minimized, originTabId: msg.originTabId }),
+    handler: handleQuickTabMinimizedMessage
+  }
+};
+
+/**
+ * Create message handler using config lookup
+ * v1.6.4.19 - Refactored: Factory function to eliminate duplication
+ * @private
+ */
+function _createMessageDispatcher(configKey) {
+  const config = _messageDispatcherConfig[configKey];
+  return (message, sendResponse) => _dispatchQuickTabMessage({
+    emoji: config.emoji,
+    logLabel: config.logLabel,
+    logFields: config.extractLogFields(message),
+    handler: config.handler,
     message,
     sendResponse
   });
 }
 
-/**
- * Handle QUICKTAB_MINIMIZED message
- * v1.6.4.19 - Refactored: Use generic dispatcher
- * @private
- */
-function _handleMinimizedMessage(message, sendResponse) {
-  return _dispatchQuickTabMessage({
-    emoji: '🔽',
-    logLabel: 'QUICKTAB_MINIMIZED',
-    logFields: { quickTabId: message.quickTabId, minimized: message.minimized, originTabId: message.originTabId },
-    handler: handleQuickTabMinimizedMessage,
-    message,
-    sendResponse
-  });
-}
+// Create dispatch handlers using factory
+const _handleMovedMessage = _createMessageDispatcher('MOVED');
+const _handleResizedMessage = _createMessageDispatcher('RESIZED');
+const _handleMinimizedMessage = _createMessageDispatcher('MINIMIZED');
 
 /**
  * Handle QUICKTAB_REMOVED message
@@ -3060,57 +3098,77 @@ function _handleQuickTabPropertyUpdate({ quickTabId, updates, originTabId, logLa
 }
 
 /**
+ * Quick Tab message handler configuration
+ * v1.6.4.19 - Use lookup table to eliminate code duplication
+ * @private
+ */
+const _quickTabMessageHandlerConfig = {
+  MOVED: {
+    extractUpdates: (msg) => ({ left: msg.left, top: msg.top }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, left: msg.left, top: msg.top, originTabId: msg.originTabId }),
+    logLabel: 'MOVE_HANDLER',
+    renderReason: 'QUICKTAB_MOVED'
+  },
+  RESIZED: {
+    extractUpdates: (msg) => ({ width: msg.width, height: msg.height }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, width: msg.width, height: msg.height, originTabId: msg.originTabId }),
+    logLabel: 'RESIZE_HANDLER',
+    renderReason: 'QUICKTAB_RESIZED'
+  },
+  MINIMIZED: {
+    extractUpdates: (msg) => ({ minimized: msg.minimized }),
+    extractLogFields: (msg) => ({ quickTabId: msg.quickTabId, minimized: msg.minimized, originTabId: msg.originTabId }),
+    logLabel: 'MINIMIZE_HANDLER',
+    renderReason: 'QUICKTAB_MINIMIZED'
+  }
+};
+
+/**
+ * Generic Quick Tab message handler using config lookup
+ * v1.6.4.19 - Refactored: Eliminate duplication via configuration
+ * @private
+ */
+function _handleQuickTabMessage(message, configKey) {
+  const config = _quickTabMessageHandlerConfig[configKey];
+  const { quickTabId, originTabId } = message;
+  _handleQuickTabPropertyUpdate({
+    quickTabId,
+    updates: config.extractUpdates(message),
+    originTabId,
+    logLabel: config.logLabel,
+    renderReason: config.renderReason,
+    logFields: config.extractLogFields(message)
+  });
+}
+
+/**
  * Handle QUICKTAB_MOVED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time position update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MOVED message
  */
 function handleQuickTabMovedMessage(message) {
-  const { quickTabId, left, top, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { left, top },
-    originTabId,
-    logLabel: 'MOVE_HANDLER',
-    renderReason: 'QUICKTAB_MOVED',
-    logFields: { quickTabId, left, top, originTabId }
-  });
+  _handleQuickTabMessage(message, 'MOVED');
 }
 
 /**
  * Handle QUICKTAB_RESIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time size update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_RESIZED message
  */
 function handleQuickTabResizedMessage(message) {
-  const { quickTabId, width, height, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { width, height },
-    originTabId,
-    logLabel: 'RESIZE_HANDLER',
-    renderReason: 'QUICKTAB_RESIZED',
-    logFields: { quickTabId, width, height, originTabId }
-  });
+  _handleQuickTabMessage(message, 'RESIZED');
 }
 
 /**
  * Handle QUICKTAB_MINIMIZED message from content script
  * v1.6.3.11-v12 - FIX Issue #5: Real-time minimize state update handler
- * v1.6.4.19 - Refactored: Use generic property update handler
+ * v1.6.4.19 - Refactored: Use config-based handler
  * @param {Object} message - QUICKTAB_MINIMIZED message
  */
 function handleQuickTabMinimizedMessage(message) {
-  const { quickTabId, minimized, originTabId } = message;
-  _handleQuickTabPropertyUpdate({
-    quickTabId,
-    updates: { minimized },
-    originTabId,
-    logLabel: 'MINIMIZE_HANDLER',
-    renderReason: 'QUICKTAB_MINIMIZED',
-    logFields: { quickTabId, minimized, originTabId }
-  });
+  _handleQuickTabMessage(message, 'MINIMIZED');
 }
 
 /**

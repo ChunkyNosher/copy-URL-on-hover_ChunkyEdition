@@ -164,60 +164,71 @@ class QuickTabsManager {
    * @private
    * @param {Object} [_options={}] - Options including pre-fetched currentTabId (unused, kept for API consistency)
    */
-  async _initStep1_Context(_options = {}) {
-    // v1.6.3.11-v12 - FIX Issue 1: Skip container detection if already set from options
-    // This prevents a second network request and ensures consistent container ID
+  /**
+   * Initialize container context
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  async _initContainerContext() {
     if (this.cookieStoreId !== null && this.cookieStoreId !== undefined) {
-      console.log(
-        '[QuickTabsManager] STEP 1: Container ID already set (from options):',
-        this.cookieStoreId
-      );
-    } else {
-      console.log('[QuickTabsManager] STEP 1: Detecting container context...');
-      const containerDetected = await this.detectContainerContext();
-      if (!containerDetected) {
-        console.warn('[QuickTabsManager] Container detection failed, using default container');
-      }
+      console.log('[QuickTabsManager] STEP 1: Container ID already set (from options):', this.cookieStoreId);
+      return;
     }
+    console.log('[QuickTabsManager] STEP 1: Detecting container context...');
+    const containerDetected = await this.detectContainerContext();
+    if (!containerDetected) {
+      console.warn('[QuickTabsManager] Container detection failed, using default container');
+    }
+  }
 
-    // v1.6.3.5-v10 - FIX Issue #3: Skip tab ID detection if already set from options
-    // Content.js now pre-fetches tab ID from background before calling init()
+  /**
+   * Initialize tab ID
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  async _initTabId() {
     if (this.currentTabId !== null && this.currentTabId !== undefined) {
-      console.log(
-        '[QuickTabsManager] STEP 1: Tab ID already set (from options):',
-        this.currentTabId
-      );
-    } else {
-      console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
-      await this.detectCurrentTabId();
+      console.log('[QuickTabsManager] STEP 1: Tab ID already set (from options):', this.currentTabId);
+      return;
     }
+    console.log('[QuickTabsManager] STEP 1: Detecting tab ID (fallback)...');
+    await this.detectCurrentTabId();
+  }
 
-    // v1.6.3.12 - FIX Issue #17: Load z-index counter from storage
+  /**
+   * Initialize z-index counter
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  async _initZIndexCounter() {
     try {
       const restoredZIndex = await loadZIndexCounter(CONSTANTS.QUICK_TAB_BASE_Z_INDEX);
       this.currentZIndex.value = restoredZIndex;
       console.log('[QuickTabsManager] STEP 1: Z-index counter restored:', restoredZIndex);
     } catch (err) {
-      console.warn(
-        '[QuickTabsManager] STEP 1: Z-index restore failed, using default:',
-        err.message
-      );
+      console.warn('[QuickTabsManager] STEP 1: Z-index restore failed, using default:', err.message);
     }
+  }
 
-    // v1.6.3.12 - FIX Issue #15: Start storage listener health monitoring
+  /**
+   * Initialize storage health monitor
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  _initStorageHealthMonitor() {
     try {
       const monitorStarted = startStorageListenerHealthMonitor();
-      console.log(
-        '[QuickTabsManager] STEP 1: Storage health monitor:',
-        monitorStarted ? 'started' : 'failed'
-      );
+      console.log('[QuickTabsManager] STEP 1: Storage health monitor:', monitorStarted ? 'started' : 'failed');
     } catch (err) {
-      console.warn(
-        '[QuickTabsManager] STEP 1: Storage health monitor failed to start:',
-        err.message
-      );
+      console.warn('[QuickTabsManager] STEP 1: Storage health monitor failed to start:', err.message);
     }
+  }
 
+  async _initStep1_Context(_options = {}) {
+    await this._initContainerContext();
+    await this._initTabId();
+    await this._initZIndexCounter();
+    this._initStorageHealthMonitor();
     console.log('[QuickTabsManager] STEP 1 Complete - currentTabId:', this.currentTabId);
   }
 
@@ -370,79 +381,62 @@ class QuickTabsManager {
    * @param {Object} filterReasons - Object to track filter reasons
    * @returns {{success: boolean, reason: string}} Result with success flag and reason
    */
+  /**
+   * Log hydration rejection
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  _logHydrationRejection(tabData, reason, filterReasons) {
+    const tabId = tabData?.id ?? 'unknown';
+    this._logHydrationStatus(tabId, 'failed', reason);
+    console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
+      id: tabData?.id,
+      originTabId: tabData?.originTabId,
+      currentTabId: this.currentTabId,
+      result: 'REJECT',
+      reason
+    });
+    filterReasons[reason]++;
+    return { success: false, reason };
+  }
+
+  /**
+   * Validate tab data and check preconditions for hydration
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   * @returns {Object|null} Rejection result or null if valid
+   */
+  _validateHydrationPreconditions(tabData, filterReasons) {
+    if (!this._isValidTabData(tabData)) {
+      return this._logHydrationRejection(tabData, 'invalidData', filterReasons);
+    }
+    const skipResult = this._checkTabScopeWithReason(tabData);
+    if (skipResult.skip) {
+      return this._logHydrationRejection(tabData, skipResult.reason, filterReasons);
+    }
+    if (this.tabs.has(tabData.id)) {
+      console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
+      return this._logHydrationRejection(tabData, 'alreadyExists', filterReasons);
+    }
+    if (!this.createHandler) {
+      this._logHydrationStatus(tabData.id, 'failed', 'noHandler');
+      console.warn('[QuickTabsManager] No createHandler available for hydration');
+      filterReasons.noHandler++;
+      return { success: false, reason: 'noHandler' };
+    }
+    return null;
+  }
+
   _safeHydrateTabWithReason(tabData, filterReasons) {
     try {
-      // Validate required fields
-      if (!this._isValidTabData(tabData)) {
-        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
-        this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', 'invalidData');
-        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
-        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
-          id: tabData?.id,
-          originTabId: tabData?.originTabId,
-          currentTabId: this.currentTabId,
-          result: 'REJECT',
-          reason: 'invalidData'
-        });
-        filterReasons.invalidData++;
-        return { success: false, reason: 'invalidData' };
-      }
+      const rejection = this._validateHydrationPreconditions(tabData, filterReasons);
+      if (rejection) return rejection;
 
-      // Check tab scope validation with reason tracking
-      const skipResult = this._checkTabScopeWithReason(tabData);
-      if (skipResult.skip) {
-        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
-        this._logHydrationStatus(tabData.id, 'failed', skipResult.reason);
-        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
-        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
-          id: tabData.id,
-          originTabId: tabData.originTabId,
-          currentTabId: this.currentTabId,
-          result: 'REJECT',
-          reason: skipResult.reason
-        });
-        filterReasons[skipResult.reason]++;
-        return { success: false, reason: skipResult.reason };
-      }
-
-      // Skip if tab already exists
-      if (this.tabs.has(tabData.id)) {
-        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
-        this._logHydrationStatus(tabData.id, 'failed', 'alreadyExists');
-        // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER
-        console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
-          id: tabData.id,
-          originTabId: tabData.originTabId,
-          currentTabId: this.currentTabId,
-          result: 'REJECT',
-          reason: 'alreadyExists'
-        });
-        console.log('[QuickTabsManager] Tab already exists, skipping hydration:', tabData.id);
-        filterReasons.alreadyExists++;
-        return { success: false, reason: 'alreadyExists' };
-      }
-
-      // Skip if no createHandler available
-      if (!this.createHandler) {
-        // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration logging
-        this._logHydrationStatus(tabData.id, 'failed', 'noHandler');
-        console.warn('[QuickTabsManager] No createHandler available for hydration');
-        filterReasons.noHandler++;
-        return { success: false, reason: 'noHandler' };
-      }
-
-      // v1.6.3.10-v4 - FIX Issue #1: Diagnostic logging for hydration FILTER (KEEP)
       console.log('[Content][Hydration] FILTER: Evaluating Quick Tab for hydration', {
-        id: tabData.id,
-        originTabId: tabData.originTabId,
-        currentTabId: this.currentTabId,
-        result: 'KEEP'
+        id: tabData.id, originTabId: tabData.originTabId, currentTabId: this.currentTabId, result: 'KEEP'
       });
 
-      // Perform hydration
-      console.log(
-        `[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`
-      );
+      console.log(`[QuickTabsManager] Hydrating tab: ${tabData.id} (minimized: ${tabData.minimized})`);
       const options = this._buildHydrationOptions(tabData);
       const optionsWithCallbacks = this._addHydrationCallbacks(options);
 
@@ -452,11 +446,9 @@ class QuickTabsManager {
         this._hydrateVisibleTab(optionsWithCallbacks);
       }
 
-      // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration success logging
       this._logHydrationStatus(tabData.id, 'success', 'hydrated');
       return { success: true, reason: 'hydrated' };
     } catch (tabError) {
-      // v1.6.3.11-v11 - FIX Issue 48 #4: Per-tab hydration error logging
       this._logHydrationStatus(tabData?.id ?? 'unknown', 'failed', tabError.message);
       console.error('[QuickTabsManager] Error hydrating individual tab:', tabData?.id, tabError);
       filterReasons.error++;
@@ -583,49 +575,55 @@ class QuickTabsManager {
    * @private
    * @returns {Promise<Object|null>} Stored state or null
    */
+  /**
+   * Read from storage.session if available
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  async _tryReadStorageSession() {
+    console.log('[QuickTabsManager] storage.session available, attempting read');
+    try {
+      const result = await browser.storage.session.get(STATE_KEY);
+      const storedState = result[STATE_KEY];
+      console.log('[QuickTabsManager] Storage read result:', {
+        found: !!storedState,
+        tabCount: storedState?.tabs?.length ?? 0,
+        saveId: storedState?.saveId ?? 'none',
+        transactionId: storedState?.transactionId ?? 'none'
+      });
+      return storedState;
+    } catch (err) {
+      console.warn('[QuickTabsManager] storage.session read failed:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Log storage session unavailable
+   * v1.6.4.19 - Extracted for complexity reduction
+   * @private
+   */
+  _logStorageSessionUnavailable() {
+    console.log('[QuickTabsManager] v1.6.3.12-v3 storage.session unavailable', {
+      action: 'Returning null - hydration handled by content.js port messaging',
+      portName: 'quick-tabs-port',
+      messageType: 'HYDRATE_ON_LOAD'
+    });
+  }
+
   async _readAndLogStorageState() {
-    // v1.6.3.12-v3 - FIX Issue D: storage.session API not available
-    // This extension uses Option 4 architecture with port-based messaging.
-    // Quick Tabs state is stored in background script memory (quickTabsSessionState),
-    // NOT in storage.session. Hydration happens via content.js port messaging.
     console.log('[QuickTabsManager] v1.6.3.12-v3 _readAndLogStorageState: Checking storage.session availability', {
       storageSessionAvailable: typeof browser?.storage?.session !== 'undefined',
       hydrationMethod: 'port-based (Option 4 architecture)',
       note: 'Quick Tabs state is stored in background memory, not storage.session'
     });
 
-    // v1.6.3.12-v3 - Return null to indicate storage-based hydration is unavailable.
-    // The actual hydration should happen via port-based messaging in content.js
-    // which calls _hydrateQuickTabsFromBackground() before QuickTabsManager.init().
-    // This prevents the error "storage.session unavailable" and allows the
-    // port-based hydration to be the single source of truth.
-    
-    // Check if storage.session exists (MV3 or Firefox 115+) - for future-proofing
     if (typeof browser?.storage?.session !== 'undefined') {
-      console.log('[QuickTabsManager] storage.session available, attempting read');
-      try {
-        const result = await browser.storage.session.get(STATE_KEY);
-        const storedState = result[STATE_KEY];
-        console.log('[QuickTabsManager] Storage read result:', {
-          found: !!storedState,
-          tabCount: storedState?.tabs?.length ?? 0,
-          saveId: storedState?.saveId ?? 'none',
-          transactionId: storedState?.transactionId ?? 'none'
-        });
-        return storedState;
-      } catch (err) {
-        console.warn('[QuickTabsManager] storage.session read failed:', err.message);
-        return null;
-      }
+      // Return the async result - _tryReadStorageSession handles the await internally
+      return this._tryReadStorageSession();
     }
 
-    // v1.6.3.12-v3 - storage.session unavailable: Return null, hydration via port-based messaging
-    // Note: storage.session is only available in MV3 or Firefox 115+ MV3
-    console.log('[QuickTabsManager] v1.6.3.12-v3 storage.session unavailable', {
-      action: 'Returning null - hydration handled by content.js port messaging',
-      portName: 'quick-tabs-port',
-      messageType: 'HYDRATE_ON_LOAD'
-    });
+    this._logStorageSessionUnavailable();
     return null;
   }
 
