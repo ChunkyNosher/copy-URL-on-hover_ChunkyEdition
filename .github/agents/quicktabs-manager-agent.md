@@ -48,6 +48,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
   - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
   - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
+  state version before skipping render (port data update detection)
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
+  `browser.tabs.sendMessage` if port unavailable
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
   - Options object pattern (5 args → 1)
   - Lookup table refactoring (72 LoC → 42 LoC)
@@ -121,6 +125,8 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders
+- [ ] Cross-tab render fix works (hash AND version check)
+- [ ] Fallback messaging works (port → sendMessage)
 - [ ] Cross-tab display works (Quick Tabs from all tabs shown)
 - [ ] Tab cache invalidation on navigation
 - [ ] Heartbeat restart logging visible
@@ -141,4 +147,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 ---
 
 **Your strength: Manager coordination with v1.6.3.12-v12 button operation fix,
-state version tracking, optimistic UI timeout, render lock, and comprehensive validation.**
+cross-tab render fix, fallback messaging, state version tracking, optimistic UI timeout,
+render lock, and comprehensive validation.**

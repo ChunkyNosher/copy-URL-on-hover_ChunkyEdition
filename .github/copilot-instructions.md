@@ -20,7 +20,7 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Cross-Tab Display + Code Health:**
 
 - **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
   All, Close Minimized) now work reliably
@@ -30,6 +30,10 @@
     response
   - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
   - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Cross-Tab Display Fix** - `_executeDebounceRender()` checks BOTH hash AND
+  state version before skipping render (port data update detection)
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
+  `browser.tabs.sendMessage` if port unavailable
 - **Code Health Improvements** - quick-tabs-manager.js: 7.48 → 8.54
   - Refactored `_revertOptimisticUI` to use options object (5 args → 1)
   - Refactored `_applyOptimisticClasses` to use options object (5 args → 1)
@@ -124,6 +128,8 @@ const quickTabsSessionState = {
 
 - **Button Operation Fix** - Safety timeout + state version tracking for
   reliable button operations
+- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks hash AND version
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` port → sendMessage
 - **Optimistic UI Timeout** - `_applyOptimisticUIUpdate()` reverts if no
   response
 - **State Version Tracking** - `_lastRenderedStateVersion` in `scheduleRender()`
@@ -210,7 +216,7 @@ const quickTabsSessionState = {
 ## 📝 Logging Prefixes
 
 **v1.6.3.12-v12 (NEW):** `[Manager] OPTIMISTIC_TIMEOUT:`,
-`[Manager] STATE_VERSION_RENDER:`
+`[Manager] STATE_VERSION_RENDER:`, `[Background] FALLBACK_SEND_MESSAGE:`
 
 **v1.6.3.12-v11:** `[Manager] RENDER_DATA_SOURCE:`,
 `HEARTBEAT_CONFIRMED_ACTIVE`, `[Options] PAGE_ACTIVE_CHECK:`

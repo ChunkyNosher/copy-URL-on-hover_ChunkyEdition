@@ -45,6 +45,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
     re-render
   - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
+  state version before skipping render (port data update detection)
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
+  `browser.tabs.sendMessage` if port unavailable
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
 **v1.6.3.12-v11 Features:**
@@ -103,6 +107,8 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] Memory state works (`quickTabsSessionState`)
 - [ ] Tab isolation works (originTabId filtering at hydration)
+- [ ] Cross-tab render fix works (hash AND version check)
+- [ ] Fallback messaging works (port → sendMessage)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
@@ -114,4 +120,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 ---
 
 **Your strength: Reliable cross-tab sync with v1.6.3.12-v12 button operation fix,
-state version tracking, port messaging, sequence tracking, and port circuit breaker.**
+cross-tab render fix, fallback messaging, state version tracking, port messaging,
+sequence tracking, and port circuit breaker.**
