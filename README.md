@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v9** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.12-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Per-Tab
 Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,34 +8,33 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v9 Status:** Comprehensive Logging ✅ | Optimistic UI ✅ | Code
-Health 8.54 ✅ | Orphan Recovery UI ✅
+**🔧 v1.6.3.12-v10 Status:** Issue #48 Fixed ✅ | Port Routing ✅ | Code
+Health 9.09 ✅ | Manager Buttons Working ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v9
+## 🎉 What's New in v1.6.3.12-v10
 
-**🔧 Comprehensive Logging + Optimistic UI ✅**
+**🔧 Issue #48 Port Routing Fix ✅**
 
-- ✅ **Button Click Logging** - All Manager buttons logged with
-  `[Manager] BUTTON_CLICKED:` prefix
-- ✅ **Optimistic UI Updates** - Instant feedback via
-  `_applyOptimisticUIUpdate()`
-- ✅ **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
-- ✅ **Cross-Tab Aggregation Logging** - `_computeOriginTabStats()` with
-  `STATE_SYNC_CROSS_TAB_AGGREGATION`
-- ✅ **Orphan Quick Tab Recovery UI** - Orange background + badge for orphaned
-  tabs
-- ✅ **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
-- ✅ **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
+- ✅ **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()`
+- ✅ **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- ✅ **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
+  and `hasTab` fields
+- ✅ **Sidebar Message Logging** - `SIDEBAR_MESSAGE_RECEIVED` showing handler
+  availability
+- ✅ **Code Health** - background.js: 8.79 → 9.09 (achieved ≥9.0 target)
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI, Code
+Health 8.54  
 **v1.6.3.12-v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Code Health
 10.0  
 **v1.6.3.12-v7:** Message Routing Fixes, VALID_MESSAGE_ACTIONS, Code Health
@@ -163,6 +162,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v9** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v10** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
