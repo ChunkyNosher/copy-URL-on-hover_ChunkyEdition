@@ -5960,12 +5960,31 @@ async function _executeDebounceRender(debounceTime) {
 
   // Recalculate hash after potential fresh load
   const finalHash = computeStateHash(quickTabsState);
-  if (finalHash === lastRenderedHash) {
-    console.log('[Manager] Skipping render - state hash unchanged', {
+
+  // v1.6.4 - FIX Issue #48: Check BOTH hash AND state version before skipping
+  // The render might be needed even if hash is unchanged (e.g., port data changed)
+  const hashUnchanged = finalHash === lastRenderedHash;
+  const versionUnchanged = _stateVersion === _lastRenderedStateVersion;
+
+  if (hashUnchanged && versionUnchanged) {
+    console.log('[Manager] Skipping render - state hash AND version unchanged', {
       hash: finalHash,
+      stateVersion: _stateVersion,
       tabCount: quickTabsState?.tabs?.length ?? 0
     });
     return;
+  }
+
+  if (!hashUnchanged) {
+    console.log('[Manager] Debounce render proceeding: hash changed', {
+      previousHash: lastRenderedHash,
+      newHash: finalHash
+    });
+  } else {
+    console.log('[Manager] Debounce render proceeding: state version changed', {
+      previousVersion: _lastRenderedStateVersion,
+      newVersion: _stateVersion
+    });
   }
 
   // Update hash before render to prevent re-render loops even if _renderUIImmediate() throws

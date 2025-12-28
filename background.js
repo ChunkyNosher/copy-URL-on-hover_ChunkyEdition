@@ -6286,28 +6286,65 @@ function _findAndModifyQuickTabInSession(quickTabId, modifier) {
 /**
  * Notify content script of a command
  * v1.6.3.12 - Helper to reduce nesting depth
+ * v1.6.4 - FIX Issue #48: Add fallback to browser.tabs.sendMessage when port unavailable
  * @private
  * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
  * @param {boolean} found - Whether the Quick Tab was found
- * @param {string} commandType - Command type to send
+ * @param {string} commandType - Command type to send (e.g., CLOSE_QUICK_TAB_COMMAND)
  * @param {string} quickTabId - Quick Tab ID
  */
 function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabId) {
   if (!found || ownerTabId === null) return;
 
-  const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
-  if (!contentPort) return;
+  const message = {
+    type: commandType,
+    quickTabId,
+    source: 'sidebar',
+    timestamp: Date.now()
+  };
 
-  try {
-    contentPort.postMessage({
-      type: commandType,
-      quickTabId,
-      source: 'sidebar',
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn(`[Background] Failed to notify content script in tab ${ownerTabId}:`, err.message);
+  const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
+  if (contentPort) {
+    try {
+      contentPort.postMessage(message);
+      console.log(`[Background] Command sent via port: ${commandType}`, { ownerTabId, quickTabId });
+      return;
+    } catch (err) {
+      console.warn('[Background] Port message failed, trying tabs.sendMessage:', err.message);
+    }
   }
+
+  // v1.6.4 - FIX Issue #48: Fallback to browser.tabs.sendMessage when port unavailable
+  // This ensures commands reach content scripts even if port was disconnected
+  // Convert _COMMAND suffix to match ACTION_HANDLERS (e.g., CLOSE_QUICK_TAB_COMMAND -> CLOSE_QUICK_TAB)
+  const action = commandType.replace(/_COMMAND$/, '');
+
+  // Validate that the action was converted correctly
+  const validActions = ['CLOSE_QUICK_TAB', 'MINIMIZE_QUICK_TAB', 'RESTORE_QUICK_TAB'];
+  if (!validActions.includes(action)) {
+    console.warn(`[Background] Invalid action after conversion: ${action}`, {
+      originalCommandType: commandType,
+      ownerTabId,
+      quickTabId
+    });
+    return; // Don't send invalid actions
+  }
+
+  console.log(`[Background] Using tabs.sendMessage fallback for: ${commandType}`, {
+    ownerTabId,
+    quickTabId,
+    action,
+    reason: contentPort ? 'port_error' : 'no_port'
+  });
+
+  browser.tabs.sendMessage(ownerTabId, {
+    action,
+    quickTabId,
+    source: 'sidebar',
+    timestamp: Date.now()
+  }).catch(err => {
+    console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
+  });
 }
 
 /**
