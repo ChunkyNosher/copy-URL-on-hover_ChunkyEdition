@@ -65,38 +65,31 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v10 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v12 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.12-v11 Features - Cross-Tab Display + Robustness:**
+
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` (Issue #1 fix)
+- **Options Page Async Guard** - `_isPageActive` + `isPageActive()` (Issue #10)
+- **Tab Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12)
+
+**v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
 
 - **Port Routing Fix** - Sidebar detection prioritized over content script
   detection in `handleQuickTabsPortConnect()`
 - **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
   Minimized now properly route through sidebar port handlers
-- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
-  and `hasTab` fields
 - **Code Health** - background.js: 8.79 → 9.09
-
-**v1.6.3.12-v7 Features - Message Routing Fixes + Code Health:**
-
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use port-based messaging methods
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
-
-**v1.6.3.12-v6 Features - Manager Sync + Port Resilience:**
-
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
-
-**v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue:**
-
-- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
 
 **Key Features:**
 

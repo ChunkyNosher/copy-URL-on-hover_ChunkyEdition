@@ -3,9 +3,9 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v11), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.3.12-v12), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
-  optimistic UI updates, render lock, orphan recovery UI, cross-tab display fix
+  optimistic UI updates, render lock, orphan recovery UI, button operation fix
 tools: ['*']
 ---
 
@@ -37,9 +37,23 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v11 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v11 Features (NEW):**
+**v1.6.3.12-v12 Features (NEW):**
+
+- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
+  Restore, Close All, Close Minimized)
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
+    trigger re-render
+  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
+  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
+  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+  - Options object pattern (5 args → 1)
+  - Lookup table refactoring (72 LoC → 42 LoC)
+  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
+
+**v1.6.3.12-v11 Features:**
 
 - **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` helper prioritizes
   port data for all-tabs visibility (Issue #1 fix)
@@ -62,16 +76,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
 - **Port Message Validation** - `_validateQuickTabObject()`,
   `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
-- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
 - **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
 - **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
-- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
-
-**v1.6.3.12-v8 Features:**
-
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer
 
 **Key Manager Features:**
 
@@ -113,6 +119,8 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ## Testing Requirements
 
+- [ ] Button operation fix works (buttons re-enable after timeout)
+- [ ] State version tracking prevents stale renders
 - [ ] Cross-tab display works (Quick Tabs from all tabs shown)
 - [ ] Tab cache invalidation on navigation
 - [ ] Heartbeat restart logging visible
@@ -132,5 +140,5 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v11 cross-tab display fix,
-optimistic UI, render lock, orphan recovery UI, and comprehensive button logging.**
+**Your strength: Manager coordination with v1.6.3.12-v12 button operation fix,
+state version tracking, optimistic UI timeout, render lock, and comprehensive validation.**

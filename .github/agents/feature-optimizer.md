@@ -61,22 +61,27 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Version:** 1.6.3.12-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use port-based messaging methods
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
-**v1.6.3.12-v6 Features:**
+**v1.6.3.12-v11 Features - Cross-Tab Display + Robustness:**
 
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` (Issue #1 fix)
+- **Options Page Async Guard** - `_isPageActive` + `isPageActive()` (Issue #10)
+
+**v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
+
+- **Port Routing Fix** - Sidebar detection prioritized (Issue #48 fix)
+- **Code Health** - background.js: 8.79 → 9.09
 
 **Performance Targets:**
 

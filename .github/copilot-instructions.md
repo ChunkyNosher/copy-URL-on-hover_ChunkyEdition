@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v11  
+**Version:** 1.6.3.12-v12  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,52 +20,39 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v11 Features (NEW) - Cross-Tab Display + Robustness:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
 
-- **Cross-Tab Display Fix** - Manager displays Quick Tabs from ALL browser tabs
-  via `_getAllQuickTabsForRender()` helper (Issue #1)
-- **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
-  async safety checks preventing DOM updates after page unload (Issue #10)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
-  `browserTabInfoCache` on navigation/updates (Issue #12)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` logging confirms
-  heartbeat started after port reconnection (Issue #20)
+- **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
+  All, Close Minimized) now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
+    trigger re-render
+  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI if no
+    response
+  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
+  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Code Health Improvements** - quick-tabs-manager.js: 7.48 → 8.54
+  - Refactored `_revertOptimisticUI` to use options object (5 args → 1)
+  - Refactored `_applyOptimisticClasses` to use options object (5 args → 1)
+  - Refactored `_applyOptimisticUIUpdate` to use lookup table (72 LoC → 42 LoC)
+  - Extracted `_isTabsOnUpdatedAvailable()` predicate
+
+**v1.6.3.12-v11 Features - Cross-Tab Display + Robustness:**
+
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` prioritizes port
+  data for all-tabs visibility (Issue #1)
+- **Options Page Async Guard** - `_isPageActive` + `isPageActive()` async safety
+  (Issue #10)
+- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12)
+- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20)
 
 **v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
 
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()` to fix Manager button operations
-- **Enhanced Port Logging** - Additional logging for `QUICK_TABS_PORT_CONNECT`
-  with `senderFrameId` and `hasTab` fields
-- **Sidebar Message Logging** - New `[Background] SIDEBAR_MESSAGE_RECEIVED:`
-  logging showing handler availability and available handlers
-- **Issue #48 Fix** - Manager buttons (Close, Minimize, Restore, Close All,
-  Close Minimized) now properly route through sidebar port handlers
+- **Port Routing Fix** - Sidebar detection prioritized in
+  `handleQuickTabsPortConnect()` (Issue #48 fix)
+- **Code Health** - background.js: 8.79 → 9.09
 
-**v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI:**
-
-- **Button Click Logging** - Logging for Manager buttons (Close, Minimize,
-  Restore, Close All, Close Minimized) with `[Manager] BUTTON_CLICKED:` prefix
-- **Optimistic UI Updates** - Instant feedback via `_applyOptimisticUIUpdate()`
-- **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
-- **Cross-Tab Aggregation** - `_computeOriginTabStats()` for per-origin-tab
-  counts with `STATE_SYNC_CROSS_TAB_AGGREGATION` logging
-- **Orphan Quick Tab UI** - Visual indicator (orange background, badge) for
-  orphaned tabs with `.quick-tab-item.orphaned` CSS class
-- **Render Lock** - `_isRenderInProgress`, `_pendingRerenderRequested`, max 3
-  consecutive re-renders
-- **Storage Transaction** - Self-write uses promise resolution,
-  `requestAnimationFrame()` for DOM batching, `_stateVersion` tracking
-- **Settings Logging** - `[Settings][INIT]` prefix, button initialization
-  tracking
-- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
-
-**v1.6.3.12-v8 Features - Bulk Close + Circuit Breaker Auto-Reset:**
-
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer
+**v1.6.3.12-v8 to v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Render
+Lock, Orphan UI, Bulk Close Operations, Circuit Breaker Auto-Reset
 - **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
 
 **v1.6.3.12-v5 to v1.6.3.12-v9:** Circuit breaker, priority queue, sequence
@@ -133,7 +120,16 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v11 Patterns (Current)
+### v1.6.3.12-v12 Patterns (Current)
+
+- **Button Operation Fix** - Safety timeout + state version tracking for
+  reliable button operations
+- **Optimistic UI Timeout** - `_applyOptimisticUIUpdate()` reverts if no
+  response
+- **State Version Tracking** - `_lastRenderedStateVersion` in `scheduleRender()`
+- **Code Health** - Options object pattern, lookup tables, predicate extraction
+
+### v1.6.3.12-v11 Patterns
 
 - **Cross-Tab Display** - `_getAllQuickTabsForRender()` prioritizes port data
   for all-tabs visibility (Issue #1 fix)
@@ -213,7 +209,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v11 (NEW):** `[Manager] RENDER_DATA_SOURCE:`,
+**v1.6.3.12-v12 (NEW):** `[Manager] OPTIMISTIC_TIMEOUT:`,
+`[Manager] STATE_VERSION_RENDER:`
+
+**v1.6.3.12-v11:** `[Manager] RENDER_DATA_SOURCE:`,
 `HEARTBEAT_CONFIRMED_ACTIVE`, `[Options] PAGE_ACTIVE_CHECK:`
 
 **v1.6.3.12-v10:** `[Background] QUICK_TABS_PORT_CONNECT:`,

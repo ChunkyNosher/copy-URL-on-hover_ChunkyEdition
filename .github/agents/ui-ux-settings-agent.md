@@ -59,9 +59,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v11 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.12-v12 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.12-v11 Features (NEW) - Options Page Async Guard:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.12-v11 Features - Options Page Async Guard:**
 
 - **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
   async safety checks preventing DOM updates after page unload (Issue #10 fix)

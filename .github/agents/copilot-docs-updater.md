@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v11.
+  documentation. Current version: v1.6.3.12-v12.
 tools: ['*']
 ---
 
@@ -69,9 +69,23 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v11)
+## Current Extension State (v1.6.3.12-v12)
 
-### v1.6.3.12-v11 Features (NEW) - Cross-Tab Display + Robustness
+### v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health
+
+- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
+  Restore, Close All, Close Minimized)
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
+    trigger re-render
+  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
+  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
+  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Code Health Improvements** - quick-tabs-manager.js: 7.48 → 8.54
+  - Options object pattern (5 args → 1)
+  - Lookup table refactoring (72 LoC → 42 LoC)
+  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
+
+### v1.6.3.12-v11 Features - Cross-Tab Display + Robustness
 
 - **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` prioritizes port
   data for all-tabs visibility (Issue #1 fix)
@@ -88,57 +102,12 @@ nothing.
   detection in `handleQuickTabsPortConnect()`
 - **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
   Minimized now properly route through sidebar port handlers
-- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
-  and `hasTab` fields
-- **Sidebar Message Logging** - `SIDEBAR_MESSAGE_RECEIVED` showing handler
-  availability
 - **Code Health** - background.js: 8.79 → 9.09
 
-### v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI
+### v1.6.3.12-v8 to v1.6.3.12-v9 Features (Consolidated)
 
-- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
-- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
-- **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`
-- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
-- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
-- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
-- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
-
-### v1.6.3.12-v8 Features - Bulk Close + Circuit Breaker Auto-Reset
-
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer
-  (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
-- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
-  RESET_GLOBAL_QUICK_TAB_STATE
-- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
-  timeout
-- **Listener Registration Guard** - `_messageListenerRegistered` prevents
-  duplicates
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
-  settings.js: 10.0
-
-### v1.6.3.12-v7 Features - Message Routing Fixes + Code Health
-
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use port-based messaging methods
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-
-### v1.6.3.12-v6 Features - Manager Sync + Port Resilience
-
-- **storage.onChanged Fix** - Checks `'local'` area for Firefox MV2
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
-
-### v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue
-
-- **Circuit Breaker Pattern** - Trips after 5 consecutive failed transactions
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Rolling Heartbeat** - Window of 5 responses for retry decisions
+- **v9:** Button Click Logging, Optimistic UI, Render Lock, Orphan UI
+- **v8:** Bulk Close Operations, Circuit Breaker Auto-Reset
 
 ### Architecture
 
@@ -151,8 +120,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v11
-- [ ] **v1.6.3.12-v11:** Cross-Tab Display + Robustness fixes documented
+- [ ] Version numbers match 1.6.3.12-v12
+- [ ] **v1.6.3.12-v12:** Button Operation Fix + Code Health documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -162,7 +131,7 @@ nothing.
 
 | Error                    | Fix                              |
 | ------------------------ | -------------------------------- |
-| v1.6.3.12-v10 or earlier | Update to 1.6.3.12-v11           |
+| v1.6.3.12-v11 or earlier | Update to 1.6.3.12-v12           |
 | "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
 | "Pin to Page"            | REMOVE - Feature DELETED in v12  |
 | Cross-session persist    | REMOVE - Session-only in v12     |

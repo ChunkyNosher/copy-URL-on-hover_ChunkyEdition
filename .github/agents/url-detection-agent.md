@@ -60,9 +60,17 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.3.12-v12 - Domain-Driven Design (Phase 1 Complete ✅)
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
 
 - **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
   `handleCreate()` in `QuickTabHandler.js`

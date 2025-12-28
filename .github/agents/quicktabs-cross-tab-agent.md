@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v10), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
-  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, port routing fix
+  (v1.6.3.12-v12), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix
 tools: ['*']
 ---
 
@@ -37,31 +37,28 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v10 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v10 Features (NEW):**
+**v1.6.3.12-v12 Features (NEW):**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.12-v11 Features:**
+
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` (Issue #1 fix)
+- **Tab Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12 fix)
+
+**v1.6.3.12-v10 Features:**
 
 - **Port Routing Fix** - Sidebar detection prioritized over content script
   detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
 - **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
   Minimized now properly route through sidebar port handlers
-- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
-  and `hasTab` fields
 - **Code Health** - background.js: 8.79 → 9.09
-
-**v1.6.3.12-v7 Features:**
-
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use port-based messaging methods
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
-
-**v1.6.3.12-v6 Features:**
-
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -116,5 +113,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12-v10 port routing fix,
-QUICKTAB_REMOVED handler, port messaging, sequence tracking, and port circuit breaker.**
+**Your strength: Reliable cross-tab sync with v1.6.3.12-v12 button operation fix,
+state version tracking, port messaging, sequence tracking, and port circuit breaker.**
