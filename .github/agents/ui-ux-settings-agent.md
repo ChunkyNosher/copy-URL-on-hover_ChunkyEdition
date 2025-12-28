@@ -59,9 +59,16 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.11-v7 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.3.12-v11 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.11-v7 Features (NEW) - Orphan Quick Tabs Fix + Code Health:**
+**v1.6.3.12-v11 Features (NEW) - Options Page Async Guard:**
+
+- **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
+  async safety checks preventing DOM updates after page unload (Issue #10 fix)
+- **Page Visibility Tracking** - Prevents stale async operations from modifying
+  DOM after user navigates away
+
+**v1.6.3.11-v7 Features - Orphan Quick Tabs Fix + Code Health:**
 
 - **Orphan Quick Tabs Fix** - `originTabId` + `originContainerId` stored in
   `handleCreate()` in `QuickTabHandler.js`
@@ -209,11 +216,13 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 - **Settings Not Saving** - Ensure `await browser.storage.sync.set()`
 - **Dark Mode Not Applying** - Check class toggle and CSS variables
 - **Form Validation Not Working** - Validate before save
+- **Async DOM Updates After Unload** - Use `isPageActive()` guard (Issue #10)
 
 ---
 
 ## Testing Requirements
 
+- [ ] Options page async guard works (`_isPageActive`)
 - [ ] Settings save/load correctly
 - [ ] Dark mode applies across all UI
 - [ ] Form validation catches invalid input

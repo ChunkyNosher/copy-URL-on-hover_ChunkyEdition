@@ -20,16 +20,16 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v11 Features (NEW) - Cross-Tab Display Fix:**
+**v1.6.3.12-v11 Features (NEW) - Cross-Tab Display + Robustness:**
 
-- **Cross-Tab Display Fix** - Manager now displays Quick Tabs from ALL browser
-  tabs, not just the active tab
-- **Port Data Priority** - `_getAllQuickTabsForRender()` prioritizes port data
-  (`_allQuickTabsFromPort`) over storage data for cross-tab visibility
-- **Render Data Source Logging** - `[Manager] RENDER_DATA_SOURCE:` logs whether
-  port or storage data is being used
-- **Fixes Issue #1** - Manager displays Quick Tabs from all browser tabs with
-  visual grouping by origin tab
+- **Cross-Tab Display Fix** - Manager displays Quick Tabs from ALL browser tabs
+  via `_getAllQuickTabsForRender()` helper (Issue #1)
+- **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
+  async safety checks preventing DOM updates after page unload (Issue #10)
+- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
+  `browserTabInfoCache` on navigation/updates (Issue #12)
+- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` logging confirms
+  heartbeat started after port reconnection (Issue #20)
 
 **v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
 
@@ -133,41 +133,20 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v10 Patterns (Current)
+### v1.6.3.12-v11 Patterns (Current)
 
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
-- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
-  and `hasTab` fields
-- **Sidebar Message Logging** - `SIDEBAR_MESSAGE_RECEIVED` showing available
-  handlers
-- **Code Health** - background.js: 8.79 → 9.09 (achieved ≥9.0 target)
+- **Cross-Tab Display** - `_getAllQuickTabsForRender()` prioritizes port data
+  for all-tabs visibility (Issue #1 fix)
+- **Options Page Guard** - `_isPageActive` + `isPageActive()` async safety
+  (Issue #10 fix)
+- **Tab Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12 fix)
+- **Heartbeat Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20 fix)
 
-### v1.6.3.12-v9 Patterns
+### v1.6.3.12-v8 to v1.6.3.12-v10 Patterns (Consolidated)
 
-- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all button
-  actions
-- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant visual
-  feedback
-- **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`
-- **Orphan Quick Tab UI** - `.quick-tab-item.orphaned` CSS class, orange badge
-- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
-- **State Version Tracking** - `_stateVersion` for render consistency
-- **Code Health** - quick-tabs-manager.js: 8.54
-
-### v1.6.3.12-v8 Patterns
-
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer resets tripped circuit
-  breaker
-- **Settings Timeout Protection** - `sendMessageWithTimeout()` with 5s timeout
-- **Listener Guard** - `_messageListenerRegistered` prevents duplicate
-  registration
-- **Code Health** - settings.js: 10.0, MessageRouter.js: 10.0
+- **v10:** Port Routing Fix (Issue #48), Manager Button Operations, Code Health 9.09
+- **v9:** Button Click Logging, Optimistic UI, Render Lock, Orphan UI
+- **v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Settings Timeout
 
 ### v1.6.3.12-v5 to v1.6.3.12-v7 Patterns (Consolidated)
 
@@ -234,7 +213,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v10 (NEW):** `[Background] QUICK_TABS_PORT_CONNECT:`,
+**v1.6.3.12-v11 (NEW):** `[Manager] RENDER_DATA_SOURCE:`,
+`HEARTBEAT_CONFIRMED_ACTIVE`, `[Options] PAGE_ACTIVE_CHECK:`
+
+**v1.6.3.12-v10:** `[Background] QUICK_TABS_PORT_CONNECT:`,
 `[Background] SIDEBAR_MESSAGE_RECEIVED:`, `[Background] QUICK_TABS_PORT_UNHANDLED:`
 
 **v1.6.3.12-v9:** `[Manager] BUTTON_CLICKED:`,

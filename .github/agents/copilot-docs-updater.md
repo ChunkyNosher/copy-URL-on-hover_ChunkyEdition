@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v10.
+  documentation. Current version: v1.6.3.12-v11.
 tools: ['*']
 ---
 
@@ -69,9 +69,20 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v10)
+## Current Extension State (v1.6.3.12-v11)
 
-### v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix
+### v1.6.3.12-v11 Features (NEW) - Cross-Tab Display + Robustness
+
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` prioritizes port
+  data for all-tabs visibility (Issue #1 fix)
+- **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
+  async safety (Issue #10 fix)
+- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
+  stale cache (Issue #12 fix)
+- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20
+  fix)
+
+### v1.6.3.12-v10 Features - Issue #48 Port Routing Fix
 
 - **Port Routing Fix** - Sidebar detection prioritized over content script
   detection in `handleQuickTabsPortConnect()`
@@ -140,8 +151,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v10
-- [ ] **v1.6.3.12-v10:** Issue #48 Port Routing Fix documented
+- [ ] Version numbers match 1.6.3.12-v11
+- [ ] **v1.6.3.12-v11:** Cross-Tab Display + Robustness fixes documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -149,14 +160,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                   | Fix                              |
-| ----------------------- | -------------------------------- |
-| v1.6.3.12-v9 or earlier | Update to 1.6.3.12-v10           |
-| "Solo/Mute" references  | REMOVE - Feature DELETED in v12  |
-| "Pin to Page"           | REMOVE - Feature DELETED in v12  |
-| Cross-session persist   | REMOVE - Session-only in v12     |
-| Direct storage writes   | Use Single Writer Authority      |
-| BroadcastChannel refs   | REMOVE - BC DELETED in v6        |
+| Error                    | Fix                              |
+| ------------------------ | -------------------------------- |
+| v1.6.3.12-v10 or earlier | Update to 1.6.3.12-v11           |
+| "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
+| "Pin to Page"            | REMOVE - Feature DELETED in v12  |
+| Cross-session persist    | REMOVE - Session-only in v12     |
+| Direct storage writes    | Use Single Writer Authority      |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6        |
 
 ---
 
