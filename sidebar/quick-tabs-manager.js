@@ -2338,6 +2338,7 @@ async function _flushSingleAction(queuedAction, now) {
  * Start heartbeat interval
  * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
  * v1.6.3.10-v1 - FIX Issue #5: Adaptive interval based on latency
+ * v1.6.3.12-v11 - FIX Issue #20: Add confirmation logging for heartbeat start
  */
 function startHeartbeat() {
   // Clear any existing interval
@@ -2348,11 +2349,35 @@ function startHeartbeat() {
 
   // v1.6.3.10-v1 - FIX Issue #5: Use adaptive interval
   heartbeatIntervalId = setInterval(sendHeartbeat, currentHeartbeatInterval);
+
+  // v1.6.3.12-v11 - FIX Issue #20: Confirm heartbeat actually started
+  // Note: setInterval returns a positive integer in browsers (never 0)
+  const heartbeatActive = heartbeatIntervalId !== null;
+
   logPortLifecycle('HEARTBEAT_STARTED', {
     intervalMs: currentHeartbeatInterval,
     timeoutMs: HEARTBEAT_TIMEOUT_MS,
-    safetyMarginMs: 30000 - currentHeartbeatInterval
+    safetyMarginMs: 30000 - currentHeartbeatInterval,
+    // v1.6.3.12-v11 - FIX Issue #20: Confirmation that setInterval succeeded
+    heartbeatActive,
+    intervalId: typeof heartbeatIntervalId
   });
+
+  // v1.6.3.12-v11 - FIX Issue #20: Explicit confirmation log after reconnection
+  if (heartbeatActive) {
+    console.log('[Manager] HEARTBEAT_CONFIRMED_ACTIVE:', {
+      timestamp: Date.now(),
+      intervalMs: currentHeartbeatInterval,
+      intervalIdType: typeof heartbeatIntervalId,
+      message: 'Heartbeat interval successfully created and active'
+    });
+  } else {
+    console.error('[Manager] HEARTBEAT_FAILED_TO_START:', {
+      timestamp: Date.now(),
+      intervalId: heartbeatIntervalId,
+      message: 'setInterval did not return a valid interval ID'
+    });
+  }
 }
 
 /**
@@ -4936,6 +4961,62 @@ async function _performBrowserTabCacheAudit() {
 
 // ==================== END v1.6.4 FIX Issue #17 ====================
 
+// ==================== v1.6.3.12-v11 FIX Issue #12: Tab Navigation Cache Invalidation ====================
+/**
+ * Handler for browser.tabs.onUpdated events
+ * Invalidates browserTabInfoCache when tabs navigate to new URLs
+ * v1.6.3.12-v11 - FIX Issue #12: Proactive cache invalidation on tab navigation
+ * @param {number} tabId - Tab that was updated
+ * @param {Object} changeInfo - What changed in the tab
+ * @param {Object} _tab - Full tab info (unused)
+ */
+function _handleTabUpdated(tabId, changeInfo, _tab) {
+  // Only invalidate cache when URL changes (navigation)
+  // This catches: new page load, same-page navigation, redirects
+  if (changeInfo.url) {
+    const hadCacheEntry = browserTabInfoCache.has(tabId);
+    if (hadCacheEntry) {
+      browserTabInfoCache.delete(tabId);
+      const urlLength = changeInfo.url.length;
+      console.log('[Manager] BROWSER_TAB_CACHE_INVALIDATED:', {
+        timestamp: Date.now(),
+        tabId,
+        reason: 'tab_navigation',
+        newUrl: changeInfo.url.substring(0, 50) + (urlLength > 50 ? '...' : ''),
+        remainingCacheSize: browserTabInfoCache.size
+      });
+    }
+  }
+}
+
+/**
+ * Start listening for tab updates to invalidate cache
+ * v1.6.3.12-v11 - FIX Issue #12: Register tabs.onUpdated listener
+ */
+function _startTabUpdateListener() {
+  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+    browser.tabs.onUpdated.addListener(_handleTabUpdated);
+    console.log('[Manager] TAB_UPDATE_LISTENER_STARTED:', {
+      timestamp: Date.now(),
+      reason: 'cache_invalidation_on_navigation'
+    });
+  } else {
+    console.warn('[Manager] TAB_UPDATE_LISTENER_UNAVAILABLE: browser.tabs.onUpdated not available');
+  }
+}
+
+/**
+ * Stop listening for tab updates (cleanup on unload)
+ * v1.6.3.12-v11 - FIX Issue #12: Cleanup tab update listener
+ */
+function _stopTabUpdateListener() {
+  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+    browser.tabs.onUpdated.removeListener(_handleTabUpdated);
+    console.log('[Manager] TAB_UPDATE_LISTENER_STOPPED');
+  }
+}
+// ==================== END v1.6.3.12-v11 FIX Issue #12 ====================
+
 /**
  * Get set of valid Quick Tab IDs from current state
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
@@ -5140,6 +5221,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.4 - FIX Issue #17: Start periodic browser tab cache audit
   _startBrowserTabCacheAudit();
 
+  // v1.6.3.12-v11 - FIX Issue #12: Start tab update listener for cache invalidation
+  _startTabUpdateListener();
+
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
 
@@ -5322,6 +5406,7 @@ function _markEventReceived() {
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
 // v1.6.3.12-v7 - FIX Issue #11: Also disconnect quickTabsPort on unload
+// v1.6.3.12-v11 - FIX Issue #12: Also stop tab update listener on unload
 window.addEventListener('unload', () => {
   console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
     timestamp: Date.now(),
@@ -5337,6 +5422,9 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
   _stopCacheStalenessMonitor();
+
+  // v1.6.3.12-v11 - FIX Issue #12: Stop tab update listener
+  _stopTabUpdateListener();
 
   // v1.6.3.12-v7 - FIX Issue #11: Disconnect quickTabsPort on unload
   if (quickTabsPort) {
