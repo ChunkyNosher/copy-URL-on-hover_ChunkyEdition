@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v10  
+**Version:** 1.6.3.12-v11  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,18 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix:**
+**v1.6.3.12-v11 Features (NEW) - Cross-Tab Display Fix:**
+
+- **Cross-Tab Display Fix** - Manager now displays Quick Tabs from ALL browser
+  tabs, not just the active tab
+- **Port Data Priority** - `_getAllQuickTabsForRender()` prioritizes port data
+  (`_allQuickTabsFromPort`) over storage data for cross-tab visibility
+- **Render Data Source Logging** - `[Manager] RENDER_DATA_SOURCE:` logs whether
+  port or storage data is being used
+- **Fixes Issue #1** - Manager displays Quick Tabs from all browser tabs with
+  visual grouping by origin tab
+
+**v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
 
 - **Port Routing Fix** - Sidebar detection prioritized over content script
   detection in `handleQuickTabsPortConnect()` to fix Manager button operations

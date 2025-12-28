@@ -2,6 +2,20 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.12-v11 CROSS-TAB DISPLAY & BUTTON FIXES ===
+ * v1.6.3.12-v11 - FIX Issues from quick-tab-manager-sync-issues.md:
+ *   - Issue #1: Manager now displays Quick Tabs from ALL browser tabs
+ *     - Added _getAllQuickTabsForRender() that prioritizes port data over storage
+ *     - Port data (_allQuickTabsFromPort) contains ALL Quick Tabs from ALL tabs
+ *     - Fallback to storage only when port data is empty
+ *   - Issue #2/#3: Close Minimized/Close All buttons already have event listeners
+ *     - Verified _setupHeaderButtons() attaches listeners to both buttons
+ *     - Button clicks call closeMinimizedQuickTabsViaPort()/closeAllQuickTabsViaPort()
+ *   - Issue #12: Browser tab cache invalidation on ORIGIN_TAB_CLOSED
+ *     - Cache already invalidated in _handleOriginTabClosed() (v1.6.4 fix)
+ *   - Issue #19: Render lock now uses try-finally for deadlock protection
+ *     - _renderUIImmediate() already has try-finally (v1.6.4 fix)
+ *
  * === v1.6.4 PORT VALIDATION & RENDER ROBUSTNESS ===
  * v1.6.4 - FIX Issues from continuation-analysis.md:
  *   - Issue #15: Port message input validation - validates Quick Tab objects
@@ -6074,19 +6088,53 @@ function _handlePendingRerender() {
 }
 
 /**
+ * Get all Quick Tabs from port data or storage fallback
+ * v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
+ * Port data (`_allQuickTabsFromPort`) contains ALL Quick Tabs from ALL browser tabs,
+ * while storage-based state may be filtered. Always prefer port data when available.
+ * @private
+ * @returns {{ allTabs: Array, latestTimestamp: number, source: string }}
+ */
+function _getAllQuickTabsForRender() {
+  // v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
+  if (_allQuickTabsFromPort?.length > 0) {
+    console.log('[Manager] RENDER_DATA_SOURCE: Using port data (cross-tab)', {
+      portTabCount: _allQuickTabsFromPort.length,
+      storageTabCount: quickTabsState?.tabs?.length ?? 0
+    });
+    return {
+      allTabs: _allQuickTabsFromPort,
+      latestTimestamp: lastLocalUpdateTime || Date.now(),
+      source: 'port'
+    };
+  }
+
+  // Fallback to storage-based state extraction
+  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  console.log('[Manager] RENDER_DATA_SOURCE: Using storage fallback', {
+    portTabCount: _allQuickTabsFromPort?.length ?? 0,
+    storageTabCount: allTabs.length
+  });
+  return { allTabs, latestTimestamp, source: 'storage' };
+}
+
+/**
  * Internal render implementation (extracted from _renderUIImmediate)
  * v1.6.4 - FIX Issue #19: Extracted to separate function for render lock pattern
+ * v1.6.3.12-v11 - FIX Issue #1: Use _getAllQuickTabsForRender for cross-tab visibility
  * @private
  */
 async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
-  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
+  const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
     triggerReason,
     tabCount: allTabs.length,
+    dataSource: source,
     timestamp: renderStartTime
   });
 
