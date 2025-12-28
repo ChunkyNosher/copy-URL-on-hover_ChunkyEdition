@@ -57,8 +57,9 @@
 - **Circuit Breaker Auto-Reset** - 60-second timer
 - **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
 
-**v1.6.3.12-v5 to v1.6.3.12-v7:** Circuit breaker, priority queue, sequence
-tracking, port circuit breaker, defensive handlers, QUICKTAB_REMOVED handler  
+**v1.6.3.12-v5 to v1.6.3.12-v9:** Circuit breaker, priority queue, sequence
+tracking, port circuit breaker, defensive handlers, QUICKTAB_REMOVED handler,
+comprehensive logging, optimistic UI updates, render lock, orphan recovery UI  
 **v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
 **v1.6.3.11-v12:** Solo/Mute REMOVED
 
