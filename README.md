@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v10** - A feature-rich **Firefox/Chrome/Chromium** extension
+**Version 1.6.3.12-v11** - A feature-rich **Firefox/Chrome/Chromium** extension
 for quick URL copying and advanced Quick Tab management with **Per-Tab
 Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,31 +8,32 @@ Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v10 Status:** Issue #48 Fixed ✅ | Port Routing ✅ | Code
-Health 9.09 ✅ | Manager Buttons Working ✅
+**🔧 v1.6.3.12-v11 Status:** Cross-Tab Display ✅ | Async Guards ✅ | Cache
+Invalidation ✅ | Heartbeat Logging ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v10
+## 🎉 What's New in v1.6.3.12-v11
 
-**🔧 Issue #48 Port Routing Fix ✅**
+**🔧 Cross-Tab Display + Robustness Fixes ✅**
 
-- ✅ **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()`
-- ✅ **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- ✅ **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
-  and `hasTab` fields
-- ✅ **Sidebar Message Logging** - `SIDEBAR_MESSAGE_RECEIVED` showing handler
-  availability
-- ✅ **Code Health** - background.js: 8.79 → 9.09 (achieved ≥9.0 target)
+- ✅ **Cross-Tab Display** - Manager displays Quick Tabs from ALL browser tabs
+  via `_getAllQuickTabsForRender()` (Issue #1)
+- ✅ **Options Page Async Guard** - `_isPageActive` flag prevents DOM updates
+  after page unload (Issue #10)
+- ✅ **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
+  stale cache (Issue #12)
+- ✅ **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` confirms
+  heartbeat started (Issue #20)
 
 ---
 
 ## 🎉 Previous Releases
 
+**v1.6.3.12-v10:** Issue #48 Port Routing Fix, Manager Button Operations, Code
+Health 9.09  
 **v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI, Code
 Health 8.54  
 **v1.6.3.12-v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Code Health
@@ -42,14 +43,7 @@ Health 8.54
 **v1.6.3.12-v6:** Manager Sync, Port Resilience, Sequence Tracking, Circuit
 Breaker  
 **v1.6.3.12-v5:** Circuit Breaker pattern, Priority Queue, Timeout Backoff,
-Rolling Heartbeat  
-**v1.6.3.12-v4:** storage.session API removal, cache staleness detection,
-startup cleanup  
-**v1.6.3.12-v3:** Container ID resolution, context detection fix, Manager
-refresh fix  
-**v1.6.3.12-v2:** Port diagnostics, QUICKTAB_MINIMIZED forwarding, port
-roundtrip tracking  
-**v1.6.3.12:** Option 4 Architecture, port messaging, memory-based state
+Rolling Heartbeat
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -162,6 +156,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v10** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.3.12-v11** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

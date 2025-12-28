@@ -2,6 +2,20 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.12-v11 CROSS-TAB DISPLAY & BUTTON FIXES ===
+ * v1.6.3.12-v11 - FIX Issues from quick-tab-manager-sync-issues.md:
+ *   - Issue #1: Manager now displays Quick Tabs from ALL browser tabs
+ *     - Added _getAllQuickTabsForRender() that prioritizes port data over storage
+ *     - Port data (_allQuickTabsFromPort) contains ALL Quick Tabs from ALL tabs
+ *     - Fallback to storage only when port data is empty
+ *   - Issue #2/#3: Close Minimized/Close All buttons already have event listeners
+ *     - Verified _setupHeaderButtons() attaches listeners to both buttons
+ *     - Button clicks call closeMinimizedQuickTabsViaPort()/closeAllQuickTabsViaPort()
+ *   - Issue #12: Browser tab cache invalidation on ORIGIN_TAB_CLOSED
+ *     - Cache already invalidated in _handleOriginTabClosed() (v1.6.4 fix)
+ *   - Issue #19: Render lock now uses try-finally for deadlock protection
+ *     - _renderUIImmediate() already has try-finally (v1.6.4 fix)
+ *
  * === v1.6.4 PORT VALIDATION & RENDER ROBUSTNESS ===
  * v1.6.4 - FIX Issues from continuation-analysis.md:
  *   - Issue #15: Port message input validation - validates Quick Tab objects
@@ -2324,6 +2338,7 @@ async function _flushSingleAction(queuedAction, now) {
  * Start heartbeat interval
  * v1.6.3.6-v12 - FIX Issue #2, #4: Keep background alive
  * v1.6.3.10-v1 - FIX Issue #5: Adaptive interval based on latency
+ * v1.6.3.12-v11 - FIX Issue #20: Add confirmation logging for heartbeat start
  */
 function startHeartbeat() {
   // Clear any existing interval
@@ -2334,11 +2349,35 @@ function startHeartbeat() {
 
   // v1.6.3.10-v1 - FIX Issue #5: Use adaptive interval
   heartbeatIntervalId = setInterval(sendHeartbeat, currentHeartbeatInterval);
+
+  // v1.6.3.12-v11 - FIX Issue #20: Confirm heartbeat actually started
+  // Note: setInterval returns a positive integer in browsers (never 0)
+  const heartbeatActive = typeof heartbeatIntervalId === 'number' && heartbeatIntervalId > 0;
+
   logPortLifecycle('HEARTBEAT_STARTED', {
     intervalMs: currentHeartbeatInterval,
     timeoutMs: HEARTBEAT_TIMEOUT_MS,
-    safetyMarginMs: 30000 - currentHeartbeatInterval
+    safetyMarginMs: 30000 - currentHeartbeatInterval,
+    // v1.6.3.12-v11 - FIX Issue #20: Confirmation that setInterval succeeded
+    heartbeatActive,
+    intervalId: typeof heartbeatIntervalId
   });
+
+  // v1.6.3.12-v11 - FIX Issue #20: Explicit confirmation log after reconnection
+  if (heartbeatActive) {
+    console.log('[Manager] HEARTBEAT_CONFIRMED_ACTIVE:', {
+      timestamp: Date.now(),
+      intervalMs: currentHeartbeatInterval,
+      intervalIdType: typeof heartbeatIntervalId,
+      message: 'Heartbeat interval successfully created and active'
+    });
+  } else {
+    console.error('[Manager] HEARTBEAT_FAILED_TO_START:', {
+      timestamp: Date.now(),
+      intervalId: heartbeatIntervalId,
+      message: 'setInterval did not return a valid interval ID'
+    });
+  }
 }
 
 /**
@@ -4922,6 +4961,62 @@ async function _performBrowserTabCacheAudit() {
 
 // ==================== END v1.6.4 FIX Issue #17 ====================
 
+// ==================== v1.6.3.12-v11 FIX Issue #12: Tab Navigation Cache Invalidation ====================
+/**
+ * Handler for browser.tabs.onUpdated events
+ * Invalidates browserTabInfoCache when tabs navigate to new URLs
+ * v1.6.3.12-v11 - FIX Issue #12: Proactive cache invalidation on tab navigation
+ * @param {number} tabId - Tab that was updated
+ * @param {Object} changeInfo - What changed in the tab
+ * @param {Object} _tab - Full tab info (unused)
+ */
+function _handleTabUpdated(tabId, changeInfo, _tab) {
+  // Only invalidate cache when URL changes (navigation)
+  // This catches: new page load, same-page navigation, redirects
+  if (changeInfo.url) {
+    // Optimized: Map.delete() returns true if key existed, no need for separate has() check
+    const wasDeleted = browserTabInfoCache.delete(tabId);
+    if (wasDeleted) {
+      const urlLength = changeInfo.url.length;
+      console.log('[Manager] BROWSER_TAB_CACHE_INVALIDATED:', {
+        timestamp: Date.now(),
+        tabId,
+        reason: 'tab_navigation',
+        newUrl: changeInfo.url.substring(0, 50) + (urlLength > 50 ? '...' : ''),
+        remainingCacheSize: browserTabInfoCache.size
+      });
+    }
+  }
+}
+
+/**
+ * Start listening for tab updates to invalidate cache
+ * v1.6.3.12-v11 - FIX Issue #12: Register tabs.onUpdated listener
+ */
+function _startTabUpdateListener() {
+  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+    browser.tabs.onUpdated.addListener(_handleTabUpdated);
+    console.log('[Manager] TAB_UPDATE_LISTENER_STARTED:', {
+      timestamp: Date.now(),
+      reason: 'cache_invalidation_on_navigation'
+    });
+  } else {
+    console.warn('[Manager] TAB_UPDATE_LISTENER_UNAVAILABLE: browser.tabs.onUpdated not available');
+  }
+}
+
+/**
+ * Stop listening for tab updates (cleanup on unload)
+ * v1.6.3.12-v11 - FIX Issue #12: Cleanup tab update listener
+ */
+function _stopTabUpdateListener() {
+  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+    browser.tabs.onUpdated.removeListener(_handleTabUpdated);
+    console.log('[Manager] TAB_UPDATE_LISTENER_STOPPED');
+  }
+}
+// ==================== END v1.6.3.12-v11 FIX Issue #12 ====================
+
 /**
  * Get set of valid Quick Tab IDs from current state
  * v1.6.3.11-v3 - FIX CodeScene: Extract from _performHostInfoMaintenance
@@ -5126,6 +5221,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.4 - FIX Issue #17: Start periodic browser tab cache audit
   _startBrowserTabCacheAudit();
 
+  // v1.6.3.12-v11 - FIX Issue #12: Start tab update listener for cache invalidation
+  _startTabUpdateListener();
+
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
 
@@ -5308,6 +5406,7 @@ function _markEventReceived() {
 // v1.6.3.10-v7 - FIX Bug #1: Also stop host info maintenance on unload
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
 // v1.6.3.12-v7 - FIX Issue #11: Also disconnect quickTabsPort on unload
+// v1.6.3.12-v11 - FIX Issue #12: Also stop tab update listener on unload
 window.addEventListener('unload', () => {
   console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
     timestamp: Date.now(),
@@ -5323,6 +5422,9 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v4 - Gap #7: Stop cache staleness monitor
   _stopCacheStalenessMonitor();
+
+  // v1.6.3.12-v11 - FIX Issue #12: Stop tab update listener
+  _stopTabUpdateListener();
 
   // v1.6.3.12-v7 - FIX Issue #11: Disconnect quickTabsPort on unload
   if (quickTabsPort) {
@@ -6074,19 +6176,54 @@ function _handlePendingRerender() {
 }
 
 /**
+ * Get all Quick Tabs from port data or storage fallback
+ * v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
+ * Port data (`_allQuickTabsFromPort`) contains ALL Quick Tabs from ALL browser tabs,
+ * while storage-based state may be filtered. Always prefer port data when available.
+ * @private
+ * @returns {{ allTabs: Array, latestTimestamp: number, source: string }}
+ */
+function _getAllQuickTabsForRender() {
+  // v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
+  // Simplified: arrays are truthy when they have length > 0
+  if (_allQuickTabsFromPort?.length) {
+    console.log('[Manager] RENDER_DATA_SOURCE: Using port data (cross-tab)', {
+      portTabCount: _allQuickTabsFromPort.length,
+      storageTabCount: quickTabsState?.tabs?.length ?? 0
+    });
+    return {
+      allTabs: _allQuickTabsFromPort,
+      latestTimestamp: lastLocalUpdateTime || Date.now(),
+      source: 'port'
+    };
+  }
+
+  // Fallback to storage-based state extraction
+  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  console.log('[Manager] RENDER_DATA_SOURCE: Using storage fallback', {
+    portTabCount: _allQuickTabsFromPort?.length ?? 0,
+    storageTabCount: allTabs.length
+  });
+  return { allTabs, latestTimestamp, source: 'storage' };
+}
+
+/**
  * Internal render implementation (extracted from _renderUIImmediate)
  * v1.6.4 - FIX Issue #19: Extracted to separate function for render lock pattern
+ * v1.6.3.12-v11 - FIX Issue #1: Use _getAllQuickTabsForRender for cross-tab visibility
  * @private
  */
 async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
-  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
+  // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
+  const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
     triggerReason,
     tabCount: allTabs.length,
+    dataSource: source,
     timestamp: renderStartTime
   });
 
