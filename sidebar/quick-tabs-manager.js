@@ -2352,7 +2352,7 @@ function startHeartbeat() {
 
   // v1.6.3.12-v11 - FIX Issue #20: Confirm heartbeat actually started
   // Note: setInterval returns a positive integer in browsers (never 0)
-  const heartbeatActive = heartbeatIntervalId !== null;
+  const heartbeatActive = typeof heartbeatIntervalId === 'number' && heartbeatIntervalId > 0;
 
   logPortLifecycle('HEARTBEAT_STARTED', {
     intervalMs: currentHeartbeatInterval,
@@ -4974,9 +4974,9 @@ function _handleTabUpdated(tabId, changeInfo, _tab) {
   // Only invalidate cache when URL changes (navigation)
   // This catches: new page load, same-page navigation, redirects
   if (changeInfo.url) {
-    const hadCacheEntry = browserTabInfoCache.has(tabId);
-    if (hadCacheEntry) {
-      browserTabInfoCache.delete(tabId);
+    // Optimized: Map.delete() returns true if key existed, no need for separate has() check
+    const wasDeleted = browserTabInfoCache.delete(tabId);
+    if (wasDeleted) {
       const urlLength = changeInfo.url.length;
       console.log('[Manager] BROWSER_TAB_CACHE_INVALIDATED:', {
         timestamp: Date.now(),
@@ -6185,7 +6185,8 @@ function _handlePendingRerender() {
  */
 function _getAllQuickTabsForRender() {
   // v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
-  if (_allQuickTabsFromPort?.length > 0) {
+  // Simplified: arrays are truthy when they have length > 0
+  if (_allQuickTabsFromPort?.length) {
     console.log('[Manager] RENDER_DATA_SOURCE: Using port data (cross-tab)', {
       portTabCount: _allQuickTabsFromPort.length,
       storageTabCount: quickTabsState?.tabs?.length ?? 0

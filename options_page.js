@@ -14,13 +14,15 @@ const SESSION_KEY = 'quick_tabs_session';
 let _isPageActive = true;
 
 /**
- * Check if page is still active (not unloaded/hidden)
+ * Check if page is still active (not unloaded)
  * v1.6.3.12-v11 - FIX Issue #10: Guard for async operations
+ * Note: Only checks _isPageActive flag (set false on unload) and document existence
+ * visibilityState check removed as 'hidden' can occur for legitimate reasons (tab unfocused)
  * @returns {boolean} True if page is active and DOM operations are safe
  */
 function isPageActive() {
-  // Safety check: ensure document exists during edge cases
-  return _isPageActive && typeof document !== 'undefined' && document.visibilityState !== 'hidden';
+  // Safety check: ensure document exists and page hasn't been unloaded
+  return _isPageActive && typeof document !== 'undefined';
 }
 
 // Mark page as inactive on unload
