@@ -7260,6 +7260,17 @@ function _applyOptimisticClasses(options) {
   });
 }
 
+/**
+ * Action-to-config lookup table for optimistic UI updates
+ * v1.6.3.12-v12 - FIX Code Review: Moved outside function scope to avoid recreation
+ * @private
+ */
+const _optimisticUIActionConfig = {
+  minimize: { class: 'minimizing', title: 'Minimizing...' },
+  restore: { class: 'restoring', title: 'Restoring...' },
+  close: { class: 'closing', title: 'Closing...' }
+};
+
 function _applyOptimisticUIUpdate(action, quickTabId, button) {
   const timestamp = Date.now();
 
@@ -7280,14 +7291,8 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
     return;
   }
 
-  // v1.6.3.12-v12 - FIX Code Health: Action-to-config lookup to reduce switch case duplication
-  const actionConfig = {
-    minimize: { class: 'minimizing', title: 'Minimizing...' },
-    restore: { class: 'restoring', title: 'Restoring...' },
-    close: { class: 'closing', title: 'Closing...' }
-  };
-
-  const config = actionConfig[action];
+  // v1.6.3.12-v12 - FIX Code Review: Use module-level lookup table
+  const config = _optimisticUIActionConfig[action];
   if (!config) {
     console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', { action, quickTabId });
     return;
@@ -7304,8 +7309,9 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
     });
 
     // v1.6.3.12-v12 - FIX Issue #48: Safety timeout to revert UI if STATE_CHANGED doesn't arrive
+    // v1.6.3.12-v12 - FIX Code Review: Also check isConnected before reverting
     setTimeout(() => {
-      if (quickTabItem.classList.contains('operation-pending')) {
+      if (quickTabItem.isConnected && quickTabItem.classList.contains('operation-pending')) {
         _revertOptimisticUI({ quickTabItem, button, action, quickTabId, originalTitle });
       }
     }, OPERATION_TIMEOUT_MS);
