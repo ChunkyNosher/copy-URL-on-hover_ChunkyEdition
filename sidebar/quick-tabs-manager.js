@@ -5036,11 +5036,22 @@ function _handleTabUpdated(tabId, changeInfo, _tab) {
 }
 
 /**
+ * Check if browser.tabs.onUpdated API is available
+ * v1.6.3.12-v12 - FIX Code Health: Extract complex conditional
+ * @private
+ * @returns {boolean} True if API is available
+ */
+function _isTabsOnUpdatedAvailable() {
+  return typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated;
+}
+
+/**
  * Start listening for tab updates to invalidate cache
  * v1.6.3.12-v11 - FIX Issue #12: Register tabs.onUpdated listener
+ * v1.6.3.12-v12 - FIX Code Health: Extract complex conditional
  */
 function _startTabUpdateListener() {
-  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+  if (_isTabsOnUpdatedAvailable()) {
     browser.tabs.onUpdated.addListener(_handleTabUpdated);
     console.log('[Manager] TAB_UPDATE_LISTENER_STARTED:', {
       timestamp: Date.now(),
@@ -5054,9 +5065,10 @@ function _startTabUpdateListener() {
 /**
  * Stop listening for tab updates (cleanup on unload)
  * v1.6.3.12-v11 - FIX Issue #12: Cleanup tab update listener
+ * v1.6.3.12-v12 - FIX Code Health: Use extracted predicate
  */
 function _stopTabUpdateListener() {
-  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+  if (_isTabsOnUpdatedAvailable()) {
     browser.tabs.onUpdated.removeListener(_handleTabUpdated);
     console.log('[Manager] TAB_UPDATE_LISTENER_STOPPED');
   }
@@ -7183,16 +7195,26 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
  * @param {HTMLButtonElement} button - The button element clicked
  */
 /**
+ * Configuration object for optimistic UI update
+ * v1.6.3.12-v12 - FIX Code Health: Reduce function arguments by using options object
+ * @typedef {Object} OptimisticUIRevertOptions
+ * @property {HTMLElement} quickTabItem - The Quick Tab item element
+ * @property {HTMLButtonElement} button - The button element
+ * @property {string} action - The action that was attempted
+ * @property {string} quickTabId - The Quick Tab ID
+ * @property {string} originalTitle - Original button title
+ */
+
+/**
  * Revert optimistic UI update if operation times out
  * v1.6.3.12-v12 - FIX Issue #48: Add safety timeout to re-enable buttons
+ * v1.6.3.12-v12 - FIX Code Health: Use options object to reduce arguments (5 -> 1)
  * @private
- * @param {HTMLElement} quickTabItem - The Quick Tab item element
- * @param {HTMLButtonElement} button - The button element
- * @param {string} action - The action that was attempted
- * @param {string} quickTabId - The Quick Tab ID
- * @param {string} originalTitle - Original button title
+ * @param {OptimisticUIRevertOptions} options - Revert options
  */
-function _revertOptimisticUI(quickTabItem, button, action, quickTabId, originalTitle) {
+function _revertOptimisticUI(options) {
+  const { quickTabItem, button, action, quickTabId, originalTitle } = options;
+
   console.log('[Manager] OPTIMISTIC_UI_TIMEOUT: Reverting UI state', {
     action,
     quickTabId,
@@ -7205,7 +7227,6 @@ function _revertOptimisticUI(quickTabItem, button, action, quickTabId, originalT
   }
 
   // Re-enable button (check isConnected to ensure it's still in the DOM)
-  // Use fallback for originalTitle in case it was undefined
   if (button && button.isConnected) {
     button.disabled = false;
     button.title = originalTitle || button.dataset.originalTitle || '';
@@ -7213,6 +7234,30 @@ function _revertOptimisticUI(quickTabItem, button, action, quickTabId, originalT
 
   // Request fresh state from background to ensure consistency
   requestAllQuickTabsViaPort();
+}
+
+/**
+ * Apply optimistic UI classes and disable button for an action
+ * v1.6.3.12-v12 - FIX Code Health: Extracted to reduce _applyOptimisticUIUpdate LoC
+ * v1.6.3.12-v12 - FIX Code Health: Use options object to reduce arguments (5 -> 1)
+ * @private
+ * @param {Object} options - Apply options
+ * @param {HTMLElement} options.quickTabItem - Quick Tab item element
+ * @param {HTMLButtonElement} options.button - Button element
+ * @param {string} options.actionClass - CSS class for the action (e.g., 'minimizing')
+ * @param {string} options.pendingTitle - Title to show while pending
+ * @param {string} options.quickTabId - Quick Tab ID for logging
+ */
+function _applyOptimisticClasses(options) {
+  const { quickTabItem, button, actionClass, pendingTitle, quickTabId } = options;
+  quickTabItem.classList.add(actionClass);
+  quickTabItem.classList.add('operation-pending');
+  button.disabled = true;
+  button.title = pendingTitle;
+  console.log(`[Manager] OPTIMISTIC_UI_APPLIED: ${actionClass.replace('ing', '')}`, {
+    quickTabId,
+    classes: `${actionClass}, operation-pending`
+  });
 }
 
 function _applyOptimisticUIUpdate(action, quickTabId, button) {
@@ -7235,69 +7280,33 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
     return;
   }
 
-  // v1.6.3.12-v12 - FIX Code Review: Only capture/use originalTitle for supported actions
-  let originalTitle;
+  // v1.6.3.12-v12 - FIX Code Health: Action-to-config lookup to reduce switch case duplication
+  const actionConfig = {
+    minimize: { class: 'minimizing', title: 'Minimizing...' },
+    restore: { class: 'restoring', title: 'Restoring...' },
+    close: { class: 'closing', title: 'Closing...' }
+  };
+
+  const config = actionConfig[action];
+  if (!config) {
+    console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', { action, quickTabId });
+    return;
+  }
 
   try {
-    switch (action) {
-      case 'minimize':
-        originalTitle = button.title;
-        // Add visual indicator that minimize is in progress
-        quickTabItem.classList.add('minimizing');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Minimizing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', {
-          quickTabId,
-          classes: 'minimizing, operation-pending'
-        });
-        break;
-
-      case 'restore':
-        originalTitle = button.title;
-        // Add visual indicator that restore is in progress
-        quickTabItem.classList.add('restoring');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Restoring...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', {
-          quickTabId,
-          classes: 'restoring, operation-pending'
-        });
-        break;
-
-      case 'close':
-        originalTitle = button.title;
-        // Add fade-out animation for close
-        quickTabItem.classList.add('closing');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Closing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', {
-          quickTabId,
-          classes: 'closing, operation-pending'
-        });
-        break;
-
-      default:
-        // No optimistic update for other actions
-        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', {
-          action,
-          quickTabId
-        });
-        return; // Don't set timeout for unsupported actions
-    }
+    const originalTitle = button.title;
+    _applyOptimisticClasses({
+      quickTabItem,
+      button,
+      actionClass: config.class,
+      pendingTitle: config.title,
+      quickTabId
+    });
 
     // v1.6.3.12-v12 - FIX Issue #48: Safety timeout to revert UI if STATE_CHANGED doesn't arrive
-    // This prevents buttons from staying permanently disabled if the port message fails
-    // Note: We intentionally don't store the timer ID because:
-    // 1. The DOM will be rebuilt on STATE_CHANGED, removing the old element
-    // 2. The _revertOptimisticUI checks isConnected and operation-pending class before acting
-    // 3. Storing timer IDs for each operation would require a cleanup Map with complex lifecycle
     setTimeout(() => {
-      // Only revert if the element still has pending class (not already handled by re-render)
       if (quickTabItem.classList.contains('operation-pending')) {
-        _revertOptimisticUI(quickTabItem, button, action, quickTabId, originalTitle);
+        _revertOptimisticUI({ quickTabItem, button, action, quickTabId, originalTitle });
       }
     }, OPERATION_TIMEOUT_MS);
   } catch (err) {
