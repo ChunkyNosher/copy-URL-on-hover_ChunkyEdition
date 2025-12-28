@@ -147,6 +147,11 @@ import { filterInvalidTabs, validateQuickTabObject } from './utils/validation.js
 
 // ==================== CONSTANTS ====================
 const COLLAPSE_STATE_KEY = 'quickTabsManagerCollapseState';
+// v1.6.4 - FIX Issue #48/#7: Manager UI state persistence key
+// Stores scroll position and other UI state that should persist across browser restarts
+const MANAGER_STATE_KEY = 'manager_state_v2';
+// v1.6.4 - FIX Issue #48/#7: Debounce delay for scroll position save (prevents excessive writes)
+const SCROLL_POSITION_SAVE_DEBOUNCE_MS = 200;
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
@@ -229,6 +234,10 @@ const ERROR_NOTIFICATION_STYLES = {
 // Storage read debounce timer
 let storageReadDebounceTimer = null;
 let lastStorageReadTime = 0;
+
+// v1.6.4 - FIX Issue #48/#7: Scroll position save debounce timer
+// Debounces scroll position persistence to avoid excessive storage writes
+let _scrollPositionSaveTimer = null;
 
 // v1.6.3.5-v2 - FIX Report 1 Issue #2: Track current tab ID for Quick Tab origin filtering
 let currentBrowserTabId = null;
@@ -4086,6 +4095,138 @@ async function saveCollapseState(collapseState) {
   }
 }
 
+// ==================== v1.6.4 MANAGER STATE PERSISTENCE ====================
+// FIX Issue #48/#7: Sidebar State Not Persisting Between Firefox Sessions
+// Firefox's xulstore.json is unreliable - persist manager UI state to storage.local
+
+/**
+ * Load manager UI state from browser.storage.local
+ * v1.6.4 - FIX Issue #48/#7: Manager state persistence across Firefox sessions
+ * @returns {Promise<Object>} Manager state object with scrollPosition
+ */
+async function loadManagerState() {
+  try {
+    const result = await browser.storage.local.get(MANAGER_STATE_KEY);
+    const state = result?.[MANAGER_STATE_KEY] || {};
+
+    console.log('[Manager] MANAGER_STATE_LOADED:', {
+      timestamp: Date.now(),
+      scrollPosition: state.scrollPosition ?? 0,
+      savedAt: state.savedAt ?? null,
+      hasState: !!result?.[MANAGER_STATE_KEY]
+    });
+
+    return state;
+  } catch (err) {
+    console.warn('[Manager] Failed to load manager state:', err);
+    return {};
+  }
+}
+
+/**
+ * Save manager UI state to browser.storage.local
+ * v1.6.4 - FIX Issue #48/#7: Manager state persistence across Firefox sessions
+ * @param {Object} managerState - Manager state object with scrollPosition
+ */
+async function saveManagerState(managerState) {
+  try {
+    const stateToSave = {
+      ...managerState,
+      savedAt: Date.now()
+    };
+
+    await browser.storage.local.set({ [MANAGER_STATE_KEY]: stateToSave });
+
+    console.log('[Manager] MANAGER_STATE_SAVED:', {
+      timestamp: Date.now(),
+      scrollPosition: stateToSave.scrollPosition ?? 0
+    });
+  } catch (err) {
+    console.warn('[Manager] Failed to save manager state:', err);
+  }
+}
+
+/**
+ * Save scroll position with debouncing to avoid excessive storage writes
+ * v1.6.4 - FIX Issue #48/#7: Debounced scroll position persistence
+ * @private
+ * @param {number} scrollTop - Current scroll position
+ */
+function _saveScrollPositionDebounced(scrollTop) {
+  // Clear any existing timer
+  if (_scrollPositionSaveTimer) {
+    clearTimeout(_scrollPositionSaveTimer);
+  }
+
+  // Schedule save with debounce
+  // v1.6.4 - Simplified: directly save scroll position without loading full state
+  // Scroll position is the primary state we care about - other fields are preserved
+  // by the storage.local merge semantics
+  _scrollPositionSaveTimer = setTimeout(async () => {
+    _scrollPositionSaveTimer = null;
+    await saveManagerState({ scrollPosition: scrollTop });
+  }, SCROLL_POSITION_SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Restore manager scroll position from storage
+ * v1.6.4 - FIX Issue #48/#7: Restore scroll position on manager initialization
+ * @private
+ */
+async function _restoreManagerScrollPosition() {
+  if (!containersList) {
+    console.warn('[Manager] Cannot restore scroll position - containersList not found');
+    return;
+  }
+
+  try {
+    const managerState = await loadManagerState();
+    const savedScrollPosition = managerState.scrollPosition;
+
+    // v1.6.4 - Only restore if we have a valid saved scroll position
+    // Position 0 is the default, so we skip restoring if undefined/null or if explicitly 0
+    // This avoids unnecessary DOM manipulation when scroll position wasn't explicitly saved
+    if (typeof savedScrollPosition === 'number' && savedScrollPosition > 0) {
+      // Use requestAnimationFrame to ensure DOM is ready before scrolling
+      requestAnimationFrame(() => {
+        containersList.scrollTop = savedScrollPosition;
+
+        console.log('[Manager] SCROLL_POSITION_RESTORED:', {
+          timestamp: Date.now(),
+          scrollPosition: savedScrollPosition,
+          actualScrollTop: containersList.scrollTop
+        });
+      });
+    }
+  } catch (err) {
+    console.warn('[Manager] Failed to restore scroll position:', err);
+  }
+}
+
+/**
+ * Setup scroll position persistence listener
+ * v1.6.4 - FIX Issue #48/#7: Save scroll position on scroll events
+ * @private
+ */
+function _setupScrollPositionPersistence() {
+  if (!containersList) {
+    console.warn('[Manager] Cannot setup scroll persistence - containersList not found');
+    return;
+  }
+
+  containersList.addEventListener('scroll', () => {
+    const scrollTop = containersList.scrollTop;
+    _saveScrollPositionDebounced(scrollTop);
+  });
+
+  console.log('[Manager] SCROLL_PERSISTENCE_SETUP: scroll listener attached', {
+    timestamp: Date.now(),
+    debounceMs: SCROLL_POSITION_SAVE_DEBOUNCE_MS
+  });
+}
+
+// ==================== END MANAGER STATE PERSISTENCE ====================
+
 /**
  * Dispatch incoming runtime message to appropriate handler
  * v1.6.3.11-v12 - FIX Issue #5: Refactored from inline listener to reduce complexity
@@ -4969,6 +5110,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Setup event listeners (NOTE: storage.onChanged already registered above)
   setupEventListeners();
 
+  // v1.6.4 - FIX Issue #48/#7: Setup scroll position persistence
+  _setupScrollPositionPersistence();
+
+  // v1.6.4 - FIX Issue #48/#7: Restore scroll position from storage
+  await _restoreManagerScrollPosition();
+
   // v1.6.3.7-v1 - FIX ISSUE #1: Setup tab switch detection
   // Re-render UI when user switches browser tabs to show context-relevant Quick Tabs
   setupTabSwitchListener();
@@ -4996,7 +5143,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit initialized'
+    '[Manager] v1.6.4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit + Scroll persistence initialized'
   );
 });
 
@@ -7011,14 +7158,52 @@ function _setupHeaderButtons() {
  */
 
 /**
+ * Check and track pending operation for state-dependent actions
+ * v1.6.4 - FIX Issue #48/#10: Defense-in-depth for operation ordering
+ * @private
+ * @param {string} action - Action type
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {boolean} True if operation should proceed, false if blocked
+ */
+function _checkAndTrackPendingOperation(action, quickTabId) {
+  const stateDependentActions = ['minimize', 'restore', 'close'];
+  if (!stateDependentActions.includes(action) || !quickTabId) {
+    return true; // Not a state-dependent action, allow
+  }
+
+  const operationKey = `${action}-${quickTabId}`;
+  if (PENDING_OPERATIONS.has(operationKey)) {
+    console.log('[Manager] DISPATCH_BLOCKED: Operation already pending', {
+      action,
+      quickTabId,
+      operationKey,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+
+  // Add to pending operations (will be cleared by OPERATION_TIMEOUT_MS or ACK)
+  PENDING_OPERATIONS.add(operationKey);
+  setTimeout(() => PENDING_OPERATIONS.delete(operationKey), OPERATION_TIMEOUT_MS);
+  return true;
+}
+
+/**
  * Dispatch Quick Tab action based on button action type
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
  * v1.6.4-v2 - Refactored to use options object to reduce argument count
+ * v1.6.4 - FIX Issue #48/#10: Check PENDING_OPERATIONS before dispatching state-dependent operations
  * @private
  * @param {QuickTabActionOptions} options - Action options
  */
 async function _dispatchQuickTabAction(options) {
   const { action, quickTabId, tabId, button, clickTimestamp } = options;
+
+  // v1.6.4 - FIX Issue #48/#10: Check for pending operations on state-dependent actions
+  if (!_checkAndTrackPendingOperation(action, quickTabId)) {
+    return;
+  }
+
   switch (action) {
     case 'goToTab':
       console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
@@ -7246,8 +7431,11 @@ function _setupStorageOnChangedListener() {
 /**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
- * When user switches between browser tabs, update the Manager to show
- * context-relevant Quick Tabs (those with originTabId matching current tab)
+ * v1.6.3.12-v10 - FIX Issue #48: Clarified that Manager shows ALL Quick Tabs from ALL tabs
+ * When user switches between browser tabs, re-render the Manager UI to:
+ * - Update the current browser tab context (for orphan detection)
+ * - Refresh browser tab info cache
+ * NOTE: Manager intentionally shows ALL Quick Tabs from ALL browser tabs (global view)
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
@@ -7271,7 +7459,8 @@ function setupTabSwitchListener() {
     // Clear browser tab info cache for the previous tab to ensure fresh data
     browserTabInfoCache.delete(previousBrowserTabId);
 
-    // Re-render UI with filtered Quick Tabs for new tab context
+    // v1.6.3.12-v10 - FIX Issue #48: Re-render UI to update browser tab context
+    // NOTE: Manager shows ALL Quick Tabs from ALL browser tabs (no filtering by current tab)
     renderUI();
   });
 

@@ -3,8 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v9), memory-based state (`quickTabsSessionState`),
-  circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock
+  sync with Single Writer Authority (v1.6.3.12-v10), memory-based state (`quickTabsSessionState`),
+  circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock,
+  port routing fix
 tools: ['*']
 ---
 
@@ -36,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v9 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v10 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -47,7 +48,17 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v9 Features (NEW):**
+**v1.6.3.12-v10 Features (NEW):**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
+- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
+  and `hasTab` fields
+- **Code Health** - background.js: 8.79 → 9.09
+
+**v1.6.3.12-v9 Features:**
 
 - **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
 - **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
@@ -64,7 +75,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `closeMinimizedQuickTabsViaPort()`
 - **Circuit Breaker Auto-Reset** - 60-second timer
 
-**Key Timing Constants (v1.6.3.12-v9+):**
+**Key Timing Constants:**
 
 | Constant                                | Value | Purpose                            |
 | --------------------------------------- | ----- | ---------------------------------- |
@@ -123,5 +134,5 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v9 optimistic UI,
-render lock, orphan recovery UI, and comprehensive validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v10 port routing fix,
+optimistic UI, render lock, orphan recovery UI, and comprehensive validation.**

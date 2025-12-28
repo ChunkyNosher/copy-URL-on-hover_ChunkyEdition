@@ -6176,10 +6176,22 @@ function handleContentScriptPortMessage(tabId, msg, port) {
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
  * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
+ * v1.6.3.12-v10 - FIX Issue #48: Enhanced logging for sidebar message debugging
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarPortMessage(msg, port) {
+  // v1.6.3.12-v10 - FIX Issue #48: Log sidebar message receipt with handler availability
+  const handlerExists = !!_sidebarMessageHandlers[msg.type];
+  console.log('[Background] SIDEBAR_MESSAGE_RECEIVED:', {
+    type: msg.type,
+    handlerExists,
+    availableHandlers: Object.keys(_sidebarMessageHandlers),
+    timestamp: Date.now(),
+    correlationId: msg.correlationId || 'none',
+    quickTabId: msg.quickTabId || 'none'
+  });
+
   _handlePortMessage({
     msg,
     port,
@@ -6696,30 +6708,105 @@ function _setupSidebarPort(port) {
 }
 
 /**
+ * Check if port URL indicates sidebar origin
+ * v1.6.3.12-v10 - FIX Code Health: Extracted to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {string|undefined} url - Sender URL to check
+ * @returns {boolean} True if URL indicates sidebar origin
+ */
+function _isSidebarUrl(url) {
+  if (!url) return false;
+  return (
+    url.includes('sidebar/') || url.includes('sidebar.html') || url.includes('quick-tabs-manager')
+  );
+}
+
+/**
+ * Check if tab ID is valid for content script
+ * v1.6.3.12-v10 - FIX Code Health: Extracted to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {*} tabId - Tab ID to validate
+ * @returns {boolean} True if tab ID is a valid positive number
+ */
+function _isValidContentScriptTabId(tabId) {
+  return typeof tabId === 'number' && tabId > 0;
+}
+
+/**
+ * Analyze port sender to determine connection type
+ * v1.6.3.12-v10 - FIX Code Health: Extracted to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {Object} sender - Port sender object
+ * @returns {{ isSidebar: boolean, isContentScript: boolean, tabId: number|undefined, hasValidTabId: boolean }}
+ */
+function _analyzePortSender(sender) {
+  const tabId = sender.tab?.id;
+  const isSidebar = _isSidebarUrl(sender.url);
+  const hasValidTabId = _isValidContentScriptTabId(tabId);
+  const isContentScript = hasValidTabId && !isSidebar;
+
+  return { isSidebar, isContentScript, tabId, hasValidTabId };
+}
+
+/**
+ * Log unhandled port connection
+ * v1.6.3.12-v10 - FIX Code Health: Extracted to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {Object} analysis - Port analysis result
+ * @param {string} url - Sender URL
+ */
+function _logUnhandledPortConnection(analysis, url) {
+  console.warn('[Background] QUICK_TABS_PORT_UNHANDLED:', {
+    timestamp: Date.now(),
+    reason: 'Neither sidebar nor content script',
+    isSidebar: analysis.isSidebar,
+    isContentScript: analysis.isContentScript,
+    hasValidTabId: analysis.hasValidTabId,
+    tabId: analysis.tabId,
+    url
+  });
+}
+
+/**
+ * Route port connection to appropriate handler
+ * v1.6.3.12-v10 - FIX Code Health: Extracted to reduce handleQuickTabsPortConnect complexity
+ * @private
+ * @param {browser.runtime.Port} port - The connecting port
+ * @param {Object} analysis - Port analysis result
+ */
+function _routePortConnection(port, analysis) {
+  if (analysis.isSidebar) {
+    _setupSidebarPort(port);
+  } else if (analysis.isContentScript) {
+    _setupContentScriptPort(analysis.tabId, port);
+  } else {
+    _logUnhandledPortConnection(analysis, port.sender?.url);
+  }
+}
+
+/**
  * Handle Quick Tabs port connection (port name: 'quick-tabs-port')
  * v1.6.3.12-v2 - FIX Code Health: Reduced complexity by extracting helpers
+ * v1.6.3.12-v10 - FIX Code Health: Refactored to reduce cc from 12 to <9
  * @param {browser.runtime.Port} port - The connecting port
  */
 function handleQuickTabsPortConnect(port) {
   if (port.name !== 'quick-tabs-port') return false;
 
   const sender = port.sender;
-  const tabId = sender.tab?.id;
-  const isContentScript = tabId !== undefined;
-  const isSidebar = sender.url?.includes('sidebar');
+  const analysis = _analyzePortSender(sender);
 
   console.log('[Background] QUICK_TABS_PORT_CONNECT:', {
-    isContentScript,
-    isSidebar,
-    tabId,
-    url: sender.url
+    isContentScript: analysis.isContentScript,
+    isSidebar: analysis.isSidebar,
+    tabId: analysis.tabId,
+    hasValidTabId: analysis.hasValidTabId,
+    url: sender.url,
+    senderFrameId: sender.frameId,
+    hasTab: !!sender.tab
   });
 
-  if (isContentScript && tabId) {
-    _setupContentScriptPort(tabId, port);
-  } else if (isSidebar) {
-    _setupSidebarPort(port);
-  }
+  _routePortConnection(port, analysis);
 
   return true;
 }

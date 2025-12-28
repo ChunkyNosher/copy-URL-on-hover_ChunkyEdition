@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v9  
+**Version:** 1.6.3.12-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,18 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI:**
+**v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix:**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()` to fix Manager button operations
+- **Enhanced Port Logging** - Additional logging for `QUICK_TABS_PORT_CONNECT`
+  with `senderFrameId` and `hasTab` fields
+- **Sidebar Message Logging** - New `[Background] SIDEBAR_MESSAGE_RECEIVED:`
+  logging showing handler availability and available handlers
+- **Issue #48 Fix** - Manager buttons (Close, Minimize, Restore, Close All,
+  Close Minimized) now properly route through sidebar port handlers
+
+**v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI:**
 
 - **Button Click Logging** - Logging for Manager buttons (Close, Minimize,
   Restore, Close All, Close Minimized) with `[Manager] BUTTON_CLICKED:` prefix
@@ -44,41 +55,11 @@
 - **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
   `closeMinimizedQuickTabsViaPort()`
 - **Circuit Breaker Auto-Reset** - 60-second timer
-  (`QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS`)
-- **Message Actions Allowlist** - Added EXPORT_LOGS, CLEAR_CONSOLE_LOGS,
-  RESET_GLOBAL_QUICK_TAB_STATE
-- **Settings Page Robustness** - `sendMessageWithTimeout()` with 5-second
-  timeout protection
-- **Listener Registration Guard** - `_messageListenerRegistered` prevents
-  duplicate listeners
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
-  settings.js: 10.0
+- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
 
-**v1.6.3.12-v7 Features - Message Routing Fixes + Code Health:**
-
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use `closeQuickTabViaPort`,
-  `minimizeQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab
-  closed from UI
-
-**v1.6.3.12-v6 Features - Manager Sync + Port Resilience:**
-
-- **storage.onChanged Fix** - Checks `'local'` area instead of `'session'` (MV2)
-- **Close All Handler** - `CLOSE_ALL_QUICK_TABS` message type implemented
-- **Defensive Port Handlers** - Input validation in all handlers
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO ordering resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with exponential backoff
-
-**v1.6.3.12-v5 Features - Circuit Breaker + Priority Queue:**
-
-- **Circuit Breaker** - Trips after 5 failures, test write every 30s
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW) for writes
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
-
-**v1.6.3.12-v4 to v1.6.3.12-v7:** storage.session Removal, Container ID,
-QUICKTAB_MINIMIZED, Port Roundtrip Tracking, Message Routing Fixes  
+**v1.6.3.12-v5 to v1.6.3.12-v9:** Circuit breaker, priority queue, sequence
+tracking, port circuit breaker, defensive handlers, QUICKTAB_REMOVED handler,
+comprehensive logging, optimistic UI updates, render lock, orphan recovery UI  
 **v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
 **v1.6.3.11-v12:** Solo/Mute REMOVED
 
@@ -141,7 +122,19 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v9 Patterns (Current)
+### v1.6.3.12-v10 Patterns (Current)
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
+- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
+  and `hasTab` fields
+- **Sidebar Message Logging** - `SIDEBAR_MESSAGE_RECEIVED` showing available
+  handlers
+- **Code Health** - background.js: 8.79 → 9.09 (achieved ≥9.0 target)
+
+### v1.6.3.12-v9 Patterns
 
 - **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all button
   actions
@@ -165,36 +158,20 @@ const quickTabsSessionState = {
   registration
 - **Code Health** - settings.js: 10.0, MessageRouter.js: 10.0
 
-### v1.6.3.12-v7 Patterns
-
-- **VALID_MESSAGE_ACTIONS** - Complete allowlist (EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS)
-- **Port-Based Manager Buttons** - `closeQuickTabViaPort`,
-  `minimizeQuickTabViaPort`, `restoreQuickTabViaPort`
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when Quick Tab
-  closed from UI
-
-### v1.6.3.12-v6 Patterns
-
-- **Sequence Tracking** - `_lastReceivedSequence` tracks message order
-- **Port Circuit Breaker** - `_quickTabsPortCircuitBreakerTripped` flag
-- **Defensive Handlers** - Input validation in all port message handlers
-- **Close All Handler** - `CLOSE_ALL_QUICK_TABS` in background port handler
-
-### v1.6.3.12-v5 to v1.6.3.12-v6 Patterns (Consolidated)
+### v1.6.3.12-v5 to v1.6.3.12-v7 Patterns (Consolidated)
 
 - **Circuit Breaker** - Trips after 5 failures, recovers via test write (30s)
-- **Timeout Backoff** - Progressive delays: 1s → 3s → 5s
 - **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW)
 - **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
 - **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
+- **Defensive Handlers** - Input validation in all port message handlers
+- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed
 
 ### v1.6.3.12-v2 to v1.6.3.12-v4 Patterns (Consolidated)
 
 - **Option 4 Architecture** - Background in-memory storage (v1.6.3.12)
 - **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
 - **storage.local Only** - `browser.storage.session` REMOVED (v4)
-- **Startup Cleanup** - `_clearQuickTabsOnStartup()` (v4)
 
 ### Previous Version Patterns
 
@@ -203,13 +180,12 @@ const quickTabsSessionState = {
 
 ### Key Timing Constants
 
-| Constant                                        | Value | Purpose                          |
-| ----------------------------------------------- | ----- | -------------------------------- |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5     | Failures before circuit trips    |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000 | Test write interval for recovery |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000 | Auto-reset circuit breaker       |
-| `TIMEOUT_BACKOFF_DELAYS`                        | Array | [1000, 3000, 5000]ms             |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10    | Max port reconnection attempts   |
+| Constant                                        | Value | Purpose                       |
+| ----------------------------------------------- | ----- | ----------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5     | Failures before circuit trips |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000 | Test write interval           |
+| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000 | Auto-reset circuit breaker    |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10    | Max reconnection attempts     |
 
 ---
 
@@ -247,7 +223,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v9 (NEW):** `[Manager] BUTTON_CLICKED:`,
+**v1.6.3.12-v10 (NEW):** `[Background] QUICK_TABS_PORT_CONNECT:`,
+`[Background] SIDEBAR_MESSAGE_RECEIVED:`, `[Background] QUICK_TABS_PORT_UNHANDLED:`
+
+**v1.6.3.12-v9:** `[Manager] BUTTON_CLICKED:`,
 `[Manager] OPTIMISTIC_UI_*:`, `[Manager] VALIDATE_QUICK_TAB:`,
 `[Manager] ORPHAN_DETECTED:`, `[Manager] RENDER_LOCK:`,
 `[Manager] STATE_VERSION:`, `[Settings][INIT]`
@@ -269,7 +248,8 @@ in-memory state, push notifications, port roundtrip tracking, circuit breaker,
 priority queue, timeout backoff, rolling heartbeat window, sequence number
 tracking, port reconnection circuit breaker, defensive input validation, circuit
 breaker auto-reset, listener registration guards, message timeout protection,
-optimistic UI updates, render lock, orphan recovery UI, state version tracking.
+optimistic UI updates, render lock, orphan recovery UI, state version tracking,
+port routing, sidebar URL detection.
 
 ---
 

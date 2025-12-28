@@ -3,8 +3,8 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v7), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
-  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker
+  (v1.6.3.12-v10), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, port routing fix
 tools: ['*']
 ---
 
@@ -37,9 +37,19 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v10 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v7 Features (NEW):**
+**v1.6.3.12-v10 Features (NEW):**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
+- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
+  and `hasTab` fields
+- **Code Health** - background.js: 8.79 → 9.09
+
+**v1.6.3.12-v7 Features:**
 
 - **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
   COORDINATED_CLEAR_ALL_QUICK_TABS
@@ -106,5 +116,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12-v7 QUICKTAB_REMOVED
-handler, port messaging, sequence tracking, and port circuit breaker.**
+**Your strength: Reliable cross-tab sync with v1.6.3.12-v10 port routing fix,
+QUICKTAB_REMOVED handler, port messaging, sequence tracking, and port circuit breaker.**

@@ -37,11 +37,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Domain-Driven Design with Background-as-Coordinator  
+**Version:** 1.6.3.12-v10 - Domain-Driven Design with Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
-**v1.6.3.12-v7 Features (NEW) - Message Routing Fixes + Code Health:**
+**v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix:**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()`
+- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- **Enhanced Port Logging** - `QUICK_TABS_PORT_CONNECT` with `senderFrameId`
+  and `hasTab` fields
+- **Code Health** - background.js: 8.79 → 9.09
+
+**v1.6.3.12-v7 Features - Message Routing Fixes + Code Health:**
 
 - **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
   COORDINATED_CLEAR_ALL_QUICK_TABS
