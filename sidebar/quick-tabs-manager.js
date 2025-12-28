@@ -7246,8 +7246,11 @@ function _setupStorageOnChangedListener() {
 /**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
- * When user switches between browser tabs, update the Manager to show
- * context-relevant Quick Tabs (those with originTabId matching current tab)
+ * v1.6.3.12-v10 - FIX Issue #48: Clarified that Manager shows ALL Quick Tabs from ALL tabs
+ * When user switches between browser tabs, re-render the Manager UI to:
+ * - Update the current browser tab context (for orphan detection)
+ * - Refresh browser tab info cache
+ * NOTE: Manager intentionally shows ALL Quick Tabs from ALL browser tabs (global view)
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
@@ -7271,7 +7274,8 @@ function setupTabSwitchListener() {
     // Clear browser tab info cache for the previous tab to ensure fresh data
     browserTabInfoCache.delete(previousBrowserTabId);
 
-    // Re-render UI with filtered Quick Tabs for new tab context
+    // v1.6.3.12-v10 - FIX Issue #48: Re-render UI to update browser tab context
+    // NOTE: Manager shows ALL Quick Tabs from ALL browser tabs (no filtering by current tab)
     renderUI();
   });
 

@@ -6176,10 +6176,22 @@ function handleContentScriptPortMessage(tabId, msg, port) {
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
  * v1.6.3.12-v5 - FIX Issue #7: Add handler ENTRY/EXIT logging
  * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
+ * v1.6.3.12-v10 - FIX Issue #48: Enhanced logging for sidebar message debugging
  * @param {Object} msg - Message from sidebar
  * @param {browser.runtime.Port} port - Sidebar port
  */
 function handleSidebarPortMessage(msg, port) {
+  // v1.6.3.12-v10 - FIX Issue #48: Log sidebar message receipt with handler availability
+  const handlerExists = !!_sidebarMessageHandlers[msg.type];
+  console.log('[Background] SIDEBAR_MESSAGE_RECEIVED:', {
+    type: msg.type,
+    handlerExists,
+    availableHandlers: Object.keys(_sidebarMessageHandlers),
+    timestamp: Date.now(),
+    correlationId: msg.correlationId || 'none',
+    quickTabId: msg.quickTabId || 'none'
+  });
+
   _handlePortMessage({
     msg,
     port,
@@ -6705,20 +6717,49 @@ function handleQuickTabsPortConnect(port) {
 
   const sender = port.sender;
   const tabId = sender.tab?.id;
-  const isContentScript = tabId !== undefined;
-  const isSidebar = sender.url?.includes('sidebar');
+  // v1.6.3.12-v10 - FIX Issue #48: Prioritize sidebar detection over content script detection
+  // The sidebar's quick-tabs-manager.js runs inside an iframe within settings.html
+  // Check for sidebar URL FIRST, before checking for tab ID
+  // This fixes the issue where sidebar might have sender.tab.id in some edge cases
+  // Use more specific URL matching: check for 'sidebar/' path segment or sidebar-related files
+  const isSidebar =
+    sender.url?.includes('sidebar/') ||
+    sender.url?.includes('sidebar.html') ||
+    sender.url?.includes('quick-tabs-manager');
+  // Content script: has valid tab ID AND is not sidebar
+  // tabId must be a valid number (not just truthy) to be a content script
+  const hasValidTabId = typeof tabId === 'number' && tabId > 0;
+  const isContentScript = hasValidTabId && !isSidebar;
 
   console.log('[Background] QUICK_TABS_PORT_CONNECT:', {
     isContentScript,
     isSidebar,
     tabId,
-    url: sender.url
+    hasValidTabId,
+    url: sender.url,
+    // v1.6.3.12-v10 - Additional logging for debugging port routing
+    senderFrameId: sender.frameId,
+    hasTab: !!sender.tab
   });
 
-  if (isContentScript && tabId) {
-    _setupContentScriptPort(tabId, port);
-  } else if (isSidebar) {
+  // v1.6.3.12-v10 - FIX Issue #48: Check sidebar FIRST, then content script
+  // This ensures sidebar is correctly detected even if it somehow has a tab ID
+  if (isSidebar) {
     _setupSidebarPort(port);
+  } else if (isContentScript) {
+    // tabId is guaranteed to be a valid number here due to hasValidTabId check
+    _setupContentScriptPort(tabId, port);
+  } else {
+    // v1.6.3.12-v10 - Log unhandled port connections for debugging
+    console.warn('[Background] QUICK_TABS_PORT_UNHANDLED:', {
+      timestamp: Date.now(),
+      reason: 'Neither sidebar nor content script',
+      isSidebar,
+      isContentScript,
+      hasValidTabId,
+      tabId,
+      url: sender.url
+    });
   }
 
   return true;

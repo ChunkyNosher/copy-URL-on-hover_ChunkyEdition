@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v9  
+**Version:** 1.6.3.12-v10  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,18 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v9 Features (NEW) - Comprehensive Logging + Optimistic UI:**
+**v1.6.3.12-v10 Features (NEW) - Issue #48 Port Routing Fix:**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()` to fix Manager button operations
+- **Enhanced Port Logging** - Additional logging for `QUICK_TABS_PORT_CONNECT`
+  with `senderFrameId` and `hasTab` fields
+- **Sidebar Message Logging** - New `[Background] SIDEBAR_MESSAGE_RECEIVED:`
+  logging showing handler availability and available handlers
+- **Issue #48 Fix** - Manager buttons (Close, Minimize, Restore, Close All,
+  Close Minimized) now properly route through sidebar port handlers
+
+**v1.6.3.12-v9 Features - Comprehensive Logging + Optimistic UI:**
 
 - **Button Click Logging** - Logging for Manager buttons (Close, Minimize,
   Restore, Close All, Close Minimized) with `[Manager] BUTTON_CLICKED:` prefix
