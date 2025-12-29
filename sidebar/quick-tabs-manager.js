@@ -896,8 +896,26 @@ function _handleQuickTabPortAck(msg, ackType) {
     ..._buildAckLogData(msg, sentInfo)
   });
 
-  if (quickTabId) {
-    _quickTabPortOperationTimestamps.delete(quickTabId);
+  if (!quickTabId) return;
+
+  _quickTabPortOperationTimestamps.delete(quickTabId);
+
+  // v1.6.3.12-v13 - FIX Issue #48: Clear pending operation on ACK to allow future operations
+  // The comment in _checkAndTrackPendingOperation says "will be cleared by OPERATION_TIMEOUT_MS or ACK"
+  // but this cleanup was missing - operations were only cleared by the timeout.
+  // This fix ensures buttons can be clicked again immediately after ACK.
+  // ackType is always a string from the ACK handler factory (CLOSE, MINIMIZE, RESTORE)
+  const action = typeof ackType === 'string' ? ackType.toLowerCase() : '';
+  if (!action) return;
+
+  const operationKey = `${action}-${quickTabId}`;
+  // Set.delete() returns true if element was present and deleted
+  if (PENDING_OPERATIONS.delete(operationKey)) {
+    console.log('[Sidebar] PENDING_OPERATION_CLEARED_BY_ACK:', {
+      operationKey,
+      ackType,
+      quickTabId
+    });
   }
 }
 
