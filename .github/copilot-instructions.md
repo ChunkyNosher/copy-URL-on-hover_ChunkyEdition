@@ -24,13 +24,15 @@
 
 - **Resize/Move Sync Fix** - `_updateQuickTabProperty()` now searches ALL tabs
   in session state, not just the sender tab
-  - ROOT CAUSE: Quick Tab might be stored under different tab than message sender
-  - FIX: Extracted helpers (`_findInHintTab()`, `_findInAllSessionTabs()`, 
+  - ROOT CAUSE: Quick Tab might be stored under different tab than message
+    sender
+  - FIX: Extracted helpers (`_findInHintTab()`, `_findInAllSessionTabs()`,
     `_findInGlobalState()`) for comprehensive search
   - Added diagnostic logging for position/size update tracking
 - **UI Flicker Fix** - Manager no longer flickers during operations
   - ROOT CAUSE: `_showContentState()` cleared innerHTML before new content ready
-  - FIX: Use `replaceChildren()` for atomic DOM swap in `_executeRenderUIInternal()`
+  - FIX: Use `replaceChildren()` for atomic DOM swap in
+    `_executeRenderUIInternal()`
 - **Code Health** - Extracted helpers reduce complexity in background.js
 
 **v1.6.3.12-v12 Features - Button Operation Fix + Cross-Tab Display + Code
@@ -144,8 +146,9 @@ const quickTabsSessionState = {
 
 ### v1.6.3.12-v13 Patterns (Current)
 
-- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session tabs
-- **Helper Extraction** - `_findInHintTab()`, `_findInAllSessionTabs()`, 
+- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session
+  tabs
+- **Helper Extraction** - `_findInHintTab()`, `_findInAllSessionTabs()`,
   `_findInGlobalState()` for modular search
 - **UI Flicker Fix** - `replaceChildren()` for atomic DOM swap in Manager
 - **Enhanced Logging** - Before/after state logging in `handleUpdateQuickTab()`

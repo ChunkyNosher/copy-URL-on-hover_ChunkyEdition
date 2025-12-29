@@ -6053,12 +6053,12 @@ function handleHydrateOnLoad(tabId, port) {
  */
 function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
-  
+
   // v1.6.3.12-v13 - FIX Bug #1: Enhanced logging for resize/move tracking
   const updateKeys = updates ? Object.keys(updates) : [];
   const hasPositionUpdate = updateKeys.some(k => ['left', 'top'].includes(k));
   const hasSizeUpdate = updateKeys.some(k => ['width', 'height'].includes(k));
-  
+
   console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, {
     quickTabId,
     updates,
@@ -6083,7 +6083,7 @@ function handleUpdateQuickTab(tabId, msg, port) {
       };
       Object.assign(qt, updates);
       qt.lastUpdate = Date.now();
-      
+
       console.log('[Background] UPDATE_QUICK_TAB applied:', {
         quickTabId,
         before,
