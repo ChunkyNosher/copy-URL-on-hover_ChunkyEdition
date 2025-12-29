@@ -129,14 +129,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                              |
-| ------------------------ | -------------------------------- |
-| v1.6.3.12-v11 or earlier | Update to 1.6.3.12-v12           |
-| "Solo/Mute" references   | REMOVE - Feature DELETED in v12  |
-| "Pin to Page"            | REMOVE - Feature DELETED in v12  |
-| Cross-session persist    | REMOVE - Session-only in v12     |
-| Direct storage writes    | Use Single Writer Authority      |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6        |
+| Error                    | Fix                             |
+| ------------------------ | ------------------------------- |
+| v1.6.3.12-v11 or earlier | Update to 1.6.3.12-v12          |
+| "Solo/Mute" references   | REMOVE - Feature DELETED in v12 |
+| "Pin to Page"            | REMOVE - Feature DELETED in v12 |
+| Cross-session persist    | REMOVE - Session-only in v12    |
+| Direct storage writes    | Use Single Writer Authority     |
+| BroadcastChannel refs    | REMOVE - BC DELETED in v6       |
 
 ---
 

@@ -37,7 +37,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
+State)
 
 **Complete Quick Tab System:**
 
@@ -156,6 +157,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v12 button operation fix,
-cross-tab render fix, fallback messaging, state version tracking, optimistic UI timeout,
-render lock, and comprehensive validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v12 button operation
+fix, cross-tab render fix, fallback messaging, state version tracking,
+optimistic UI timeout, render lock, and comprehensive validation.**

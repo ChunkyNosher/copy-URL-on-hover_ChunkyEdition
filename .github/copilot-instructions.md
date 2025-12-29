@@ -20,7 +20,8 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Cross-Tab Display + Code Health:**
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Cross-Tab Display + Code
+Health:**
 
 - **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
   All, Close Minimized) now work reliably
@@ -46,8 +47,10 @@
   data for all-tabs visibility (Issue #1)
 - **Options Page Async Guard** - `_isPageActive` + `isPageActive()` async safety
   (Issue #10)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20)
+- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue
+  #12)
+- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue
+  #20)
 
 **v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
 
@@ -57,7 +60,9 @@
 
 **v1.6.3.12-v8 to v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Render
 Lock, Orphan UI, Bulk Close Operations, Circuit Breaker Auto-Reset
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09, settings.js: 10.0
+
+- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
+  settings.js: 10.0
 
 **v1.6.3.12-v5 to v1.6.3.12-v9:** Circuit breaker, priority queue, sequence
 tracking, port circuit breaker, defensive handlers, QUICKTAB_REMOVED handler,
@@ -146,7 +151,8 @@ const quickTabsSessionState = {
 
 ### v1.6.3.12-v8 to v1.6.3.12-v10 Patterns (Consolidated)
 
-- **v10:** Port Routing Fix (Issue #48), Manager Button Operations, Code Health 9.09
+- **v10:** Port Routing Fix (Issue #48), Manager Button Operations, Code Health
+  9.09
 - **v9:** Button Click Logging, Optimistic UI, Render Lock, Orphan UI
 - **v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Settings Timeout
 
@@ -222,12 +228,12 @@ const quickTabsSessionState = {
 `HEARTBEAT_CONFIRMED_ACTIVE`, `[Options] PAGE_ACTIVE_CHECK:`
 
 **v1.6.3.12-v10:** `[Background] QUICK_TABS_PORT_CONNECT:`,
-`[Background] SIDEBAR_MESSAGE_RECEIVED:`, `[Background] QUICK_TABS_PORT_UNHANDLED:`
+`[Background] SIDEBAR_MESSAGE_RECEIVED:`,
+`[Background] QUICK_TABS_PORT_UNHANDLED:`
 
-**v1.6.3.12-v9:** `[Manager] BUTTON_CLICKED:`,
-`[Manager] OPTIMISTIC_UI_*:`, `[Manager] VALIDATE_QUICK_TAB:`,
-`[Manager] ORPHAN_DETECTED:`, `[Manager] RENDER_LOCK:`,
-`[Manager] STATE_VERSION:`, `[Settings][INIT]`
+**v1.6.3.12-v9:** `[Manager] BUTTON_CLICKED:`, `[Manager] OPTIMISTIC_UI_*:`,
+`[Manager] VALIDATE_QUICK_TAB:`, `[Manager] ORPHAN_DETECTED:`,
+`[Manager] RENDER_LOCK:`, `[Manager] STATE_VERSION:`, `[Settings][INIT]`
 
 **v1.6.3.12-v5 to v8:** `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`,
 `[SEQUENCE_TRACKING]`, `[TIMEOUT_BACKOFF_*]`, `[FALLBACK_*]`

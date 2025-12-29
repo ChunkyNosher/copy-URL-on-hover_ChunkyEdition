@@ -21,10 +21,12 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 - ✅ **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
   All, Close Minimized) now work reliably
-- ✅ **Cross-Tab Render Fix** - `_executeDebounceRender()` checks hash AND version
+- ✅ **Cross-Tab Render Fix** - `_executeDebounceRender()` checks hash AND
+  version
 - ✅ **Fallback Messaging** - Port → sendMessage fallback in background
 - ✅ **Optimistic UI Safety Timeout** - Reverts UI if no response received
-- ✅ **State Version Tracking** - `_lastRenderedStateVersion` in scheduleRender()
+- ✅ **State Version Tracking** - `_lastRenderedStateVersion` in
+  scheduleRender()
 - ✅ **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
   - Options object pattern (5 args → 1)
   - Lookup table refactoring (72 LoC → 42 LoC)

@@ -6337,14 +6337,16 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
     reason: contentPort ? 'port_error' : 'no_port'
   });
 
-  browser.tabs.sendMessage(ownerTabId, {
-    action,
-    quickTabId,
-    source: 'sidebar',
-    timestamp: Date.now()
-  }).catch(err => {
-    console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
-  });
+  browser.tabs
+    .sendMessage(ownerTabId, {
+      action,
+      quickTabId,
+      source: 'sidebar',
+      timestamp: Date.now()
+    })
+    .catch(err => {
+      console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
+    });
 }
 
 /**
