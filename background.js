@@ -6258,14 +6258,31 @@ function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
  * @returns {{ ownerTabId: number|null, found: boolean }}
  */
 function _removeQuickTabFromSessionState(quickTabId) {
-  return _findAndModifyQuickTabInSession(quickTabId, (tabQuickTabs, index) => {
+  // v1.6.3.12-v13 - FIX Issue #48: Log state before removal for debugging
+  console.log('[Background] _removeQuickTabFromSessionState ENTRY:', {
+    quickTabId,
+    currentTabIds: Object.keys(quickTabsSessionState.quickTabsByTab),
+    totalQuickTabsPerTab: Object.entries(quickTabsSessionState.quickTabsByTab).map(
+      ([tabId, qts]) => ({ tabId, count: qts?.length || 0 })
+    )
+  });
+
+  const result = _findAndModifyQuickTabInSession(quickTabId, (tabQuickTabs, index) => {
     tabQuickTabs.splice(index, 1);
   });
+
+  console.log('[Background] _removeQuickTabFromSessionState RESULT:', {
+    quickTabId,
+    ...result
+  });
+
+  return result;
 }
 
 /**
  * Find Quick Tab in session state and apply a modifier function
  * v1.6.3.12-v2 - FIX Code Health: Unified session state modifier
+ * v1.6.3.12-v13 - FIX Issue #48: Enhanced logging for debugging
  * @private
  * @param {string} quickTabId - Quick Tab ID to find
  * @param {Function} modifier - Function to modify the Quick Tab or array (receives tabQuickTabs, index, qt)
@@ -6276,17 +6293,138 @@ function _findAndModifyQuickTabInSession(quickTabId, modifier) {
     const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
     const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
     if (index >= 0) {
+      // v1.6.3.12-v13 - Log match found before modifying
+      console.log('[Background] _findAndModifyQuickTabInSession FOUND:', {
+        quickTabId,
+        tabId,
+        tabIdType: typeof tabId,
+        index,
+        quickTabData: tabQuickTabs[index]
+      });
       modifier(tabQuickTabs, index, tabQuickTabs[index]);
       return { ownerTabId: parseInt(tabId, 10), found: true };
     }
   }
+  // v1.6.3.12-v13 - Log not found
+  console.warn('[Background] _findAndModifyQuickTabInSession NOT_FOUND:', {
+    quickTabId,
+    searchedTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
   return { ownerTabId: null, found: false };
+}
+
+/**
+ * Log command delivery entry
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {boolean} found - Whether the Quick Tab was found
+ * @param {string} commandType - Command type to send
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _logCommandDeliveryEntry(ownerTabId, found, commandType, quickTabId) {
+  console.log('[Background] _notifyContentScriptOfCommand ENTRY:', {
+    ownerTabId,
+    ownerTabIdType: typeof ownerTabId,
+    found,
+    commandType,
+    quickTabId,
+    availableContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Log command delivery early exit
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {boolean} found - Whether the Quick Tab was found
+ * @param {string} commandType - Command type to send
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _logCommandDeliveryEarlyExit(ownerTabId, found, commandType, quickTabId) {
+  console.warn('[Background] _notifyContentScriptOfCommand EARLY_EXIT:', {
+    reason: !found ? 'quick_tab_not_found' : 'owner_tab_id_null',
+    ownerTabId,
+    found,
+    commandType,
+    quickTabId
+  });
+}
+
+/**
+ * Log port lookup result
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {browser.runtime.Port|null} contentPort - Content script port or null if not found
+ */
+function _logPortLookup(ownerTabId, contentPort) {
+  console.log('[Background] _notifyContentScriptOfCommand PORT_LOOKUP:', {
+    ownerTabId,
+    portFound: !!contentPort,
+    portType: contentPort ? typeof contentPort : 'null',
+    allPortKeys: Object.keys(quickTabsSessionState.contentScriptPorts),
+    lookupKeyType: typeof ownerTabId
+  });
+}
+
+/**
+ * Try sending command via port
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {browser.runtime.Port|null} contentPort - Content script port
+ * @param {Object} message - Message to send
+ * @param {string} commandType - Command type for logging
+ * @param {number} ownerTabId - Tab ID for logging
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {boolean} True if send succeeded
+ */
+function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId) {
+  if (!contentPort) return false;
+
+  try {
+    contentPort.postMessage(message);
+    console.log(`[Background] Command sent via port: ${commandType}`, { ownerTabId, quickTabId });
+    return true;
+  } catch (err) {
+    console.warn('[Background] Port message failed:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Send command via tabs.sendMessage (backup/fallback)
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number} ownerTabId - Tab ID to send message to
+ * @param {string} action - Action name (e.g., CLOSE_QUICK_TAB)
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {boolean} portSendSucceeded - Whether port send succeeded (for logging)
+ * @param {browser.runtime.Port|null} contentPort - Content port (for logging reason)
+ * @param {string} commandType - Command type (for logging)
+ */
+function _sendCommandViaSendMessage(ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType) {
+  console.log(`[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`, {
+    ownerTabId,
+    quickTabId,
+    action,
+    reason: portSendSucceeded ? 'redundant_delivery' : (contentPort ? 'port_error' : 'no_port')
+  });
+
+  browser.tabs
+    .sendMessage(ownerTabId, { action, quickTabId, source: 'sidebar', timestamp: Date.now() })
+    .catch(err => {
+      console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
+    });
 }
 
 /**
  * Notify content script of a command
  * v1.6.3.12 - Helper to reduce nesting depth
  * v1.6.4 - FIX Issue #48: Add fallback to browser.tabs.sendMessage when port unavailable
+ * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
  * @private
  * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
  * @param {boolean} found - Whether the Quick Tab was found
@@ -6294,59 +6432,32 @@ function _findAndModifyQuickTabInSession(quickTabId, modifier) {
  * @param {string} quickTabId - Quick Tab ID
  */
 function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabId) {
-  if (!found || ownerTabId === null) return;
+  _logCommandDeliveryEntry(ownerTabId, found, commandType, quickTabId);
 
-  const message = {
-    type: commandType,
-    quickTabId,
-    source: 'sidebar',
-    timestamp: Date.now()
-  };
+  if (!found || ownerTabId === null) {
+    _logCommandDeliveryEarlyExit(ownerTabId, found, commandType, quickTabId);
+    return;
+  }
 
+  const message = { type: commandType, quickTabId, source: 'sidebar', timestamp: Date.now() };
   const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
-  if (contentPort) {
-    try {
-      contentPort.postMessage(message);
-      console.log(`[Background] Command sent via port: ${commandType}`, { ownerTabId, quickTabId });
-      return;
-    } catch (err) {
-      console.warn('[Background] Port message failed, trying tabs.sendMessage:', err.message);
-    }
-  }
 
-  // v1.6.4 - FIX Issue #48: Fallback to browser.tabs.sendMessage when port unavailable
-  // This ensures commands reach content scripts even if port was disconnected
-  // Convert _COMMAND suffix to match ACTION_HANDLERS (e.g., CLOSE_QUICK_TAB_COMMAND -> CLOSE_QUICK_TAB)
+  _logPortLookup(ownerTabId, contentPort);
+
+  const portSendSucceeded = _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId);
+
+  // v1.6.3.12-v13 - FIX Issue #48: ALWAYS try tabs.sendMessage as a backup
+  // Port.postMessage() doesn't throw when port is disconnected in Firefox,
+  // so the message may be silently dropped. Content script deduplicates.
   const action = commandType.replace(/_COMMAND$/, '');
-
-  // Validate that the action was converted correctly
   const validActions = ['CLOSE_QUICK_TAB', 'MINIMIZE_QUICK_TAB', 'RESTORE_QUICK_TAB'];
+
   if (!validActions.includes(action)) {
-    console.warn(`[Background] Invalid action after conversion: ${action}`, {
-      originalCommandType: commandType,
-      ownerTabId,
-      quickTabId
-    });
-    return; // Don't send invalid actions
+    console.warn(`[Background] Invalid action after conversion: ${action}`, { originalCommandType: commandType });
+    return;
   }
 
-  console.log(`[Background] Using tabs.sendMessage fallback for: ${commandType}`, {
-    ownerTabId,
-    quickTabId,
-    action,
-    reason: contentPort ? 'port_error' : 'no_port'
-  });
-
-  browser.tabs
-    .sendMessage(ownerTabId, {
-      action,
-      quickTabId,
-      source: 'sidebar',
-      timestamp: Date.now()
-    })
-    .catch(err => {
-      console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
-    });
+  _sendCommandViaSendMessage(ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType);
 }
 
 /**
