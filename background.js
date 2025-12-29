@@ -6405,13 +6405,23 @@ function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, q
  * @param {browser.runtime.Port|null} contentPort - Content port (for logging reason)
  * @param {string} commandType - Command type (for logging)
  */
-function _sendCommandViaSendMessage(ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType) {
-  console.log(`[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`, {
-    ownerTabId,
-    quickTabId,
-    action,
-    reason: portSendSucceeded ? 'redundant_delivery' : (contentPort ? 'port_error' : 'no_port')
-  });
+function _sendCommandViaSendMessage(
+  ownerTabId,
+  action,
+  quickTabId,
+  portSendSucceeded,
+  contentPort,
+  commandType
+) {
+  console.log(
+    `[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`,
+    {
+      ownerTabId,
+      quickTabId,
+      action,
+      reason: portSendSucceeded ? 'redundant_delivery' : contentPort ? 'port_error' : 'no_port'
+    }
+  );
 
   browser.tabs
     .sendMessage(ownerTabId, { action, quickTabId, source: 'sidebar', timestamp: Date.now() })
@@ -6444,7 +6454,13 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
 
   _logPortLookup(ownerTabId, contentPort);
 
-  const portSendSucceeded = _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId);
+  const portSendSucceeded = _trySendCommandViaPort(
+    contentPort,
+    message,
+    commandType,
+    ownerTabId,
+    quickTabId
+  );
 
   // v1.6.3.12-v13 - FIX Issue #48: ALWAYS try tabs.sendMessage as a backup
   // Port.postMessage() doesn't throw when port is disconnected in Firefox,
@@ -6453,11 +6469,20 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
   const validActions = ['CLOSE_QUICK_TAB', 'MINIMIZE_QUICK_TAB', 'RESTORE_QUICK_TAB'];
 
   if (!validActions.includes(action)) {
-    console.warn(`[Background] Invalid action after conversion: ${action}`, { originalCommandType: commandType });
+    console.warn(`[Background] Invalid action after conversion: ${action}`, {
+      originalCommandType: commandType
+    });
     return;
   }
 
-  _sendCommandViaSendMessage(ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType);
+  _sendCommandViaSendMessage(
+    ownerTabId,
+    action,
+    quickTabId,
+    portSendSucceeded,
+    contentPort,
+    commandType
+  );
 }
 
 /**
