@@ -2128,10 +2128,13 @@ messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
 function _addQuickTabToSessionState(msg, sender) {
   const originTabId = msg.originTabId ?? sender?.tab?.id;
   if (!originTabId) {
-    console.warn('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:', {
-      quickTabId: msg.id,
-      senderTabId: sender?.tab?.id
-    });
+    console.warn(
+      '[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
+      {
+        quickTabId: msg.id,
+        senderTabId: sender?.tab?.id
+      }
+    );
     return;
   }
 
