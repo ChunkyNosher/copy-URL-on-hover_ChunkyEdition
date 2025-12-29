@@ -896,8 +896,10 @@ function _handleQuickTabPortAck(msg, ackType) {
     ..._buildAckLogData(msg, sentInfo)
   });
 
+  // Exit early if no quickTabId - nothing to clean up
   if (!quickTabId) return;
 
+  // Clean up operation timestamp tracking
   _quickTabPortOperationTimestamps.delete(quickTabId);
 
   // v1.6.3.12-v13 - FIX Issue #48: Clear pending operation on ACK to allow future operations
