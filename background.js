@@ -2116,12 +2116,72 @@ messageRouter.register('EXPORT_LOGS', (msg, sender) => logHandler.handleExportLo
 messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
   quickTabHandler.handleBatchUpdate(msg, sender)
 );
+
+/**
+ * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
+ * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
+ * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {Object} sender - Message sender info
+ */
+function _addQuickTabToSessionState(msg, sender) {
+  const originTabId = msg.originTabId ?? sender?.tab?.id;
+  if (!originTabId) {
+    console.warn('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:', {
+      quickTabId: msg.id,
+      senderTabId: sender?.tab?.id
+    });
+    return;
+  }
+
+  // Initialize tab's Quick Tab array if needed
+  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
+    quickTabsSessionState.quickTabsByTab[originTabId] = [];
+  }
+
+  // Build Quick Tab data (matching format from handleCreateQuickTab)
+  const quickTabData = {
+    id: msg.id,
+    url: msg.url,
+    originTabId,
+    originContainerId: msg.cookieStoreId || 'firefox-default',
+    left: msg.left,
+    top: msg.top,
+    width: msg.width,
+    height: msg.height,
+    minimized: msg.minimized || false,
+    timestamp: msg.timestamp || Date.now()
+  };
+
+  // Check for duplicate and add/update
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
+  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === msg.id);
+  if (existingIndex >= 0) {
+    tabQuickTabs[existingIndex] = quickTabData;
+    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Updated in session state:', msg.id);
+  } else {
+    tabQuickTabs.push(quickTabData);
+    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Added to session state:', {
+      quickTabId: msg.id,
+      originTabId,
+      sessionStateTabCount: tabQuickTabs.length
+    });
+  }
+}
+
 // v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
 // The handleCreate returns a result, and we notify the sidebar if creation was successful
+// v1.6.3.12-v13 - FIX Issue #47: Also add to quickTabsSessionState.quickTabsByTab for sidebar operations
 messageRouter.register('CREATE_QUICK_TAB', async (msg, sender) => {
   const result = await quickTabHandler.handleCreate(msg, sender);
-  // v1.6.3.12-v3 - FIX Issue F: Notify sidebar if creation was successful
+  // v1.6.3.12-v13 - FIX Issue #47: Add Quick Tab to session state for sidebar close/minimize/restore
+  // The port-based CREATE_QUICK_TAB handler (handleCreateQuickTab) adds to quickTabsSessionState,
+  // but the runtime.sendMessage path (this handler) was missing that step.
+  // This caused sidebar close/minimize/restore to fail because _findAndModifyQuickTabInSession
+  // couldn't find the Quick Tab in quickTabsSessionState.quickTabsByTab.
   if (result?.success && !result?.duplicate) {
+    _addQuickTabToSessionState(msg, sender);
     notifySidebarOfStateChange();
     console.log('[Background] v1.6.3.12-v3 CREATE_QUICK_TAB: Notified sidebar of state change', {
       quickTabId: msg.id,
