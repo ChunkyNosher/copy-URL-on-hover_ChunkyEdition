@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v12  
+**Version:** 1.6.3.12-v13  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,20 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Cross-Tab Display + Code
+**v1.6.3.12-v13 Features (NEW) - Resize/Move Sync + UI Flicker Fix:**
+
+- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` now searches ALL tabs
+  in session state, not just the sender tab
+  - ROOT CAUSE: Quick Tab might be stored under different tab than message sender
+  - FIX: Extracted helpers (`_findInHintTab()`, `_findInAllSessionTabs()`, 
+    `_findInGlobalState()`) for comprehensive search
+  - Added diagnostic logging for position/size update tracking
+- **UI Flicker Fix** - Manager no longer flickers during operations
+  - ROOT CAUSE: `_showContentState()` cleared innerHTML before new content ready
+  - FIX: Use `replaceChildren()` for atomic DOM swap in `_executeRenderUIInternal()`
+- **Code Health** - Extracted helpers reduce complexity in background.js
+
+**v1.6.3.12-v12 Features - Button Operation Fix + Cross-Tab Display + Code
 Health:**
 
 - **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
@@ -129,7 +142,15 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v12 Patterns (Current)
+### v1.6.3.12-v13 Patterns (Current)
+
+- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session tabs
+- **Helper Extraction** - `_findInHintTab()`, `_findInAllSessionTabs()`, 
+  `_findInGlobalState()` for modular search
+- **UI Flicker Fix** - `replaceChildren()` for atomic DOM swap in Manager
+- **Enhanced Logging** - Before/after state logging in `handleUpdateQuickTab()`
+
+### v1.6.3.12-v12 Patterns
 
 - **Button Operation Fix** - Safety timeout + state version tracking for
   reliable button operations
@@ -221,7 +242,10 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v12 (NEW):** `[Manager] OPTIMISTIC_TIMEOUT:`,
+**v1.6.3.12-v13 (NEW):** `[Background] _updateQuickTabProperty: Found in`,
+`[Background] UPDATE_QUICK_TAB applied:`
+
+**v1.6.3.12-v12:** `[Manager] OPTIMISTIC_TIMEOUT:`,
 `[Manager] STATE_VERSION_RENDER:`, `[Background] FALLBACK_SEND_MESSAGE:`
 
 **v1.6.3.12-v11:** `[Manager] RENDER_DATA_SOURCE:`,

@@ -6363,7 +6363,10 @@ async function _executeRenderUIInternal() {
   const groupsContainer = await _buildGroupsContainer(groups, collapseState);
   checkAndRemoveEmptyGroups(groupsContainer, groups);
 
-  containersList.appendChild(groupsContainer);
+  // v1.6.3.12-v13 - FIX Bug #2: Use replaceChildren() for atomic DOM swap
+  // replaceChildren() removes all children AND appends new ones in a single operation,
+  // eliminating the visual gap/flicker that occurs with innerHTML='' followed by appendChild()
+  containersList.replaceChildren(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
   const domDuration = Date.now() - domStartTime;
 
@@ -6433,13 +6436,16 @@ function _showEmptyState() {
 }
 
 /**
- * Show content state UI
+ * Show content state UI - prepares for content but does NOT clear existing content
+ * v1.6.3.12-v13 - FIX Bug #2: Don't clear innerHTML here to prevent flicker
+ *   - Content clearing moved to AFTER new content is built (atomic swap)
  * @private
  */
 function _showContentState() {
   containersList.style.display = 'block';
   emptyState.style.display = 'none';
-  containersList.innerHTML = '';
+  // v1.6.3.12-v13 - FIX Bug #2: Removed innerHTML = '' - now done in _executeRenderUIInternal
+  // after new content is built to prevent UI flicker
 }
 
 /**

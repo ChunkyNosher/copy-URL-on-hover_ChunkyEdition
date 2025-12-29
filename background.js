@@ -5733,32 +5733,121 @@ function handleCreateQuickTab(tabId, quickTab, port) {
 // These helpers reduce duplication in port message handlers
 
 /**
+ * Search for Quick Tab in a specific array
+ * v1.6.3.12-v13 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Array} quickTabs - Array to search
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {Object|undefined} Quick Tab object if found, undefined otherwise
+ */
+function _findQuickTabInArray(quickTabs, quickTabId) {
+  if (!quickTabs || !Array.isArray(quickTabs)) return undefined;
+  return quickTabs.find(qt => qt.id === quickTabId);
+}
+
+/**
+ * Search for Quick Tab in hint tab's session state
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInHintTab(tabId, quickTabId, updater) {
+  const hintTabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const qt = _findQuickTabInArray(hintTabQuickTabs, quickTabId);
+  if (qt) {
+    updater(qt);
+    console.log('[Background] _updateQuickTabProperty: Found in hint tab', {
+      quickTabId,
+      tabId,
+      source: 'session-hint'
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Search for Quick Tab in all session state tabs except hint tab
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInAllSessionTabs(tabId, quickTabId, updater) {
+  const tabIdString = String(tabId);
+  for (const [searchTabId, quickTabs] of Object.entries(quickTabsSessionState.quickTabsByTab)) {
+    if (searchTabId === tabIdString) continue; // Already searched
+    const qt = _findQuickTabInArray(quickTabs, quickTabId);
+    if (qt) {
+      updater(qt);
+      console.log('[Background] _updateQuickTabProperty: Found in different tab', {
+        quickTabId,
+        originalTabId: tabId,
+        foundInTabId: searchTabId,
+        source: 'session-search'
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Search for Quick Tab in global state
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInGlobalState(quickTabId, updater, wasFoundInSession) {
+  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+  if (globalQt) {
+    updater(globalQt);
+    if (!wasFoundInSession) {
+      console.log('[Background] _updateQuickTabProperty: Found only in global state', {
+        quickTabId,
+        source: 'global-only'
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Update Quick Tab property in both session and global state
  * v1.6.3.12-v2 - FIX Code Health: Unified state update helper
+ * v1.6.3.12-v13 - FIX Bug #1: Search ALL tabs in session state, not just sender tab
+ *   - Quick Tab might have been created in a different tab than the sender
+ *   - Search by quickTabId across ALL tabs in quickTabsByTab
+ * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
  * @private
- * @param {number} tabId - Origin tab ID
+ * @param {number} tabId - Origin tab ID (from sender, used as hint only)
  * @param {string} quickTabId - Quick Tab ID to update
  * @param {Function} updater - Function to update the Quick Tab (receives qt, returns boolean)
  * @returns {boolean} Whether the Quick Tab was found and updated
  */
 function _updateQuickTabProperty(tabId, quickTabId, updater) {
-  let found = false;
-  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  // v1.6.3.12-v13 - FIX Bug #1: First try the hint tabId for performance
+  const foundInHintTab = _findInHintTab(tabId, quickTabId, updater);
 
-  for (const qt of tabQuickTabs) {
-    if (qt.id === quickTabId) {
-      updater(qt);
-      found = true;
-      break;
-    }
-  }
+  // v1.6.3.12-v13 - FIX Bug #1: If not found, search ALL tabs in session state
+  const foundInOtherTabs = !foundInHintTab && _findInAllSessionTabs(tabId, quickTabId, updater);
 
-  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
-  if (globalQt) {
-    updater(globalQt);
-    found = true;
-  }
+  // Track if found in any session state
+  const foundInSession = foundInHintTab || foundInOtherTabs;
+
+  // Also update global state (this is the canonical state for sidebar)
+  const foundInGlobal = _findInGlobalState(quickTabId, updater, foundInSession);
+
   globalQuickTabState.lastUpdate = Date.now();
+
+  const found = foundInSession || foundInGlobal;
+
+  // v1.6.3.12-v13 - FIX Bug #1: Log when Quick Tab not found at all
+  if (!found) {
+    console.warn('[Background] _updateQuickTabProperty: Quick Tab NOT FOUND', {
+      quickTabId,
+      tabId,
+      sessionTabIds: Object.keys(quickTabsSessionState.quickTabsByTab),
+      globalTabCount: globalQuickTabState.tabs.length
+    });
+  }
 
   return found;
 }
@@ -5957,14 +6046,26 @@ function handleHydrateOnLoad(tabId, port) {
  * Handle UPDATE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
+ * v1.6.3.12-v13 - FIX Bug #1: Enhanced logging for resize/move diagnostics
  * @param {number} tabId - Origin tab ID
  * @param {Object} msg - Message with quickTabId and updates
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
-  // v1.6.3.12-v8 - Log updates object separately for diagnostics
-  console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
+  
+  // v1.6.3.12-v13 - FIX Bug #1: Enhanced logging for resize/move tracking
+  const updateKeys = updates ? Object.keys(updates) : [];
+  const hasPositionUpdate = updateKeys.some(k => ['left', 'top'].includes(k));
+  const hasSizeUpdate = updateKeys.some(k => ['width', 'height'].includes(k));
+  
+  console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, {
+    quickTabId,
+    updates,
+    updateKeys,
+    hasPositionUpdate,
+    hasSizeUpdate
+  });
 
   _handleQuickTabUpdate({
     tabId,
@@ -5973,8 +6074,27 @@ function handleUpdateQuickTab(tabId, msg, port) {
     operation: 'UPDATE_QUICK_TAB',
     ackType: 'UPDATE_QUICK_TAB_ACK',
     updateFn: qt => {
+      // v1.6.3.12-v13 - Log before/after state for debugging
+      const before = {
+        left: qt.left,
+        top: qt.top,
+        width: qt.width,
+        height: qt.height
+      };
       Object.assign(qt, updates);
       qt.lastUpdate = Date.now();
+      
+      console.log('[Background] UPDATE_QUICK_TAB applied:', {
+        quickTabId,
+        before,
+        after: {
+          left: qt.left,
+          top: qt.top,
+          width: qt.width,
+          height: qt.height
+        },
+        updateKeys
+      });
     }
   });
 }
