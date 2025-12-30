@@ -7113,10 +7113,13 @@ function _handleTabGroupDragStart(event, group) {
 
   // Set drag data
   event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData('text/plain', JSON.stringify({
-    type: 'tab-group',
-    originTabId
-  }));
+  event.dataTransfer.setData(
+    'text/plain',
+    JSON.stringify({
+      type: 'tab-group',
+      originTabId
+    })
+  );
 }
 
 /**
@@ -7159,12 +7162,15 @@ function _handleQuickTabDragStart(event, item) {
 
   // Set drag data
   event.dataTransfer.effectAllowed = isDuplicate ? 'copy' : 'move';
-  event.dataTransfer.setData('text/plain', JSON.stringify({
-    type: 'quick-tab',
-    quickTabId,
-    originTabId: quickTabData.originTabId,
-    isDuplicate
-  }));
+  event.dataTransfer.setData(
+    'text/plain',
+    JSON.stringify({
+      type: 'quick-tab',
+      quickTabId,
+      originTabId: quickTabData.originTabId,
+      isDuplicate
+    })
+  );
 }
 
 /**
@@ -7181,7 +7187,9 @@ function _handleDragEnd() {
   // Remove all drag classes
   document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
   document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-  document.querySelectorAll('.drag-over-bottom').forEach(el => el.classList.remove('drag-over-bottom'));
+  document
+    .querySelectorAll('.drag-over-bottom')
+    .forEach(el => el.classList.remove('drag-over-bottom'));
   document.querySelectorAll('.drag-transfer').forEach(el => el.classList.remove('drag-transfer'));
   document.querySelectorAll('.drag-duplicate').forEach(el => el.classList.remove('drag-duplicate'));
   document.querySelectorAll('.drag-invalid').forEach(el => el.classList.remove('drag-invalid'));
@@ -8198,37 +8206,66 @@ function _getActionDispatcher(action) {
 async function _dispatchGoToTab({ tabId, clickTimestamp }) {
   console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
   await goToTab(parseInt(tabId));
-  console.log('[Manager] ACTION_COMPLETE: goToTab', { tabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_COMPLETE: goToTab', {
+    tabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 async function _dispatchOpenInNewTab({ quickTabId, button, clickTimestamp }) {
-  console.log('[Manager] ACTION_DISPATCH: openInNewTab', { quickTabId, url: button.dataset.url, timestamp: Date.now() });
+  console.log('[Manager] ACTION_DISPATCH: openInNewTab', {
+    quickTabId,
+    url: button.dataset.url,
+    timestamp: Date.now()
+  });
   await _handleOpenInNewTab(button.dataset.url, quickTabId);
-  console.log('[Manager] ACTION_COMPLETE: openInNewTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_COMPLETE: openInNewTab', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 function _dispatchMinimize({ quickTabId, clickTimestamp }) {
-  console.log('[Manager] ACTION_DISPATCH: minimize via port', { quickTabId, timestamp: Date.now() });
+  console.log('[Manager] ACTION_DISPATCH: minimize via port', {
+    quickTabId,
+    timestamp: Date.now()
+  });
   minimizeQuickTabViaPort(quickTabId);
-  console.log('[Manager] ACTION_SENT: minimize', { quickTabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_SENT: minimize', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 function _dispatchRestore({ quickTabId, clickTimestamp }) {
   console.log('[Manager] ACTION_DISPATCH: restore via port', { quickTabId, timestamp: Date.now() });
   restoreQuickTabViaPort(quickTabId);
-  console.log('[Manager] ACTION_SENT: restore', { quickTabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_SENT: restore', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 function _dispatchClose({ quickTabId, clickTimestamp }) {
   console.log('[Manager] ACTION_DISPATCH: close via port', { quickTabId, timestamp: Date.now() });
   closeQuickTabViaPort(quickTabId);
-  console.log('[Manager] ACTION_SENT: close', { quickTabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_SENT: close', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }) {
-  console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', { quickTabId, targetTabId: button.dataset.targetTabId, timestamp: Date.now() });
+  console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
+    quickTabId,
+    targetTabId: button.dataset.targetTabId,
+    timestamp: Date.now()
+  });
   await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-  console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+  console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
 }
 
 /**

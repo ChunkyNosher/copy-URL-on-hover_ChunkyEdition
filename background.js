@@ -2165,7 +2165,10 @@ function _insertOrUpdateQuickTab(tabQuickTabs, quickTabData, originTabId) {
   const existingIndex = tabQuickTabs.findIndex(qt => qt.id === quickTabData.id);
   if (existingIndex >= 0) {
     tabQuickTabs[existingIndex] = quickTabData;
-    console.log('[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Updated in session state:', quickTabData.id);
+    console.log(
+      '[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Updated in session state:',
+      quickTabData.id
+    );
   } else {
     tabQuickTabs.push(quickTabData);
     console.log('[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Added to session state:', {
