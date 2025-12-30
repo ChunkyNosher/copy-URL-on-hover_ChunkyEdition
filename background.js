@@ -7242,6 +7242,17 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
  * @param {Object} quickTabData - Quick Tab data
  */
 function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
+  // v1.6.4.2 - FIX BUG #6/#7: Enhanced logging for debugging transfer issues
+  console.log('[Background] _notifyContentScriptOfTransfer: Starting', {
+    oldOriginTabId,
+    newOriginTabId,
+    quickTabId,
+    hasOldPort: !!quickTabsSessionState.contentScriptPorts[oldOriginTabId],
+    hasNewPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
+    allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+
   // Notify old tab to remove the Quick Tab
   const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
   if (oldPort) {
@@ -7256,6 +7267,8 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
     } catch (err) {
       console.warn('[Background] Failed to notify old tab:', err.message);
     }
+  } else {
+    console.warn('[Background] No port for old tab:', oldOriginTabId);
   }
 
   // Notify new tab to create the Quick Tab
@@ -7272,6 +7285,12 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
     } catch (err) {
       console.warn('[Background] Failed to notify new tab:', err.message);
     }
+  } else {
+    // v1.6.4.2 - FIX BUG #6/#7: Log when no port exists for target tab
+    console.warn('[Background] No port for new tab - Quick Tab will not appear until page refresh:', {
+      newOriginTabId,
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
   }
 }
 
@@ -7340,8 +7359,23 @@ function _addQuickTabToState(newQuickTab, newOriginTabId) {
  * @param {Object} newQuickTab - New Quick Tab data
  */
 function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
+  // v1.6.4.2 - FIX BUG #6/#8: Enhanced logging for debugging duplicate issues
+  console.log('[Background] _notifyTargetTabOfDuplicate: Starting', {
+    newOriginTabId,
+    quickTabId: newQuickTab?.id,
+    hasPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
+    allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+
   const targetPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
-  if (!targetPort) return;
+  if (!targetPort) {
+    console.warn('[Background] No port for duplicate target tab - Quick Tab will not appear until page refresh:', {
+      newOriginTabId,
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
+    return;
+  }
 
   try {
     targetPort.postMessage({
