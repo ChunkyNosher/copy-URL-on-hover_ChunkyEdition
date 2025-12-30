@@ -5850,18 +5850,6 @@ function handleUpdateQuickTabMessage(message, sender) {
  * @param {number} tabId - Tab ID to notify
  */
 function notifyContentScriptOfStateChange(tabId) {
-  const port = quickTabsSessionState.contentScriptPorts[tabId];
-  if (!port) {
-    // v1.6.3.12 - J5: Log when message dropped due to missing port
-    console.log('[Background] BROADCAST_DROPPED: No content script port for tab', {
-      tabId,
-      timestamp: Date.now(),
-      reason: 'port_not_found',
-      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
-    });
-    return;
-  }
-
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {
@@ -5872,24 +5860,62 @@ function notifyContentScriptOfStateChange(tabId) {
     correlationId // v1.6.3.12 - Gap #8: Add correlation ID
   };
 
-  try {
-    port.postMessage(message);
-    // v1.6.3.12 - J5: Log successful broadcast
-    console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script', {
+  const port = quickTabsSessionState.contentScriptPorts[tabId];
+  let portSendSucceeded = false;
+
+  // v1.6.4 - ADD fallback messaging: Try port first
+  if (port) {
+    try {
+      port.postMessage(message);
+      portSendSucceeded = true;
+      // v1.6.3.12 - J5: Log successful broadcast
+      console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script via port', {
+        tabId,
+        correlationId,
+        tabCount: quickTabs.length,
+        method: 'port'
+      });
+    } catch (err) {
+      // v1.6.3.12 - J5: Log failure and remove dead port
+      console.warn('[Background] BROADCAST_FAILED: Port error sending to content script', {
+        tabId,
+        correlationId,
+        error: err.message,
+        action: 'trying_sendMessage_fallback'
+      });
+      delete quickTabsSessionState.contentScriptPorts[tabId];
+    }
+  } else {
+    // v1.6.4 - ADD fallback messaging: Log when port not found
+    console.log('[Background] BROADCAST_NO_PORT: No content script port for tab, trying fallback', {
       tabId,
-      correlationId,
-      tabCount: quickTabs.length
+      timestamp: Date.now(),
+      reason: 'port_not_found',
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
     });
-  } catch (err) {
-    // v1.6.3.12 - J5: Log failure and remove dead port
-    console.error('[Background] BROADCAST_FAILED: Error sending to content script', {
-      tabId,
-      correlationId,
-      error: err.message,
-      action: 'removing_dead_port'
-    });
-    delete quickTabsSessionState.contentScriptPorts[tabId];
   }
+
+  // v1.6.4 - ADD fallback messaging: Always try browser.tabs.sendMessage as fallback/backup
+  browser.tabs.sendMessage(tabId, {
+    ...message,
+    source: portSendSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
+  }).then(() => {
+    console.log('[Background] BROADCAST_FALLBACK_SUCCESS: QUICK_TABS_UPDATED sent via sendMessage', {
+      tabId,
+      correlationId,
+      method: portSendSucceeded ? 'backup' : 'fallback'
+    });
+  }).catch(err => {
+    // Only log as error if port also failed
+    const logFn = portSendSucceeded ? console.log : console.warn;
+    logFn('[Background] BROADCAST_FALLBACK_RESULT: sendMessage', {
+      tabId,
+      correlationId,
+      portSendSucceeded,
+      sendMessageError: err.message,
+      outcome: portSendSucceeded ? 'port_succeeded' : 'both_failed'
+    });
+  });
 }
 
 /**
@@ -5936,13 +5962,30 @@ function handleCreateQuickTab(tabId, quickTab, port) {
   }
   globalQuickTabState.lastUpdate = Date.now();
 
-  // Send ACK to content script
-  port.postMessage({
+  // v1.6.4 - ADD fallback messaging: Send ACK to content script with fallback
+  const ackMessage = {
     type: 'CREATE_QUICK_TAB_ACK',
     success: true,
     quickTabId: quickTab.id,
     timestamp: Date.now()
-  });
+  };
+
+  try {
+    port.postMessage(ackMessage);
+    console.log('[Background] CREATE_QUICK_TAB_ACK sent via port:', { quickTabId: quickTab.id, tabId });
+  } catch (err) {
+    console.warn('[Background] CREATE_QUICK_TAB_ACK port failed, trying fallback:', err.message);
+    // v1.6.4 - ADD fallback messaging: Use browser.tabs.sendMessage as fallback
+    browser.tabs.sendMessage(tabId, { ...ackMessage, source: 'sendMessage_fallback' })
+      .catch(sendErr => {
+        console.error('[Background] CREATE_QUICK_TAB_ACK both methods failed:', {
+          tabId,
+          quickTabId: quickTab.id,
+          portError: err.message,
+          sendMessageError: sendErr.message
+        });
+      });
+  }
 
   // Notify sidebar
   notifySidebarOfStateChange();
@@ -6074,6 +6117,7 @@ function _updateQuickTabProperty(tabId, quickTabId, updater) {
 /**
  * Send acknowledgment response via port
  * v1.6.3.12-v2 - FIX Code Health: Unified ACK sender
+ * v1.6.4 - ADD fallback messaging: Try port first, then fallback to runtime messaging
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} ackType - Type of acknowledgment (e.g., 'MINIMIZE_QUICK_TAB_ACK')
@@ -6081,12 +6125,26 @@ function _updateQuickTabProperty(tabId, quickTabId, updater) {
  * @param {string} quickTabId - Quick Tab ID
  */
 function _sendQuickTabAck(port, ackType, success, quickTabId) {
-  port.postMessage({
+  const ackMessage = {
     type: ackType,
     success,
     quickTabId,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
+  try {
+    port.postMessage(ackMessage);
+    console.log(`[Background] ${ackType} sent via port:`, { quickTabId, success });
+  } catch (err) {
+    console.warn(`[Background] ${ackType} port failed:`, {
+      quickTabId,
+      error: err.message,
+      note: 'ACK may be lost if sidebar disconnected'
+    });
+    // Note: Cannot fallback to browser.tabs.sendMessage here since this is for sidebar port
+    // The sidebar would need to request state refresh if ACK is lost
+  }
 }
 
 /**
@@ -6321,6 +6379,7 @@ function handleUpdateQuickTab(tabId, msg, port) {
 /**
  * Send Quick Tabs list response via port
  * v1.6.3.12-v2 - FIX Code Health: Shared response builder
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} responseType - Type of response message
@@ -6340,7 +6399,21 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
     response.sessionStartTime = quickTabsSessionState.sessionStartTime;
   }
 
-  port.postMessage(response);
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    port.postMessage(response);
+    console.log(`[Background] ${responseType} sent via port:`, {
+      tabCount: quickTabs.length,
+      includeSessionInfo
+    });
+  } catch (err) {
+    console.warn(`[Background] ${responseType} port failed:`, {
+      error: err.message,
+      tabCount: quickTabs.length,
+      note: 'Sidebar may need to reconnect'
+    });
+    // Note: Cannot fallback for sidebar port - sidebar handles reconnection
+  }
 }
 
 /**
@@ -6435,15 +6508,29 @@ const _sidebarMessageHandlers = {
 /**
  * Send error response for unknown message type
  * v1.6.3.12-v2 - FIX Code Health: Extracted helper
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
  * @private
  */
 function _sendUnknownMessageError(port, source, msgType) {
   console.warn(`[Background] Unknown message type from ${source}:`, msgType);
-  port.postMessage({
+
+  const errorMessage = {
     type: 'ERROR',
     error: `Unknown message type: ${msgType}`,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    port.postMessage(errorMessage);
+  } catch (err) {
+    console.warn('[Background] Error response port failed:', {
+      source,
+      msgType,
+      error: err.message
+    });
+    // Cannot fallback - port is disconnected, error response is lost
+  }
 }
 
 /**
@@ -6996,15 +7083,26 @@ function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   quickTabHostTabs.clear();
 
   // Send ACK to sidebar
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
   if (sidebarPort) {
-    sidebarPort.postMessage({
+    const ackMessage = {
       type: 'CLOSE_ALL_QUICK_TABS_ACK',
       success: true,
       closedCount,
       quickTabIds,
       correlationId,
       timestamp: Date.now()
-    });
+    };
+    try {
+      sidebarPort.postMessage(ackMessage);
+      console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', { correlationId, closedCount });
+    } catch (err) {
+      console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
+        error: err.message,
+        correlationId,
+        closedCount
+      });
+    }
   }
 
   // Notify sidebar of state change (empty state)
@@ -7069,6 +7167,7 @@ function _updateGlobalStateAfterClose(idSet) {
 /**
  * Send ACK for close minimized operation
  * v1.6.3.12-v8 - FIX Code Health: Extracted from handleSidebarCloseMinimizedQuickTabs
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch
  * @private
  * @param {browser.runtime.Port} sidebarPort - Sidebar port
  * @param {number} closedCount - Number of Quick Tabs closed
@@ -7078,14 +7177,26 @@ function _updateGlobalStateAfterClose(idSet) {
 function _sendCloseMinimizedAck(sidebarPort, closedCount, quickTabIds, correlationId) {
   if (!sidebarPort) return;
 
-  sidebarPort.postMessage({
+  const ackMessage = {
     type: 'CLOSE_MINIMIZED_QUICK_TABS_ACK',
     success: true,
     closedCount,
     quickTabIds,
     correlationId,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] CLOSE_MINIMIZED_QUICK_TABS_ACK sent via port:', { correlationId, closedCount });
+  } catch (err) {
+    console.warn('[Background] CLOSE_MINIMIZED_QUICK_TABS_ACK port failed:', {
+      error: err.message,
+      correlationId,
+      closedCount
+    });
+  }
 }
 
 function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
@@ -7173,13 +7284,19 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
 
   if (!quickTabData) {
     console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
-    sidebarPort.postMessage({
+    // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+    const errorAck = {
       type: 'TRANSFER_QUICK_TAB_ACK',
       success: false,
       error: 'Quick Tab not found',
       quickTabId,
       correlationId
-    });
+    };
+    try {
+      sidebarPort.postMessage(errorAck);
+    } catch (err) {
+      console.warn('[Background] TRANSFER_QUICK_TAB_ACK (error) port failed:', err.message);
+    }
     return;
   }
 
@@ -7206,14 +7323,25 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
   quickTabHostTabs.set(quickTabId, newOriginTabId);
 
   // Send ACK to sidebar
-  sidebarPort.postMessage({
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+  const successAck = {
     type: 'TRANSFER_QUICK_TAB_ACK',
     success: true,
     quickTabId,
     oldOriginTabId,
     newOriginTabId,
     correlationId
-  });
+  };
+  try {
+    sidebarPort.postMessage(successAck);
+    console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', { quickTabId, correlationId });
+  } catch (err) {
+    console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', {
+      error: err.message,
+      quickTabId,
+      correlationId
+    });
+  }
 
   // Notify sidebar of state change
   notifySidebarOfStateChange();
@@ -7253,23 +7381,47 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
     timestamp: Date.now()
   });
 
-  // Notify old tab to remove the Quick Tab
+  // v1.6.4 - ADD fallback messaging: Notify old tab to remove the Quick Tab with fallback
   const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
+  const oldTabMessage = {
+    type: 'QUICK_TAB_TRANSFERRED_OUT',
+    quickTabId,
+    newOriginTabId,
+    timestamp: Date.now()
+  };
+  let oldPortSucceeded = false;
+
   if (oldPort) {
     try {
-      oldPort.postMessage({
-        type: 'QUICK_TAB_TRANSFERRED_OUT',
-        quickTabId,
-        newOriginTabId,
-        timestamp: Date.now()
-      });
-      console.log('[Background] Notified old tab of transfer out:', oldOriginTabId);
+      oldPort.postMessage(oldTabMessage);
+      oldPortSucceeded = true;
+      console.log('[Background] Notified old tab of transfer out via port:', oldOriginTabId);
     } catch (err) {
-      console.warn('[Background] Failed to notify old tab:', err.message);
+      console.warn('[Background] Failed to notify old tab via port:', err.message);
     }
   } else {
     console.warn('[Background] No port for old tab:', oldOriginTabId);
   }
+
+  // v1.6.4 - ADD fallback messaging: Always try browser.tabs.sendMessage as fallback/backup for old tab
+  browser.tabs.sendMessage(oldOriginTabId, {
+    ...oldTabMessage,
+    source: oldPortSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
+  }).then(() => {
+    console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', {
+      oldOriginTabId,
+      quickTabId,
+      method: oldPortSucceeded ? 'backup' : 'fallback'
+    });
+  }).catch(err => {
+    const logFn = oldPortSucceeded ? console.log : console.warn;
+    logFn('[Background] TRANSFER_OUT_FALLBACK_RESULT:', {
+      oldOriginTabId,
+      quickTabId,
+      portSucceeded: oldPortSucceeded,
+      sendMessageError: err.message
+    });
+  });
 
   // Notify new tab to create the Quick Tab
   const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
@@ -7487,13 +7639,24 @@ function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   _addQuickTabToState(newQuickTab, newOriginTabId);
 
   // Send ACK to sidebar
-  sidebarPort.postMessage({
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+  const ackMessage = {
     type: 'DUPLICATE_QUICK_TAB_ACK',
     success: true,
     newQuickTabId,
     newOriginTabId,
     correlationId
-  });
+  };
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] DUPLICATE_QUICK_TAB_ACK sent via port:', { newQuickTabId, correlationId });
+  } catch (err) {
+    console.warn('[Background] DUPLICATE_QUICK_TAB_ACK port failed:', {
+      error: err.message,
+      newQuickTabId,
+      correlationId
+    });
+  }
 
   // Notify sidebar and target tab
   notifySidebarOfStateChange();

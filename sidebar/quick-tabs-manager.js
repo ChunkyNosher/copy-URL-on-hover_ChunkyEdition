@@ -509,11 +509,28 @@ function initializeQuickTabsPort() {
     });
 
     // Send SIDEBAR_READY to get initial state
-    quickTabsPort.postMessage({
+    // v1.6.4 - ADD fallback messaging: Wrap in try-catch with runtime.sendMessage fallback
+    const sidebarReadyMessage = {
       type: 'SIDEBAR_READY',
       timestamp: Date.now()
-    });
-    console.log('[Sidebar] SIDEBAR_READY sent to background');
+    };
+    try {
+      quickTabsPort.postMessage(sidebarReadyMessage);
+      console.log('[Sidebar] SIDEBAR_READY sent to background via port');
+    } catch (err) {
+      console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
+      // v1.6.4 - ADD fallback messaging: Use browser.runtime.sendMessage as fallback
+      browser.runtime.sendMessage({ ...sidebarReadyMessage, source: 'sendMessage_fallback' })
+        .then(() => {
+          console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback');
+        })
+        .catch(sendErr => {
+          console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
+            portError: err.message,
+            sendMessageError: sendErr.message
+          });
+        });
+    }
 
     // v1.6.3.12-v7 - FIX Issue #10: Explicitly request initial state after port connection
     // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
@@ -1640,51 +1657,74 @@ function _generatePortCorrelationId() {
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
  * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
  * v1.6.3.12 - Gap #8: Add correlation IDs to port messages
+ * v1.6.4 - ADD fallback messaging: Add browser.runtime.sendMessage fallback
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
- * @returns {boolean} Success status
+ * @returns {boolean} Success status (true if port send succeeded, fallback is fire-and-forget)
  */
 function _executeSidebarPortOperation(messageType, payload = {}) {
-  if (!quickTabsPort) {
-    console.warn(`[Sidebar] Cannot ${messageType} - port not connected`);
-    return false;
-  }
-
   const sentAt = Date.now();
   // v1.6.3.12 - Gap #8: Generate correlation ID for tracking
   const correlationId = _generatePortCorrelationId();
 
-  try {
-    // v1.6.3.12 - Gap #8: Include correlationId in message
-    quickTabsPort.postMessage({
-      type: messageType,
-      ...payload,
-      timestamp: sentAt,
-      correlationId
-    });
+  const message = {
+    type: messageType,
+    ...payload,
+    timestamp: sentAt,
+    correlationId
+  };
 
-    // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
-    // Only track operations that have a quickTabId (for ACK correlation)
-    const quickTabId = payload.quickTabId || null;
-    if (quickTabId) {
-      _quickTabPortOperationTimestamps.set(quickTabId, {
-        sentAt,
-        messageType,
-        correlationId // v1.6.3.12 - Gap #8: Store correlationId for matching
-      });
-    }
-
-    console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
-      quickTabId,
-      timestamp: sentAt,
-      hasRoundtripTracking: !!quickTabId // v1.6.3.12-v2 - Indicate if ACK will be tracked
+  // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
+  const quickTabId = payload.quickTabId || null;
+  if (quickTabId) {
+    _quickTabPortOperationTimestamps.set(quickTabId, {
+      sentAt,
+      messageType,
+      correlationId // v1.6.3.12 - Gap #8: Store correlationId for matching
     });
-    return true;
-  } catch (err) {
-    console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
-    return false;
   }
+
+  let portSucceeded = false;
+
+  // v1.6.4 - ADD fallback messaging: Try port first if available
+  if (quickTabsPort) {
+    try {
+      quickTabsPort.postMessage(message);
+      portSucceeded = true;
+      console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
+        quickTabId,
+        timestamp: sentAt,
+        method: 'port',
+        hasRoundtripTracking: !!quickTabId
+      });
+    } catch (err) {
+      console.warn(`[Sidebar] Port send failed for ${messageType}, trying fallback:`, err.message);
+    }
+  } else {
+    console.warn(`[Sidebar] Cannot ${messageType} via port - not connected, trying fallback`);
+  }
+
+  // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
+  browser.runtime.sendMessage({
+    ...message,
+    source: portSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
+  }).then(() => {
+    console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage`, {
+      quickTabId,
+      method: portSucceeded ? 'backup' : 'fallback'
+    });
+  }).catch(sendErr => {
+    const logFn = portSucceeded ? console.log : console.error;
+    logFn(`[Sidebar] ${messageType} runtime.sendMessage result:`, {
+      quickTabId,
+      portSucceeded,
+      error: sendErr.message,
+      outcome: portSucceeded ? 'port_succeeded' : 'both_failed'
+    });
+  });
+
+  return portSucceeded;
 }
 
 /**
@@ -2657,21 +2697,42 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     });
 
     // Send message
+    // v1.6.4 - ADD fallback messaging: Wrap port.postMessage and try runtime.sendMessage on failure
     try {
       backgroundPort.postMessage(messageWithCorrelation);
     } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-
       // v1.6.3.10-v1 - FIX Issue #6: Log send failure
       logPortLifecycle('MESSAGE_SEND_FAILED', {
         messageType: message.type,
         correlationId,
         error: err.message,
-        recoveryAction: 'treating as zombie port'
+        recoveryAction: 'trying runtime.sendMessage fallback'
       });
 
-      reject(err);
+      // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
+      browser.runtime.sendMessage({
+        ...messageWithCorrelation,
+        source: 'sendMessage_fallback'
+      }).then(response => {
+        clearTimeout(timeout);
+        pendingAcks.delete(correlationId);
+        logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', {
+          messageType: message.type,
+          correlationId
+        });
+        resolve(response);
+      }).catch(sendErr => {
+        clearTimeout(timeout);
+        pendingAcks.delete(correlationId);
+        logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
+          messageType: message.type,
+          correlationId,
+          portError: err.message,
+          sendMessageError: sendErr.message
+        });
+        reject(err); // Reject with original port error
+      });
+      return; // Don't reject here - let the fallback handle it
     }
   });
 }
@@ -4046,17 +4107,40 @@ function sendWithAck(message) {
     });
 
     // Send message
+    // v1.6.4 - ADD fallback messaging: Wrap port.postMessage and try runtime.sendMessage on failure
     try {
       backgroundPort.postMessage(messageWithCorrelation);
-      console.log('[Manager] Sent message with ack request:', {
+      console.log('[Manager] Sent message with ack request via port:', {
         type: message.type,
         action: message.action,
         correlationId
       });
     } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-      reject(err);
+      console.warn('[Manager] Port send failed, trying runtime.sendMessage fallback:', err.message);
+
+      // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
+      browser.runtime.sendMessage({
+        ...messageWithCorrelation,
+        source: 'sendMessage_fallback'
+      }).then(response => {
+        clearTimeout(timeout);
+        pendingAcks.delete(correlationId);
+        console.log('[Manager] Fallback sendMessage succeeded:', {
+          type: message.type,
+          correlationId
+        });
+        resolve(response || { success: true, method: 'sendMessage_fallback', correlationId });
+      }).catch(sendErr => {
+        clearTimeout(timeout);
+        pendingAcks.delete(correlationId);
+        console.error('[Manager] Both port and sendMessage failed:', {
+          type: message.type,
+          portError: err.message,
+          sendMessageError: sendErr.message
+        });
+        reject(err); // Reject with original port error
+      });
+      return; // Don't reject here - let the fallback handle it
     }
   });
 }
@@ -5382,6 +5466,43 @@ function _checkStaleness() {
 }
 
 /**
+ * Request cache sync with port fallback to runtime.sendMessage
+ * v1.6.4 - ADD fallback messaging: Extracted from _checkCacheStaleness to reduce nesting
+ * @private
+ * @param {number} timestamp - Current timestamp
+ */
+function _requestCacheSyncWithFallback(timestamp) {
+  const syncMessage = {
+    type: 'GET_ALL_QUICK_TABS',
+    reason: 'cache-staleness-auto-sync',
+    timestamp,
+    correlationId: _generatePortCorrelationId()
+  };
+
+  let portSucceeded = false;
+  if (quickTabsPort) {
+    try {
+      quickTabsPort.postMessage(syncMessage);
+      portSucceeded = true;
+      console.log('[Manager] Cache sync request sent via port');
+    } catch (err) {
+      console.warn('[Manager] Cache sync port failed, trying fallback:', err.message);
+    }
+  }
+
+  // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
+  if (!portSucceeded) {
+    browser.runtime.sendMessage({ ...syncMessage, source: 'sendMessage_fallback' })
+      .then(() => {
+        console.log('[Manager] Cache sync request sent via runtime.sendMessage fallback');
+      })
+      .catch(sendErr => {
+        console.error('[Manager] Cache sync request both methods failed:', sendErr.message);
+      });
+  }
+}
+
+/**
  * Check cache staleness and request sync if needed
  * v1.6.3.12-v4 - Gap #7: Dedicated cache staleness monitor
  *   - Warns if cache stale for >30 seconds (CACHE_STALENESS_ALERT_MS)
@@ -5419,15 +5540,8 @@ function _checkCacheStaleness() {
       recoveryAction: 'requesting full state sync from background'
     });
 
-    // Request state sync via Quick Tabs port
-    if (quickTabsPort) {
-      quickTabsPort.postMessage({
-        type: 'GET_ALL_QUICK_TABS',
-        reason: 'cache-staleness-auto-sync',
-        timestamp: now,
-        correlationId: _generatePortCorrelationId()
-      });
-    }
+    // v1.6.4 - ADD fallback messaging: Extracted to helper to reduce nesting
+    _requestCacheSyncWithFallback(now);
     return;
   }
 
