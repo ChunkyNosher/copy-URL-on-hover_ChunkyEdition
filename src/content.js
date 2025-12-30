@@ -1820,7 +1820,11 @@ function _isStateUpdateMessage(type) {
  * @returns {boolean}
  */
 function _isTransferMessage(type) {
-  return type === 'QUICK_TAB_TRANSFERRED_IN' || type === 'QUICK_TAB_TRANSFERRED_OUT';
+  return (
+    type === 'QUICK_TAB_TRANSFERRED_IN' ||
+    type === 'QUICK_TAB_TRANSFERRED_OUT' ||
+    type === 'CREATE_QUICK_TAB_FROM_DUPLICATE'
+  );
 }
 
 /**
@@ -1995,6 +1999,12 @@ function _handleTransferMessage(message) {
   }
 
   if (type === 'QUICK_TAB_TRANSFERRED_IN') {
+    _handleQuickTabTransferredIn(message);
+    return true;
+  }
+
+  // v1.6.4.2 - FIX BUG #6/#8: Handle duplicate creation from Manager
+  if (type === 'CREATE_QUICK_TAB_FROM_DUPLICATE') {
     _handleQuickTabTransferredIn(message);
     return true;
   }

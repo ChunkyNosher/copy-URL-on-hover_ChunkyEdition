@@ -618,7 +618,7 @@ export class QuickTabWindow {
 
     // Also handle pointerdown for touch devices
     this.clickOverlay.addEventListener('pointerdown', _e => {
-      if (e.pointerType === 'touch') {
+      if (_e.pointerType === 'touch') {
         this.onFocus(this.id);
         this.clickOverlay.style.pointerEvents = 'none';
         setTimeout(() => {
