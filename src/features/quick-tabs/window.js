@@ -42,6 +42,10 @@ const DEFAULT_HEIGHT = 300;
 const DEFAULT_LEFT = 100;
 const DEFAULT_TOP = 100;
 
+// v1.6.4.1 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
+// This avoids polluting the DOM API by not adding properties to document objects
+const _iframeDocsWithFocusListeners = new WeakSet();
+
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
  */
@@ -749,10 +753,10 @@ export class QuickTabWindow {
 
   /**
    * Setup focus handlers
-   * v1.6.4.1 - FIX BUG #1: Use capture phase to bring Quick Tab to front on click
-   * The mousedown event on container is intercepted by iframe content.
-   * Using capture: true ensures the container receives the event first.
-   * Also handle click on titlebar and resize handles for comprehensive coverage.
+   * v1.6.4.1 - FIX BUG #2: Use capture phase AND transparent overlay for iframe clicks
+   * The mousedown event on container can be intercepted by iframe content in cross-origin scenarios.
+   * Using capture: true helps, but for cross-origin iframes we need an additional overlay approach.
+   * The overlay captures the first click to bring the window to front, then allows interaction.
    */
   setupFocusHandlers() {
     // Use capture phase to intercept before iframe steals the event
@@ -772,6 +776,42 @@ export class QuickTabWindow {
       },
       { capture: true }
     );
+
+    // v1.6.4.1 - FIX BUG #2: Add focus event on iframe to detect when user clicks inside
+    // When iframe gets focus, it means user clicked inside it - bring window to front
+    if (this.iframe) {
+      this.iframe.addEventListener('focus', () => {
+        console.log('[QuickTabWindow] Iframe focused - bringing to front:', this.id);
+        this.onFocus(this.id);
+      });
+
+      // v1.6.4.1 - FIX Code Review: Use flag to prevent duplicate load listeners
+      // This ensures the load event handler only adds mousedown listener once
+      if (!this._iframeLoadListenerAdded) {
+        this._iframeLoadListenerAdded = true;
+        this.iframe.addEventListener('load', () => {
+          // After iframe loads, add a listener for when it becomes active
+          try {
+            // Try to detect focus inside iframe for same-origin content
+            const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+            // v1.6.4.1 - FIX Code Review: Use WeakSet instead of polluting DOM
+            if (iframeDoc && !_iframeDocsWithFocusListeners.has(iframeDoc)) {
+              _iframeDocsWithFocusListeners.add(iframeDoc);
+              iframeDoc.addEventListener(
+                'mousedown',
+                () => {
+                  this.onFocus(this.id);
+                },
+                { capture: true }
+              );
+            }
+          } catch (_e) {
+            // Cross-origin - cannot access iframe content, which is expected
+            // The focus event handler above will still work for cross-origin
+          }
+        });
+      }
+    }
   }
 
   /**

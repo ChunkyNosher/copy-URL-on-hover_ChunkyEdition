@@ -1813,6 +1813,196 @@ function _isStateUpdateMessage(type) {
 }
 
 /**
+ * Check if message is a cross-tab transfer message
+ * v1.6.4.1 - FIX BUG #1: Add handler for cross-tab transfer messages
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean}
+ */
+function _isTransferMessage(type) {
+  return type === 'QUICK_TAB_TRANSFERRED_IN' || type === 'QUICK_TAB_TRANSFERRED_OUT';
+}
+
+/**
+ * Handle QUICK_TAB_TRANSFERRED_OUT message - remove Quick Tab from this tab
+ * v1.6.4.1 - FIX BUG #1: Cross-tab transfer not working
+ * When a Quick Tab is transferred to another tab, the source tab receives this message
+ * and should remove/minimize the Quick Tab from its display.
+ * @private
+ * @param {Object} message - Transfer out message
+ * @param {string} message.quickTabId - ID of Quick Tab to remove
+ * @param {number} message.newOriginTabId - The new tab where Quick Tab is going (logged for debugging)
+ */
+function _handleQuickTabTransferredOut(message) {
+  // v1.6.4.1 - Validate message is an object with required properties
+  if (!message || typeof message !== 'object') {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_OUT: Invalid message (not an object):', message);
+    return;
+  }
+
+  const { quickTabId, newOriginTabId } = message;
+
+  // v1.6.4.1 - Validate quickTabId is present
+  if (!quickTabId) {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_OUT: Missing quickTabId in message');
+    return;
+  }
+
+  // Log includes newOriginTabId for debugging cross-tab transfer flow
+  console.log('[Content] QUICK_TAB_TRANSFERRED_OUT: Removing Quick Tab from this tab:', {
+    quickTabId,
+    newOriginTabId, // Logged for transfer tracing, not used in removal logic
+    currentTabId: quickTabsManager?.currentTabId,
+    hasManager: !!quickTabsManager,
+    timestamp: Date.now()
+  });
+
+  // Remove from local session cache FIRST to keep state consistent
+  // regardless of whether closeById() succeeds
+  sessionQuickTabs.delete(quickTabId);
+
+  if (!quickTabsManager) {
+    console.warn('[Content] QUICK_TAB_TRANSFERRED_OUT: QuickTabsManager not available');
+    return;
+  }
+
+  // Close the Quick Tab on this tab (it's being moved to another tab)
+  try {
+    // v1.6.4.1 - Type-safe check for closeById method
+    if (typeof quickTabsManager.closeById === 'function') {
+      quickTabsManager.closeById(quickTabId);
+      console.log('[Content] QUICK_TAB_TRANSFERRED_OUT: Quick Tab removed:', quickTabId);
+    } else {
+      console.warn('[Content] QUICK_TAB_TRANSFERRED_OUT: closeById not available');
+    }
+  } catch (err) {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_OUT: Failed to close Quick Tab:', {
+      quickTabId,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Validate QUICK_TAB_TRANSFERRED_IN message has required properties
+ * v1.6.4.1 - FIX Code Health: Extract validation to reduce complexity
+ * @private
+ * @param {Object} message - Message to validate
+ * @returns {{ valid: boolean, quickTab?: Object, oldOriginTabId?: number }}
+ */
+function _validateTransferredInMessage(message) {
+  if (!message || typeof message !== 'object') {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Invalid message (not an object):', message);
+    return { valid: false };
+  }
+
+  const { quickTab, oldOriginTabId } = message;
+
+  // Log includes oldOriginTabId for debugging cross-tab transfer flow
+  console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating Quick Tab on this tab:', {
+    quickTabId: quickTab?.id,
+    url: quickTab?.url,
+    oldOriginTabId, // Logged for transfer tracing, not used in creation logic
+    currentTabId: quickTabsManager?.currentTabId,
+    hasManager: !!quickTabsManager,
+    timestamp: Date.now()
+  });
+
+  if (!quickTabsManager) {
+    console.warn('[Content] QUICK_TAB_TRANSFERRED_IN: QuickTabsManager not available');
+    return { valid: false };
+  }
+
+  if (!quickTab || typeof quickTab !== 'object' || !quickTab.id) {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Invalid Quick Tab data:', quickTab);
+    return { valid: false };
+  }
+
+  return { valid: true, quickTab, oldOriginTabId };
+}
+
+/**
+ * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
+ * v1.6.4.1 - FIX BUG #1: Cross-tab transfer not working
+ * When a Quick Tab is transferred to this tab, create it with the received properties.
+ * @private
+ * @param {Object} message - Transfer in message
+ * @param {Object} message.quickTab - Full Quick Tab data to create
+ * @param {number} message.oldOriginTabId - The previous tab where Quick Tab came from (logged for debugging)
+ */
+function _handleQuickTabTransferredIn(message) {
+  const validation = _validateTransferredInMessage(message);
+  if (!validation.valid) return;
+
+  const { quickTab } = validation;
+
+  // Create the Quick Tab with received properties, updating originTabId to this tab
+  const createOptions = {
+    id: quickTab.id,
+    url: quickTab.url,
+    title: quickTab.title || 'Quick Tab',
+    left: quickTab.left,
+    top: quickTab.top,
+    width: quickTab.width,
+    height: quickTab.height,
+    minimized: quickTab.minimized || false,
+    zIndex: quickTab.zIndex,
+    originTabId: quickTabsManager.currentTabId // Set to this tab
+  };
+
+  console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
+
+  try {
+    quickTabsManager.createQuickTab(createOptions);
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
+
+    // Add to local session cache with updated originTabId
+    // Note: We intentionally overwrite originTabId because the Quick Tab now belongs to this tab
+    const cachedQuickTab = {
+      id: quickTab.id,
+      url: quickTab.url,
+      title: quickTab.title,
+      left: quickTab.left,
+      top: quickTab.top,
+      width: quickTab.width,
+      height: quickTab.height,
+      minimized: quickTab.minimized,
+      zIndex: quickTab.zIndex,
+      originTabId: quickTabsManager.currentTabId // New owner tab
+    };
+    sessionQuickTabs.set(quickTab.id, cachedQuickTab);
+  } catch (err) {
+    console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Failed to create Quick Tab:', {
+      quickTabId: quickTab.id,
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Handle cross-tab transfer messages
+ * v1.6.4.1 - FIX BUG #1: Route transfer messages to appropriate handlers
+ * @private
+ * @param {Object} message - Transfer message
+ * @returns {boolean} True if message was handled
+ */
+function _handleTransferMessage(message) {
+  const { type } = message;
+
+  if (type === 'QUICK_TAB_TRANSFERRED_OUT') {
+    _handleQuickTabTransferredOut(message);
+    return true;
+  }
+
+  if (type === 'QUICK_TAB_TRANSFERRED_IN') {
+    _handleQuickTabTransferredIn(message);
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handle pending request response
  * v1.6.3.12-v2 - FIX Code Health: Extract handler
  * @private
@@ -1833,6 +2023,7 @@ function _handlePendingRequest(requestId, message) {
 /**
  * Handle response from background for pending requests
  * v1.6.3.12-v2 - FIX Code Health: Reduced complexity using helpers
+ * v1.6.4.1 - FIX BUG #1: Add handler for cross-tab transfer messages
  * @param {Object} message - Response message from background
  */
 function handleQuickTabsPortResponse(message) {
@@ -1846,6 +2037,7 @@ function handleQuickTabsPortResponse(message) {
     quickTabId: message.quickTabId || 'none',
     isCommand: _isCommandMessage(type),
     isStateUpdate: _isStateUpdateMessage(type),
+    isTransfer: _isTransferMessage(type),
     timestamp: Date.now()
   });
 
@@ -1856,6 +2048,12 @@ function handleQuickTabsPortResponse(message) {
 
   if (_isStateUpdateMessage(type)) {
     handleQuickTabsStateUpdate(message);
+    return;
+  }
+
+  // v1.6.4.1 - FIX BUG #1: Handle cross-tab transfer messages
+  if (_isTransferMessage(type)) {
+    _handleTransferMessage(message);
     return;
   }
 
