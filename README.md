@@ -26,7 +26,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
   instead of move
 - ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items
-- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" buttons per group
+- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" buttons per
+  group
 - ✅ **Open in New Tab Button** - Per Quick Tab (↗️) in Manager
 - ✅ **Click-to-Front** - Quick Tabs come to front on click (not just drag)
 - ✅ **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist

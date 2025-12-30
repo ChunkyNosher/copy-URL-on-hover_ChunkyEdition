@@ -7437,11 +7437,13 @@ function _applyUserGroupOrder(groups) {
   console.log('[Manager] GROUP_ORDER_APPLIED:', {
     userOrder: _userGroupOrder,
     resultOrder: Array.from(orderedGroups.keys()),
-    newGroupsAppended: orderedGroups.size - _userGroupOrder.filter(id => {
-      const strId = String(id);
-      const numId = parseInt(id, 10);
-      return groups.has(strId) || groups.has(numId) || groups.has(id);
-    }).length,
+    newGroupsAppended:
+      orderedGroups.size -
+      _userGroupOrder.filter(id => {
+        const strId = String(id);
+        const numId = parseInt(id, 10);
+        return groups.has(strId) || groups.has(numId) || groups.has(id);
+      }).length,
     timestamp: Date.now()
   });
 
