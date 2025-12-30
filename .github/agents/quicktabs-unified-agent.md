@@ -3,9 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v11), memory-based state (`quickTabsSessionState`),
+  sync with Single Writer Authority (v1.6.3.12-v12), memory-based state (`quickTabsSessionState`),
   circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock,
-  cross-tab display fix, tab cache invalidation
+  button operation fix, state version tracking
 tools: ['*']
 ---
 
@@ -37,7 +37,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v11 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
+State)
 
 **Complete Quick Tab System:**
 
@@ -48,7 +49,25 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v11 Features (NEW):**
+**v1.6.3.12-v12 Features (NEW):**
+
+- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
+  Restore, Close All, Close Minimized)
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
+    trigger re-render
+  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
+  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
+  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
+- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
+  state version before skipping render (port data update detection)
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
+  `browser.tabs.sendMessage` if port unavailable
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+  - Options object pattern (5 args → 1)
+  - Lookup table refactoring (72 LoC → 42 LoC)
+  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
+
+**v1.6.3.12-v11 Features:**
 
 - **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` helper prioritizes
   port data for all-tabs visibility (Issue #1 fix)
@@ -69,18 +88,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
 - **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
-- **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
-- **Cross-Tab Aggregation** - `_computeOriginTabStats()` logging
 - **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
 - **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
-- **Code Health** - quick-tabs-manager.js: 7.87 → 8.54
-
-**v1.6.3.12-v8 Features:**
-
-- **Bulk Close Operations** - `closeAllQuickTabsViaPort()`,
-  `closeMinimizedQuickTabsViaPort()`
-- **Circuit Breaker Auto-Reset** - 60-second timer
 
 **Key Timing Constants:**
 
@@ -126,6 +135,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Testing Requirements
 
+- [ ] Button operation fix works (buttons re-enable after timeout)
+- [ ] State version tracking prevents stale renders
+- [ ] Cross-tab render fix works (hash AND version check)
+- [ ] Fallback messaging works (port → sendMessage)
 - [ ] Cross-tab display works (Quick Tabs from all tabs shown)
 - [ ] Tab cache invalidation on navigation
 - [ ] Heartbeat restart logging visible
@@ -144,5 +157,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v11 cross-tab display,
-tab cache invalidation, optimistic UI, render lock, and comprehensive validation.**
+**Your strength: Complete Quick Tab system with v1.6.3.12-v12 button operation
+fix, cross-tab render fix, fallback messaging, state version tracking,
+optimistic UI timeout, render lock, and comprehensive validation.**

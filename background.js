@@ -2116,12 +2116,77 @@ messageRouter.register('EXPORT_LOGS', (msg, sender) => logHandler.handleExportLo
 messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
   quickTabHandler.handleBatchUpdate(msg, sender)
 );
+
+/**
+ * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
+ * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
+ * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {Object} sender - Message sender info
+ */
+function _addQuickTabToSessionState(msg, sender) {
+  const originTabId = msg.originTabId ?? sender?.tab?.id;
+  if (!originTabId) {
+    console.warn(
+      '[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
+      {
+        quickTabId: msg.id,
+        senderTabId: sender?.tab?.id
+      }
+    );
+    return;
+  }
+
+  // Initialize tab's Quick Tab array if needed
+  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
+    quickTabsSessionState.quickTabsByTab[originTabId] = [];
+  }
+
+  // Build Quick Tab data (matching format from handleCreateQuickTab)
+  // v1.6.3.12-v12 - FIX Bug #2: Include title field for Manager display
+  const quickTabData = {
+    id: msg.id,
+    url: msg.url,
+    title: msg.title,
+    originTabId,
+    originContainerId: msg.cookieStoreId || 'firefox-default',
+    left: msg.left,
+    top: msg.top,
+    width: msg.width,
+    height: msg.height,
+    minimized: msg.minimized || false,
+    timestamp: msg.timestamp || Date.now()
+  };
+
+  // Check for duplicate and add/update
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
+  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === msg.id);
+  if (existingIndex >= 0) {
+    tabQuickTabs[existingIndex] = quickTabData;
+    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Updated in session state:', msg.id);
+  } else {
+    tabQuickTabs.push(quickTabData);
+    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Added to session state:', {
+      quickTabId: msg.id,
+      originTabId,
+      sessionStateTabCount: tabQuickTabs.length
+    });
+  }
+}
+
 // v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
 // The handleCreate returns a result, and we notify the sidebar if creation was successful
+// v1.6.3.12-v13 - FIX Issue #47: Also add to quickTabsSessionState.quickTabsByTab for sidebar operations
 messageRouter.register('CREATE_QUICK_TAB', async (msg, sender) => {
   const result = await quickTabHandler.handleCreate(msg, sender);
-  // v1.6.3.12-v3 - FIX Issue F: Notify sidebar if creation was successful
+  // v1.6.3.12-v13 - FIX Issue #47: Add Quick Tab to session state for sidebar close/minimize/restore
+  // The port-based CREATE_QUICK_TAB handler (handleCreateQuickTab) adds to quickTabsSessionState,
+  // but the runtime.sendMessage path (this handler) was missing that step.
+  // This caused sidebar close/minimize/restore to fail because _findAndModifyQuickTabInSession
+  // couldn't find the Quick Tab in quickTabsSessionState.quickTabsByTab.
   if (result?.success && !result?.duplicate) {
+    _addQuickTabToSessionState(msg, sender);
     notifySidebarOfStateChange();
     console.log('[Background] v1.6.3.12-v3 CREATE_QUICK_TAB: Notified sidebar of state change', {
       quickTabId: msg.id,
@@ -5562,6 +5627,104 @@ function handleQuickTabRemovedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_MOVED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
+ * When a Quick Tab is dragged, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, left, top, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabMovedMessage(message, sender) {
+  const { quickTabId, left, top, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v12 QUICKTAB_MOVED received:', {
+    quickTabId,
+    left,
+    top,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Update the Quick Tab's position in both session and global state
+  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
+    qt.left = Math.round(left);
+    qt.top = Math.round(top);
+    qt.lastUpdate = Date.now();
+  });
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v12 Quick Tab position updated:', {
+      quickTabId,
+      left: Math.round(left),
+      top: Math.round(top)
+    });
+    notifySidebarOfStateChange();
+    return { success: true, quickTabId };
+  }
+
+  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_MOVED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  return { success: false, error: 'Quick Tab not found', quickTabId };
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for size updates
+ * When a Quick Tab is resized, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, width, height, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabResizedMessage(message, sender) {
+  const { quickTabId, width, height, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v12 QUICKTAB_RESIZED received:', {
+    quickTabId,
+    width,
+    height,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Update the Quick Tab's size in both session and global state
+  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
+    qt.width = Math.round(width);
+    qt.height = Math.round(height);
+    qt.lastUpdate = Date.now();
+  });
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v12 Quick Tab size updated:', {
+      quickTabId,
+      width: Math.round(width),
+      height: Math.round(height)
+    });
+    notifySidebarOfStateChange();
+    return { success: true, quickTabId };
+  }
+
+  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_RESIZED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  return { success: false, error: 'Quick Tab not found', quickTabId };
+}
+
+/**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
  * v1.6.3.12 - J5: Enhanced broadcast error handling with per-target logging
@@ -5670,32 +5833,121 @@ function handleCreateQuickTab(tabId, quickTab, port) {
 // These helpers reduce duplication in port message handlers
 
 /**
+ * Search for Quick Tab in a specific array
+ * v1.6.3.12-v13 - FIX Code Health: Extracted to reduce complexity
+ * @private
+ * @param {Array} quickTabs - Array to search
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {Object|undefined} Quick Tab object if found, undefined otherwise
+ */
+function _findQuickTabInArray(quickTabs, quickTabId) {
+  if (!quickTabs || !Array.isArray(quickTabs)) return undefined;
+  return quickTabs.find(qt => qt.id === quickTabId);
+}
+
+/**
+ * Search for Quick Tab in hint tab's session state
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInHintTab(tabId, quickTabId, updater) {
+  const hintTabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  const qt = _findQuickTabInArray(hintTabQuickTabs, quickTabId);
+  if (qt) {
+    updater(qt);
+    console.log('[Background] _updateQuickTabProperty: Found in hint tab', {
+      quickTabId,
+      tabId,
+      source: 'session-hint'
+    });
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Search for Quick Tab in all session state tabs except hint tab
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInAllSessionTabs(tabId, quickTabId, updater) {
+  const tabIdString = String(tabId);
+  for (const [searchTabId, quickTabs] of Object.entries(quickTabsSessionState.quickTabsByTab)) {
+    if (searchTabId === tabIdString) continue; // Already searched
+    const qt = _findQuickTabInArray(quickTabs, quickTabId);
+    if (qt) {
+      updater(qt);
+      console.log('[Background] _updateQuickTabProperty: Found in different tab', {
+        quickTabId,
+        originalTabId: tabId,
+        foundInTabId: searchTabId,
+        source: 'session-search'
+      });
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Search for Quick Tab in global state
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _updateQuickTabProperty
+ * @private
+ */
+function _findInGlobalState(quickTabId, updater, wasFoundInSession) {
+  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+  if (globalQt) {
+    updater(globalQt);
+    if (!wasFoundInSession) {
+      console.log('[Background] _updateQuickTabProperty: Found only in global state', {
+        quickTabId,
+        source: 'global-only'
+      });
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
  * Update Quick Tab property in both session and global state
  * v1.6.3.12-v2 - FIX Code Health: Unified state update helper
+ * v1.6.3.12-v13 - FIX Bug #1: Search ALL tabs in session state, not just sender tab
+ *   - Quick Tab might have been created in a different tab than the sender
+ *   - Search by quickTabId across ALL tabs in quickTabsByTab
+ * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
  * @private
- * @param {number} tabId - Origin tab ID
+ * @param {number} tabId - Origin tab ID (from sender, used as hint only)
  * @param {string} quickTabId - Quick Tab ID to update
  * @param {Function} updater - Function to update the Quick Tab (receives qt, returns boolean)
  * @returns {boolean} Whether the Quick Tab was found and updated
  */
 function _updateQuickTabProperty(tabId, quickTabId, updater) {
-  let found = false;
-  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
+  // v1.6.3.12-v13 - FIX Bug #1: First try the hint tabId for performance
+  const foundInHintTab = _findInHintTab(tabId, quickTabId, updater);
 
-  for (const qt of tabQuickTabs) {
-    if (qt.id === quickTabId) {
-      updater(qt);
-      found = true;
-      break;
-    }
-  }
+  // v1.6.3.12-v13 - FIX Bug #1: If not found, search ALL tabs in session state
+  const foundInOtherTabs = !foundInHintTab && _findInAllSessionTabs(tabId, quickTabId, updater);
 
-  const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
-  if (globalQt) {
-    updater(globalQt);
-    found = true;
-  }
+  // Track if found in any session state
+  const foundInSession = foundInHintTab || foundInOtherTabs;
+
+  // Also update global state (this is the canonical state for sidebar)
+  const foundInGlobal = _findInGlobalState(quickTabId, updater, foundInSession);
+
   globalQuickTabState.lastUpdate = Date.now();
+
+  const found = foundInSession || foundInGlobal;
+
+  // v1.6.3.12-v13 - FIX Bug #1: Log when Quick Tab not found at all
+  if (!found) {
+    console.warn('[Background] _updateQuickTabProperty: Quick Tab NOT FOUND', {
+      quickTabId,
+      tabId,
+      sessionTabIds: Object.keys(quickTabsSessionState.quickTabsByTab),
+      globalTabCount: globalQuickTabState.tabs.length
+    });
+  }
 
   return found;
 }
@@ -5894,14 +6146,26 @@ function handleHydrateOnLoad(tabId, port) {
  * Handle UPDATE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
+ * v1.6.3.12-v13 - FIX Bug #1: Enhanced logging for resize/move diagnostics
  * @param {number} tabId - Origin tab ID
  * @param {Object} msg - Message with quickTabId and updates
  * @param {browser.runtime.Port} port - Source port for response
  */
 function handleUpdateQuickTab(tabId, msg, port) {
   const { quickTabId, updates } = msg;
-  // v1.6.3.12-v8 - Log updates object separately for diagnostics
-  console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, { quickTabId, updates });
+
+  // v1.6.3.12-v13 - FIX Bug #1: Enhanced logging for resize/move tracking
+  const updateKeys = updates ? Object.keys(updates) : [];
+  const hasPositionUpdate = updateKeys.some(k => ['left', 'top'].includes(k));
+  const hasSizeUpdate = updateKeys.some(k => ['width', 'height'].includes(k));
+
+  console.log(`[Background] UPDATE_QUICK_TAB from tab ${tabId}:`, {
+    quickTabId,
+    updates,
+    updateKeys,
+    hasPositionUpdate,
+    hasSizeUpdate
+  });
 
   _handleQuickTabUpdate({
     tabId,
@@ -5910,8 +6174,27 @@ function handleUpdateQuickTab(tabId, msg, port) {
     operation: 'UPDATE_QUICK_TAB',
     ackType: 'UPDATE_QUICK_TAB_ACK',
     updateFn: qt => {
+      // v1.6.3.12-v13 - Log before/after state for debugging
+      const before = {
+        left: qt.left,
+        top: qt.top,
+        width: qt.width,
+        height: qt.height
+      };
       Object.assign(qt, updates);
       qt.lastUpdate = Date.now();
+
+      console.log('[Background] UPDATE_QUICK_TAB applied:', {
+        quickTabId,
+        before,
+        after: {
+          left: qt.left,
+          top: qt.top,
+          width: qt.width,
+          height: qt.height
+        },
+        updateKeys
+      });
     }
   });
 }
@@ -6258,14 +6541,31 @@ function handleSidebarCloseQuickTab(quickTabId, sidebarPort) {
  * @returns {{ ownerTabId: number|null, found: boolean }}
  */
 function _removeQuickTabFromSessionState(quickTabId) {
-  return _findAndModifyQuickTabInSession(quickTabId, (tabQuickTabs, index) => {
+  // v1.6.3.12-v13 - FIX Issue #48: Log state before removal for debugging
+  console.log('[Background] _removeQuickTabFromSessionState ENTRY:', {
+    quickTabId,
+    currentTabIds: Object.keys(quickTabsSessionState.quickTabsByTab),
+    totalQuickTabsPerTab: Object.entries(quickTabsSessionState.quickTabsByTab).map(
+      ([tabId, qts]) => ({ tabId, count: qts?.length || 0 })
+    )
+  });
+
+  const result = _findAndModifyQuickTabInSession(quickTabId, (tabQuickTabs, index) => {
     tabQuickTabs.splice(index, 1);
   });
+
+  console.log('[Background] _removeQuickTabFromSessionState RESULT:', {
+    quickTabId,
+    ...result
+  });
+
+  return result;
 }
 
 /**
  * Find Quick Tab in session state and apply a modifier function
  * v1.6.3.12-v2 - FIX Code Health: Unified session state modifier
+ * v1.6.3.12-v13 - FIX Issue #48: Enhanced logging for debugging
  * @private
  * @param {string} quickTabId - Quick Tab ID to find
  * @param {Function} modifier - Function to modify the Quick Tab or array (receives tabQuickTabs, index, qt)
@@ -6276,38 +6576,196 @@ function _findAndModifyQuickTabInSession(quickTabId, modifier) {
     const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
     const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
     if (index >= 0) {
+      // v1.6.3.12-v13 - Log match found before modifying
+      console.log('[Background] _findAndModifyQuickTabInSession FOUND:', {
+        quickTabId,
+        tabId,
+        tabIdType: typeof tabId,
+        index,
+        quickTabData: tabQuickTabs[index]
+      });
       modifier(tabQuickTabs, index, tabQuickTabs[index]);
       return { ownerTabId: parseInt(tabId, 10), found: true };
     }
   }
+  // v1.6.3.12-v13 - Log not found
+  console.warn('[Background] _findAndModifyQuickTabInSession NOT_FOUND:', {
+    quickTabId,
+    searchedTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
   return { ownerTabId: null, found: false };
 }
 
 /**
- * Notify content script of a command
- * v1.6.3.12 - Helper to reduce nesting depth
+ * Log command delivery entry
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
  * @private
  * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
  * @param {boolean} found - Whether the Quick Tab was found
  * @param {string} commandType - Command type to send
  * @param {string} quickTabId - Quick Tab ID
  */
-function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabId) {
-  if (!found || ownerTabId === null) return;
+function _logCommandDeliveryEntry(ownerTabId, found, commandType, quickTabId) {
+  console.log('[Background] _notifyContentScriptOfCommand ENTRY:', {
+    ownerTabId,
+    ownerTabIdType: typeof ownerTabId,
+    found,
+    commandType,
+    quickTabId,
+    availableContentPorts: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+}
 
-  const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
-  if (!contentPort) return;
+/**
+ * Log command delivery early exit
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {boolean} found - Whether the Quick Tab was found
+ * @param {string} commandType - Command type to send
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _logCommandDeliveryEarlyExit(ownerTabId, found, commandType, quickTabId) {
+  console.warn('[Background] _notifyContentScriptOfCommand EARLY_EXIT:', {
+    reason: !found ? 'quick_tab_not_found' : 'owner_tab_id_null',
+    ownerTabId,
+    found,
+    commandType,
+    quickTabId
+  });
+}
+
+/**
+ * Log port lookup result
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {browser.runtime.Port|null} contentPort - Content script port or null if not found
+ */
+function _logPortLookup(ownerTabId, contentPort) {
+  console.log('[Background] _notifyContentScriptOfCommand PORT_LOOKUP:', {
+    ownerTabId,
+    portFound: !!contentPort,
+    portType: contentPort ? typeof contentPort : 'null',
+    allPortKeys: Object.keys(quickTabsSessionState.contentScriptPorts),
+    lookupKeyType: typeof ownerTabId
+  });
+}
+
+/**
+ * Try sending command via port
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {browser.runtime.Port|null} contentPort - Content script port
+ * @param {Object} message - Message to send
+ * @param {string} commandType - Command type for logging
+ * @param {number} ownerTabId - Tab ID for logging
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {boolean} True if send succeeded
+ */
+function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId) {
+  if (!contentPort) return false;
 
   try {
-    contentPort.postMessage({
-      type: commandType,
-      quickTabId,
-      source: 'sidebar',
-      timestamp: Date.now()
-    });
+    contentPort.postMessage(message);
+    console.log(`[Background] Command sent via port: ${commandType}`, { ownerTabId, quickTabId });
+    return true;
   } catch (err) {
-    console.warn(`[Background] Failed to notify content script in tab ${ownerTabId}:`, err.message);
+    console.warn('[Background] Port message failed:', err.message);
+    return false;
   }
+}
+
+/**
+ * Send command via tabs.sendMessage (backup/fallback)
+ * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * @private
+ * @param {number} ownerTabId - Tab ID to send message to
+ * @param {string} action - Action name (e.g., CLOSE_QUICK_TAB)
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {boolean} portSendSucceeded - Whether port send succeeded (for logging)
+ * @param {browser.runtime.Port|null} contentPort - Content port (for logging reason)
+ * @param {string} commandType - Command type (for logging)
+ */
+function _sendCommandViaSendMessage(
+  ownerTabId,
+  action,
+  quickTabId,
+  portSendSucceeded,
+  contentPort,
+  commandType
+) {
+  console.log(
+    `[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`,
+    {
+      ownerTabId,
+      quickTabId,
+      action,
+      reason: portSendSucceeded ? 'redundant_delivery' : contentPort ? 'port_error' : 'no_port'
+    }
+  );
+
+  browser.tabs
+    .sendMessage(ownerTabId, { action, quickTabId, source: 'sidebar', timestamp: Date.now() })
+    .catch(err => {
+      console.warn(`[Background] tabs.sendMessage also failed for tab ${ownerTabId}:`, err.message);
+    });
+}
+
+/**
+ * Notify content script of a command
+ * v1.6.3.12 - Helper to reduce nesting depth
+ * v1.6.4 - FIX Issue #48: Add fallback to browser.tabs.sendMessage when port unavailable
+ * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
+ * @private
+ * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
+ * @param {boolean} found - Whether the Quick Tab was found
+ * @param {string} commandType - Command type to send (e.g., CLOSE_QUICK_TAB_COMMAND)
+ * @param {string} quickTabId - Quick Tab ID
+ */
+function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabId) {
+  _logCommandDeliveryEntry(ownerTabId, found, commandType, quickTabId);
+
+  if (!found || ownerTabId === null) {
+    _logCommandDeliveryEarlyExit(ownerTabId, found, commandType, quickTabId);
+    return;
+  }
+
+  const message = { type: commandType, quickTabId, source: 'sidebar', timestamp: Date.now() };
+  const contentPort = quickTabsSessionState.contentScriptPorts[ownerTabId];
+
+  _logPortLookup(ownerTabId, contentPort);
+
+  const portSendSucceeded = _trySendCommandViaPort(
+    contentPort,
+    message,
+    commandType,
+    ownerTabId,
+    quickTabId
+  );
+
+  // v1.6.3.12-v13 - FIX Issue #48: ALWAYS try tabs.sendMessage as a backup
+  // Port.postMessage() doesn't throw when port is disconnected in Firefox,
+  // so the message may be silently dropped. Content script deduplicates.
+  const action = commandType.replace(/_COMMAND$/, '');
+  const validActions = ['CLOSE_QUICK_TAB', 'MINIMIZE_QUICK_TAB', 'RESTORE_QUICK_TAB'];
+
+  if (!validActions.includes(action)) {
+    console.warn(`[Background] Invalid action after conversion: ${action}`, {
+      originalCommandType: commandType
+    });
+    return;
+  }
+
+  _sendCommandViaSendMessage(
+    ownerTabId,
+    action,
+    quickTabId,
+    portSendSucceeded,
+    contentPort,
+    commandType
+  );
 }
 
 /**
@@ -7989,6 +8447,24 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'QUICKTAB_REMOVED') {
     handleQuickTabRemovedMessage(message, sender);
     sendResponse({ success: true });
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v12 - FIX Bug #1: Handle QUICKTAB_MOVED message from content script UpdateHandler
+  // When content script's UpdateHandler moves a Quick Tab, it sends this message
+  // to update background state and notify sidebar for Manager UI update
+  if (message.type === 'QUICKTAB_MOVED') {
+    const result = handleQuickTabMovedMessage(message, sender);
+    sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v12 - FIX Bug #1: Handle QUICKTAB_RESIZED message from content script UpdateHandler
+  // When content script's UpdateHandler resizes a Quick Tab, it sends this message
+  // to update background state and notify sidebar for Manager UI update
+  if (message.type === 'QUICKTAB_RESIZED') {
+    const result = handleQuickTabResizedMessage(message, sender);
+    sendResponse(result);
     return false; // Synchronous response
   }
 

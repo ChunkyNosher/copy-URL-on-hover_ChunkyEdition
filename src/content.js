@@ -1838,6 +1838,17 @@ function _handlePendingRequest(requestId, message) {
 function handleQuickTabsPortResponse(message) {
   const { requestId, type } = message;
 
+  // v1.6.3.12-v13 - FIX Issue #48: Log ALL incoming port messages for debugging
+  console.log('[Content] PORT_MESSAGE_RECEIVED:', {
+    type,
+    requestId: requestId || 'none',
+    hasQuickTabId: !!message.quickTabId,
+    quickTabId: message.quickTabId || 'none',
+    isCommand: _isCommandMessage(type),
+    isStateUpdate: _isStateUpdateMessage(type),
+    timestamp: Date.now()
+  });
+
   if (_isCommandMessage(type)) {
     handleQuickTabsCommand(message);
     return;
@@ -1875,6 +1886,55 @@ function handleQuickTabsStateUpdate(message) {
   }
 }
 
+// ==================== v1.6.3.12-v13 COMMAND DEDUPLICATION ====================
+/**
+ * Map to track recently executed commands for deduplication
+ * v1.6.3.12-v13 - FIX Issue #48: Deduplicate redundant command delivery
+ * @private
+ * @type {Map<string, number>}
+ * @description Key format: `${commandType}-${quickTabId}` (e.g., "CLOSE_QUICK_TAB_COMMAND-qt-123")
+ *              Value: Unix timestamp (milliseconds) when command was executed
+ */
+const _recentCommandsExecuted = new Map();
+
+/**
+ * Deduplication window in milliseconds
+ * Commands with the same type+quickTabId within this window are considered duplicates
+ * @private
+ */
+const COMMAND_DEDUP_WINDOW_MS = 1000;
+
+/**
+ * Check if command is a duplicate (recently executed)
+ * v1.6.3.12-v13 - FIX Issue #48: Prevent duplicate command execution
+ * @private
+ * @param {string} commandType - Command type
+ * @param {string} quickTabId - Quick Tab ID
+ * @returns {boolean} True if duplicate
+ */
+function _isCommandDuplicate(commandType, quickTabId) {
+  const key = `${commandType}-${quickTabId}`;
+  const lastExecuted = _recentCommandsExecuted.get(key);
+  const now = Date.now();
+
+  if (lastExecuted && now - lastExecuted < COMMAND_DEDUP_WINDOW_MS) {
+    return true;
+  }
+
+  // Mark as executed
+  _recentCommandsExecuted.set(key, now);
+
+  // Cleanup old entries (older than 5x the dedup window)
+  const cutoff = now - COMMAND_DEDUP_WINDOW_MS * 5;
+  for (const [k, timestamp] of _recentCommandsExecuted) {
+    if (timestamp < cutoff) {
+      _recentCommandsExecuted.delete(k);
+    }
+  }
+
+  return false;
+}
+
 // ==================== v1.6.3.12-v2 COMMAND HANDLER LOOKUP TABLE ====================
 /**
  * Quick Tab command handlers lookup table
@@ -1890,16 +1950,41 @@ const _quickTabCommandHandlers = {
 /**
  * Handle command from sidebar (via background)
  * v1.6.3.12-v2 - FIX Code Health: Use lookup table instead of switch
+ * v1.6.3.12-v13 - FIX Issue #48: Enhanced logging for command execution
+ * v1.6.3.12-v13 - FIX Issue #48: Add deduplication for redundant command delivery
  * @param {Object} message - Command message
  */
 function handleQuickTabsCommand(message) {
   const { type, quickTabId } = message;
 
-  console.log(`[Content] Received Quick Tabs command: ${type}`, { quickTabId });
+  // v1.6.3.12-v13 - FIX Issue #48: Enhanced logging
+  console.log(`[Content] COMMAND_RECEIVED: ${type}`, {
+    quickTabId,
+    hasManager: !!quickTabsManager,
+    hasCloseById: !!quickTabsManager?.closeById,
+    hasMinimizeById: !!quickTabsManager?.minimizeById,
+    hasRestoreById: !!quickTabsManager?.restoreById,
+    currentTabId: cachedTabId,
+    timestamp: Date.now()
+  });
+
+  // v1.6.3.12-v13 - FIX Issue #48: Deduplicate redundant command delivery
+  // Background now sends commands via BOTH port AND tabs.sendMessage for reliability
+  // This deduplication ensures the command is only executed once
+  if (_isCommandDuplicate(type, quickTabId)) {
+    console.log(`[Content] COMMAND_DEDUPLICATED: ${type}`, {
+      quickTabId,
+      reason: 'recently_executed',
+      dedupWindowMs: COMMAND_DEDUP_WINDOW_MS
+    });
+    return;
+  }
 
   const handler = _quickTabCommandHandlers[type];
   if (handler) {
+    console.log(`[Content] COMMAND_EXECUTING: ${type}`, { quickTabId });
     handler(quickTabId);
+    console.log(`[Content] COMMAND_EXECUTED: ${type}`, { quickTabId });
   } else {
     console.warn(`[Content] Unknown Quick Tabs command: ${type}`);
   }
@@ -5168,11 +5253,34 @@ const ACTION_HANDLERS = {
       source,
       correlationId
     });
+
+    // v1.6.3.12-v13 - FIX Issue #48: Deduplicate commands from redundant delivery
+    // Background sends via both port and tabs.sendMessage for reliability
+    if (_isCommandDuplicate('CLOSE_QUICK_TAB', message.quickTabId)) {
+      console.log('[Content] CLOSE_QUICK_TAB deduplicated:', {
+        quickTabId: message.quickTabId,
+        reason: 'recently_executed'
+      });
+      sendResponse({ success: true, deduplicated: true });
+      return true;
+    }
+
     _handleCloseQuickTab(message.quickTabId, sendResponse, source, correlationId);
     return true;
   },
   MINIMIZE_QUICK_TAB: (message, sendResponse) => {
     console.log('[Content] Received MINIMIZE_QUICK_TAB request:', message.quickTabId);
+
+    // v1.6.3.12-v13 - FIX Issue #48: Deduplicate commands from redundant delivery
+    if (_isCommandDuplicate('MINIMIZE_QUICK_TAB', message.quickTabId)) {
+      console.log('[Content] MINIMIZE_QUICK_TAB deduplicated:', {
+        quickTabId: message.quickTabId,
+        reason: 'recently_executed'
+      });
+      sendResponse({ success: true, deduplicated: true });
+      return true;
+    }
+
     _handleMinimizeQuickTab(message.quickTabId, sendResponse);
     return true;
   },
@@ -5182,6 +5290,17 @@ const ACTION_HANDLERS = {
       quickTabId: message.quickTabId,
       sequenceId: message.sequenceId
     });
+
+    // v1.6.3.12-v13 - FIX Issue #48: Deduplicate commands from redundant delivery
+    if (_isCommandDuplicate('RESTORE_QUICK_TAB', message.quickTabId)) {
+      console.log('[Content] RESTORE_QUICK_TAB deduplicated:', {
+        quickTabId: message.quickTabId,
+        reason: 'recently_executed'
+      });
+      sendResponse({ success: true, deduplicated: true });
+      return true;
+    }
+
     _handleRestoreQuickTab(message.quickTabId, sendResponse, message.sequenceId);
     return true;
   },

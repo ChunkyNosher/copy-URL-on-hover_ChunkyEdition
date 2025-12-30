@@ -37,15 +37,16 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v7 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
+State)
 
-**v1.6.3.12-v7 Features (NEW):**
+**v1.6.3.12-v12 Features (NEW):**
 
-- **VALID_MESSAGE_ACTIONS Fix** - Added EXPORT_LOGS,
-  COORDINATED_CLEAR_ALL_QUICK_TABS
-- **Manager Port Messaging** - Buttons use port-based messaging methods
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed from UI
-- **Code Health** - MessageRouter.js: 10.0, background.js: 9.09
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -103,5 +104,5 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.12-v7 port
-messaging, QUICKTAB_REMOVED handler, memory-based state, per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.3.12-v12 port
+messaging, button operation fix, memory-based state, per-tab scoping.**

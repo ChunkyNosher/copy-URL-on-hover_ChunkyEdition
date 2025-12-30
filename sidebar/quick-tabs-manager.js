@@ -2,6 +2,18 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.3.12-v12 BUTTON OPERATION FIX & STATE VERSION TRACKING ===
+ * v1.6.3.12-v12 - FIX Issue #48: Manager buttons not working (Close, Minimize, Restore, Close All, Close Minimized)
+ *   - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always trigger re-render
+ *   - FIX #1: Added safety timeout in _applyOptimisticUIUpdate() to revert UI if no response
+ *     - After OPERATION_TIMEOUT_MS, reverts button disabled state and requests fresh state
+ *   - FIX #2: Added _lastRenderedStateVersion tracking in scheduleRender()
+ *     - Re-render now triggers on state version change even if content hash is same
+ *     - Ensures UI rebuilds after minimize/restore which may not change tab count
+ *   - FIX #3: _handleQuickTabsStateUpdate() now increments state version
+ *     - Forces re-render after every STATE_CHANGED message from background
+ *     - DOM rebuild clears disabled button states
+ *
  * === v1.6.3.12-v11 CROSS-TAB DISPLAY & BUTTON FIXES ===
  * v1.6.3.12-v11 - FIX Issues from quick-tab-manager-sync-issues.md:
  *   - Issue #1: Manager now displays Quick Tabs from ALL browser tabs
@@ -266,6 +278,9 @@ let lastRenderedStateHash = 0;
 // Tracks the state version when a render is scheduled vs when it executes
 let _stateVersion = 0; // Incremented on every state change
 let _stateVersionAtSchedule = 0; // Version when render was scheduled
+// v1.6.3.12-v12 - FIX Issue #48: Track state version at last render completion
+// This allows scheduleRender to detect if state changed since last render
+let _lastRenderedStateVersion = 0;
 
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
 // v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
@@ -827,6 +842,11 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
 
+  // v1.6.3.12-v12 - FIX Issue #48: Increment state version to ensure re-render bypasses hash check
+  // This is critical for button operations where the state content may not change
+  // but we still need to rebuild the DOM to clear disabled states
+  _incrementStateVersion(renderReason);
+
   // v1.6.3.12 - Gap #7: Log Manager render triggered with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_RENDER_TRIGGERED:', {
     timestamp: Date.now(),
@@ -876,8 +896,28 @@ function _handleQuickTabPortAck(msg, ackType) {
     ..._buildAckLogData(msg, sentInfo)
   });
 
-  if (quickTabId) {
-    _quickTabPortOperationTimestamps.delete(quickTabId);
+  // Exit early if no quickTabId - nothing to clean up
+  if (!quickTabId) return;
+
+  // Clean up operation timestamp tracking
+  _quickTabPortOperationTimestamps.delete(quickTabId);
+
+  // v1.6.3.12-v13 - FIX Issue #48: Clear pending operation on ACK to allow future operations
+  // The comment in _checkAndTrackPendingOperation says "will be cleared by OPERATION_TIMEOUT_MS or ACK"
+  // but this cleanup was missing - operations were only cleared by the timeout.
+  // This fix ensures buttons can be clicked again immediately after ACK.
+  // ackType is always a string from the ACK handler factory (CLOSE, MINIMIZE, RESTORE)
+  const action = typeof ackType === 'string' ? ackType.toLowerCase() : '';
+  if (!action) return;
+
+  const operationKey = `${action}-${quickTabId}`;
+  // Set.delete() returns true if element was present and deleted
+  if (PENDING_OPERATIONS.delete(operationKey)) {
+    console.log('[Sidebar] PENDING_OPERATION_CLEARED_BY_ACK:', {
+      operationKey,
+      ackType,
+      quickTabId
+    });
   }
 }
 
@@ -3078,6 +3118,7 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
  * Schedule UI render with deduplication
  * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
  * v1.6.4 - FIX Issue #21: Track state version for render transaction boundaries
+ * v1.6.3.12-v12 - FIX Issue #48: Also check state version to ensure button operations trigger re-render
  * @param {string} [source='unknown'] - Source of render request
  * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
@@ -3087,9 +3128,34 @@ function scheduleRender(source = 'unknown', correlationId = null) {
 
   _logHashComputation(scheduleTimestamp, source, currentHash);
 
-  if (currentHash === lastRenderedStateHash) {
+  // v1.6.3.12-v12 - FIX Issue #48: Check both hash AND state version
+  // Hash comparison prevents unnecessary renders when content hasn't changed
+  // State version comparison ensures renders after button operations even if content hash is same
+  // (e.g., minimize/restore doesn't change tab count but needs UI rebuild to clear disabled states)
+  const hashUnchanged = currentHash === lastRenderedStateHash;
+  const versionUnchanged = _stateVersion === _lastRenderedStateVersion;
+
+  if (hashUnchanged && versionUnchanged) {
     _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId);
     return;
+  }
+
+  // Log why render is proceeding
+  if (!hashUnchanged) {
+    console.log('[Manager] RENDER_SCHEDULED: Hash changed', {
+      timestamp: scheduleTimestamp,
+      source,
+      previousHash: lastRenderedStateHash,
+      currentHash
+    });
+  } else if (!versionUnchanged) {
+    console.log('[Manager] RENDER_SCHEDULED: State version changed (hash same)', {
+      timestamp: scheduleTimestamp,
+      source,
+      previousVersion: _lastRenderedStateVersion,
+      currentVersion: _stateVersion,
+      reason: 'Forcing re-render for UI state refresh'
+    });
   }
 
   // v1.6.4 - FIX Issue #21: Capture state version at schedule time
@@ -4990,11 +5056,22 @@ function _handleTabUpdated(tabId, changeInfo, _tab) {
 }
 
 /**
+ * Check if browser.tabs.onUpdated API is available
+ * v1.6.3.12-v12 - FIX Code Health: Extract complex conditional
+ * @private
+ * @returns {boolean} True if API is available
+ */
+function _isTabsOnUpdatedAvailable() {
+  return typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated;
+}
+
+/**
  * Start listening for tab updates to invalidate cache
  * v1.6.3.12-v11 - FIX Issue #12: Register tabs.onUpdated listener
+ * v1.6.3.12-v12 - FIX Code Health: Extract complex conditional
  */
 function _startTabUpdateListener() {
-  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+  if (_isTabsOnUpdatedAvailable()) {
     browser.tabs.onUpdated.addListener(_handleTabUpdated);
     console.log('[Manager] TAB_UPDATE_LISTENER_STARTED:', {
       timestamp: Date.now(),
@@ -5008,9 +5085,10 @@ function _startTabUpdateListener() {
 /**
  * Stop listening for tab updates (cleanup on unload)
  * v1.6.3.12-v11 - FIX Issue #12: Cleanup tab update listener
+ * v1.6.3.12-v12 - FIX Code Health: Use extracted predicate
  */
 function _stopTabUpdateListener() {
-  if (typeof browser !== 'undefined' && browser.tabs && browser.tabs.onUpdated) {
+  if (_isTabsOnUpdatedAvailable()) {
     browser.tabs.onUpdated.removeListener(_handleTabUpdated);
     console.log('[Manager] TAB_UPDATE_LISTENER_STOPPED');
   }
@@ -5902,17 +5980,38 @@ async function _executeDebounceRender(debounceTime) {
 
   // Recalculate hash after potential fresh load
   const finalHash = computeStateHash(quickTabsState);
-  if (finalHash === lastRenderedHash) {
-    console.log('[Manager] Skipping render - state hash unchanged', {
+
+  // v1.6.4 - FIX Issue #48: Check BOTH hash AND state version before skipping
+  // The render might be needed even if hash is unchanged (e.g., port data changed)
+  const hashUnchanged = finalHash === lastRenderedHash;
+  const versionUnchanged = _stateVersion === _lastRenderedStateVersion;
+
+  if (hashUnchanged && versionUnchanged) {
+    console.log('[Manager] Skipping render - state hash AND version unchanged', {
       hash: finalHash,
+      stateVersion: _stateVersion,
       tabCount: quickTabsState?.tabs?.length ?? 0
     });
     return;
   }
 
+  if (!hashUnchanged) {
+    console.log('[Manager] Debounce render proceeding: hash changed', {
+      previousHash: lastRenderedHash,
+      newHash: finalHash
+    });
+  } else {
+    console.log('[Manager] Debounce render proceeding: state version changed', {
+      previousVersion: _lastRenderedStateVersion,
+      newVersion: _stateVersion
+    });
+  }
+
   // Update hash before render to prevent re-render loops even if _renderUIImmediate() throws
   lastRenderedHash = finalHash;
   lastRenderedStateHash = finalHash;
+  // v1.6.3.12-v12 - FIX Issue #48: Also update state version tracker
+  _lastRenderedStateVersion = _stateVersion;
 
   // Synchronize DOM mutation with requestAnimationFrame
   requestAnimationFrame(() => {
@@ -6264,13 +6363,18 @@ async function _executeRenderUIInternal() {
   const groupsContainer = await _buildGroupsContainer(groups, collapseState);
   checkAndRemoveEmptyGroups(groupsContainer, groups);
 
-  containersList.appendChild(groupsContainer);
+  // v1.6.3.12-v13 - FIX Bug #2: Use replaceChildren() for atomic DOM swap
+  // replaceChildren() removes all children AND appends new ones in a single operation,
+  // eliminating the visual gap/flicker that occurs with innerHTML='' followed by appendChild()
+  containersList.replaceChildren(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
   const domDuration = Date.now() - domStartTime;
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
   lastRenderedHash = computeStateHash(quickTabsState);
   lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
+  // v1.6.3.12-v12 - FIX Issue #48: Update state version tracker after successful render
+  _lastRenderedStateVersion = _stateVersion;
 
   // v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging
   const totalDuration = Date.now() - renderStartTime;
@@ -6332,13 +6436,16 @@ function _showEmptyState() {
 }
 
 /**
- * Show content state UI
+ * Show content state UI - prepares for content but does NOT clear existing content
+ * v1.6.3.12-v13 - FIX Bug #2: Don't clear innerHTML here to prevent flicker
+ *   - Content clearing moved to AFTER new content is built (atomic swap)
  * @private
  */
 function _showContentState() {
   containersList.style.display = 'block';
   emptyState.style.display = 'none';
-  containersList.innerHTML = '';
+  // v1.6.3.12-v13 - FIX Bug #2: Removed innerHTML = '' - now done in _executeRenderUIInternal
+  // after new content is built to prevent UI flicker
 }
 
 /**
@@ -7132,6 +7239,83 @@ function renderQuickTabItem(tab, cookieStoreId, isMinimized) {
  * @param {string} quickTabId - The Quick Tab ID being acted upon
  * @param {HTMLButtonElement} button - The button element clicked
  */
+/**
+ * Configuration object for optimistic UI update
+ * v1.6.3.12-v12 - FIX Code Health: Reduce function arguments by using options object
+ * @typedef {Object} OptimisticUIRevertOptions
+ * @property {HTMLElement} quickTabItem - The Quick Tab item element
+ * @property {HTMLButtonElement} button - The button element
+ * @property {string} action - The action that was attempted
+ * @property {string} quickTabId - The Quick Tab ID
+ * @property {string} originalTitle - Original button title
+ */
+
+/**
+ * Revert optimistic UI update if operation times out
+ * v1.6.3.12-v12 - FIX Issue #48: Add safety timeout to re-enable buttons
+ * v1.6.3.12-v12 - FIX Code Health: Use options object to reduce arguments (5 -> 1)
+ * @private
+ * @param {OptimisticUIRevertOptions} options - Revert options
+ */
+function _revertOptimisticUI(options) {
+  const { quickTabItem, button, action, quickTabId, originalTitle } = options;
+
+  console.log('[Manager] OPTIMISTIC_UI_TIMEOUT: Reverting UI state', {
+    action,
+    quickTabId,
+    reason: 'No STATE_CHANGED received within timeout'
+  });
+
+  // Remove pending classes
+  if (quickTabItem) {
+    quickTabItem.classList.remove('minimizing', 'restoring', 'closing', 'operation-pending');
+  }
+
+  // Re-enable button (check isConnected to ensure it's still in the DOM)
+  if (button && button.isConnected) {
+    button.disabled = false;
+    button.title = originalTitle || button.dataset.originalTitle || '';
+  }
+
+  // Request fresh state from background to ensure consistency
+  requestAllQuickTabsViaPort();
+}
+
+/**
+ * Apply optimistic UI classes and disable button for an action
+ * v1.6.3.12-v12 - FIX Code Health: Extracted to reduce _applyOptimisticUIUpdate LoC
+ * v1.6.3.12-v12 - FIX Code Health: Use options object to reduce arguments (5 -> 1)
+ * @private
+ * @param {Object} options - Apply options
+ * @param {HTMLElement} options.quickTabItem - Quick Tab item element
+ * @param {HTMLButtonElement} options.button - Button element
+ * @param {string} options.actionClass - CSS class for the action (e.g., 'minimizing')
+ * @param {string} options.pendingTitle - Title to show while pending
+ * @param {string} options.quickTabId - Quick Tab ID for logging
+ */
+function _applyOptimisticClasses(options) {
+  const { quickTabItem, button, actionClass, pendingTitle, quickTabId } = options;
+  quickTabItem.classList.add(actionClass);
+  quickTabItem.classList.add('operation-pending');
+  button.disabled = true;
+  button.title = pendingTitle;
+  console.log(`[Manager] OPTIMISTIC_UI_APPLIED: ${actionClass.replace('ing', '')}`, {
+    quickTabId,
+    classes: `${actionClass}, operation-pending`
+  });
+}
+
+/**
+ * Action-to-config lookup table for optimistic UI updates
+ * v1.6.3.12-v12 - FIX Code Review: Moved outside function scope to avoid recreation
+ * @private
+ */
+const _optimisticUIActionConfig = {
+  minimize: { class: 'minimizing', title: 'Minimizing...' },
+  restore: { class: 'restoring', title: 'Restoring...' },
+  close: { class: 'closing', title: 'Closing...' }
+};
+
 function _applyOptimisticUIUpdate(action, quickTabId, button) {
   const timestamp = Date.now();
 
@@ -7152,52 +7336,30 @@ function _applyOptimisticUIUpdate(action, quickTabId, button) {
     return;
   }
 
+  // v1.6.3.12-v12 - FIX Code Review: Use module-level lookup table
+  const config = _optimisticUIActionConfig[action];
+  if (!config) {
+    console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', { action, quickTabId });
+    return;
+  }
+
   try {
-    switch (action) {
-      case 'minimize':
-        // Add visual indicator that minimize is in progress
-        quickTabItem.classList.add('minimizing');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Minimizing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: minimize', {
-          quickTabId,
-          classes: 'minimizing, operation-pending'
-        });
-        break;
+    const originalTitle = button.title;
+    _applyOptimisticClasses({
+      quickTabItem,
+      button,
+      actionClass: config.class,
+      pendingTitle: config.title,
+      quickTabId
+    });
 
-      case 'restore':
-        // Add visual indicator that restore is in progress
-        quickTabItem.classList.add('restoring');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Restoring...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: restore', {
-          quickTabId,
-          classes: 'restoring, operation-pending'
-        });
-        break;
-
-      case 'close':
-        // Add fade-out animation for close
-        quickTabItem.classList.add('closing');
-        quickTabItem.classList.add('operation-pending');
-        button.disabled = true;
-        button.title = 'Closing...';
-        console.log('[Manager] OPTIMISTIC_UI_APPLIED: close', {
-          quickTabId,
-          classes: 'closing, operation-pending'
-        });
-        break;
-
-      default:
-        // No optimistic update for other actions
-        console.log('[Manager] OPTIMISTIC_UI_SKIPPED: action not supported', {
-          action,
-          quickTabId
-        });
-        break;
-    }
+    // v1.6.3.12-v12 - FIX Issue #48: Safety timeout to revert UI if STATE_CHANGED doesn't arrive
+    // v1.6.3.12-v12 - FIX Code Review: Also check isConnected before reverting
+    setTimeout(() => {
+      if (quickTabItem.isConnected && quickTabItem.classList.contains('operation-pending')) {
+        _revertOptimisticUI({ quickTabItem, button, action, quickTabId, originalTitle });
+      }
+    }, OPERATION_TIMEOUT_MS);
   } catch (err) {
     console.error('[Manager] OPTIMISTIC_UI_UPDATE_ERROR:', {
       action,
