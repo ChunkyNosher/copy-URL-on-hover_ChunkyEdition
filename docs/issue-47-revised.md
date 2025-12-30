@@ -784,7 +784,10 @@ Before marking scenario as PASS:
 ### Bug 1b: Click to Bring Quick Tab to Front (FIXED)
 
 **Issue:** Clicking inside a Quick Tab's content area didn't bring it to front.
-**Fix:** Added capture phase event listener in window.js to handle clicks.
+**Fix:** Added transparent click overlay with `MAX_OVERLAY_Z_INDEX` constant
+(2147483646) and `OVERLAY_REACTIVATION_DELAY_MS` (500ms) for pointer-events
+toggling. The overlay captures mousedown events, brings window to front via
+`onFocus()`, and temporarily disables pointer-events to allow click pass-through.
 **Status:** ✅ FIXED in v1.6.4
 
 ### Bug 2b: "Open in New Tab" Button Broken (FIXED)
@@ -798,16 +801,20 @@ MessageRouter.js. **Fix:** Added `openTab`, `saveQuickTabState`,
 ### Bug 3b: Cross-Tab Transfer/Duplicate Not Working (FIXED)
 
 **Issue:** Dragging Quick Tabs between tabs didn't trigger transfer/duplicate.
-**Root Cause:** `_handleQuickTabDrop` called `event.stopPropagation()` but
-returned early for cross-group drops without performing transfer. **Fix:**
-Handle cross-tab transfer directly in `_handleQuickTabDrop` when groups differ.
+**Root Cause:** Target tabs without Quick Tabs may not have a port connection.
+**Fix:** Added fallback messaging via `browser.tabs.sendMessage` when port is
+unavailable. Added `_sendTransferInMessageFallback()` and
+`_sendDuplicateMessageFallback()` in background.js. Added handlers for
+`QUICK_TAB_TRANSFERRED_IN`, `QUICK_TAB_TRANSFERRED_OUT`, and
+`CREATE_QUICK_TAB_FROM_DUPLICATE` in content.js TYPE_HANDLERS.
 **Status:** ✅ FIXED in v1.6.4
 
 ### Bug 4b: Manager Reordering Resets (FIXED)
 
 **Issue:** Reordering tabs/Quick Tabs in Manager reverted after operations.
-**Fix:** Added `_userGroupOrder` persistence and `_applyUserGroupOrder()`
-function. **Status:** ✅ FIXED in v1.6.4
+**Fix:** Added `_userGroupOrder` persistence and enhanced `_applyUserGroupOrder()`
+with stricter numeric type validation. Extracted `_findMatchingGroupKey()` helper.
+**Status:** ✅ FIXED in v1.6.4
 
 ### Bug 5b: Alt Key Modifier Not Working (FIXED)
 
