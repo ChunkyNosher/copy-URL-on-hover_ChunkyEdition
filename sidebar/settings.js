@@ -555,6 +555,7 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
+  quickTabDuplicateModifier: 'alt',
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -658,6 +659,7 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
+    document.getElementById('quickTabDuplicateModifier').value = items.quickTabDuplicateModifier;
     toggleCustomPosition(items.quickTabPosition);
 
     document.getElementById('showNotification').checked = items.showNotification;
@@ -791,6 +793,7 @@ function _gatherQuickTabSettings() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
+    quickTabDuplicateModifier: document.getElementById('quickTabDuplicateModifier').value || 'alt',
     quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
   };
 }
