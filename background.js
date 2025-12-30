@@ -2144,9 +2144,11 @@ function _addQuickTabToSessionState(msg, sender) {
   }
 
   // Build Quick Tab data (matching format from handleCreateQuickTab)
+  // v1.6.3.12-v12 - FIX Bug #2: Include title field for Manager display
   const quickTabData = {
     id: msg.id,
     url: msg.url,
+    title: msg.title,
     originTabId,
     originContainerId: msg.cookieStoreId || 'firefox-default',
     left: msg.left,
@@ -5625,6 +5627,104 @@ function handleQuickTabRemovedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_MOVED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
+ * When a Quick Tab is dragged, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, left, top, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabMovedMessage(message, sender) {
+  const { quickTabId, left, top, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v12 QUICKTAB_MOVED received:', {
+    quickTabId,
+    left,
+    top,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Update the Quick Tab's position in both session and global state
+  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
+    qt.left = Math.round(left);
+    qt.top = Math.round(top);
+    qt.lastUpdate = Date.now();
+  });
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v12 Quick Tab position updated:', {
+      quickTabId,
+      left: Math.round(left),
+      top: Math.round(top)
+    });
+    notifySidebarOfStateChange();
+    return { success: true, quickTabId };
+  }
+
+  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_MOVED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  return { success: false, error: 'Quick Tab not found', quickTabId };
+}
+
+/**
+ * Handle QUICKTAB_RESIZED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for size updates
+ * When a Quick Tab is resized, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, width, height, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabResizedMessage(message, sender) {
+  const { quickTabId, width, height, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  console.log('[Background] v1.6.3.12-v12 QUICKTAB_RESIZED received:', {
+    quickTabId,
+    width,
+    height,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now()
+  });
+
+  // Update the Quick Tab's size in both session and global state
+  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
+    qt.width = Math.round(width);
+    qt.height = Math.round(height);
+    qt.lastUpdate = Date.now();
+  });
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v12 Quick Tab size updated:', {
+      quickTabId,
+      width: Math.round(width),
+      height: Math.round(height)
+    });
+    notifySidebarOfStateChange();
+    return { success: true, quickTabId };
+  }
+
+  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_RESIZED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  return { success: false, error: 'Quick Tab not found', quickTabId };
+}
+
+/**
  * Notify specific content script of its Quick Tabs
  * v1.6.3.12 - Option 4: Send updates to content scripts
  * v1.6.3.12 - J5: Enhanced broadcast error handling with per-target logging
@@ -8347,6 +8447,24 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'QUICKTAB_REMOVED') {
     handleQuickTabRemovedMessage(message, sender);
     sendResponse({ success: true });
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v12 - FIX Bug #1: Handle QUICKTAB_MOVED message from content script UpdateHandler
+  // When content script's UpdateHandler moves a Quick Tab, it sends this message
+  // to update background state and notify sidebar for Manager UI update
+  if (message.type === 'QUICKTAB_MOVED') {
+    const result = handleQuickTabMovedMessage(message, sender);
+    sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v12 - FIX Bug #1: Handle QUICKTAB_RESIZED message from content script UpdateHandler
+  // When content script's UpdateHandler resizes a Quick Tab, it sends this message
+  // to update background state and notify sidebar for Manager UI update
+  if (message.type === 'QUICKTAB_RESIZED') {
+    const result = handleQuickTabResizedMessage(message, sender);
+    sendResponse(result);
     return false; // Synchronous response
   }
 
