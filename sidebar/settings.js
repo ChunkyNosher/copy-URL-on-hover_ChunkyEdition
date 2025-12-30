@@ -555,7 +555,7 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabDuplicateModifier: 'alt',
+  quickTabDuplicateModifier: 'shift',
 
   showNotification: true,
   notifDisplayMode: 'tooltip',

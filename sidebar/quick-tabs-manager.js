@@ -401,6 +401,14 @@ let quickTabsPort = null;
 let _allQuickTabsFromPort = [];
 
 /**
+ * User's preferred tab group order
+ * v1.6.4.1 - FIX BUG #4: Persist tab group ordering during re-renders
+ * Key: origin tab ID, Value: order index
+ * @private
+ */
+let _userGroupOrder = [];
+
+/**
  * Track sent Quick Tab port operations for roundtrip time calculation
  * v1.6.3.12-v2 - FIX Issue #16-17: Port messaging roundtrip time tracking
  * Key: quickTabId, Value: { sentAt: number, messageType: string }
@@ -6347,21 +6355,23 @@ async function _executeRenderUIInternal() {
   _showContentState();
   const groupStartTime = Date.now();
   const groups = groupQuickTabsByOriginTab(allTabs);
+  // v1.6.4.1 - FIX BUG #4: Apply user's preferred group order
+  const orderedGroups = _applyUserGroupOrder(groups);
   const groupDuration = Date.now() - groupStartTime;
 
   const collapseStateStartTime = Date.now();
   const collapseState = await loadCollapseState();
   const collapseStateDuration = Date.now() - collapseStateStartTime;
 
-  _logGroupRendering(groups);
+  _logGroupRendering(orderedGroups);
 
   // v1.6.3.6-v11 - FIX Issue #20: Clean up stale count tracking
-  const currentGroupKeys = new Set([...groups.keys()].map(String));
+  const currentGroupKeys = new Set([...orderedGroups.keys()].map(String));
   cleanupPreviousGroupCounts(currentGroupKeys);
 
   const domStartTime = Date.now();
-  const groupsContainer = await _buildGroupsContainer(groups, collapseState);
-  checkAndRemoveEmptyGroups(groupsContainer, groups);
+  const groupsContainer = await _buildGroupsContainer(orderedGroups, collapseState);
+  checkAndRemoveEmptyGroups(groupsContainer, orderedGroups);
 
   // v1.6.3.12-v13 - FIX Bug #2: Use replaceChildren() for atomic DOM swap
   // replaceChildren() removes all children AND appends new ones in a single operation,
@@ -6980,9 +6990,10 @@ function attachCollapseEventListeners(container, collapseState) {
 /**
  * Cached modifier key for duplicate operations (avoid repeated storage reads)
  * v1.6.4 - FEATURE #5: Cache to improve drag operation responsiveness
+ * v1.6.4.1 - FIX BUG #5: Changed default from 'alt' to 'shift'
  * @private
  */
-let _cachedDuplicateModifierKey = 'alt';
+let _cachedDuplicateModifierKey = 'shift';
 
 /**
  * Current drag state for drag-and-drop operations
@@ -7003,22 +7014,23 @@ const _dragState = {
   /** Whether modifier key is held for duplicate */
   isDuplicate: false,
   /** Cached modifier key for this drag operation */
-  modifierKey: 'alt'
+  modifierKey: 'shift'
 };
 
 /**
  * Load and cache the duplicate modifier key from storage
  * v1.6.4 - FEATURE #5: Call once on startup and cache
+ * v1.6.4.1 - FIX BUG #5: Changed default from 'alt' to 'shift'
  * @private
  */
 async function _loadDuplicateModifierKey() {
   try {
     const result = await browser.storage.local.get('quickTabDuplicateModifier');
-    _cachedDuplicateModifierKey = result.quickTabDuplicateModifier || 'alt';
+    _cachedDuplicateModifierKey = result.quickTabDuplicateModifier || 'shift';
     console.log('[Manager] DRAG_DROP: Modifier key loaded:', _cachedDuplicateModifierKey);
   } catch (err) {
     console.warn('[Manager] DRAG_DROP: Failed to read modifier key setting:', err.message);
-    _cachedDuplicateModifierKey = 'alt'; // Default to Alt
+    _cachedDuplicateModifierKey = 'shift'; // Default to Shift
   }
 }
 
@@ -7028,6 +7040,7 @@ _loadDuplicateModifierKey();
 /**
  * Check if the modifier key for duplicate is pressed
  * v1.6.4 - FEATURE #5: Check configured modifier key
+ * v1.6.4.1 - FIX BUG #5: Changed default from altKey to shiftKey
  * @private
  * @param {DragEvent} event - Drag event
  * @returns {boolean} True if modifier is pressed
@@ -7043,7 +7056,7 @@ function _isModifierKeyPressed(event) {
     case 'none':
       return false;
     default:
-      return event.altKey;
+      return event.shiftKey; // Default to Shift
   }
 }
 
@@ -7356,6 +7369,79 @@ function _handleTabGroupReorder(targetGroup) {
   } else {
     targetGroup.before(draggedGroup);
   }
+
+  // v1.6.4.1 - FIX BUG #4: Save user's preferred group order
+  _saveUserGroupOrder(container);
+}
+
+/**
+ * Save user's preferred tab group order from current DOM state
+ * v1.6.4.1 - FIX BUG #4: Persist group ordering across re-renders
+ * @private
+ * @param {HTMLElement} container - Container with tab groups
+ */
+function _saveUserGroupOrder(container) {
+  const groups = container.querySelectorAll('.tab-group');
+  _userGroupOrder = Array.from(groups).map(g => g.dataset.originTabId);
+  console.log('[Manager] GROUP_ORDER_SAVED:', {
+    order: _userGroupOrder,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Apply user's preferred tab group order to a groups Map
+ * v1.6.4.1 - FIX BUG #4: Maintain group ordering across re-renders
+ * Groups not in user order are appended at the end
+ * @private
+ * @param {Map} groups - Map of originTabId -> group data
+ * @returns {Map} New Map with groups in user's preferred order
+ */
+function _applyUserGroupOrder(groups) {
+  // If no user order has been set, return as-is
+  if (!_userGroupOrder || _userGroupOrder.length === 0) {
+    return groups;
+  }
+
+  const orderedGroups = new Map();
+  const processedKeys = new Set();
+
+  // First, add groups in user's preferred order
+  for (const tabId of _userGroupOrder) {
+    // Try both string and numeric versions of the key
+    let key = tabId;
+    if (!groups.has(key)) {
+      key = parseInt(tabId, 10);
+    }
+    if (!groups.has(key)) {
+      key = String(tabId);
+    }
+
+    if (groups.has(key)) {
+      orderedGroups.set(key, groups.get(key));
+      processedKeys.add(String(key));
+    }
+  }
+
+  // Then, append any groups not in user's order (new groups)
+  for (const [key, value] of groups) {
+    if (!processedKeys.has(String(key))) {
+      orderedGroups.set(key, value);
+    }
+  }
+
+  console.log('[Manager] GROUP_ORDER_APPLIED:', {
+    userOrder: _userGroupOrder,
+    resultOrder: Array.from(orderedGroups.keys()),
+    newGroupsAppended: orderedGroups.size - _userGroupOrder.filter(id => {
+      const strId = String(id);
+      const numId = parseInt(id, 10);
+      return groups.has(strId) || groups.has(numId) || groups.has(id);
+    }).length,
+    timestamp: Date.now()
+  });
+
+  return orderedGroups;
 }
 
 /**

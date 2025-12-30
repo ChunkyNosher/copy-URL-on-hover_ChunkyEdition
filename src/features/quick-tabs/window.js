@@ -506,14 +506,34 @@ export class QuickTabWindow {
         onMinimize: () => this.minimize(),
         onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-          await browser.runtime.sendMessage({
-            action: 'openTab',
+          console.log('[QuickTabWindow] onOpenInTab: Opening URL in new tab', {
+            id: this.id,
             url: currentSrc,
-            switchFocus: true
+            timestamp: Date.now()
           });
-          const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
-          if (settings.quickTabCloseOnOpen) {
-            this.destroy();
+
+          try {
+            const response = await browser.runtime.sendMessage({
+              action: 'openTab',
+              url: currentSrc,
+              switchFocus: true
+            });
+            console.log('[QuickTabWindow] onOpenInTab: Tab opened successfully', {
+              id: this.id,
+              response,
+              timestamp: Date.now()
+            });
+
+            const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
+            if (settings.quickTabCloseOnOpen) {
+              this.destroy();
+            }
+          } catch (err) {
+            console.error('[QuickTabWindow] onOpenInTab: Failed to open tab', {
+              id: this.id,
+              url: currentSrc,
+              error: err.message
+            });
           }
         }
       }
@@ -729,11 +749,29 @@ export class QuickTabWindow {
 
   /**
    * Setup focus handlers
+   * v1.6.4.1 - FIX BUG #1: Use capture phase to bring Quick Tab to front on click
+   * The mousedown event on container is intercepted by iframe content.
+   * Using capture: true ensures the container receives the event first.
+   * Also handle click on titlebar and resize handles for comprehensive coverage.
    */
   setupFocusHandlers() {
-    this.container.addEventListener('mousedown', () => {
-      this.onFocus(this.id);
-    });
+    // Use capture phase to intercept before iframe steals the event
+    this.container.addEventListener(
+      'mousedown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
+
+    // Also bring to front on any pointer event (for touch devices and better coverage)
+    this.container.addEventListener(
+      'pointerdown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
   }
 
   /**
