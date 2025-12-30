@@ -45,8 +45,8 @@ const DEFAULT_TOP = 100;
 // v1.6.4.2 - FIX Code Review: Extract magic numbers into named constants
 // Maximum z-index value to ensure overlay is always on top of iframe content
 const MAX_OVERLAY_Z_INDEX = 2147483646;
-// Delay in ms before re-enabling pointer events on the click overlay
-const OVERLAY_REACTIVATION_DELAY_MS = 500;
+// v1.6.4.4 - FIX BUG #2: OVERLAY_REACTIVATION_DELAY_MS removed (no longer used)
+// The overlay is now re-enabled via focusout and mouseleave events instead of a fixed timeout
 
 // v1.6.4.1 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
 // This avoids polluting the DOM API by not adding properties to document objects
@@ -587,8 +587,10 @@ export class QuickTabWindow {
    * Create a transparent click overlay for iframe click detection
    * v1.6.4.2 - FIX BUG #1: Click to bring Quick Tab to front
    * v1.6.4.3 - IMPROVED: Enhanced overlay positioning and z-index
+   * v1.6.4.4 - FIX BUG #2: Keep overlay disabled while window is focused
    * This overlay captures clicks on the iframe area and brings the window to front.
    * After the window is focused, subsequent clicks pass through to the iframe.
+   * The overlay is re-enabled when the window loses focus (focusout or mouseleave).
    * @private
    */
   _createClickOverlay() {
@@ -619,7 +621,7 @@ export class QuickTabWindow {
       }
 
       // After bringing to front, let the click pass through to iframe
-      // Use pointer-events: none temporarily
+      // v1.6.4.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
       this.clickOverlay.style.pointerEvents = 'none';
 
       // v1.6.4.3 - FIX BUG #1: Re-dispatch the event to the iframe underneath
@@ -650,12 +652,8 @@ export class QuickTabWindow {
         }
       }, 0);
 
-      // Re-enable after a delay to catch subsequent clicks when window loses focus
-      setTimeout(() => {
-        if (this.clickOverlay && !this.destroyed) {
-          this.clickOverlay.style.pointerEvents = 'auto';
-        }
-      }, OVERLAY_REACTIVATION_DELAY_MS); // Use named constant for clarity
+      // v1.6.4.4 - FIX BUG #2: Removed the 500ms setTimeout that re-enabled pointer-events
+      // The overlay is now re-enabled via focusout and mouseleave listeners below
     });
 
     // Also handle pointerdown for touch devices
@@ -665,12 +663,29 @@ export class QuickTabWindow {
         if (typeof this.onFocus === 'function') {
           this.onFocus(this.id);
         }
+        // v1.6.4.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
         this.clickOverlay.style.pointerEvents = 'none';
-        setTimeout(() => {
-          if (this.clickOverlay && !this.destroyed) {
-            this.clickOverlay.style.pointerEvents = 'auto';
-          }
-        }, OVERLAY_REACTIVATION_DELAY_MS); // Use named constant for consistency
+        // v1.6.4.4 - FIX BUG #2: Removed the 500ms setTimeout
+        // The overlay is now re-enabled via focusout and mouseleave listeners below
+      }
+    });
+
+    // v1.6.4.4 - FIX BUG #2: Re-enable overlay when focus leaves the Quick Tab window
+    // This ensures the overlay captures clicks when user returns to this window
+    this.container.addEventListener('focusout', e => {
+      // Only re-enable if focus is leaving the container entirely (not moving within it)
+      if (this.clickOverlay && !this.destroyed && !this.container.contains(e.relatedTarget)) {
+        console.log('[QuickTabWindow] Focus left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
+      }
+    });
+
+    // v1.6.4.4 - FIX BUG #2: Also re-enable when mouse leaves the container
+    // This handles the case where user moves mouse out without clicking elsewhere
+    this.container.addEventListener('mouseleave', () => {
+      if (this.clickOverlay && !this.destroyed) {
+        console.log('[QuickTabWindow] Mouse left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
       }
     });
   }

@@ -21,13 +21,15 @@ const _failedButtonInitializations = [];
 
 // ==================== v1.6.4 FIX ISSUE 9: TIMEOUT PROTECTION ====================
 // Default timeout for async browser.runtime.sendMessage operations
-const MESSAGE_TIMEOUT_MS = 5000;
+// v1.6.4.4 - FIX BUG #1: Increased from 5000 to 10000 to prevent false timeout errors on log export
+const MESSAGE_TIMEOUT_MS = 10000;
 
 /**
  * Send message to background script with timeout protection
  * v1.6.4 - FIX Issue 9: Prevent indefinite hangs when background doesn't respond
+ * v1.6.4.4 - FIX BUG #1: Updated default timeout to 10000ms
  * @param {Object} message - Message to send
- * @param {number} timeoutMs - Timeout in milliseconds (default: 5000)
+ * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
  * @returns {Promise<Object>} Response from background script
  * @throws {Error} If timeout exceeded or message fails
  */

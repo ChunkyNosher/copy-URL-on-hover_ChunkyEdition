@@ -1215,6 +1215,32 @@ const _portMessageHandlers = {
   // This allows the Manager to detect orphaned Quick Tabs and update its UI accordingly
   ORIGIN_TAB_CLOSED: msg => {
     _handleOriginTabClosed(msg);
+  },
+  // v1.6.4.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
+  // These ensure proper logging and prevent "unknown_type" warnings in the port handler
+  TRANSFER_QUICK_TAB_ACK: msg => {
+    console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK received:', {
+      success: msg.success,
+      quickTabId: msg.quickTabId || null,
+      oldOriginTabId: msg.oldOriginTabId || null,
+      newOriginTabId: msg.newOriginTabId || null,
+      error: msg.error || null,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+    // Note: STATE_CHANGED message from background will trigger re-render with updated state
+  },
+  // v1.6.4.4 - FIX BUG #3: Handle duplicate ACK
+  DUPLICATE_QUICK_TAB_ACK: msg => {
+    console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
+      success: msg.success,
+      newQuickTabId: msg.newQuickTabId || null,
+      newOriginTabId: msg.newOriginTabId || null,
+      error: msg.error || null,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+    // Note: STATE_CHANGED message from background will trigger re-render with updated state
   }
 };
 
