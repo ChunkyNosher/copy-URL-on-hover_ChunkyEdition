@@ -5694,6 +5694,44 @@ const TYPE_HANDLERS = {
     // This handler is mainly for logging and potential future use
     sendResponse({ received: true });
     return true;
+  },
+
+  // v1.6.4.3 - FIX BUG #2: Handle transfer messages received via browser.runtime.onMessage
+  // These are sent by background when the port is not available for the target tab
+  QUICK_TAB_TRANSFERRED_IN: (message, sendResponse) => {
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN via sendMessage:', {
+      quickTabId: message.quickTab?.id,
+      source: message.source
+    });
+    _handleQuickTabTransferredIn(message);
+    sendResponse({ success: true, handled: true });
+    return true;
+  },
+
+  QUICK_TAB_TRANSFERRED_OUT: (message, sendResponse) => {
+    console.log('[Content] QUICK_TAB_TRANSFERRED_OUT via sendMessage:', {
+      quickTabId: message.quickTabId,
+      newOriginTabId: message.newOriginTabId
+    });
+    _handleQuickTabTransferredOut(message);
+    sendResponse({ success: true, handled: true });
+    return true;
+  },
+
+  // v1.6.4.3 - FIX Code Review: Document that this handler intentionally reuses
+  // _handleQuickTabTransferredIn because both operations create a Quick Tab on the
+  // target tab with the same properties. The only difference is in the background
+  // script's handling (transfer removes from source, duplicate creates new ID).
+  CREATE_QUICK_TAB_FROM_DUPLICATE: (message, sendResponse) => {
+    console.log('[Content] CREATE_QUICK_TAB_FROM_DUPLICATE via sendMessage:', {
+      quickTabId: message.quickTab?.id,
+      source: message.source
+    });
+    // Reuse the same handler as QUICK_TAB_TRANSFERRED_IN since both create a Quick Tab
+    // from the provided quickTab data. The background handles the source tab differently.
+    _handleQuickTabTransferredIn(message);
+    sendResponse({ success: true, handled: true });
+    return true;
   }
 };
 

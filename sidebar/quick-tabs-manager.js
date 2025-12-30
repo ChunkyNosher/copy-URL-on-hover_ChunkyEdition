@@ -7392,6 +7392,7 @@ function _saveUserGroupOrder(container) {
 /**
  * Apply user's preferred tab group order to a groups Map
  * v1.6.4.1 - FIX BUG #4: Maintain group ordering across re-renders
+ * v1.6.4.3 - IMPROVED: More robust type handling for key comparison
  * Groups not in user order are appended at the end
  * @private
  * @param {Map} groups - Map of originTabId -> group data
@@ -7400,34 +7401,33 @@ function _saveUserGroupOrder(container) {
 function _applyUserGroupOrder(groups) {
   // If no user order has been set, return as-is
   if (!_userGroupOrder || _userGroupOrder.length === 0) {
+    console.log('[Manager] GROUP_ORDER_SKIPPED: No user order set');
     return groups;
   }
 
   const orderedGroups = new Map();
   const processedKeys = new Set();
 
+  console.log('[Manager] GROUP_ORDER_APPLYING:', {
+    userOrder: _userGroupOrder,
+    groupKeys: Array.from(groups.keys()),
+    groupKeyTypes: Array.from(groups.keys()).map(k => typeof k)
+  });
+
   // First, add groups in user's preferred order
   for (const tabId of _userGroupOrder) {
-    // Try both string and numeric versions of the key
-    let key = tabId;
-    if (!groups.has(key)) {
-      key = parseInt(tabId, 10);
-    }
-    if (!groups.has(key)) {
-      key = String(tabId);
-    }
+    // v1.6.4.3 - Try all possible key formats: original string, parsed number, explicit string
+    const matchedKey = _findMatchingGroupKey(groups, tabId);
 
-    if (groups.has(key)) {
-      orderedGroups.set(key, groups.get(key));
-      // v1.6.4 - FIX Code Review: Store string version once for consistent comparison
-      const keyStr = String(key);
-      processedKeys.add(keyStr);
+    if (matchedKey !== null) {
+      orderedGroups.set(matchedKey, groups.get(matchedKey));
+      // Store string version for consistent comparison in processedKeys
+      processedKeys.add(String(matchedKey));
     }
   }
 
   // Then, append any groups not in user's order (new groups)
   for (const [key, value] of groups) {
-    // v1.6.4 - FIX Code Review: Convert key to string once per iteration
     const keyStr = String(key);
     if (!processedKeys.has(keyStr)) {
       orderedGroups.set(key, value);
@@ -7437,17 +7437,48 @@ function _applyUserGroupOrder(groups) {
   console.log('[Manager] GROUP_ORDER_APPLIED:', {
     userOrder: _userGroupOrder,
     resultOrder: Array.from(orderedGroups.keys()),
-    newGroupsAppended:
-      orderedGroups.size -
-      _userGroupOrder.filter(id => {
-        const strId = String(id);
-        const numId = parseInt(id, 10);
-        return groups.has(strId) || groups.has(numId) || groups.has(id);
-      }).length,
+    inputGroupCount: groups.size,
+    outputGroupCount: orderedGroups.size,
     timestamp: Date.now()
   });
 
   return orderedGroups;
+}
+
+/**
+ * Find matching group key trying multiple formats
+ * v1.6.4.3 - FIX BUG #4: More robust key matching
+ * @private
+ * @param {Map} groups - Groups Map
+ * @param {string} tabId - Tab ID from user order (always string from DOM dataset)
+ * @returns {*} Matching key or null if not found
+ */
+function _findMatchingGroupKey(groups, tabId) {
+  // Try string version first (from dataset)
+  if (groups.has(tabId)) {
+    return tabId;
+  }
+
+  // v1.6.4.3 - FIX Code Review: Use stricter numeric validation
+  // parseInt('123abc', 10) returns 123 which could cause false matches
+  const numericId = Number(tabId);
+  if (Number.isInteger(numericId) && groups.has(numericId)) {
+    return numericId;
+  }
+
+  // Try explicit string conversion of the original value
+  const strId = String(tabId);
+  if (groups.has(strId)) {
+    return strId;
+  }
+
+  console.log('[Manager] GROUP_ORDER_KEY_NOT_FOUND:', {
+    tabId,
+    triedFormats: [tabId, numericId, strId],
+    availableKeys: Array.from(groups.keys())
+  });
+
+  return null;
 }
 
 /**

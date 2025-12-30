@@ -7283,13 +7283,50 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
       });
       console.log('[Background] Notified new tab of transfer in:', newOriginTabId);
     } catch (err) {
-      console.warn('[Background] Failed to notify new tab:', err.message);
+      console.warn('[Background] Failed to notify new tab via port:', err.message);
+      // v1.6.4.3 - FIX BUG #2: Fall back to browser.tabs.sendMessage
+      _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId);
     }
   } else {
-    // v1.6.4.2 - FIX BUG #6/#7: Log when no port exists for target tab
-    console.warn('[Background] No port for new tab - Quick Tab will not appear until page refresh:', {
+    // v1.6.4.3 - FIX BUG #2: No port available, use browser.tabs.sendMessage as fallback
+    // This handles the case where the target tab doesn't have any Quick Tabs yet
+    // and therefore hasn't established a port connection with the background
+    console.log('[Background] No port for new tab, using sendMessage fallback:', {
       newOriginTabId,
       availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
+    _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId);
+  }
+}
+
+/**
+ * Send QUICK_TAB_TRANSFERRED_IN message via browser.tabs.sendMessage fallback
+ * v1.6.4.3 - FIX BUG #2: Fallback when port is not available
+ * @private
+ * @param {number} newOriginTabId - Target tab ID
+ * @param {Object} quickTabData - Quick Tab data to send
+ * @param {number} oldOriginTabId - Previous origin tab ID for logging
+ */
+async function _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId) {
+  try {
+    await browser.tabs.sendMessage(newOriginTabId, {
+      type: 'QUICK_TAB_TRANSFERRED_IN',
+      quickTab: quickTabData,
+      oldOriginTabId,
+      timestamp: Date.now(),
+      source: 'sendMessage_fallback'
+    });
+    console.log('[Background] TRANSFER_FALLBACK_SUCCESS: Notified new tab via sendMessage:', {
+      newOriginTabId,
+      quickTabId: quickTabData?.id
+    });
+  } catch (err) {
+    // Content script may not be loaded on the target tab
+    console.error('[Background] TRANSFER_FALLBACK_FAILED: Could not notify target tab:', {
+      newOriginTabId,
+      quickTabId: quickTabData?.id,
+      error: err.message,
+      hint: 'Target tab may not have content script loaded. User should refresh the tab.'
     });
   }
 }
@@ -7354,6 +7391,7 @@ function _addQuickTabToState(newQuickTab, newOriginTabId) {
 /**
  * Notify target tab of duplicated Quick Tab
  * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * v1.6.4.3 - FIX BUG #2: Add browser.tabs.sendMessage fallback
  * @private
  * @param {number} newOriginTabId - Target tab ID
  * @param {Object} newQuickTab - New Quick Tab data
@@ -7370,10 +7408,12 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
 
   const targetPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
   if (!targetPort) {
-    console.warn('[Background] No port for duplicate target tab - Quick Tab will not appear until page refresh:', {
+    // v1.6.4.3 - FIX BUG #2: Fall back to browser.tabs.sendMessage
+    console.log('[Background] No port for duplicate target tab, using sendMessage fallback:', {
       newOriginTabId,
       availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
     });
+    _sendDuplicateMessageFallback(newOriginTabId, newQuickTab);
     return;
   }
 
@@ -7385,7 +7425,39 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
     });
     console.log('[Background] Notified target tab of duplicate:', newOriginTabId);
   } catch (err) {
-    console.warn('[Background] Failed to notify target tab:', err.message);
+    console.warn('[Background] Failed to notify target tab via port:', err.message);
+    // v1.6.4.3 - FIX BUG #2: Fall back to browser.tabs.sendMessage
+    _sendDuplicateMessageFallback(newOriginTabId, newQuickTab);
+  }
+}
+
+/**
+ * Send CREATE_QUICK_TAB_FROM_DUPLICATE message via browser.tabs.sendMessage fallback
+ * v1.6.4.3 - FIX BUG #2: Fallback when port is not available
+ * @private
+ * @param {number} newOriginTabId - Target tab ID
+ * @param {Object} newQuickTab - New Quick Tab data
+ */
+async function _sendDuplicateMessageFallback(newOriginTabId, newQuickTab) {
+  try {
+    await browser.tabs.sendMessage(newOriginTabId, {
+      type: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
+      quickTab: newQuickTab,
+      timestamp: Date.now(),
+      source: 'sendMessage_fallback'
+    });
+    console.log('[Background] DUPLICATE_FALLBACK_SUCCESS: Notified target tab via sendMessage:', {
+      newOriginTabId,
+      quickTabId: newQuickTab?.id
+    });
+  } catch (err) {
+    // Content script may not be loaded on the target tab
+    console.error('[Background] DUPLICATE_FALLBACK_FAILED: Could not notify target tab:', {
+      newOriginTabId,
+      quickTabId: newQuickTab?.id,
+      error: err.message,
+      hint: 'Target tab may not have content script loaded. User should refresh the tab.'
+    });
   }
 }
 

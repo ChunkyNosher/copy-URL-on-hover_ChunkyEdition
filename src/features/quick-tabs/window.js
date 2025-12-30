@@ -580,6 +580,7 @@ export class QuickTabWindow {
   /**
    * Create a transparent click overlay for iframe click detection
    * v1.6.4.2 - FIX BUG #1: Click to bring Quick Tab to front
+   * v1.6.4.3 - IMPROVED: Enhanced overlay positioning and z-index
    * This overlay captures clicks on the iframe area and brings the window to front.
    * After the window is focused, subsequent clicks pass through to the iframe.
    * @private
@@ -593,39 +594,77 @@ export class QuickTabWindow {
         left: '0',
         right: '0',
         bottom: '0',
-        zIndex: '1', // Above iframe
+        // v1.6.4.3 - FIX BUG #1: Higher z-index to ensure overlay is above iframe
+        zIndex: '2147483646', // One below max to stay above iframe which is typically auto
         cursor: 'pointer',
-        backgroundColor: 'transparent'
+        backgroundColor: 'transparent',
+        // v1.6.4.3 - Ensure overlay doesn't inherit pointer-events from parent
+        pointerEvents: 'auto'
       }
     });
 
-    // On click, bring window to front and hide overlay temporarily
-    this.clickOverlay.addEventListener('mousedown', _e => {
-      console.log('[QuickTabWindow] Click overlay triggered - bringing to front:', this.id);
-      this.onFocus(this.id);
+    // On mousedown, bring window to front and hide overlay temporarily
+    this.clickOverlay.addEventListener('mousedown', e => {
+      console.log('[QuickTabWindow] Click overlay mousedown - bringing to front:', this.id);
+      
+      // v1.6.4.3 - FIX BUG #1: Call onFocus to bring to front
+      if (typeof this.onFocus === 'function') {
+        this.onFocus(this.id);
+      }
 
       // After bringing to front, let the click pass through to iframe
       // Use pointer-events: none temporarily
       this.clickOverlay.style.pointerEvents = 'none';
 
-      // Re-enable after a short delay to catch subsequent clicks when window loses focus
+      // v1.6.4.3 - FIX BUG #1: Re-dispatch the event to the iframe underneath
+      // Store event coordinates for pass-through
+      const x = e.clientX;
+      const y = e.clientY;
+      
+      // Use setTimeout to allow the pointer-events change to take effect
+      setTimeout(() => {
+        // Get element at point now that overlay has pointer-events: none
+        const elementBelow = document.elementFromPoint(x, y);
+        if (elementBelow && elementBelow !== this.clickOverlay) {
+          // Dispatch a synthetic click to the element below with all relevant properties
+          const syntheticEvent = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: e.button,
+            // v1.6.4.3 - FIX Code Review: Copy additional mouse event properties
+            buttons: e.buttons,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+          });
+          elementBelow.dispatchEvent(syntheticEvent);
+        }
+      }, 0);
+
+      // Re-enable after a delay to catch subsequent clicks when window loses focus
       setTimeout(() => {
         if (this.clickOverlay && !this.destroyed) {
           this.clickOverlay.style.pointerEvents = 'auto';
         }
-      }, 300);
+      }, 500); // Increased from 300ms to give more time for interaction
     });
 
     // Also handle pointerdown for touch devices
-    this.clickOverlay.addEventListener('pointerdown', _e => {
-      if (_e.pointerType === 'touch') {
-        this.onFocus(this.id);
+    this.clickOverlay.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') {
+        console.log('[QuickTabWindow] Click overlay touch - bringing to front:', this.id);
+        if (typeof this.onFocus === 'function') {
+          this.onFocus(this.id);
+        }
         this.clickOverlay.style.pointerEvents = 'none';
         setTimeout(() => {
           if (this.clickOverlay && !this.destroyed) {
             this.clickOverlay.style.pointerEvents = 'auto';
           }
-        }, 300);
+        }, 500);
       }
     });
   }
