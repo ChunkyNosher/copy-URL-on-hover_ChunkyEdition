@@ -6306,7 +6306,11 @@ const _sidebarMessageHandlers = {
   // v1.6.3.12-v7 - FIX Issue #15: Add Close All Quick Tabs handler
   CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port),
   // v1.6.4 - FIX Issue #12: Add Close Minimized Quick Tabs handler
-  CLOSE_MINIMIZED_QUICK_TABS: (msg, port) => handleSidebarCloseMinimizedQuickTabs(msg, port)
+  CLOSE_MINIMIZED_QUICK_TABS: (msg, port) => handleSidebarCloseMinimizedQuickTabs(msg, port),
+  // v1.6.4 - FEATURE #3: Transfer Quick Tab to different browser tab
+  TRANSFER_QUICK_TAB: (msg, port) => handleSidebarTransferQuickTab(msg, port),
+  // v1.6.4 - FEATURE #5: Duplicate Quick Tab to different browser tab
+  DUPLICATE_QUICK_TAB: (msg, port) => handleSidebarDuplicateQuickTab(msg, port)
 };
 
 /**
@@ -7013,6 +7017,277 @@ function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
     globalTabsRemaining: globalQuickTabState.tabs.length
   });
 }
+
+// ==================== v1.6.4 DRAG AND DROP HANDLERS ====================
+// FEATURE #3, #5: Cross-Tab Transfer and Duplicate
+
+/**
+ * Handle sidebar request to transfer a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
+ * @param {Object} msg - Message with quickTabId and newOriginTabId
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarTransferQuickTab(msg, sidebarPort) {
+  const { quickTabId, newOriginTabId } = msg;
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
+
+  console.log('[Background] TRANSFER_QUICK_TAB_ENTRY:', {
+    quickTabId,
+    newOriginTabId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Find the Quick Tab in session state
+  let quickTabData = null;
+  let oldOriginTabId = null;
+
+  for (const tabId in quickTabsSessionState.quickTabsByTab) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
+    if (index >= 0) {
+      quickTabData = tabQuickTabs[index];
+      oldOriginTabId = parseInt(tabId, 10);
+      // Remove from old tab
+      tabQuickTabs.splice(index, 1);
+      break;
+    }
+  }
+
+  if (!quickTabData) {
+    console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
+    sidebarPort.postMessage({
+      type: 'TRANSFER_QUICK_TAB_ACK',
+      success: false,
+      error: 'Quick Tab not found',
+      quickTabId,
+      correlationId
+    });
+    return;
+  }
+
+  // Update the Quick Tab's origin tab ID
+  quickTabData.originTabId = newOriginTabId;
+  quickTabData.transferredAt = Date.now();
+  quickTabData.transferredFrom = oldOriginTabId;
+
+  // Add to new tab's Quick Tabs array
+  if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
+    quickTabsSessionState.quickTabsByTab[newOriginTabId] = [];
+  }
+  quickTabsSessionState.quickTabsByTab[newOriginTabId].push(quickTabData);
+
+  // Update global state
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs[globalIndex].originTabId = newOriginTabId;
+    globalQuickTabState.tabs[globalIndex].transferredAt = Date.now();
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, newOriginTabId);
+
+  // Send ACK to sidebar
+  sidebarPort.postMessage({
+    type: 'TRANSFER_QUICK_TAB_ACK',
+    success: true,
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    correlationId
+  });
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  // Notify content scripts of the change
+  _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData);
+
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] TRANSFER_QUICK_TAB_EXIT:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    success: true,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
+}
+
+/**
+ * Notify content scripts of Quick Tab transfer
+ * v1.6.4 - FEATURE #3: Send removal to old tab, creation to new tab
+ * @private
+ * @param {number} oldOriginTabId - Previous origin tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} quickTabData - Quick Tab data
+ */
+function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
+  // Notify old tab to remove the Quick Tab
+  const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
+  if (oldPort) {
+    try {
+      oldPort.postMessage({
+        type: 'QUICK_TAB_TRANSFERRED_OUT',
+        quickTabId,
+        newOriginTabId,
+        timestamp: Date.now()
+      });
+      console.log('[Background] Notified old tab of transfer out:', oldOriginTabId);
+    } catch (err) {
+      console.warn('[Background] Failed to notify old tab:', err.message);
+    }
+  }
+
+  // Notify new tab to create the Quick Tab
+  const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+  if (newPort) {
+    try {
+      newPort.postMessage({
+        type: 'QUICK_TAB_TRANSFERRED_IN',
+        quickTab: quickTabData,
+        oldOriginTabId,
+        timestamp: Date.now()
+      });
+      console.log('[Background] Notified new tab of transfer in:', newOriginTabId);
+    } catch (err) {
+      console.warn('[Background] Failed to notify new tab:', err.message);
+    }
+  }
+}
+
+/**
+ * Generate a unique ID for a new Quick Tab
+ * v1.6.4 - FEATURE #5: Helper for duplicate operation
+ * @private
+ * @returns {string} Unique Quick Tab ID
+ */
+function _generateQuickTabId() {
+  return `qt-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
+ * Create Quick Tab object for duplication
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * @private
+ * @param {Object} msg - Message with Quick Tab properties
+ * @param {string} newQuickTabId - New Quick Tab ID
+ * @returns {Object} New Quick Tab object
+ */
+function _createDuplicateQuickTab(msg, newQuickTabId) {
+  const { url, title, left, top, width, height, minimized, newOriginTabId } = msg;
+  return {
+    id: newQuickTabId,
+    url,
+    title: title || 'Duplicated Quick Tab',
+    left: left ?? 100,
+    top: top ?? 100,
+    width: width ?? 400,
+    height: height ?? 300,
+    minimized: minimized ?? false,
+    originTabId: newOriginTabId,
+    createdAt: Date.now(),
+    duplicatedFrom: msg.sourceQuickTabId || null
+  };
+}
+
+/**
+ * Add Quick Tab to session and global state
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * @private
+ * @param {Object} newQuickTab - Quick Tab to add
+ * @param {number} newOriginTabId - Origin tab ID
+ */
+function _addQuickTabToState(newQuickTab, newOriginTabId) {
+  // Add to session state
+  if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
+    quickTabsSessionState.quickTabsByTab[newOriginTabId] = [];
+  }
+  quickTabsSessionState.quickTabsByTab[newOriginTabId].push(newQuickTab);
+
+  // Add to global state
+  globalQuickTabState.tabs.push(newQuickTab);
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  quickTabHostTabs.set(newQuickTab.id, newOriginTabId);
+}
+
+/**
+ * Notify target tab of duplicated Quick Tab
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * @private
+ * @param {number} newOriginTabId - Target tab ID
+ * @param {Object} newQuickTab - New Quick Tab data
+ */
+function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
+  const targetPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+  if (!targetPort) return;
+
+  try {
+    targetPort.postMessage({
+      type: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
+      quickTab: newQuickTab,
+      timestamp: Date.now()
+    });
+    console.log('[Background] Notified target tab of duplicate:', newOriginTabId);
+  } catch (err) {
+    console.warn('[Background] Failed to notify target tab:', err.message);
+  }
+}
+
+/**
+ * Handle sidebar request to duplicate a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #5: Alt+drag duplicate
+ * @param {Object} msg - Message with Quick Tab properties and newOriginTabId
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
+  const { newOriginTabId } = msg;
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `duplicate-${Date.now()}`;
+
+  console.log('[Background] DUPLICATE_QUICK_TAB_ENTRY:', {
+    url: msg.url,
+    newOriginTabId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Create new Quick Tab with unique ID
+  const newQuickTabId = _generateQuickTabId();
+  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId);
+
+  // Add to state
+  _addQuickTabToState(newQuickTab, newOriginTabId);
+
+  // Send ACK to sidebar
+  sidebarPort.postMessage({
+    type: 'DUPLICATE_QUICK_TAB_ACK',
+    success: true,
+    newQuickTabId,
+    newOriginTabId,
+    correlationId
+  });
+
+  // Notify sidebar and target tab
+  notifySidebarOfStateChange();
+  _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab);
+
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] DUPLICATE_QUICK_TAB_EXIT:', {
+    newQuickTabId,
+    newOriginTabId,
+    success: true,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
+}
+
+// ==================== END DRAG AND DROP HANDLERS ====================
 
 /**
  * Update Quick Tab minimized state in session state

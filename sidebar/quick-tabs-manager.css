@@ -1020,3 +1020,103 @@ html {
 .empty-hint {
   font-size: 12px;
 }
+
+/* ========================================
+ * Drag and Drop Styles (v1.6.4)
+ * FEATURE #2, #3, #5: Drag-and-Drop Reordering and Transfer
+ * ======================================== */
+
+/* Dragging state - applied to element being dragged */
+.tab-group.dragging,
+.quick-tab-item.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
+}
+
+/* Drag handle cursor */
+.tab-group-header[draggable='true'],
+.quick-tab-item[draggable='true'] {
+  cursor: grab;
+}
+
+.tab-group-header[draggable='true']:active,
+.quick-tab-item[draggable='true']:active {
+  cursor: grabbing;
+}
+
+/* Drag over state - applied to valid drop targets */
+.tab-group.drag-over {
+  outline: 2px dashed var(--blue-primary);
+  outline-offset: -2px;
+  background: rgba(74, 144, 226, 0.1);
+}
+
+.quick-tab-item.drag-over {
+  border-top: 2px solid var(--blue-primary);
+  margin-top: -2px;
+}
+
+.quick-tab-item.drag-over-bottom {
+  border-bottom: 2px solid var(--blue-primary);
+  margin-bottom: -2px;
+}
+
+/* Cross-tab transfer indicator */
+.tab-group.drag-transfer {
+  outline: 2px dashed var(--green-indicator);
+  outline-offset: -2px;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.tab-group.drag-transfer .tab-group-header {
+  background: rgba(76, 175, 80, 0.15);
+}
+
+/* Duplicate indicator (Alt+drag) */
+.tab-group.drag-duplicate {
+  outline: 2px dashed var(--orange-indicator);
+  outline-offset: -2px;
+  background: rgba(255, 152, 0, 0.1);
+}
+
+.tab-group.drag-duplicate .tab-group-header {
+  background: rgba(255, 152, 0, 0.15);
+}
+
+/* Drop zone indicator for tab group content */
+.tab-group-content.drag-over {
+  background: rgba(74, 144, 226, 0.08);
+  border-left-color: var(--blue-primary);
+}
+
+/* Drag ghost customization */
+.drag-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: 0.9;
+  transform: rotate(2deg);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Smooth reorder animation */
+.tab-group.reordering,
+.quick-tab-item.reordering {
+  transition:
+    transform 0.2s ease,
+    margin 0.2s ease;
+}
+
+/* Invalid drop target */
+.tab-group.drag-invalid,
+.quick-tab-item.drag-invalid {
+  outline: 2px dashed var(--red-danger);
+  outline-offset: -2px;
+  background: rgba(244, 67, 54, 0.1);
+  cursor: not-allowed;
+}
+
+/* ======================================== */
