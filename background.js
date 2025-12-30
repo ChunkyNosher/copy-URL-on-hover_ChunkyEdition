@@ -2118,34 +2118,27 @@ messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
 );
 
 /**
- * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
- * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
- * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * Resolve origin tab ID from message or sender
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
  * @private
  * @param {Object} msg - CREATE_QUICK_TAB message
  * @param {Object} sender - Message sender info
+ * @returns {number|null} Origin tab ID or null if not available
  */
-function _addQuickTabToSessionState(msg, sender) {
-  const originTabId = msg.originTabId ?? sender?.tab?.id;
-  if (!originTabId) {
-    console.warn(
-      '[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
-      {
-        quickTabId: msg.id,
-        senderTabId: sender?.tab?.id
-      }
-    );
-    return;
-  }
+function _resolveOriginTabId(msg, sender) {
+  return msg.originTabId ?? sender?.tab?.id ?? null;
+}
 
-  // Initialize tab's Quick Tab array if needed
-  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
-    quickTabsSessionState.quickTabsByTab[originTabId] = [];
-  }
-
-  // Build Quick Tab data (matching format from handleCreateQuickTab)
-  // v1.6.3.12-v12 - FIX Bug #2: Include title field for Manager display
-  const quickTabData = {
+/**
+ * Build Quick Tab data object from message
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {number} originTabId - Resolved origin tab ID
+ * @returns {Object} Quick Tab data object
+ */
+function _buildQuickTabData(msg, originTabId) {
+  return {
     id: msg.id,
     url: msg.url,
     title: msg.title,
@@ -2158,21 +2151,58 @@ function _addQuickTabToSessionState(msg, sender) {
     minimized: msg.minimized || false,
     timestamp: msg.timestamp || Date.now()
   };
+}
 
-  // Check for duplicate and add/update
-  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
-  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === msg.id);
+/**
+ * Insert or update Quick Tab in the tab's array
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
+ * @private
+ * @param {Array} tabQuickTabs - Array of Quick Tabs for a tab
+ * @param {Object} quickTabData - Quick Tab data to insert or update
+ * @param {number} originTabId - Origin tab ID (for logging)
+ */
+function _insertOrUpdateQuickTab(tabQuickTabs, quickTabData, originTabId) {
+  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === quickTabData.id);
   if (existingIndex >= 0) {
     tabQuickTabs[existingIndex] = quickTabData;
-    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Updated in session state:', msg.id);
+    console.log('[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Updated in session state:', quickTabData.id);
   } else {
     tabQuickTabs.push(quickTabData);
-    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Added to session state:', {
-      quickTabId: msg.id,
+    console.log('[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Added to session state:', {
+      quickTabId: quickTabData.id,
       originTabId,
       sessionStateTabCount: tabQuickTabs.length
     });
   }
+}
+
+/**
+ * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
+ * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
+ * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * v1.6.3.12-v14 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {Object} sender - Message sender info
+ */
+function _addQuickTabToSessionState(msg, sender) {
+  const originTabId = _resolveOriginTabId(msg, sender);
+  if (!originTabId) {
+    console.warn(
+      '[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
+      { quickTabId: msg.id, senderTabId: sender?.tab?.id }
+    );
+    return;
+  }
+
+  // Initialize tab's Quick Tab array if needed
+  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
+    quickTabsSessionState.quickTabsByTab[originTabId] = [];
+  }
+
+  const quickTabData = _buildQuickTabData(msg, originTabId);
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
+  _insertOrUpdateQuickTab(tabQuickTabs, quickTabData, originTabId);
 }
 
 // v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
@@ -6746,15 +6776,18 @@ function _logPortLookup(ownerTabId, contentPort) {
 /**
  * Try sending command via port
  * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * v1.6.3.12-v14 - FIX Code Health: Use options object pattern (5 args → 3)
  * @private
  * @param {browser.runtime.Port|null} contentPort - Content script port
  * @param {Object} message - Message to send
- * @param {string} commandType - Command type for logging
- * @param {number} ownerTabId - Tab ID for logging
- * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {Object} logContext - Logging context
+ * @param {string} logContext.commandType - Command type for logging
+ * @param {number} logContext.ownerTabId - Tab ID for logging
+ * @param {string} logContext.quickTabId - Quick Tab ID for logging
  * @returns {boolean} True if send succeeded
  */
-function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId) {
+function _trySendCommandViaPort(contentPort, message, logContext) {
+  const { commandType, ownerTabId, quickTabId } = logContext;
   if (!contentPort) return false;
 
   try {
@@ -6770,22 +6803,18 @@ function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, q
 /**
  * Send command via tabs.sendMessage (backup/fallback)
  * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * v1.6.3.12-v14 - FIX Code Health: Use options object pattern (6 args → 1)
  * @private
- * @param {number} ownerTabId - Tab ID to send message to
- * @param {string} action - Action name (e.g., CLOSE_QUICK_TAB)
- * @param {string} quickTabId - Quick Tab ID
- * @param {boolean} portSendSucceeded - Whether port send succeeded (for logging)
- * @param {browser.runtime.Port|null} contentPort - Content port (for logging reason)
- * @param {string} commandType - Command type (for logging)
+ * @param {Object} options - Send message options
+ * @param {number} options.ownerTabId - Tab ID to send message to
+ * @param {string} options.action - Action name (e.g., CLOSE_QUICK_TAB)
+ * @param {string} options.quickTabId - Quick Tab ID
+ * @param {boolean} options.portSendSucceeded - Whether port send succeeded (for logging)
+ * @param {browser.runtime.Port|null} options.contentPort - Content port (for logging reason)
+ * @param {string} options.commandType - Command type (for logging)
  */
-function _sendCommandViaSendMessage(
-  ownerTabId,
-  action,
-  quickTabId,
-  portSendSucceeded,
-  contentPort,
-  commandType
-) {
+function _sendCommandViaSendMessage(options) {
+  const { ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType } = options;
   console.log(
     `[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`,
     {
@@ -6808,6 +6837,7 @@ function _sendCommandViaSendMessage(
  * v1.6.3.12 - Helper to reduce nesting depth
  * v1.6.4 - FIX Issue #48: Add fallback to browser.tabs.sendMessage when port unavailable
  * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
+ * v1.6.3.12-v14 - FIX Code Health: Updated to use options object pattern for helpers
  * @private
  * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
  * @param {boolean} found - Whether the Quick Tab was found
@@ -6827,13 +6857,9 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
 
   _logPortLookup(ownerTabId, contentPort);
 
-  const portSendSucceeded = _trySendCommandViaPort(
-    contentPort,
-    message,
-    commandType,
-    ownerTabId,
-    quickTabId
-  );
+  // v1.6.3.12-v14 - FIX Code Health: Use options object pattern
+  const logContext = { commandType, ownerTabId, quickTabId };
+  const portSendSucceeded = _trySendCommandViaPort(contentPort, message, logContext);
 
   // v1.6.3.12-v13 - FIX Issue #48: ALWAYS try tabs.sendMessage as a backup
   // Port.postMessage() doesn't throw when port is disconnected in Firefox,
@@ -6848,14 +6874,15 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
     return;
   }
 
-  _sendCommandViaSendMessage(
+  // v1.6.3.12-v14 - FIX Code Health: Use options object pattern
+  _sendCommandViaSendMessage({
     ownerTabId,
     action,
     quickTabId,
     portSendSucceeded,
     contentPort,
     commandType
-  );
+  });
 }
 
 /**
