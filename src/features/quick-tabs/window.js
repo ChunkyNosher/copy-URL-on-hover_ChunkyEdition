@@ -42,6 +42,12 @@ const DEFAULT_HEIGHT = 300;
 const DEFAULT_LEFT = 100;
 const DEFAULT_TOP = 100;
 
+// v1.6.4.2 - FIX Code Review: Extract magic numbers into named constants
+// Maximum z-index value to ensure overlay is always on top of iframe content
+const MAX_OVERLAY_Z_INDEX = 2147483646;
+// Delay in ms before re-enabling pointer events on the click overlay
+const OVERLAY_REACTIVATION_DELAY_MS = 500;
+
 // v1.6.4.1 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
 // This avoids polluting the DOM API by not adding properties to document objects
 const _iframeDocsWithFocusListeners = new WeakSet();
@@ -595,7 +601,7 @@ export class QuickTabWindow {
         right: '0',
         bottom: '0',
         // v1.6.4.3 - FIX BUG #1: Higher z-index to ensure overlay is above iframe
-        zIndex: '2147483646', // One below max to stay above iframe which is typically auto
+        zIndex: String(MAX_OVERLAY_Z_INDEX), // Use named constant for clarity
         cursor: 'pointer',
         backgroundColor: 'transparent',
         // v1.6.4.3 - Ensure overlay doesn't inherit pointer-events from parent
@@ -649,7 +655,7 @@ export class QuickTabWindow {
         if (this.clickOverlay && !this.destroyed) {
           this.clickOverlay.style.pointerEvents = 'auto';
         }
-      }, 500); // Increased from 300ms to give more time for interaction
+      }, OVERLAY_REACTIVATION_DELAY_MS); // Use named constant for clarity
     });
 
     // Also handle pointerdown for touch devices
