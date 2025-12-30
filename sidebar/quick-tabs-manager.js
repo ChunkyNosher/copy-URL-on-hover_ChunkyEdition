@@ -6674,7 +6674,118 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
   animateCountBadgeIfChanged(groupKey, group.quickTabs.length, count);
   summary.appendChild(count);
 
+  // v1.6.4 - FEATURE #4: Add group action buttons (Go to Tab, Close All in Tab)
+  const groupActions = _createGroupActions(groupKey, isOrphaned);
+  summary.appendChild(groupActions);
+
   return summary;
+}
+
+/**
+ * Create group action buttons (Go to Tab, Close All in Tab)
+ * v1.6.4 - FEATURE #4: New tab buttons for each group header
+ * @private
+ * @param {number|string} groupKey - Group key (origin tab ID)
+ * @param {boolean} isOrphaned - Whether this is the orphaned group
+ * @returns {HTMLElement} Container with action buttons
+ */
+function _createGroupActions(groupKey, isOrphaned) {
+  const actionsContainer = document.createElement('div');
+  actionsContainer.className = 'tab-group-actions';
+
+  // Don't add actions for orphaned group
+  if (isOrphaned) {
+    return actionsContainer;
+  }
+
+  // Go to Tab button - switches to this browser tab
+  const goToTabBtn = document.createElement('button');
+  goToTabBtn.className = 'btn-icon btn-go-to-tab';
+  goToTabBtn.textContent = '🔗';
+  goToTabBtn.title = `Go to Tab ${groupKey}`;
+  goToTabBtn.dataset.action = 'goToTab';
+  goToTabBtn.dataset.tabId = String(groupKey);
+  goToTabBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleGoToTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(goToTabBtn);
+
+  // Close All in Tab button - closes all Quick Tabs in this group
+  const closeAllBtn = document.createElement('button');
+  closeAllBtn.className = 'btn-icon btn-close-all-in-tab';
+  closeAllBtn.textContent = '🗑️';
+  closeAllBtn.title = `Close all Quick Tabs in Tab ${groupKey}`;
+  closeAllBtn.dataset.action = 'closeAllInTab';
+  closeAllBtn.dataset.tabId = String(groupKey);
+  closeAllBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleCloseAllInTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(closeAllBtn);
+
+  return actionsContainer;
+}
+
+/**
+ * Handle "Go to Tab" button click - switches to the browser tab
+ * v1.6.4 - FEATURE #4: Navigate to browser tab
+ * @private
+ * @param {number|string} tabId - The browser tab ID to switch to
+ */
+async function _handleGoToTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] GO_TO_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    await browser.tabs.update(numTabId, { active: true });
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId });
+  } catch (err) {
+    console.error('[Manager] GO_TO_TAB_FAILED:', {
+      tabId: numTabId,
+      error: err.message
+    });
+    // Tab might have been closed
+    _showErrorNotification(`Cannot switch to tab: ${err.message}`);
+  }
+}
+
+/**
+ * Handle "Close All in Tab" button click - closes all Quick Tabs in this group
+ * v1.6.4 - FEATURE #4: Close all Quick Tabs in a specific tab group
+ * @private
+ * @param {number|string} tabId - The browser tab ID whose Quick Tabs to close
+ */
+function _handleCloseAllInTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] CLOSE_ALL_IN_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  // Get all Quick Tabs for this origin tab
+  const quickTabsInGroup = _allQuickTabsFromPort.filter(qt => qt.originTabId === numTabId);
+
+  if (quickTabsInGroup.length === 0) {
+    console.log('[Manager] CLOSE_ALL_IN_TAB_NO_TABS:', { tabId: numTabId });
+    return;
+  }
+
+  console.log('[Manager] CLOSE_ALL_IN_TAB_SENDING:', {
+    tabId: numTabId,
+    count: quickTabsInGroup.length,
+    quickTabIds: quickTabsInGroup.map(qt => qt.id)
+  });
+
+  // Close each Quick Tab via port
+  for (const qt of quickTabsInGroup) {
+    closeQuickTabViaPort(qt.id);
+  }
 }
 
 /**
@@ -7032,14 +7143,24 @@ function _buildTabActionContext(tab, isMinimized) {
 
 /**
  * Append action buttons for active (non-minimized) tabs
+ * v1.6.4 - FEATURE #6: Added "Open in New Tab" button
  * @private
  */
 function _appendActiveTabActions(actions, tab, context) {
-  // Go to Tab button
-  if (tab.activeTabId) {
-    const goToTabBtn = _createActionButton('🔗', `Go to Tab ${tab.activeTabId}`, {
+  // v1.6.4 - FEATURE #6: Open in New Tab button
+  const openInTabBtn = _createActionButton('↗️', 'Open in New Tab', {
+    action: 'openInNewTab',
+    quickTabId: tab.id,
+    url: tab.url
+  });
+  openInTabBtn.classList.add('btn-open-in-tab');
+  actions.appendChild(openInTabBtn);
+
+  // Go to Tab button (go to the origin browser tab)
+  if (tab.originTabId) {
+    const goToTabBtn = _createActionButton('🔗', `Go to Tab ${tab.originTabId}`, {
       action: 'goToTab',
-      tabId: tab.activeTabId
+      tabId: tab.originTabId
     });
     actions.appendChild(goToTabBtn);
   }
@@ -7060,9 +7181,19 @@ function _appendActiveTabActions(actions, tab, context) {
 
 /**
  * Append action buttons for minimized tabs
+ * v1.6.4 - FEATURE #6: Added "Open in New Tab" button
  * @private
  */
 function _appendMinimizedTabActions(actions, tab, context) {
+  // v1.6.4 - FEATURE #6: Open in New Tab button (also available for minimized tabs)
+  const openInTabBtn = _createActionButton('↗️', 'Open in New Tab', {
+    action: 'openInNewTab',
+    quickTabId: tab.id,
+    url: tab.url
+  });
+  openInTabBtn.classList.add('btn-open-in-tab');
+  actions.appendChild(openInTabBtn);
+
   const restoreBtn = _createActionButton('↑', 'Restore', {
     action: 'restore',
     quickTabId: tab.id
@@ -7503,67 +7634,102 @@ async function _dispatchQuickTabAction(options) {
     return;
   }
 
-  switch (action) {
-    case 'goToTab':
-      console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
-      await goToTab(parseInt(tabId));
-      console.log('[Manager] ACTION_COMPLETE: goToTab', {
-        tabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'minimize':
-      console.log('[Manager] ACTION_DISPATCH: minimize via port', {
-        quickTabId,
-        timestamp: Date.now()
-      });
-      minimizeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: minimize', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'restore':
-      console.log('[Manager] ACTION_DISPATCH: restore via port', {
-        quickTabId,
-        timestamp: Date.now()
-      });
-      restoreQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: restore', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'close':
-      console.log('[Manager] ACTION_DISPATCH: close via port', {
-        quickTabId,
-        timestamp: Date.now()
-      });
-      closeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: close', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'adoptToCurrentTab':
-      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
-        quickTabId,
-        targetTabId: button.dataset.targetTabId,
-        timestamp: Date.now()
-      });
-      await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    default:
-      console.warn('[Manager] UNKNOWN_ACTION:', {
-        action,
-        quickTabId,
-        tabId,
-        timestamp: Date.now()
-      });
+  // v1.6.4 - Refactored to dispatch table for reduced line count
+  const dispatcher = _getActionDispatcher(action);
+  if (dispatcher) {
+    await dispatcher({ quickTabId, tabId, button, clickTimestamp });
+  } else {
+    console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
+  }
+}
+
+/**
+ * Get action dispatcher function for a given action type
+ * v1.6.4 - Extracted from _dispatchQuickTabAction to reduce function length
+ * @private
+ */
+function _getActionDispatcher(action) {
+  const dispatchers = {
+    goToTab: _dispatchGoToTab,
+    openInNewTab: _dispatchOpenInNewTab,
+    minimize: _dispatchMinimize,
+    restore: _dispatchRestore,
+    close: _dispatchClose,
+    adoptToCurrentTab: _dispatchAdoptToCurrentTab
+  };
+  return dispatchers[action];
+}
+
+async function _dispatchGoToTab({ tabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
+  await goToTab(parseInt(tabId));
+  console.log('[Manager] ACTION_COMPLETE: goToTab', { tabId, durationMs: Date.now() - clickTimestamp });
+}
+
+async function _dispatchOpenInNewTab({ quickTabId, button, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: openInNewTab', { quickTabId, url: button.dataset.url, timestamp: Date.now() });
+  await _handleOpenInNewTab(button.dataset.url, quickTabId);
+  console.log('[Manager] ACTION_COMPLETE: openInNewTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+}
+
+function _dispatchMinimize({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: minimize via port', { quickTabId, timestamp: Date.now() });
+  minimizeQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: minimize', { quickTabId, durationMs: Date.now() - clickTimestamp });
+}
+
+function _dispatchRestore({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: restore via port', { quickTabId, timestamp: Date.now() });
+  restoreQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: restore', { quickTabId, durationMs: Date.now() - clickTimestamp });
+}
+
+function _dispatchClose({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: close via port', { quickTabId, timestamp: Date.now() });
+  closeQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: close', { quickTabId, durationMs: Date.now() - clickTimestamp });
+}
+
+async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', { quickTabId, targetTabId: button.dataset.targetTabId, timestamp: Date.now() });
+  await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
+  console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', { quickTabId, durationMs: Date.now() - clickTimestamp });
+}
+
+/**
+ * Handle "Open in New Tab" action from Manager
+ * v1.6.4 - FEATURE #6: Open Quick Tab URL in new browser tab via Manager
+ * @private
+ * @param {string} url - URL to open
+ * @param {string} quickTabId - Quick Tab ID for logging
+ */
+async function _handleOpenInNewTab(url, quickTabId) {
+  if (!url) {
+    console.error('[Manager] OPEN_IN_NEW_TAB_NO_URL:', { quickTabId });
+    _showErrorNotification('Cannot open: URL not available');
+    return;
+  }
+
+  try {
+    // Use the same mechanism as the Quick Tab UI button
+    const response = await browser.runtime.sendMessage({
+      action: 'openTab',
+      url: url,
+      switchFocus: true
+    });
+
+    console.log('[Manager] OPEN_IN_NEW_TAB_SUCCESS:', {
+      quickTabId,
+      url,
+      tabId: response?.tabId
+    });
+  } catch (err) {
+    console.error('[Manager] OPEN_IN_NEW_TAB_FAILED:', {
+      quickTabId,
+      url,
+      error: err.message
+    });
+    _showErrorNotification(`Failed to open URL: ${err.message}`);
   }
 }
 

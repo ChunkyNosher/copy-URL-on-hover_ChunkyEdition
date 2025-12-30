@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v13  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,19 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v13 Features (NEW) - Resize/Move Sync + UI Flicker Fix:**
+**v1.6.4 Features (NEW) - Enhanced Manager UI + Bug Fixes:**
+
+- **BUG FIX #2** - "Open in New Tab" button now works correctly
+  - ROOT CAUSE: `handleOpenTab` didn't recognize `switchFocus` parameter
+  - FIX: Map both `active` and `switchFocus` to browser.tabs.create active param
+- **FEATURE #4** - New Tab Group buttons in Manager
+  - "Go to Tab" button - Switches to the browser tab
+  - "Close All in Tab" button - Closes all Quick Tabs in that tab group
+- **FEATURE #6** - "Open in New Tab" (↗️) button per Quick Tab in Manager
+  - Available for both active and minimized Quick Tabs
+  - Opens URL in new browser tab without closing the Quick Tab
+
+**v1.6.3.12-v13 Features - Resize/Move Sync + UI Flicker Fix:**
 
 - **Resize/Move Sync Fix** - `_updateQuickTabProperty()` now searches ALL tabs
   in session state, not just the sender tab
@@ -144,7 +156,14 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v13 Patterns (Current)
+### v1.6.4 Patterns (Current)
+
+- **Open in New Tab Fix** - `handleOpenTab()` now maps `switchFocus` to `active`
+- **Tab Group Actions** - `_createGroupActions()` adds Go to Tab, Close All buttons
+- **Open in New Tab Button** - `_appendActiveTabActions()` and `_appendMinimizedTabActions()`
+- **Dispatch Table Pattern** - `_getActionDispatcher()` for cleaner action routing
+
+### v1.6.3.12-v13 Patterns
 
 - **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session
   tabs
