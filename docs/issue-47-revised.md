@@ -777,10 +777,94 @@ Before marking scenario as PASS:
 
 ---
 
+## v1.6.4 User Feedback Bugs (December 2025)
+
+**Added from User Feedback:** December 30, 2025
+
+### Bug 1b: Click to Bring Quick Tab to Front (FIXED)
+
+**Issue:** Clicking inside a Quick Tab's content area didn't bring it to front.
+**Fix:** Added capture phase event listener in window.js to handle clicks.
+**Status:** ✅ FIXED in v1.6.4
+
+### Bug 2b: "Open in New Tab" Button Broken (FIXED)
+
+**Issue:** Both Quick Tab UI button and Manager button didn't work.
+**Root Cause:** `openTab` action was missing from `VALID_MESSAGE_ACTIONS` allowlist in MessageRouter.js.
+**Fix:** Added `openTab`, `saveQuickTabState`, `getQuickTabState`, `clearQuickTabState`, `createQuickTab` to allowlist.
+**Status:** ✅ FIXED in v1.6.4
+
+### Bug 3b: Cross-Tab Transfer/Duplicate Not Working (FIXED)
+
+**Issue:** Dragging Quick Tabs between tabs didn't trigger transfer/duplicate.
+**Root Cause:** `_handleQuickTabDrop` called `event.stopPropagation()` but returned early for cross-group drops without performing transfer.
+**Fix:** Handle cross-tab transfer directly in `_handleQuickTabDrop` when groups differ.
+**Status:** ✅ FIXED in v1.6.4
+
+### Bug 4b: Manager Reordering Resets (FIXED)
+
+**Issue:** Reordering tabs/Quick Tabs in Manager reverted after operations.
+**Fix:** Added `_userGroupOrder` persistence and `_applyUserGroupOrder()` function.
+**Status:** ✅ FIXED in v1.6.4
+
+### Bug 5b: Alt Key Modifier Not Working (FIXED)
+
+**Issue:** Alt key for duplicate on drag didn't work.
+**Fix:** Removed Alt from options, changed default to Shift key.
+**Status:** ✅ FIXED in v1.6.4
+
+---
+
+## v1.6.4 New Features (December 2025)
+
+### Feature 1: Drag-and-Drop Reordering
+
+**Description:** Users can reorder tabs and Quick Tabs in Manager via drag-and-drop.
+**Implementation:** Added `attachDragDropEventListeners()` with tab group and Quick Tab item handlers.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 2: Cross-Tab Quick Tab Transfer
+
+**Description:** Drag Quick Tab from one tab group to another to transfer it.
+**Implementation:** `TRANSFER_QUICK_TAB` message type handled by background.js.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 3: Duplicate via Shift+Drag
+
+**Description:** Hold Shift key while dragging to duplicate instead of move.
+**Implementation:** `DUPLICATE_QUICK_TAB` message type with configurable modifier key.
+**Settings:** Duplicate Modifier Key dropdown (Shift default, Ctrl, None).
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 4: Move to Current Tab Button
+
+**Description:** Replaces "Go to Tab" button for Quick Tab items - moves Quick Tab to current active browser tab.
+**Implementation:** `moveToCurrentTab` action with `_dispatchMoveToCurrentTab()` handler.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 5: Tab Group Actions
+
+**Description:** Added "Go to Tab" and "Close All in Tab" buttons for each tab group header.
+**Implementation:** `_createGroupActions()` function with button handlers.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 6: Open in New Tab Button (Manager)
+
+**Description:** Added "Open in New Tab" button per Quick Tab in Manager.
+**Implementation:** `_handleOpenInNewTab()` function using `openTab` action.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 7: Count Indicator Styling
+
+**Description:** Smaller container with bigger number for Quick Tab count indicator.
+**CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 6px.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** December 12, 2025  
-**Behavior Model:** Tab-Scoped (v1.6.3+)
+**Last Review Date:** December 30, 2025  
+**Behavior Model:** Tab-Scoped (v1.6.4)
