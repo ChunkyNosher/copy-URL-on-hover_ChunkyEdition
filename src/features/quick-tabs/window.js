@@ -612,7 +612,7 @@ export class QuickTabWindow {
     // On mousedown, bring window to front and hide overlay temporarily
     this.clickOverlay.addEventListener('mousedown', e => {
       console.log('[QuickTabWindow] Click overlay mousedown - bringing to front:', this.id);
-      
+
       // v1.6.4.3 - FIX BUG #1: Call onFocus to bring to front
       if (typeof this.onFocus === 'function') {
         this.onFocus(this.id);
@@ -626,7 +626,7 @@ export class QuickTabWindow {
       // Store event coordinates for pass-through
       const x = e.clientX;
       const y = e.clientY;
-      
+
       // Use setTimeout to allow the pointer-events change to take effect
       setTimeout(() => {
         // Get element at point now that overlay has pointer-events: none

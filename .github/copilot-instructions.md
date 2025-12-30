@@ -124,8 +124,10 @@ const quickTabsSessionState = {
 - **Tab Group Actions** - `_createGroupActions()` adds "Go to Tab", "Close All"
 - **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
 - **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX` constant
-- **Fallback Messaging** - `browser.tabs.sendMessage` fallback when port unavailable
-- **Group Order Validation** - `_applyUserGroupOrder()` with stricter type checks
+- **Fallback Messaging** - `browser.tabs.sendMessage` fallback when port
+  unavailable
+- **Group Order Validation** - `_applyUserGroupOrder()` with stricter type
+  checks
 
 ### v1.6.3.12-v13 Patterns
 
@@ -154,14 +156,14 @@ const quickTabsSessionState = {
 
 ### Key Timing Constants
 
-| Constant                                        | Value      | Purpose                       |
-| ----------------------------------------------- | ---------- | ----------------------------- |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646 | Click overlay z-index (v1.6.4)|
-| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500        | Pointer events re-enable delay|
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5          | Failures before circuit trips |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000      | Test write interval           |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000      | Auto-reset circuit breaker    |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10         | Max reconnection attempts     |
+| Constant                                        | Value      | Purpose                        |
+| ----------------------------------------------- | ---------- | ------------------------------ |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646 | Click overlay z-index (v1.6.4) |
+| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500        | Pointer events re-enable delay |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5          | Failures before circuit trips  |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000      | Test write interval            |
+| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000      | Auto-reset circuit breaker     |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10         | Max reconnection attempts      |
 
 ---
 
