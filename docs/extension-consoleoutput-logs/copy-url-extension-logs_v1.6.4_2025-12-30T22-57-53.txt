@@ -1,0 +1,2698 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.4
+Export Date: 2025-12-30T22:57:53.264Z
+Export Date (Local): 12/30/2025, 5:57:53 PM
+Total Logs: 481
+
+================================================================================
+[2025-12-30T22:57:28.289Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-12-30T22:57:28.400Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:28.400Z"
+}
+[2025-12-30T22:57:28.400Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:28.400Z"
+}
+[2025-12-30T22:57:28.462Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:28.462Z"
+}
+[2025-12-30T22:57:28.462Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:28.462Z"
+}
+[2025-12-30T22:57:29.294Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-12-30T22:57:29.683Z] [LOG  ] [Content] Message received: {
+  "action": "tabActivated",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:57:29.683Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: tabActivated
+[2025-12-30T22:57:29.684Z] [LOG  ] [Content] Received tabActivated broadcast: {
+  "tabId": 2177,
+  "currentTabId": 2177,
+  "timestamp": 1767135449684
+}
+[2025-12-30T22:57:29.684Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Processing tab activation: {
+  "receivedTabId": 2177,
+  "currentTabId": 2177,
+  "hasQuickTabsManager": true,
+  "timestamp": 1767135449684
+}
+[2025-12-30T22:57:29.684Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Tab is now active: {
+  "tabId": 2177,
+  "isThisTab": true
+}
+[2025-12-30T22:57:30.626Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Matched] Keyboard shortcut matched and executing {
+  "shortcutName": "quickTab",
+  "key": "e",
+  "modifiers": "Ctrl:true Alt:false Shift:false",
+  "hasLink": true,
+  "hasElement": true,
+  "_logCategory": "keyboard",
+  "_logAction": "Matched",
+  "timestamp": 1767135450626
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/YouTuber
+[2025-12-30T22:57:30.627Z] [LOG  ] [Content] QUICK_TAB_CREATE: Including originTabId in creation payload {
+  "url": "https://en.wikipedia.org/wiki/YouTuber",
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabId": 2177
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [QuickTabsManager] createQuickTab called with: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "url": "https://en.wikipedia.org/wiki/YouTuber",
+  "left": 840,
+  "top": 423,
+  "width": 960,
+  "height": 540,
+  "title": "YouTubers",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null,
+  "originTabId": 2177
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "url": "https://en.wikipedia.org/wiki/YouTuber",
+  "left": 840,
+  "top": 423,
+  "width": 960,
+  "height": 540,
+  "title": "YouTubers",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null,
+  "originTabId": 2177,
+  "currentTabId": 2177
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] 📍 ORIGIN_TAB_ID_RESOLUTION: {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "resolvedOriginTabId": 2177,
+  "source": "options.originTabId",
+  "optionsOriginTabId": 2177,
+  "defaultsOriginTabId": null
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] originTabId set: {
+  "originTabId": 2177,
+  "source": "options.originTabId"
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] 📦 CONTAINER_CONTEXT: {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originContainerId": "firefox-container-9",
+  "source": "Identity system (getWritingContainerId)",
+  "identitySystemContainerId": "firefox-container-9",
+  "constructorCookieStoreId": "firefox-container-9",
+  "optionsCookieStoreId": "firefox-default",
+  "optionsOriginContainerId": null
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [TAB_LIFECYCLE] Serializing tab: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "readingFrom": "tab.originTabId",
+  "context": "CreateHandler._createNewTab"
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] Creating window with factory: function
+[2025-12-30T22:57:30.627Z] [LOG  ] [CreateHandler] Tab options: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "url": "https://en.wikipedia.org/wiki/YouTuber",
+  "cookieStoreId": "firefox-default",
+  "zIndex": 1000001,
+  "left": 840,
+  "top": 423,
+  "width": 960,
+  "height": 540,
+  "title": "YouTubers",
+  "minimized": false,
+  "showDebugId": true,
+  "originTabId": 2177,
+  "originContainerId": "firefox-container-9",
+  "currentTabId": 2177
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [QuickTabWindow] Created with URL: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "url": "https://en.wikipedia.org/wiki/YouTuber"
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [QuickTabWindow] render() called with dimensions: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "left": 840,
+  "top": 423,
+  "width": 960,
+  "height": 540
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [QuickTabWindow] Applying dimensions to DOM: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "width": 960,
+  "height": 540,
+  "left": 840,
+  "top": 423
+}
+[2025-12-30T22:57:30.627Z] [LOG  ] [QuickTabWindow] DOM dimensions AFTER createElement: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "container.style.width": "960px",
+  "container.style.height": "540px",
+  "container.style.left": "-9999px",
+  "container.style.top": "-9999px",
+  "container.style.zIndex": "1000001",
+  "data-quicktab-id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "__quickTabWindow": true
+}
+[2025-12-30T22:57:30.627Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/YouTuber
+[2025-12-30T22:57:30.633Z] [LOG  ] [QuickTabWindow] Z-index applied after appendChild: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "targetZIndex": 1000001,
+  "verifiedZIndex": "1000001",
+  "position": "fixed"
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [QuickTabWindow] Wiring DragController callbacks: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "hasOnFocus": true,
+  "hasOnPositionChange": true,
+  "hasOnPositionChangeEnd": true
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [QuickTabWindow] Wiring ResizeController callbacks: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "hasOnSizeChange": true,
+  "hasOnSizeChangeEnd": true
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [QuickTabWindow] Rendered: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:30.633Z] [LOG  ] [QuickTabWindow][render] Render completed - container established: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "hasContainer": true,
+  "isAttachedToDOM": true,
+  "isRendered": true
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [CreateHandler] 📍 ORIGIN_ASSIGNMENT: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabId": 2177,
+  "originContainerId": "firefox-container-9",
+  "cookieStoreId": "firefox-default",
+  "url": "https://en.wikipedia.org/wiki/YouTuber"
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [CreateHandler] Window created: [object Object]
+[2025-12-30T22:57:30.633Z] [LOG  ] [UICoordinator] Received window:created event {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv"
+}
+[2025-12-30T22:57:30.633Z] [LOG  ] [UICoordinator] Registered window in renderedTabs from window:created: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "mapSizeAfter": 1,
+  "allMapKeys": [
+    "qt-2177-1767135450627-15j3hl9kozsqv"
+  ]
+}
+[2025-12-30T22:57:30.634Z] [LOG  ] [CreateHandler] Emitted window:created for UICoordinator: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "busType": "internalEventBus",
+  "busConstructor": "a"
+}
+[2025-12-30T22:57:30.634Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:30.654Z] [LOG  ] [QuickTabWindow] DOM dimensions AFTER position correction (final): {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "container.style.left": "840px",
+  "container.style.top": "423px",
+  "container.style.width": "960px",
+  "container.style.height": "540px"
+}
+[2025-12-30T22:57:30.782Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:30.782Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:30.782Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-12-30T22:57:30.782Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-12-30T22:57:30.782Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:30.782Z] [DEBUG] Quick Tab created successfully
+[2025-12-30T22:57:30.795Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Complete] Handler execution finished {
+  "shortcutName": "quickTab",
+  "executionTime": "169.00ms",
+  "_logCategory": "keyboard",
+  "_logAction": "Complete",
+  "timestamp": 1767135450795
+}
+[2025-12-30T22:57:30.842Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:31.233Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:31.233Z"
+}
+[2025-12-30T22:57:31.233Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 36,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:31.233Z"
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Matched] Keyboard shortcut matched and executing {
+  "shortcutName": "quickTab",
+  "key": "e",
+  "modifiers": "Ctrl:true Alt:false Shift:false",
+  "hasLink": true,
+  "hasElement": true,
+  "_logCategory": "keyboard",
+  "_logAction": "Matched",
+  "timestamp": 1767135451471
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Software
+[2025-12-30T22:57:31.471Z] [LOG  ] [Content] QUICK_TAB_CREATE: Including originTabId in creation payload {
+  "url": "https://en.wikipedia.org/wiki/Software",
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabId": 2177
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [QuickTabsManager] createQuickTab called with: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "url": "https://en.wikipedia.org/wiki/Software",
+  "left": 840,
+  "top": 345,
+  "width": 960,
+  "height": 540,
+  "title": "software",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null,
+  "originTabId": 2177
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [CreateHandler] Creating Quick Tab with options: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "url": "https://en.wikipedia.org/wiki/Software",
+  "left": 840,
+  "top": 345,
+  "width": 960,
+  "height": 540,
+  "title": "software",
+  "cookieStoreId": "firefox-default",
+  "minimized": false,
+  "pinnedToUrl": null,
+  "originTabId": 2177,
+  "currentTabId": 2177
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [CreateHandler] 📍 ORIGIN_TAB_ID_RESOLUTION: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "resolvedOriginTabId": 2177,
+  "source": "options.originTabId",
+  "optionsOriginTabId": 2177,
+  "defaultsOriginTabId": null
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [CreateHandler] originTabId set: {
+  "originTabId": 2177,
+  "source": "options.originTabId"
+}
+[2025-12-30T22:57:31.471Z] [LOG  ] [CreateHandler] 📦 CONTAINER_CONTEXT: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originContainerId": "firefox-container-9",
+  "source": "Identity system (getWritingContainerId)",
+  "identitySystemContainerId": "firefox-container-9",
+  "constructorCookieStoreId": "firefox-container-9",
+  "optionsCookieStoreId": "firefox-default",
+  "optionsOriginContainerId": null
+}
+[2025-12-30T22:57:31.471Z] [DEBUG] Creating Quick Tab for: https://en.wikipedia.org/wiki/Software
+[2025-12-30T22:57:31.472Z] [LOG  ] [TAB_LIFECYCLE] Serializing tab: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "readingFrom": "tab.originTabId",
+  "context": "CreateHandler._createNewTab"
+}
+[2025-12-30T22:57:31.472Z] [LOG  ] [CreateHandler] Creating window with factory: function
+[2025-12-30T22:57:31.472Z] [LOG  ] [CreateHandler] Tab options: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "url": "https://en.wikipedia.org/wiki/Software",
+  "cookieStoreId": "firefox-default",
+  "zIndex": 1000002,
+  "left": 840,
+  "top": 345,
+  "width": 960,
+  "height": 540,
+  "title": "software",
+  "minimized": false,
+  "showDebugId": true,
+  "originTabId": 2177,
+  "originContainerId": "firefox-container-9",
+  "currentTabId": 2177
+}
+[2025-12-30T22:57:31.472Z] [LOG  ] [QuickTabWindow] Created with URL: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "url": "https://en.wikipedia.org/wiki/Software"
+}
+[2025-12-30T22:57:31.472Z] [LOG  ] [QuickTabWindow] render() called with dimensions: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "left": 840,
+  "top": 345,
+  "width": 960,
+  "height": 540
+}
+[2025-12-30T22:57:31.472Z] [LOG  ] [QuickTabWindow] Applying dimensions to DOM: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "width": 960,
+  "height": 540,
+  "left": 840,
+  "top": 345
+}
+[2025-12-30T22:57:31.472Z] [LOG  ] [QuickTabWindow] DOM dimensions AFTER createElement: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "container.style.width": "960px",
+  "container.style.height": "540px",
+  "container.style.left": "-9999px",
+  "container.style.top": "-9999px",
+  "container.style.zIndex": "1000002",
+  "data-quicktab-id": "qt-2177-1767135451471-5ufgkorssix3",
+  "__quickTabWindow": true
+}
+[2025-12-30T22:57:31.475Z] [LOG  ] [QuickTabWindow] Z-index applied after appendChild: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "targetZIndex": 1000002,
+  "verifiedZIndex": "1000002",
+  "position": "fixed"
+}
+[2025-12-30T22:57:31.475Z] [LOG  ] [QuickTabWindow] Wiring DragController callbacks: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "hasOnFocus": true,
+  "hasOnPositionChange": true,
+  "hasOnPositionChangeEnd": true
+}
+[2025-12-30T22:57:31.475Z] [LOG  ] [QuickTabWindow] Wiring ResizeController callbacks: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "hasOnSizeChange": true,
+  "hasOnSizeChangeEnd": true
+}
+[2025-12-30T22:57:31.475Z] [LOG  ] [QuickTabWindow] Rendered: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:31.475Z] [LOG  ] [QuickTabWindow][render] Render completed - container established: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "hasContainer": true,
+  "isAttachedToDOM": true,
+  "isRendered": true
+}
+[2025-12-30T22:57:31.475Z] [LOG  ] [CreateHandler] 📍 ORIGIN_ASSIGNMENT: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabId": 2177,
+  "originContainerId": "firefox-container-9",
+  "cookieStoreId": "firefox-default",
+  "url": "https://en.wikipedia.org/wiki/Software"
+}
+[2025-12-30T22:57:31.476Z] [LOG  ] [CreateHandler] Window created: [object Object]
+[2025-12-30T22:57:31.476Z] [LOG  ] [UICoordinator] Received window:created event {
+  "id": "qt-2177-1767135451471-5ufgkorssix3"
+}
+[2025-12-30T22:57:31.476Z] [LOG  ] [UICoordinator] Registered window in renderedTabs from window:created: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "mapSizeAfter": 2,
+  "allMapKeys": [
+    "qt-2177-1767135450627-15j3hl9kozsqv",
+    "qt-2177-1767135451471-5ufgkorssix3"
+  ]
+}
+[2025-12-30T22:57:31.476Z] [LOG  ] [CreateHandler] Emitted window:created for UICoordinator: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "busType": "internalEventBus",
+  "busConstructor": "a"
+}
+[2025-12-30T22:57:31.476Z] [LOG  ] [CreateHandler] Quick Tab created successfully: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:31.480Z] [LOG  ] [QuickTabWindow] DOM dimensions AFTER position correction (final): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "container.style.left": "840px",
+  "container.style.top": "345px",
+  "container.style.width": "960px",
+  "container.style.height": "540px"
+}
+[2025-12-30T22:57:31.560Z] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:31.561Z] [LOG  ] [DEBUG] Notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:31.561Z] [LOG  ] [NotificationManager] Showing notification: ✓ Quick Tab created! success
+[2025-12-30T22:57:31.561Z] [LOG  ] [Tooltip] Displayed: ✓ Quick Tab created!
+[2025-12-30T22:57:31.561Z] [LOG  ] [DEBUG] Quick Tab created successfully
+[2025-12-30T22:57:31.561Z] [LOG  ] [⌨️ Keyboard Shortcuts] [Complete] Handler execution finished {
+  "shortcutName": "quickTab",
+  "executionTime": "90.00ms",
+  "_logCategory": "keyboard",
+  "_logAction": "Complete",
+  "timestamp": 1767135451561
+}
+[2025-12-30T22:57:31.561Z] [DEBUG] Quick Tab created successfully
+[2025-12-30T22:57:31.674Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.222Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] ENTRY: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "currentZIndex": 1000002
+}
+[2025-12-30T22:57:32.223Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Container validation: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "hasContainer": true,
+  "isAttachedToDOM": true,
+  "isRendered": true
+}
+[2025-12-30T22:57:32.223Z] [LOG  ] [VisibilityHandler][Tab 2177] Z-INDEX_RECYCLE: Counter exceeded threshold {
+  "currentValue": 1000002,
+  "threshold": 10000
+}
+[2025-12-30T22:57:32.223Z] [LOG  ] [DRAG][INITIATED] Drag operation started, emergency save will trigger if tab switch detected {
+  "initialPosition": {
+    "x": 840,
+    "y": 345
+  },
+  "pointerId": 0,
+  "hasOnDragCancel": true,
+  "timestamp": "2025-12-30T22:57:32.223Z"
+}
+[2025-12-30T22:57:32.223Z] [LOG  ] [QuickTabWindow] Drag started: qt-2177-1767135451471-5ufgkorssix3 840 345
+[2025-12-30T22:57:32.223Z] [LOG  ] [QuickTabWindow] Bringing to front via onFocus callback: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.223Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Ignoring duplicate focus (within debounce window): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.224Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Ignoring duplicate focus (within debounce window): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.250Z] [LOG  ] [DEBOUNCE][DRAG_TRIGGERED] Debounce initiated {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "scheduledDelayMs": 200,
+  "debouncedEventCount": 0,
+  "timestamp": "2025-12-30T22:57:32.250Z"
+}
+[2025-12-30T22:57:32.266Z] [LOG  ] [VisibilityHandler][Tab 2177] Z-INDEX_RECYCLE: Reassigned {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "newZIndex": 1001
+}
+[2025-12-30T22:57:32.266Z] [LOG  ] [VisibilityHandler][Tab 2177] Z-INDEX_RECYCLE: Reassigned {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "newZIndex": 1002
+}
+[2025-12-30T22:57:32.266Z] [LOG  ] [VisibilityHandler][Tab 2177] Z-INDEX_RECYCLE: Complete {
+  "newCounterValue": 1002,
+  "tabsRecycled": 2,
+  "persistenceConfirmed": true
+}
+[2025-12-30T22:57:32.266Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Z-index increment attempt: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "oldZIndex": 1002,
+  "proposedNewZIndex": 1003,
+  "currentCounterValue": 1002
+}
+[2025-12-30T22:57:32.272Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 1,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.272Z"
+}
+[2025-12-30T22:57:32.281Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 2,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.281Z"
+}
+[2025-12-30T22:57:32.290Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 3,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.290Z"
+}
+[2025-12-30T22:57:32.298Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 4,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.298Z"
+}
+[2025-12-30T22:57:32.307Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 5,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.307Z"
+}
+[2025-12-30T22:57:32.317Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 6,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.316Z"
+}
+[2025-12-30T22:57:32.324Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Z-index increment SUCCESS: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "oldZIndex": 1002,
+  "newZIndex": 1003,
+  "counterValue": 1003,
+  "persistenceConfirmed": true
+}
+[2025-12-30T22:57:32.324Z] [LOG  ] [QuickTabWindow][updateZIndex] ENTRY: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "oldZIndex": 1003,
+  "newZIndex": 1003,
+  "hasContainer": true,
+  "containerAttached": true
+}
+[2025-12-30T22:57:32.324Z] [LOG  ] [QuickTabWindow][updateZIndex] EXIT: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "oldZIndex": 1003,
+  "newZIndex": 1003,
+  "domZIndex": "1003",
+  "verified": true
+}
+[2025-12-30T22:57:32.324Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] Called tabWindow.updateZIndex(): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "newZIndex": 1003,
+  "domZIndex": "1003"
+}
+[2025-12-30T22:57:32.324Z] [LOG  ] [VisibilityHandler] Persist triggered: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "source": "UI",
+  "trigger": "focus",
+  "isFocusOperation": true,
+  "capturedTabId": 2177
+}
+[2025-12-30T22:57:32.325Z] [LOG  ] [VisibilityHandler] _debouncedPersist scheduling (source: UI): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "operation": "focus",
+  "timerId": "timer-qt-2177-1767135451471-5ufgkorssix3-1",
+  "existingTimer": false,
+  "activeTimerCount": 0,
+  "scheduledDelayMs": 200,
+  "capturedTabId": 2177
+}
+[2025-12-30T22:57:32.325Z] [LOG  ] [VisibilityHandler][Tab 2177][handleFocus] EXIT: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "finalZIndex": 1003
+}
+[2025-12-30T22:57:32.329Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 7,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.329Z"
+}
+[2025-12-30T22:57:32.350Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 8,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.350Z"
+}
+[2025-12-30T22:57:32.370Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 9,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.370Z"
+}
+[2025-12-30T22:57:32.378Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 10,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.378Z"
+}
+[2025-12-30T22:57:32.387Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 11,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.387Z"
+}
+[2025-12-30T22:57:32.394Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 12,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.394Z"
+}
+[2025-12-30T22:57:32.406Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 13,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.406Z"
+}
+[2025-12-30T22:57:32.415Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 14,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.415Z"
+}
+[2025-12-30T22:57:32.422Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 15,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.422Z"
+}
+[2025-12-30T22:57:32.430Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 16,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.430Z"
+}
+[2025-12-30T22:57:32.439Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 17,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.439Z"
+}
+[2025-12-30T22:57:32.448Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 18,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.448Z"
+}
+[2025-12-30T22:57:32.456Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 19,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.456Z"
+}
+[2025-12-30T22:57:32.464Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 20,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.464Z"
+}
+[2025-12-30T22:57:32.479Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 21,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.479Z"
+}
+[2025-12-30T22:57:32.487Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 22,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.487Z"
+}
+[2025-12-30T22:57:32.509Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 23,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.509Z"
+}
+[2025-12-30T22:57:32.515Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 24,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.515Z"
+}
+[2025-12-30T22:57:32.531Z] [LOG  ] [DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "debouncedEventCount": 25,
+  "scheduledDelayMs": 200,
+  "timestamp": "2025-12-30T22:57:32.531Z"
+}
+[2025-12-30T22:57:32.541Z] [LOG  ] [VisibilityHandler] Timer callback STARTED (source: UI): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "operation": "focus",
+  "timerId": "timer-qt-2177-1767135451471-5ufgkorssix3-1",
+  "scheduledDelayMs": 200,
+  "actualDelayMs": 217,
+  "capturedTabId": 2177,
+  "pendingMinimizeSize": 0,
+  "pendingRestoreSize": 0
+}
+[2025-12-30T22:57:32.541Z] [LOG  ] [VisibilityHandler] Building state for storage persist...
+[2025-12-30T22:57:32.541Z] [LOG  ] [VisibilityHandler] Ownership filter result: {
+  "totalTabs": 2,
+  "ownedTabs": 2,
+  "filteredOut": 0
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [VisibilityHandler] State validation before persist: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "activeCount": 2,
+  "minimizedManagerCount": 0
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [VisibilityHandler] Persisting 2 tabs (0 minimized)
+[2025-12-30T22:57:32.542Z] [LOG  ] [WRITE_QUEUE] v1.6.4 CONCURRENCY_PEAK: {
+  "newPeakSize": 1,
+  "handler": "VisibilityHandler",
+  "isWriting": false,
+  "note": "High queue depth indicates potential storage latency"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [WRITE_QUEUE] ENQUEUED: {
+  "handler": "VisibilityHandler",
+  "priority": 1,
+  "queueSize": 1,
+  "isWriting": false,
+  "currentHandler": null,
+  "entryId": "VisibilityHandler-1767135452542-259y",
+  "peakQueueSize": 1,
+  "avgQueueTimeMs": 0,
+  "timestamp": "2025-12-30T22:57:32.542Z"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [WRITE_QUEUE] DEQUEUE_START: {
+  "handler": "VisibilityHandler",
+  "entryId": "VisibilityHandler-1767135452542-259y",
+  "priority": 1,
+  "writeNumber": 1,
+  "queueSize": 0,
+  "waitTimeMs": 0,
+  "timestamp": "2025-12-30T22:57:32.542Z"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageWrite] LIFECYCLE_QUEUED: {
+  "correlationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "timestamp": "2025-12-30T22:57:32.542Z",
+  "tabCount": 2,
+  "forceEmpty": false,
+  "caller": "VisibilityHandler"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [VisibilityHandler] STORAGE_WRITE_INITIATED [txn-1767135452542-2177-1-2c123c67]: {
+  "tabCount": 2,
+  "forceEmpty": false,
+  "currentWritingTabId": 2177,
+  "isTabIdInitialized": true,
+  "phase": "ownership-validation",
+  "preValidation": {
+    "totalTabs": 2,
+    "minimizedTabs": 0,
+    "activeTabs": 2
+  }
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [ContainerFilter] MATCH_RESULT: {
+  "originContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "result": true,
+  "matchRule": "STRICT_MATCH",
+  "identityStateMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _filterOwnedTabs: Tab ownership check {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "isTabIdMatch": true,
+  "originContainerIdRaw": "firefox-container-9",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "isContainerMatch": true,
+  "isLegacyQuickTab": false,
+  "filterReason": "STRICT_MATCH",
+  "matchType": "STRICT_MATCH",
+  "comparisonResult": true,
+  "included": true
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [ContainerFilter] MATCH_RESULT: {
+  "originContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "result": true,
+  "matchRule": "STRICT_MATCH",
+  "identityStateMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.542Z] [LOG  ] [StorageUtils] _filterOwnedTabs: Tab ownership check {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "isTabIdMatch": true,
+  "originContainerIdRaw": "firefox-container-9",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "isContainerMatch": true,
+  "isLegacyQuickTab": false,
+  "filterReason": "STRICT_MATCH",
+  "matchType": "STRICT_MATCH",
+  "comparisonResult": true,
+  "included": true
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [OWNERSHIP_FILTER][BEFORE] Starting ownership filter {
+  "totalTabs": 2,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "containersPresent": [
+    "firefox-container-9"
+  ],
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [OWNERSHIP_FILTER][AFTER] Ownership filter complete {
+  "totalTabs": 2,
+  "ownedTabs": 2,
+  "filteredOut": 0,
+  "exclusionReasonsSummary": {
+    "tabIdMismatch": 0,
+    "containerMismatch": 0,
+    "noOwnershipData": 0
+  },
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 Ownership filtering: {
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "currentContainerId": "firefox-container-9",
+  "totalTabs": 2,
+  "ownedTabs": 2,
+  "filteredOut": 0,
+  "filteredTabDetails": [],
+  "ownedTabIds": [
+    "qt-2177-1767135450627-15j3hl9kozsqv",
+    "qt-2177-1767135451471-5ufgkorssix3"
+  ]
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [STATE_VALIDATION] PRE_POST_COMPARISON [txn-1767135452542-2177-1-2c123c67]: {
+  "pre": {
+    "totalTabs": 2,
+    "minimizedTabs": 0,
+    "activeTabs": 2
+  },
+  "post": {
+    "ownedTabs": 2,
+    "filteredOut": 0,
+    "shouldWrite": true
+  },
+  "delta": {
+    "tabsFiltered": 0,
+    "percentageFiltered": 0
+  },
+  "phase": "ownership-validation-complete"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageWrite] LIFECYCLE_EXECUTE_START: {
+  "correlationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "timestamp": "2025-12-30T22:57:32.542Z",
+  "durationMs": 1,
+  "tabCount": 2,
+  "minimizedCount": 0
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] Storage write initiated: {
+  "file": "VisibilityHandler",
+  "operation": "persist",
+  "tabCount": 2,
+  "minimizedCount": 0,
+  "transaction": "txn-1767135452542-2177-1-2c123c67"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] Persisting 2 tabs (0 minimized) [txn-1767135452542-2177-1-2c123c67]
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageQueue] ENQUEUE: {
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.543Z",
+  "prevTransaction": null
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageQueue] DEQUEUE_START: {
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] IDENTITY_WAIT_START [txn-1767135452542-2177-1-2c123c67]: {
+  "identityMode": "INITIALIZING",
+  "currentWritingTabId": 2177,
+  "currentWritingContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Waiting for identity {
+  "timeoutMs": 3000,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "identityMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized {
+  "tabID": 2177,
+  "source": "cached"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized {
+  "containerID": "firefox-container-9",
+  "source": "cached"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Complete {
+  "tabId": 2177,
+  "containerId": "firefox-container-9",
+  "isReady": true,
+  "identityMode": "INITIALIZING",
+  "durationMs": 0
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [txn-1767135452542-2177-1-2c123c67]: {
+  "isReady": true,
+  "tabId": 2177,
+  "containerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] FETCH_PHASE: Starting storage write {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "tabCount": 2,
+  "phase": "FETCH_PHASE",
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "phase": "QUOTA_CHECK_PHASE",
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "tabCount": 2,
+  "phase": "SERIALIZE_PHASE",
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [StorageUtils] 📝 storage.set START: {
+  "operationId": "op-1767135452543-1",
+  "key": "quick_tabs_state_v2",
+  "tabCount": 2,
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "timestamp": 1767135452543
+}
+[2025-12-30T22:57:32.543Z] [LOG  ] [VisibilityHandler] [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "tabCount": 2,
+  "phase": "WRITE_API_PHASE",
+  "timestamp": "2025-12-30T22:57:32.543Z"
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [StorageWrite] LIFECYCLE_SUCCESS: {
+  "correlationId": "write-2025-12-30T22:57:32.542Z-kumj16",
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "tabCount": 2,
+  "totalAttempts": 4,
+  "durationMs": 3,
+  "timestamp": "2025-12-30T22:57:32.545Z",
+  "attempt": 1
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [StorageUtils] Transaction cleanup (event-driven): txn-1767135452542-2177-1-2c123c67
+[2025-12-30T22:57:32.545Z] [LOG  ] [StorageUtils] v1.6.4 TRANSACTION_CONFIRMED_ON_PROMISE: {
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "durationMs": 2,
+  "tabCount": 2,
+  "confirmationMethod": "storage.local.set() promise resolution",
+  "note": "storage.onChanged is for EXTERNAL writes only"
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [StorageUtils] 📝 storage.set COMPLETE: {
+  "operationId": "op-1767135452543-1",
+  "key": "quick_tabs_state_v2",
+  "success": true,
+  "tabCount": 2,
+  "durationMs": 2,
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "timestamp": 1767135452545
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [VisibilityHandler] Storage write COMPLETED [txn-1767135452542-2177-1-2c123c67] (2 tabs)
+[2025-12-30T22:57:32.545Z] [LOG  ] [StorageQueue] DEQUEUE_SUCCESS: {
+  "transactionId": "txn-1767135452542-2177-1-2c123c67",
+  "queueDepth": 0,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.545Z",
+  "result": true
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [WRITE_QUEUE] WRITE_SUCCESS: {
+  "handler": "VisibilityHandler",
+  "entryId": "VisibilityHandler-1767135452542-259y",
+  "priority": 1,
+  "writeNumber": 1,
+  "queueSize": 0,
+  "durationMs": 3,
+  "queueWaitTimeMs": 0,
+  "avgQueueWaitMs": 0,
+  "timestamp": "2025-12-30T22:57:32.545Z"
+}
+[2025-12-30T22:57:32.545Z] [LOG  ] [VisibilityHandler] Timer callback COMPLETED (source: UI): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "operation": "focus",
+  "timerId": "timer-qt-2177-1767135451471-5ufgkorssix3-1",
+  "durationMs": 4,
+  "outcome": "success"
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [DragController][handlePointerUp] BEFORE calling onDragEnd: {
+  "finalX": 378,
+  "finalY": 379,
+  "callbackType": "function"
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [QuickTabWindow] Drag ended: qt-2177-1767135451471-5ufgkorssix3 378 379
+[2025-12-30T22:57:32.571Z] [LOG  ] [QuickTabWindow] Calling onPositionChangeEnd callback: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.571Z] [LOG  ] [UpdateHandler] handlePositionChangeEnd called: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "left": 378,
+  "top": 379
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [UpdateHandler] Updated tab position in Map: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "left": 378,
+  "top": 379
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [UpdateHandler] Scheduling storage persist after position change
+[2025-12-30T22:57:32.571Z] [LOG  ] [DEBOUNCE][MAIN_TRIGGERED] Debounce initiated {
+  "scheduledDelayMs": 300,
+  "debouncedEventCount": 0,
+  "timestamp": "2025-12-30T22:57:32.571Z"
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [UpdateHandler] [MOVE_MESSAGE] Sending QUICKTAB_MOVED: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "left": 378,
+  "top": 379,
+  "originTabId": 2177
+}
+[2025-12-30T22:57:32.571Z] [LOG  ] [DragController][handlePointerUp] AFTER onDragEnd - success
+[2025-12-30T22:57:32.647Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:32.738Z] [LOG  ] [DEBOUNCE][DRAG_COMPLETE] Debounce timer fired {
+  "key": "drag-qt-2177-1767135451471-5ufgkorssix3-position",
+  "scheduledDelayMs": 200,
+  "actualDelayMs": 488,
+  "delayDeltaMs": 288,
+  "preventedWrites": 25,
+  "message": "Debounce complete, prevented 25 write operations",
+  "timestamp": "2025-12-30T22:57:32.738Z"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [UpdateHandler] STORAGE_PERSIST_INITIATED: {
+  "mapSize": 2,
+  "hasMinimizedManager": true,
+  "caller": "UpdateHandler._doPersist",
+  "timestamp": 1767135452738
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [UpdateHandler] STORAGE_PERSIST_PROCEEDING: {
+  "reason": "hash-mismatch",
+  "newHashLo": -1040158925,
+  "newHashHi": 368240211,
+  "tabCount": 2
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [WRITE_QUEUE] ENQUEUED: {
+  "handler": "UpdateHandler",
+  "priority": 2,
+  "queueSize": 1,
+  "isWriting": false,
+  "currentHandler": null,
+  "entryId": "UpdateHandler-1767135452738-feh4",
+  "peakQueueSize": 1,
+  "avgQueueTimeMs": 0,
+  "timestamp": "2025-12-30T22:57:32.738Z"
+}
+[2025-12-30T22:57:32.738Z] [LOG  ] [WRITE_QUEUE] DEQUEUE_START: {
+  "handler": "UpdateHandler",
+  "entryId": "UpdateHandler-1767135452738-feh4",
+  "priority": 2,
+  "writeNumber": 2,
+  "queueSize": 0,
+  "waitTimeMs": 0,
+  "timestamp": "2025-12-30T22:57:32.738Z"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageWrite] LIFECYCLE_QUEUED: {
+  "correlationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "timestamp": "2025-12-30T22:57:32.739Z",
+  "tabCount": 2,
+  "forceEmpty": false,
+  "caller": "UpdateHandler"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] STORAGE_WRITE_INITIATED [txn-1767135452739-2177-2-9a84582f]: {
+  "tabCount": 2,
+  "forceEmpty": false,
+  "currentWritingTabId": 2177,
+  "isTabIdInitialized": true,
+  "phase": "ownership-validation",
+  "preValidation": {
+    "totalTabs": 2,
+    "minimizedTabs": 0,
+    "activeTabs": 2
+  }
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [ContainerFilter] MATCH_RESULT: {
+  "originContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "result": true,
+  "matchRule": "STRICT_MATCH",
+  "identityStateMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] _filterOwnedTabs: Tab ownership check {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "isTabIdMatch": true,
+  "originContainerIdRaw": "firefox-container-9",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "isContainerMatch": true,
+  "isLegacyQuickTab": false,
+  "filterReason": "STRICT_MATCH",
+  "matchType": "STRICT_MATCH",
+  "comparisonResult": true,
+  "included": true
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [ContainerFilter] MATCH_RESULT: {
+  "originContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "result": true,
+  "matchRule": "STRICT_MATCH",
+  "identityStateMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] _filterOwnedTabs: Tab ownership check {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "isTabIdMatch": true,
+  "originContainerIdRaw": "firefox-container-9",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "isContainerMatch": true,
+  "isLegacyQuickTab": false,
+  "filterReason": "STRICT_MATCH",
+  "matchType": "STRICT_MATCH",
+  "comparisonResult": true,
+  "included": true
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [OWNERSHIP_FILTER][BEFORE] Starting ownership filter {
+  "totalTabs": 2,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "containersPresent": [
+    "firefox-container-9"
+  ],
+  "timestamp": "2025-12-30T22:57:32.739Z"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [OWNERSHIP_FILTER][AFTER] Ownership filter complete {
+  "totalTabs": 2,
+  "ownedTabs": 2,
+  "filteredOut": 0,
+  "exclusionReasonsSummary": {
+    "tabIdMismatch": 0,
+    "containerMismatch": 0,
+    "noOwnershipData": 0
+  },
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "timestamp": "2025-12-30T22:57:32.739Z"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 Ownership filtering: {
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "currentContainerId": "firefox-container-9",
+  "totalTabs": 2,
+  "ownedTabs": 2,
+  "filteredOut": 0,
+  "filteredTabDetails": [],
+  "ownedTabIds": [
+    "qt-2177-1767135450627-15j3hl9kozsqv",
+    "qt-2177-1767135451471-5ufgkorssix3"
+  ]
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] [STATE_VALIDATION] PRE_POST_COMPARISON [txn-1767135452739-2177-2-9a84582f]: {
+  "pre": {
+    "totalTabs": 2,
+    "minimizedTabs": 0,
+    "activeTabs": 2
+  },
+  "post": {
+    "ownedTabs": 2,
+    "filteredOut": 0,
+    "shouldWrite": true
+  },
+  "delta": {
+    "tabsFiltered": 0,
+    "percentageFiltered": 0
+  },
+  "phase": "ownership-validation-complete"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageWrite] LIFECYCLE_EXECUTE_START: {
+  "correlationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "timestamp": "2025-12-30T22:57:32.739Z",
+  "durationMs": 0,
+  "tabCount": 2,
+  "minimizedCount": 0
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] Storage write initiated: {
+  "file": "UpdateHandler",
+  "operation": "persist",
+  "tabCount": 2,
+  "minimizedCount": 0,
+  "transaction": "txn-1767135452739-2177-2-9a84582f"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] Persisting 2 tabs (0 minimized) [txn-1767135452739-2177-2-9a84582f]
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageQueue] ENQUEUE: {
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.739Z",
+  "prevTransaction": "txn-1767135452542-2177-1-2c123c67"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageQueue] DEQUEUE_START: {
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.739Z"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] IDENTITY_WAIT_START [txn-1767135452739-2177-2-9a84582f]: {
+  "identityMode": "INITIALIZING",
+  "currentWritingTabId": 2177,
+  "currentWritingContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Waiting for identity {
+  "timeoutMs": 3000,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "identityMode": "INITIALIZING"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized {
+  "tabID": 2177,
+  "source": "cached"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized {
+  "containerID": "firefox-container-9",
+  "source": "cached"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Complete {
+  "tabId": 2177,
+  "containerId": "firefox-container-9",
+  "isReady": true,
+  "identityMode": "INITIALIZING",
+  "durationMs": 0
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [txn-1767135452739-2177-2-9a84582f]: {
+  "isReady": true,
+  "tabId": 2177,
+  "containerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] FETCH_PHASE: Starting storage write {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "tabCount": 2,
+  "phase": "FETCH_PHASE",
+  "timestamp": "2025-12-30T22:57:32.739Z"
+}
+[2025-12-30T22:57:32.739Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "phase": "QUOTA_CHECK_PHASE",
+  "timestamp": "2025-12-30T22:57:32.739Z"
+}
+[2025-12-30T22:57:32.748Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "tabCount": 2,
+  "phase": "SERIALIZE_PHASE",
+  "timestamp": "2025-12-30T22:57:32.748Z"
+}
+[2025-12-30T22:57:32.748Z] [LOG  ] [StorageUtils] 📝 storage.set START: {
+  "operationId": "op-1767135452748-2",
+  "key": "quick_tabs_state_v2",
+  "tabCount": 2,
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "timestamp": 1767135452748
+}
+[2025-12-30T22:57:32.749Z] [LOG  ] [UpdateHandler] [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set {
+  "writeCorrelationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "tabCount": 2,
+  "phase": "WRITE_API_PHASE",
+  "timestamp": "2025-12-30T22:57:32.749Z"
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [StorageWrite] LIFECYCLE_SUCCESS: {
+  "correlationId": "write-2025-12-30T22:57:32.739Z-z03zig",
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "tabCount": 2,
+  "totalAttempts": 4,
+  "durationMs": 18,
+  "timestamp": "2025-12-30T22:57:32.757Z",
+  "attempt": 1
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [StorageUtils] Transaction cleanup (event-driven): txn-1767135452739-2177-2-9a84582f
+[2025-12-30T22:57:32.757Z] [LOG  ] [StorageUtils] v1.6.4 TRANSACTION_CONFIRMED_ON_PROMISE: {
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "durationMs": 8,
+  "tabCount": 2,
+  "confirmationMethod": "storage.local.set() promise resolution",
+  "note": "storage.onChanged is for EXTERNAL writes only"
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [StorageUtils] 📝 storage.set COMPLETE: {
+  "operationId": "op-1767135452748-2",
+  "key": "quick_tabs_state_v2",
+  "success": true,
+  "tabCount": 2,
+  "durationMs": 8,
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "timestamp": 1767135452757
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [UpdateHandler] Storage write COMPLETED [txn-1767135452739-2177-2-9a84582f] (2 tabs)
+[2025-12-30T22:57:32.757Z] [LOG  ] [StorageQueue] DEQUEUE_SUCCESS: {
+  "transactionId": "txn-1767135452739-2177-2-9a84582f",
+  "queueDepth": 0,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:32.757Z",
+  "result": true
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [WRITE_QUEUE] WRITE_SUCCESS: {
+  "handler": "UpdateHandler",
+  "entryId": "UpdateHandler-1767135452738-feh4",
+  "priority": 2,
+  "writeNumber": 2,
+  "queueSize": 0,
+  "durationMs": 19,
+  "queueWaitTimeMs": 0,
+  "avgQueueWaitMs": 0,
+  "timestamp": "2025-12-30T22:57:32.757Z"
+}
+[2025-12-30T22:57:32.757Z] [LOG  ] [UpdateHandler] STORAGE_PERSIST_SUCCESS: {
+  "tabCount": 2,
+  "timestamp": 1767135452757
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [DEBOUNCE][MAIN_COMPLETE] Debounce timer fired {
+  "scheduledDelayMs": 300,
+  "actualDelayMs": 306,
+  "delayDeltaMs": 6,
+  "preventedWrites": 0,
+  "message": "Debounce complete, prevented 0 write operations",
+  "timestamp": "2025-12-30T22:57:32.877Z"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [UpdateHandler] STORAGE_PERSIST_INITIATED: {
+  "mapSize": 2,
+  "hasMinimizedManager": true,
+  "caller": "UpdateHandler._doPersist",
+  "timestamp": 1767135452877
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 2,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 2
+}
+[2025-12-30T22:57:32.877Z] [LOG  ] [UpdateHandler] STORAGE_PERSIST_SKIPPED: {
+  "reason": "hash-match",
+  "hashLo": -1040158925,
+  "hashHi": 368240211,
+  "tabCount": 2
+}
+[2025-12-30T22:57:32.910Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:32.910Z"
+}
+[2025-12-30T22:57:32.910Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 306,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:32.910Z"
+}
+[2025-12-30T22:57:32.913Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:32.913Z"
+}
+[2025-12-30T22:57:32.913Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 305,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:32.913Z"
+}
+[2025-12-30T22:57:32.994Z] [LOG  ] [UpdateHandler] [MOVE_MESSAGE] Sent successfully: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3"
+}
+[2025-12-30T22:57:33.650Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:33.650Z"
+}
+[2025-12-30T22:57:33.650Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 28,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:33.650Z"
+}
+[2025-12-30T22:57:33.652Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:33.652Z"
+}
+[2025-12-30T22:57:33.652Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 28,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:33.652Z"
+}
+[2025-12-30T22:57:34.228Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:34.318Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:35.245Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:35.245Z"
+}
+[2025-12-30T22:57:35.245Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 551,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:35.245Z"
+}
+[2025-12-30T22:57:35.282Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-12-30T22:57:36.297Z] [LOG  ] [UICoordinator] DOM monitoring completed (stable): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:36.823Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:36.823Z"
+}
+[2025-12-30T22:57:36.824Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 44,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:36.824Z"
+}
+[2025-12-30T22:57:38.319Z] [LOG  ] [UICoordinator] DOM monitoring completed (stable): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:38.424Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:38.424Z"
+}
+[2025-12-30T22:57:38.424Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 65,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:38.424Z"
+}
+[2025-12-30T22:57:39.948Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-12-30T22:57:40.633Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:40.863Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:41.066Z] [LOG  ] [Content] Message received: {
+  "action": "tabActivated",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:57:41.066Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: tabActivated
+[2025-12-30T22:57:41.066Z] [LOG  ] [Content] Received tabActivated broadcast: {
+  "tabId": 2177,
+  "currentTabId": 2177,
+  "timestamp": 1767135461066
+}
+[2025-12-30T22:57:41.066Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Processing tab activation: {
+  "receivedTabId": 2177,
+  "currentTabId": 2177,
+  "hasQuickTabsManager": true,
+  "timestamp": 1767135461066
+}
+[2025-12-30T22:57:41.066Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Tab is now active: {
+  "tabId": 2177,
+  "isThisTab": true
+}
+[2025-12-30T22:57:41.630Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:41.704Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:41.727Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:41.727Z"
+}
+[2025-12-30T22:57:41.727Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 215,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:41.727Z"
+}
+[2025-12-30T22:57:42.789Z] [LOG  ] [EventManager] Tab hidden - triggering emergency save
+[2025-12-30T22:57:43.603Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "QUICK_TAB_TRANSFERRED_OUT",
+  "requestId": "none",
+  "hasQuickTabId": true,
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "isCommand": false,
+  "isStateUpdate": false,
+  "isTransfer": true,
+  "timestamp": 1767135463603
+}
+[2025-12-30T22:57:43.603Z] [LOG  ] [Content] QUICK_TAB_TRANSFERRED_OUT: Removing Quick Tab from this tab: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "newOriginTabId": 2176,
+  "currentTabId": 2177,
+  "hasManager": true,
+  "timestamp": 1767135463603
+}
+[2025-12-30T22:57:43.603Z] [LOG  ] [DestroyHandler] closeById called (source: Manager): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.603Z] [LOG  ] [QuickTabWindow] Destroying: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.603Z] [LOG  ] [QuickTabWindow] Cleaned up drag controller
+[2025-12-30T22:57:43.603Z] [LOG  ] [QuickTabWindow] Cleaned up resize controller
+[2025-12-30T22:57:43.611Z] [LOG  ] [QuickTabWindow] Removed DOM element
+[2025-12-30T22:57:43.611Z] [LOG  ] [LISTENER_CLEANUP] QuickTabWindow destroy complete: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "estimatedListenersRemoved": 7,
+  "controllersDestroyed": 2
+}
+[2025-12-30T22:57:43.611Z] [LOG  ] [QuickTabWindow] Checking onDestroy callback: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "hasOnDestroy": true,
+  "callbackType": "function"
+}
+[2025-12-30T22:57:43.611Z] [LOG  ] [QuickTabsManager] handleDestroy called for: qt-2177-1767135451471-5ufgkorssix3 (source: UI)
+[2025-12-30T22:57:43.612Z] [LOG  ] [DestroyHandler] Handling destroy for: qt-2177-1767135451471-5ufgkorssix3 (source: UI)
+[2025-12-30T22:57:43.612Z] [LOG  ] [DestroyHandler] Map.delete result (source: UI): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "wasInMap": true
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [QuickTabs-Minimized] MINIMIZED_STATE_CHANGE: {
+  "timestamp": "2025-12-30T22:57:43.612Z",
+  "component": "QuickTabs-Minimized",
+  "level": "INFO",
+  "event": "REMOVE",
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "source": "unknown",
+  "containerId": null,
+  "tabId": null,
+  "hadSnapshot": false
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [MinimizedManager] Removed minimized tab: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.612Z] [LOG  ] [UICoordinator] Received state:deleted event {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3"
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [UICoordinator] Cleaning up tab from Map (state:deleted handler): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.612Z] [LOG  ] [UICoordinator] renderedTabs.delete(): {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "reason": "state:deleted event cleanup",
+  "mapSizeBefore": 2,
+  "mapSizeAfter": 1
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [MinimizedManager] clearSnapshot() called: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "caller": "setupStateListeners/<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:137482",
+  "inMinimizedTabs": false,
+  "inPendingClear": false,
+  "minimizedTabsSize": 0,
+  "pendingSize": 0
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [MinimizedManager] clearSnapshot called but no snapshot found: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "minimizedTabsIds": [],
+  "pendingClearIds": []
+}
+[2025-12-30T22:57:43.612Z] [LOG  ] [UICoordinator][Tab 2177] Tab cleanup complete: qt-2177-1767135451471-5ufgkorssix3 | mapSize: 1
+[2025-12-30T22:57:43.612Z] [LOG  ] [QuickTabsManager] Bridged state:deleted to external bus
+[2025-12-30T22:57:43.612Z] [LOG  ] [DestroyHandler] Emitted state:deleted (source: UI): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.612Z] [LOG  ] [DestroyHandler] [REMOVE_MESSAGE] Sending QUICKTAB_REMOVED: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3",
+  "source": "UI",
+  "originTabId": 2177
+}
+[2025-12-30T22:57:43.613Z] [LOG  ] [DestroyHandler] Destroy complete (source: UI): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.613Z] [LOG  ] [QuickTabWindow] onDestroy callback executed successfully: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.613Z] [LOG  ] [QuickTabWindow] Destroyed: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.613Z] [LOG  ] [Content] QUICK_TAB_TRANSFERRED_OUT: Quick Tab removed: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.615Z] [LOG  ] [Content] Message received: {
+  "action": "none",
+  "type": "QUICK_TAB_TRANSFERRED_OUT",
+  "hasData": false
+}
+[2025-12-30T22:57:43.615Z] [LOG  ] [Content] Dispatching to TYPE_HANDLERS: QUICK_TAB_TRANSFERRED_OUT
+[2025-12-30T22:57:43.615Z] [LOG  ] [Content] QUICK_TAB_TRANSFERRED_OUT via sendMessage: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "newOriginTabId": 2176
+}
+[2025-12-30T22:57:43.615Z] [LOG  ] [Content] QUICK_TAB_TRANSFERRED_OUT: Removing Quick Tab from this tab: {
+  "quickTabId": "qt-2177-1767135451471-5ufgkorssix3",
+  "newOriginTabId": 2176,
+  "currentTabId": 2177,
+  "hasManager": true,
+  "timestamp": 1767135463615
+}
+[2025-12-30T22:57:43.615Z] [LOG  ] [DestroyHandler] closeById called (source: Manager): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.615Z] [WARN ] [DestroyHandler] Tab not found for closeById (source: Manager): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.615Z] [LOG  ] [DestroyHandler] SKIPPED: ID already destroyed (source: Manager): qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.615Z] [LOG  ] [Content] QUICK_TAB_TRANSFERRED_OUT: Quick Tab removed: qt-2177-1767135451471-5ufgkorssix3
+[2025-12-30T22:57:43.633Z] [LOG  ] [DestroyHandler] [REMOVE_MESSAGE] Sent successfully: {
+  "id": "qt-2177-1767135451471-5ufgkorssix3"
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [DestroyHandler] [CLOSE_ALL_PERSIST] Debounced persist triggered {
+  "tabCount": 1,
+  "forceEmpty": false
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "sourceField": "originTabId"
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [StorageUtils] _extractOriginTabId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginTabId": 2177,
+  "rawOriginTabIdType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "typeConversionOccurred": false,
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction started {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "sourceField": "originContainerId"
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [StorageUtils] _extractOriginContainerId: Extraction completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "rawOriginContainerId": "firefox-container-9",
+  "rawOriginContainerIdType": "string",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "normalizedOriginContainerIdType": "string",
+  "sourceField": "originContainerId",
+  "action": "serialize",
+  "result": "valid"
+}
+[2025-12-30T22:57:43.798Z] [LOG  ] [StorageUtils] serializeTabForStorage: Serialization completed {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdSource": "tab.originTabId",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "extractedOriginTabId": 2177,
+  "extractedOriginTabIdType": "number",
+  "originContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 1,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 1
+}
+[2025-12-30T22:57:43.799Z] [DEBUG] [DestroyHandler] Persisting state with 1 tabs {
+  "forceEmpty": false
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [StorageWrite] LIFECYCLE_QUEUED: {
+  "correlationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "timestamp": "2025-12-30T22:57:43.799Z",
+  "tabCount": 1,
+  "forceEmpty": false,
+  "caller": "DestroyHandler"
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [DestroyHandler] STORAGE_WRITE_INITIATED [txn-1767135463799-2177-3-6e0f1f4b]: {
+  "tabCount": 1,
+  "forceEmpty": false,
+  "currentWritingTabId": 2177,
+  "isTabIdInitialized": true,
+  "phase": "ownership-validation",
+  "preValidation": {
+    "totalTabs": 1,
+    "minimizedTabs": 0,
+    "activeTabs": 1
+  }
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [ContainerFilter] MATCH_RESULT: {
+  "originContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "result": true,
+  "matchRule": "STRICT_MATCH",
+  "identityStateMode": "INITIALIZING"
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [StorageUtils] _filterOwnedTabs: Tab ownership check {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "originTabIdRaw": 2177,
+  "originTabIdRawType": "number",
+  "normalizedOriginTabId": 2177,
+  "normalizedOriginTabIdType": "number",
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "isTabIdMatch": true,
+  "originContainerIdRaw": "firefox-container-9",
+  "normalizedOriginContainerId": "firefox-container-9",
+  "currentContainerId": "firefox-container-9",
+  "isContainerMatch": true,
+  "isLegacyQuickTab": false,
+  "filterReason": "STRICT_MATCH",
+  "matchType": "STRICT_MATCH",
+  "comparisonResult": true,
+  "included": true
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [OWNERSHIP_FILTER][BEFORE] Starting ownership filter {
+  "totalTabs": 1,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "containersPresent": [
+    "firefox-container-9"
+  ],
+  "timestamp": "2025-12-30T22:57:43.799Z"
+}
+[2025-12-30T22:57:43.799Z] [LOG  ] [OWNERSHIP_FILTER][AFTER] Ownership filter complete {
+  "totalTabs": 1,
+  "ownedTabs": 1,
+  "filteredOut": 0,
+  "exclusionReasonsSummary": {
+    "tabIdMismatch": 0,
+    "containerMismatch": 0,
+    "noOwnershipData": 0
+  },
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "timestamp": "2025-12-30T22:57:43.799Z"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 Ownership filtering: {
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "currentContainerId": "firefox-container-9",
+  "totalTabs": 1,
+  "ownedTabs": 1,
+  "filteredOut": 0,
+  "filteredTabDetails": [],
+  "ownedTabIds": [
+    "qt-2177-1767135450627-15j3hl9kozsqv"
+  ]
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] [STATE_VALIDATION] PRE_POST_COMPARISON [txn-1767135463799-2177-3-6e0f1f4b]: {
+  "pre": {
+    "totalTabs": 1,
+    "minimizedTabs": 0,
+    "activeTabs": 1
+  },
+  "post": {
+    "ownedTabs": 1,
+    "filteredOut": 0,
+    "shouldWrite": true
+  },
+  "delta": {
+    "tabsFiltered": 0,
+    "percentageFiltered": 0
+  },
+  "phase": "ownership-validation-complete"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 1,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 1
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageWrite] LIFECYCLE_EXECUTE_START: {
+  "correlationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "timestamp": "2025-12-30T22:57:43.799Z",
+  "durationMs": 1,
+  "tabCount": 1,
+  "minimizedCount": 0
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] Storage write initiated: {
+  "file": "DestroyHandler",
+  "operation": "persist",
+  "tabCount": 1,
+  "minimizedCount": 0,
+  "transaction": "txn-1767135463799-2177-3-6e0f1f4b"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] Persisting 1 tabs (0 minimized) [txn-1767135463799-2177-3-6e0f1f4b]
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageQueue] ENQUEUE: {
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:43.800Z",
+  "prevTransaction": "txn-1767135452739-2177-2-9a84582f"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageQueue] DEQUEUE_START: {
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:43.800Z"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] IDENTITY_WAIT_START [txn-1767135463799-2177-3-6e0f1f4b]: {
+  "identityMode": "INITIALIZING",
+  "currentWritingTabId": 2177,
+  "currentWritingContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Waiting for identity {
+  "timeoutMs": 3000,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "identityMode": "INITIALIZING"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized {
+  "tabID": 2177,
+  "source": "cached"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized {
+  "containerID": "firefox-container-9",
+  "source": "cached"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Complete {
+  "tabId": 2177,
+  "containerId": "firefox-container-9",
+  "isReady": true,
+  "identityMode": "INITIALIZING",
+  "durationMs": 0
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [txn-1767135463799-2177-3-6e0f1f4b]: {
+  "isReady": true,
+  "tabId": 2177,
+  "containerId": "firefox-container-9"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] FETCH_PHASE: Starting storage write {
+  "writeCorrelationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "tabCount": 1,
+  "phase": "FETCH_PHASE",
+  "timestamp": "2025-12-30T22:57:43.800Z"
+}
+[2025-12-30T22:57:43.800Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota {
+  "writeCorrelationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "phase": "QUOTA_CHECK_PHASE",
+  "timestamp": "2025-12-30T22:57:43.800Z"
+}
+[2025-12-30T22:57:43.801Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context {
+  "writeCorrelationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "tabCount": 1,
+  "phase": "SERIALIZE_PHASE",
+  "timestamp": "2025-12-30T22:57:43.801Z"
+}
+[2025-12-30T22:57:43.801Z] [LOG  ] [StorageUtils] 📝 storage.set START: {
+  "operationId": "op-1767135463801-3",
+  "key": "quick_tabs_state_v2",
+  "tabCount": 1,
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "timestamp": 1767135463801
+}
+[2025-12-30T22:57:43.801Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set {
+  "writeCorrelationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "tabCount": 1,
+  "phase": "WRITE_API_PHASE",
+  "timestamp": "2025-12-30T22:57:43.801Z"
+}
+[2025-12-30T22:57:43.804Z] [LOG  ] [StorageWrite] LIFECYCLE_SUCCESS: {
+  "correlationId": "write-2025-12-30T22:57:43.799Z-anjpv3",
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "tabCount": 1,
+  "totalAttempts": 4,
+  "durationMs": 5,
+  "timestamp": "2025-12-30T22:57:43.804Z",
+  "attempt": 1
+}
+[2025-12-30T22:57:43.804Z] [LOG  ] [StorageUtils] Transaction cleanup (event-driven): txn-1767135463799-2177-3-6e0f1f4b
+[2025-12-30T22:57:43.804Z] [LOG  ] [StorageUtils] v1.6.4 TRANSACTION_CONFIRMED_ON_PROMISE: {
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "durationMs": 3,
+  "tabCount": 1,
+  "confirmationMethod": "storage.local.set() promise resolution",
+  "note": "storage.onChanged is for EXTERNAL writes only"
+}
+[2025-12-30T22:57:43.804Z] [LOG  ] [StorageUtils] 📝 storage.set COMPLETE: {
+  "operationId": "op-1767135463801-3",
+  "key": "quick_tabs_state_v2",
+  "success": true,
+  "tabCount": 1,
+  "durationMs": 3,
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "timestamp": 1767135463804
+}
+[2025-12-30T22:57:43.804Z] [LOG  ] [DestroyHandler] Storage write COMPLETED [txn-1767135463799-2177-3-6e0f1f4b] (1 tabs)
+[2025-12-30T22:57:43.804Z] [LOG  ] [StorageQueue] DEQUEUE_SUCCESS: {
+  "transactionId": "txn-1767135463799-2177-3-6e0f1f4b",
+  "queueDepth": 0,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:43.804Z",
+  "result": true
+}
+[2025-12-30T22:57:45.401Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-12-30T22:57:45.673Z] [LOG  ] [Content] Message received: {
+  "action": "tabActivated",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:57:45.673Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: tabActivated
+[2025-12-30T22:57:45.674Z] [LOG  ] [Content] Received tabActivated broadcast: {
+  "tabId": 2177,
+  "currentTabId": 2177,
+  "timestamp": 1767135465674
+}
+[2025-12-30T22:57:45.674Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Processing tab activation: {
+  "receivedTabId": 2177,
+  "currentTabId": 2177,
+  "hasQuickTabsManager": true,
+  "timestamp": 1767135465674
+}
+[2025-12-30T22:57:45.674Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Tab is now active: {
+  "tabId": 2177,
+  "isThisTab": true
+}
+[2025-12-30T22:57:47.691Z] [LOG  ] [QuickTabWindow] Mouse left container - re-enabling click overlay: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.044Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:51.044Z"
+}
+[2025-12-30T22:57:51.044Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 11,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:51.044Z"
+}
+[2025-12-30T22:57:51.331Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "CLOSE_QUICK_TAB_COMMAND",
+  "requestId": "none",
+  "hasQuickTabId": true,
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "isCommand": true,
+  "isStateUpdate": false,
+  "isTransfer": false,
+  "timestamp": 1767135471331
+}
+[2025-12-30T22:57:51.331Z] [LOG  ] [Content] COMMAND_RECEIVED: CLOSE_QUICK_TAB_COMMAND {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "hasManager": true,
+  "hasCloseById": true,
+  "hasMinimizeById": true,
+  "hasRestoreById": true,
+  "currentTabId": 2177,
+  "timestamp": 1767135471331
+}
+[2025-12-30T22:57:51.331Z] [LOG  ] [Content] COMMAND_EXECUTING: CLOSE_QUICK_TAB_COMMAND {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv"
+}
+[2025-12-30T22:57:51.331Z] [LOG  ] [DestroyHandler] closeById called (source: Manager): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.331Z] [LOG  ] [QuickTabWindow] Destroying: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.331Z] [LOG  ] [QuickTabWindow] Cleaned up drag controller
+[2025-12-30T22:57:51.331Z] [LOG  ] [QuickTabWindow] Cleaned up resize controller
+[2025-12-30T22:57:51.335Z] [LOG  ] [QuickTabWindow] Removed DOM element
+[2025-12-30T22:57:51.335Z] [LOG  ] [LISTENER_CLEANUP] QuickTabWindow destroy complete: {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "estimatedListenersRemoved": 7,
+  "controllersDestroyed": 2
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [QuickTabWindow] Checking onDestroy callback: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "hasOnDestroy": true,
+  "callbackType": "function"
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [QuickTabsManager] handleDestroy called for: qt-2177-1767135450627-15j3hl9kozsqv (source: UI)
+[2025-12-30T22:57:51.335Z] [LOG  ] [DestroyHandler] Handling destroy for: qt-2177-1767135450627-15j3hl9kozsqv (source: UI)
+[2025-12-30T22:57:51.335Z] [LOG  ] [DestroyHandler] Map.delete result (source: UI): {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "wasInMap": true
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [QuickTabs-Minimized] MINIMIZED_STATE_CHANGE: {
+  "timestamp": "2025-12-30T22:57:51.335Z",
+  "component": "QuickTabs-Minimized",
+  "level": "INFO",
+  "event": "REMOVE",
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "source": "unknown",
+  "containerId": null,
+  "tabId": null,
+  "hadSnapshot": false
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [MinimizedManager] Removed minimized tab: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.335Z] [LOG  ] [UICoordinator] Received state:deleted event {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv"
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [UICoordinator] Cleaning up tab from Map (state:deleted handler): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.335Z] [LOG  ] [UICoordinator] renderedTabs.delete(): {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "reason": "state:deleted event cleanup",
+  "mapSizeBefore": 1,
+  "mapSizeAfter": 0
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [MinimizedManager] clearSnapshot() called: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "caller": "setupStateListeners/<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:137482",
+  "inMinimizedTabs": false,
+  "inPendingClear": false,
+  "minimizedTabsSize": 0,
+  "pendingSize": 0
+}
+[2025-12-30T22:57:51.335Z] [LOG  ] [MinimizedManager] clearSnapshot called but no snapshot found: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "minimizedTabsIds": [],
+  "pendingClearIds": []
+}
+[2025-12-30T22:57:51.336Z] [LOG  ] [UICoordinator][Tab 2177] Tab cleanup complete: qt-2177-1767135450627-15j3hl9kozsqv | mapSize: 0
+[2025-12-30T22:57:51.336Z] [LOG  ] [QuickTabsManager] Bridged state:deleted to external bus
+[2025-12-30T22:57:51.336Z] [LOG  ] [DestroyHandler] Emitted state:deleted (source: UI): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.336Z] [LOG  ] [DestroyHandler] [REMOVE_MESSAGE] Sending QUICKTAB_REMOVED: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "source": "UI",
+  "originTabId": 2177
+}
+[2025-12-30T22:57:51.336Z] [LOG  ] [DestroyHandler] All tabs closed, reset z-index
+[2025-12-30T22:57:51.336Z] [LOG  ] [DestroyHandler] Destroy complete (source: UI): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.336Z] [LOG  ] [QuickTabWindow] onDestroy callback executed successfully: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.336Z] [LOG  ] [QuickTabWindow] Destroyed: qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.336Z] [LOG  ] [Content] COMMAND_EXECUTED: CLOSE_QUICK_TAB_COMMAND {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv"
+}
+[2025-12-30T22:57:51.337Z] [LOG  ] [Content] Message received: {
+  "action": "CLOSE_QUICK_TAB",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:57:51.337Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: CLOSE_QUICK_TAB
+[2025-12-30T22:57:51.337Z] [LOG  ] [Content] Received CLOSE_QUICK_TAB request: {
+  "quickTabId": "qt-2177-1767135450627-15j3hl9kozsqv",
+  "source": "sidebar",
+  "correlationId": null
+}
+[2025-12-30T22:57:51.338Z] [LOG  ] [DestroyHandler] closeById called (source: sidebar): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.338Z] [WARN ] [DestroyHandler] Tab not found for closeById (source: sidebar): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.338Z] [LOG  ] [DestroyHandler] SKIPPED: ID already destroyed (source: sidebar): qt-2177-1767135450627-15j3hl9kozsqv
+[2025-12-30T22:57:51.338Z] [LOG  ] [Content] ✅ Closed Quick Tab (source: Manager): qt-2177-1767135450627-15j3hl9kozsqv {
+  "durationMs": 1,
+  "originTabId": 2177
+}
+[2025-12-30T22:57:51.338Z] [LOG  ] [DestroyHandler] [REMOVE_MESSAGE] Sent successfully: {
+  "id": "qt-2177-1767135450627-15j3hl9kozsqv"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [CLOSE_ALL_PERSIST] Debounced persist triggered {
+  "tabCount": 0,
+  "forceEmpty": true
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 0,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 0
+}
+[2025-12-30T22:57:51.486Z] [DEBUG] [DestroyHandler] Persisting state with 0 tabs {
+  "forceEmpty": true
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageWrite] LIFECYCLE_QUEUED: {
+  "correlationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "timestamp": "2025-12-30T22:57:51.486Z",
+  "tabCount": 0,
+  "forceEmpty": true,
+  "caller": "DestroyHandler"
+}
+[2025-12-30T22:57:51.486Z] [WARN ] [DestroyHandler] ⚠️ WARNING: State going from 1 tabs → 0 tabs [txn-1767135471486-2177-4-c7bb44b6]
+[2025-12-30T22:57:51.486Z] [WARN ] [DestroyHandler] Stack trace: Ft/<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:69054
+Ft/o<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:69598
+Ft/o<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:76914
+Ft@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:77004
+_persistToStorage@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:157640
+_debouncedPersistToStorage/this._storageDebounceTimer<@moz-extension://fbe65677-615e-4873-9e3f-80671929ab0c/content.js:1:157426
+
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] Empty write allowed (forceEmpty=true) [txn-1767135471486-2177-4-c7bb44b6]
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] STORAGE_WRITE_INITIATED [txn-1767135471486-2177-4-c7bb44b6]: {
+  "tabCount": 0,
+  "forceEmpty": true,
+  "currentWritingTabId": 2177,
+  "isTabIdInitialized": true,
+  "phase": "ownership-validation",
+  "preValidation": {
+    "totalTabs": 0,
+    "minimizedTabs": 0,
+    "activeTabs": 0
+  }
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [OWNERSHIP_FILTER][BEFORE] Starting ownership filter {
+  "totalTabs": 0,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "containersPresent": [],
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [OWNERSHIP_FILTER][AFTER] Ownership filter complete {
+  "totalTabs": 0,
+  "ownedTabs": 0,
+  "filteredOut": 0,
+  "exclusionReasonsSummary": {
+    "tabIdMismatch": 0,
+    "containerMismatch": 0,
+    "noOwnershipData": 0
+  },
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 Ownership filtering: {
+  "currentTabId": 2177,
+  "currentTabIdType": "number",
+  "currentContainerId": "firefox-container-9",
+  "totalTabs": 0,
+  "ownedTabs": 0,
+  "filteredOut": 0,
+  "filteredTabDetails": [],
+  "ownedTabIds": []
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] Empty write allowed: {
+  "currentTabId": 2177,
+  "forceEmpty": true,
+  "hasOwnershipHistory": true
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [STATE_VALIDATION] PRE_POST_COMPARISON [txn-1767135471486-2177-4-c7bb44b6]: {
+  "pre": {
+    "totalTabs": 0,
+    "minimizedTabs": 0,
+    "activeTabs": 0
+  },
+  "post": {
+    "ownedTabs": 0,
+    "filteredOut": 0,
+    "shouldWrite": true
+  },
+  "delta": {
+    "tabsFiltered": 0,
+    "percentageFiltered": 0
+  },
+  "phase": "ownership-validation-complete"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] State validation: {
+  "totalTabs": 0,
+  "minimizedCount": 0,
+  "nonMinimizedCount": 0
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageWrite] LIFECYCLE_EXECUTE_START: {
+  "correlationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "timestamp": "2025-12-30T22:57:51.486Z",
+  "durationMs": 0,
+  "tabCount": 0,
+  "minimizedCount": 0
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] Storage write initiated: {
+  "file": "DestroyHandler",
+  "operation": "persist",
+  "tabCount": 0,
+  "minimizedCount": 0,
+  "transaction": "txn-1767135471486-2177-4-c7bb44b6"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] Persisting 0 tabs (0 minimized) [txn-1767135471486-2177-4-c7bb44b6]
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageQueue] ENQUEUE: {
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:51.486Z",
+  "prevTransaction": "txn-1767135463799-2177-3-6e0f1f4b"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageQueue] DEQUEUE_START: {
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "queueDepth": 1,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] IDENTITY_WAIT_START [txn-1767135471486-2177-4-c7bb44b6]: {
+  "identityMode": "INITIALIZING",
+  "currentWritingTabId": 2177,
+  "currentWritingContainerId": "firefox-container-9"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Waiting for identity {
+  "timeoutMs": 3000,
+  "currentTabId": 2177,
+  "currentContainerId": "firefox-container-9",
+  "identityMode": "INITIALIZING"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] v1.6.3.10-v6 waitForTabIdInit: Already initialized {
+  "tabID": 2177,
+  "source": "cached"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForContainerIdInit: Already initialized {
+  "containerID": "firefox-container-9",
+  "source": "cached"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] v1.6.3.10-v9 waitForIdentityInit: Complete {
+  "tabId": 2177,
+  "containerId": "firefox-container-9",
+  "isReady": true,
+  "identityMode": "INITIALIZING",
+  "durationMs": 0
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] IDENTITY_WAIT_COMPLETE [txn-1767135471486-2177-4-c7bb44b6]: {
+  "isReady": true,
+  "tabId": 2177,
+  "containerId": "firefox-container-9"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] FETCH_PHASE: Starting storage write {
+  "writeCorrelationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "tabCount": 0,
+  "phase": "FETCH_PHASE",
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] QUOTA_CHECK_PHASE: Checking storage quota {
+  "writeCorrelationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "phase": "QUOTA_CHECK_PHASE",
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] SERIALIZE_PHASE: Preparing write context {
+  "writeCorrelationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "tabCount": 0,
+  "phase": "SERIALIZE_PHASE",
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [StorageUtils] 📝 storage.set START: {
+  "operationId": "op-1767135471486-4",
+  "key": "quick_tabs_state_v2",
+  "tabCount": 0,
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "timestamp": 1767135471486
+}
+[2025-12-30T22:57:51.486Z] [LOG  ] [DestroyHandler] [WRITE_PHASE] WRITE_API_PHASE: Executing storage.local.set {
+  "writeCorrelationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "tabCount": 0,
+  "phase": "WRITE_API_PHASE",
+  "timestamp": "2025-12-30T22:57:51.486Z"
+}
+[2025-12-30T22:57:51.487Z] [LOG  ] [StorageWrite] LIFECYCLE_SUCCESS: {
+  "correlationId": "write-2025-12-30T22:57:51.486Z-qegsm1",
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "tabCount": 0,
+  "totalAttempts": 4,
+  "durationMs": 1,
+  "timestamp": "2025-12-30T22:57:51.487Z",
+  "attempt": 1
+}
+[2025-12-30T22:57:51.487Z] [LOG  ] [StorageUtils] Transaction cleanup (event-driven): txn-1767135471486-2177-4-c7bb44b6
+[2025-12-30T22:57:51.487Z] [LOG  ] [StorageUtils] v1.6.4 TRANSACTION_CONFIRMED_ON_PROMISE: {
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "durationMs": 1,
+  "tabCount": 0,
+  "confirmationMethod": "storage.local.set() promise resolution",
+  "note": "storage.onChanged is for EXTERNAL writes only"
+}
+[2025-12-30T22:57:51.487Z] [LOG  ] [StorageUtils] 📝 storage.set COMPLETE: {
+  "operationId": "op-1767135471486-4",
+  "key": "quick_tabs_state_v2",
+  "success": true,
+  "tabCount": 0,
+  "durationMs": 1,
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "timestamp": 1767135471487
+}
+[2025-12-30T22:57:51.487Z] [LOG  ] [DestroyHandler] Storage write COMPLETED [txn-1767135471486-2177-4-c7bb44b6] (0 tabs)
+[2025-12-30T22:57:51.487Z] [LOG  ] [StorageQueue] DEQUEUE_SUCCESS: {
+  "transactionId": "txn-1767135471486-2177-4-c7bb44b6",
+  "queueDepth": 0,
+  "circuitBreakerTripped": false,
+  "circuitBreakerTripTime": null,
+  "writeQueueRecoveryCount": 0,
+  "stallDurationMs": 0,
+  "timestamp": "2025-12-30T22:57:51.487Z",
+  "result": true
+}
+[2025-12-30T22:57:52.684Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.684Z"
+}
+[2025-12-30T22:57:52.684Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 21,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.684Z"
+}
+[2025-12-30T22:57:52.702Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.702Z"
+}
+[2025-12-30T22:57:52.702Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 39,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.702Z"
+}
+[2025-12-30T22:57:52.738Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.738Z"
+}
+[2025-12-30T22:57:52.738Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 61,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.738Z"
+}
+[2025-12-30T22:57:52.746Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.746Z"
+}
+[2025-12-30T22:57:52.746Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 67,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.746Z"
+}
+[2025-12-30T22:57:52.763Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.763Z"
+}
+[2025-12-30T22:57:52.763Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 38,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.763Z"
+}
+[2025-12-30T22:57:52.769Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.769Z"
+}
+[2025-12-30T22:57:52.769Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 44,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.769Z"
+}
+[2025-12-30T22:57:52.897Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.897Z"
+}
+[2025-12-30T22:57:52.897Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:52.897Z"
+}
+[2025-12-30T22:57:53.133Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.133Z"
+}
+[2025-12-30T22:57:53.133Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.133Z"
+}
+[2025-12-30T22:57:53.134Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.134Z"
+}
+[2025-12-30T22:57:53.134Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 9,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.134Z"
+}
+[2025-12-30T22:57:53.240Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.239Z"
+}
+[2025-12-30T22:57:53.240Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 67,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.240Z"
+}
+[2025-12-30T22:57:53.241Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.241Z"
+}
+[2025-12-30T22:57:53.241Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 68,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.241Z"
+}
+[2025-12-30T22:57:53.242Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.242Z"
+}
+[2025-12-30T22:57:53.242Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 69,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.242Z"
+}
+[2025-12-30T22:57:53.243Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.243Z"
+}
+[2025-12-30T22:57:53.243Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 55,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.243Z"
+}
+[2025-12-30T22:57:53.247Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.247Z"
+}
+[2025-12-30T22:57:53.247Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 13,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:57:53.247Z"
+}
+[2025-12-30T22:57:53.257Z] [LOG  ] [Content] Message received: {
+  "action": "GET_CONTENT_LOGS",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:57:53.257Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: GET_CONTENT_LOGS
+[2025-12-30T22:57:53.257Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
