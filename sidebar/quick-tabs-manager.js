@@ -7419,13 +7419,17 @@ function _applyUserGroupOrder(groups) {
 
     if (groups.has(key)) {
       orderedGroups.set(key, groups.get(key));
-      processedKeys.add(String(key));
+      // v1.6.4 - FIX Code Review: Store string version once for consistent comparison
+      const keyStr = String(key);
+      processedKeys.add(keyStr);
     }
   }
 
   // Then, append any groups not in user's order (new groups)
   for (const [key, value] of groups) {
-    if (!processedKeys.has(String(key))) {
+    // v1.6.4 - FIX Code Review: Convert key to string once per iteration
+    const keyStr = String(key);
+    if (!processedKeys.has(keyStr)) {
       orderedGroups.set(key, value);
     }
   }
@@ -7809,7 +7813,7 @@ function _appendActiveTabActions(actions, tab, context) {
   // This moves the Quick Tab to the current active browser tab
   // If modifier key is held, it duplicates instead of moving
   if (tab.originTabId) {
-    const moveToCurrentTabBtn = _createActionButton('📥', 'Move to Current Tab (hold modifier key to duplicate)', {
+    const moveToCurrentTabBtn = _createActionButton('📥', 'Move to Current Tab', {
       action: 'moveToCurrentTab',
       quickTabId: tab.id,
       originTabId: tab.originTabId,
@@ -8385,7 +8389,7 @@ async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }
 /**
  * Dispatch "Move to Current Tab" action
  * v1.6.4 - FIX: Replacement for "Go to Tab" - moves Quick Tab to current active tab
- * If modifier key is held, duplicates instead of moving
+ * NOTE: Button click always moves. Use drag-and-drop with Shift key to duplicate.
  * @private
  */
 async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp }) {
@@ -8418,39 +8422,21 @@ async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp })
       return;
     }
 
-    // Check if modifier key is pressed for duplicate (v1.6.4)
-    // Note: We need to check the cached modifier key since the event may not have modifier info
-    const isDuplicate = _isDuplicateModifierKeyPressed();
-
     console.log('[Manager] MOVE_TO_CURRENT_TAB: Operation', {
       quickTabId,
       fromTabId: originTabId,
-      toTabId: currentTabId,
-      isDuplicate
+      toTabId: currentTabId
     });
 
-    // Get the Quick Tab data from cache
-    const quickTabData = _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
-
-    if (isDuplicate && quickTabData) {
-      // Duplicate to current tab
-      _duplicateQuickTabToTab(quickTabData, currentTabId);
-      console.log('[Manager] MOVE_TO_CURRENT_TAB: Duplicate sent', {
-        quickTabId,
-        toTabId: currentTabId
-      });
-    } else {
-      // Move to current tab
-      _transferQuickTabToTab(quickTabId, currentTabId);
-      console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
-        quickTabId,
-        toTabId: currentTabId
-      });
-    }
+    // Button click always moves (use drag-and-drop with modifier key to duplicate)
+    _transferQuickTabToTab(quickTabId, currentTabId);
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
+      quickTabId,
+      toTabId: currentTabId
+    });
 
     console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
       quickTabId,
-      isDuplicate,
       durationMs: Date.now() - clickTimestamp
     });
   } catch (err) {
@@ -8460,20 +8446,6 @@ async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp })
     });
     _showErrorNotification(`Failed to move Quick Tab: ${err.message}`);
   }
-}
-
-/**
- * Check if the duplicate modifier key is currently pressed
- * v1.6.4 - Helper for moveToCurrentTab button action
- * @private
- * @returns {boolean}
- */
-function _isDuplicateModifierKeyPressed() {
-  // Since this is called from a button click (not a drag event),
-  // we can't access the keyboard state directly.
-  // Return false by default - the user needs to use drag-and-drop with modifier key
-  // to duplicate. The button always moves.
-  return false;
 }
 
 /**
