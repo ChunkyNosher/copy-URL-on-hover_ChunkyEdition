@@ -1,0 +1,1630 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.4
+Export Date: 2025-12-30T22:47:46.375Z
+Export Date (Local): 12/30/2025, 5:47:46 PM
+Total Logs: 330
+
+================================================================================
+[2025-12-30T22:45:20.109Z] [LOG  ] [DEBUG] Log buffer cleared
+[2025-12-30T22:45:20.451Z] [WARN ] [Content] Quick Tabs hydration failed: Quick Tabs request timeout: HYDRATE_ON_LOAD
+[2025-12-30T22:45:20.451Z] [LOG  ] [INIT][Content] QUICK_TABS_PORT_CONNECTED: {
+  "tabId": 2150,
+  "cookieStoreId": "firefox-container-9"
+}
+[2025-12-30T22:45:32.380Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:32.380Z"
+}
+[2025-12-30T22:45:32.380Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 35,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:32.380Z"
+}
+[2025-12-30T22:45:45.534Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.534Z"
+}
+[2025-12-30T22:45:45.534Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 147,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.534Z"
+}
+[2025-12-30T22:45:45.694Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.694Z"
+}
+[2025-12-30T22:45:45.694Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 89,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.694Z"
+}
+[2025-12-30T22:45:45.695Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.695Z"
+}
+[2025-12-30T22:45:45.695Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 89,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.695Z"
+}
+[2025-12-30T22:45:45.697Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.697Z"
+}
+[2025-12-30T22:45:45.697Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 90,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.697Z"
+}
+[2025-12-30T22:45:45.698Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.698Z"
+}
+[2025-12-30T22:45:45.698Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 91,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.698Z"
+}
+[2025-12-30T22:45:45.700Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.700Z"
+}
+[2025-12-30T22:45:45.700Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 79,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.700Z"
+}
+[2025-12-30T22:45:45.701Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.701Z"
+}
+[2025-12-30T22:45:45.701Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 81,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.701Z"
+}
+[2025-12-30T22:45:45.704Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.704Z"
+}
+[2025-12-30T22:45:45.704Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 82,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.704Z"
+}
+[2025-12-30T22:45:45.705Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.705Z"
+}
+[2025-12-30T22:45:45.705Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 82,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.705Z"
+}
+[2025-12-30T22:45:45.707Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.707Z"
+}
+[2025-12-30T22:45:45.707Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 83,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.707Z"
+}
+[2025-12-30T22:45:45.708Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.708Z"
+}
+[2025-12-30T22:45:45.708Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 72,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.708Z"
+}
+[2025-12-30T22:45:45.710Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.710Z"
+}
+[2025-12-30T22:45:45.710Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 57,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.710Z"
+}
+[2025-12-30T22:45:45.714Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.714Z"
+}
+[2025-12-30T22:45:45.714Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 46,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.714Z"
+}
+[2025-12-30T22:45:45.733Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.733Z"
+}
+[2025-12-30T22:45:45.733Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 34,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.733Z"
+}
+[2025-12-30T22:45:45.735Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.735Z"
+}
+[2025-12-30T22:45:45.735Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 37,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.735Z"
+}
+[2025-12-30T22:45:45.737Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.737Z"
+}
+[2025-12-30T22:45:45.737Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 37,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.737Z"
+}
+[2025-12-30T22:45:45.749Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.749Z"
+}
+[2025-12-30T22:45:45.749Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 36,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.749Z"
+}
+[2025-12-30T22:45:45.755Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.755Z"
+}
+[2025-12-30T22:45:45.755Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 40,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.755Z"
+}
+[2025-12-30T22:45:45.757Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.757Z"
+}
+[2025-12-30T22:45:45.757Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 28,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.757Z"
+}
+[2025-12-30T22:45:45.759Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.759Z"
+}
+[2025-12-30T22:45:45.759Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 30,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.759Z"
+}
+[2025-12-30T22:45:45.771Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.771Z"
+}
+[2025-12-30T22:45:45.771Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 42,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.771Z"
+}
+[2025-12-30T22:45:45.773Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.773Z"
+}
+[2025-12-30T22:45:45.773Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 44,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.773Z"
+}
+[2025-12-30T22:45:45.790Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2025-12-30T22:45:45.790Z"
+}
+[2025-12-30T22:45:45.822Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.822Z"
+}
+[2025-12-30T22:45:45.822Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 60,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.822Z"
+}
+[2025-12-30T22:45:45.823Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.823Z"
+}
+[2025-12-30T22:45:45.823Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 60,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.823Z"
+}
+[2025-12-30T22:45:45.825Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.825Z"
+}
+[2025-12-30T22:45:45.825Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 59,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.825Z"
+}
+[2025-12-30T22:45:45.827Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.827Z"
+}
+[2025-12-30T22:45:45.827Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 61,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.827Z"
+}
+[2025-12-30T22:45:45.829Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.829Z"
+}
+[2025-12-30T22:45:45.829Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 53,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.829Z"
+}
+[2025-12-30T22:45:45.835Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.835Z"
+}
+[2025-12-30T22:45:45.835Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 45,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.835Z"
+}
+[2025-12-30T22:45:45.838Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.838Z"
+}
+[2025-12-30T22:45:45.838Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 47,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.838Z"
+}
+[2025-12-30T22:45:45.846Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.846Z"
+}
+[2025-12-30T22:45:45.846Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 54,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.846Z"
+}
+[2025-12-30T22:45:45.944Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.944Z"
+}
+[2025-12-30T22:45:45.944Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:45.944Z"
+}
+[2025-12-30T22:45:46.120Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.120Z"
+}
+[2025-12-30T22:45:46.120Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 143,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.120Z"
+}
+[2025-12-30T22:45:46.122Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.122Z"
+}
+[2025-12-30T22:45:46.122Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 146,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.122Z"
+}
+[2025-12-30T22:45:46.187Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.187Z"
+}
+[2025-12-30T22:45:46.188Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 165,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.188Z"
+}
+[2025-12-30T22:45:46.189Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.189Z"
+}
+[2025-12-30T22:45:46.189Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 150,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.189Z"
+}
+[2025-12-30T22:45:46.224Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.224Z"
+}
+[2025-12-30T22:45:46.224Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 140,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.224Z"
+}
+[2025-12-30T22:45:46.261Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.261Z"
+}
+[2025-12-30T22:45:46.261Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 114,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.261Z"
+}
+[2025-12-30T22:45:46.275Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.275Z"
+}
+[2025-12-30T22:45:46.275Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 67,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:45:46.275Z"
+}
+[2025-12-30T22:46:02.784Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:02.784Z"
+}
+[2025-12-30T22:46:02.785Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 18,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:02.785Z"
+}
+[2025-12-30T22:46:15.708Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.708Z"
+}
+[2025-12-30T22:46:15.709Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 76,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.709Z"
+}
+[2025-12-30T22:46:15.714Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.713Z"
+}
+[2025-12-30T22:46:15.714Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 64,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.714Z"
+}
+[2025-12-30T22:46:15.887Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.887Z"
+}
+[2025-12-30T22:46:15.887Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 35,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.887Z"
+}
+[2025-12-30T22:46:15.889Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.889Z"
+}
+[2025-12-30T22:46:15.890Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 36,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.890Z"
+}
+[2025-12-30T22:46:15.892Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.892Z"
+}
+[2025-12-30T22:46:15.892Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 26,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.892Z"
+}
+[2025-12-30T22:46:15.894Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.894Z"
+}
+[2025-12-30T22:46:15.895Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 27,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.895Z"
+}
+[2025-12-30T22:46:15.896Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.896Z"
+}
+[2025-12-30T22:46:15.896Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 28,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.896Z"
+}
+[2025-12-30T22:46:15.897Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.897Z"
+}
+[2025-12-30T22:46:15.897Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 29,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.897Z"
+}
+[2025-12-30T22:46:15.899Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.899Z"
+}
+[2025-12-30T22:46:15.900Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 17,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.900Z"
+}
+[2025-12-30T22:46:15.901Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.901Z"
+}
+[2025-12-30T22:46:15.901Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 18,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.901Z"
+}
+[2025-12-30T22:46:15.903Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.903Z"
+}
+[2025-12-30T22:46:15.903Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 19,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.903Z"
+}
+[2025-12-30T22:46:15.934Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.933Z"
+}
+[2025-12-30T22:46:15.934Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.934Z"
+}
+[2025-12-30T22:46:15.982Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.982Z"
+}
+[2025-12-30T22:46:15.982Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 38,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:15.982Z"
+}
+[2025-12-30T22:46:16.006Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.006Z"
+}
+[2025-12-30T22:46:16.006Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 46,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.006Z"
+}
+[2025-12-30T22:46:16.008Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.008Z"
+}
+[2025-12-30T22:46:16.008Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 49,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.008Z"
+}
+[2025-12-30T22:46:16.028Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.028Z"
+}
+[2025-12-30T22:46:16.028Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 38,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.028Z"
+}
+[2025-12-30T22:46:16.043Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.043Z"
+}
+[2025-12-30T22:46:16.043Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 34,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.043Z"
+}
+[2025-12-30T22:46:16.044Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.044Z"
+}
+[2025-12-30T22:46:16.044Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 34,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.044Z"
+}
+[2025-12-30T22:46:16.046Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.046Z"
+}
+[2025-12-30T22:46:16.046Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 24,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.046Z"
+}
+[2025-12-30T22:46:16.052Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2025-12-30T22:46:16.052Z"
+}
+[2025-12-30T22:46:16.076Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.076Z"
+}
+[2025-12-30T22:46:16.076Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 24,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.076Z"
+}
+[2025-12-30T22:46:16.085Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.085Z"
+}
+[2025-12-30T22:46:16.085Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 32,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.085Z"
+}
+[2025-12-30T22:46:16.089Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.089Z"
+}
+[2025-12-30T22:46:16.089Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 6,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.089Z"
+}
+[2025-12-30T22:46:16.102Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.102Z"
+}
+[2025-12-30T22:46:16.102Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 18,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.102Z"
+}
+[2025-12-30T22:46:16.108Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.108Z"
+}
+[2025-12-30T22:46:16.108Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 25,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.108Z"
+}
+[2025-12-30T22:46:16.215Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.215Z"
+}
+[2025-12-30T22:46:16.216Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 55,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.216Z"
+}
+[2025-12-30T22:46:16.242Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.242Z"
+}
+[2025-12-30T22:46:16.242Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 20,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.242Z"
+}
+[2025-12-30T22:46:16.254Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.254Z"
+}
+[2025-12-30T22:46:16.254Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 2,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.254Z"
+}
+[2025-12-30T22:46:16.316Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.316Z"
+}
+[2025-12-30T22:46:16.316Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 19,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.316Z"
+}
+[2025-12-30T22:46:16.363Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.363Z"
+}
+[2025-12-30T22:46:16.363Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.363Z"
+}
+[2025-12-30T22:46:16.408Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.408Z"
+}
+[2025-12-30T22:46:16.408Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.408Z"
+}
+[2025-12-30T22:46:16.454Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.454Z"
+}
+[2025-12-30T22:46:16.455Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.454Z"
+}
+[2025-12-30T22:46:16.458Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.458Z"
+}
+[2025-12-30T22:46:16.459Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.458Z"
+}
+[2025-12-30T22:46:16.461Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.461Z"
+}
+[2025-12-30T22:46:16.461Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.461Z"
+}
+[2025-12-30T22:46:16.479Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.479Z"
+}
+[2025-12-30T22:46:16.479Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 25,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.479Z"
+}
+[2025-12-30T22:46:16.481Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.481Z"
+}
+[2025-12-30T22:46:16.481Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 26,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.481Z"
+}
+[2025-12-30T22:46:16.581Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.581Z"
+}
+[2025-12-30T22:46:16.582Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 23,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.582Z"
+}
+[2025-12-30T22:46:16.655Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.655Z"
+}
+[2025-12-30T22:46:16.655Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:16.655Z"
+}
+[2025-12-30T22:46:17.173Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:17.173Z"
+}
+[2025-12-30T22:46:17.173Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:17.173Z"
+}
+[2025-12-30T22:46:33.290Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:33.290Z"
+}
+[2025-12-30T22:46:33.290Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 43,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:33.290Z"
+}
+[2025-12-30T22:46:45.928Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:45.928Z"
+}
+[2025-12-30T22:46:45.928Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:45.928Z"
+}
+[2025-12-30T22:46:46.004Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.004Z"
+}
+[2025-12-30T22:46:46.004Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 2,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.004Z"
+}
+[2025-12-30T22:46:46.144Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.144Z"
+}
+[2025-12-30T22:46:46.144Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.144Z"
+}
+[2025-12-30T22:46:46.146Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.146Z"
+}
+[2025-12-30T22:46:46.146Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.146Z"
+}
+[2025-12-30T22:46:46.160Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.160Z"
+}
+[2025-12-30T22:46:46.160Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.160Z"
+}
+[2025-12-30T22:46:46.162Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.161Z"
+}
+[2025-12-30T22:46:46.162Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.162Z"
+}
+[2025-12-30T22:46:46.179Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.179Z"
+}
+[2025-12-30T22:46:46.180Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.180Z"
+}
+[2025-12-30T22:46:46.181Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.181Z"
+}
+[2025-12-30T22:46:46.181Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.181Z"
+}
+[2025-12-30T22:46:46.184Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.184Z"
+}
+[2025-12-30T22:46:46.184Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 10,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.184Z"
+}
+[2025-12-30T22:46:46.186Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.186Z"
+}
+[2025-12-30T22:46:46.186Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 12,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.186Z"
+}
+[2025-12-30T22:46:46.205Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.205Z"
+}
+[2025-12-30T22:46:46.205Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.205Z"
+}
+[2025-12-30T22:46:46.221Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.221Z"
+}
+[2025-12-30T22:46:46.221Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.221Z"
+}
+[2025-12-30T22:46:46.236Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.236Z"
+}
+[2025-12-30T22:46:46.236Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.236Z"
+}
+[2025-12-30T22:46:46.312Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.312Z"
+}
+[2025-12-30T22:46:46.312Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 2,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.312Z"
+}
+[2025-12-30T22:46:46.315Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.315Z"
+}
+[2025-12-30T22:46:46.315Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.315Z"
+}
+[2025-12-30T22:46:46.427Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.427Z"
+}
+[2025-12-30T22:46:46.427Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 24,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.427Z"
+}
+[2025-12-30T22:46:46.496Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.496Z"
+}
+[2025-12-30T22:46:46.496Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 17,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.496Z"
+}
+[2025-12-30T22:46:46.505Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.505Z"
+}
+[2025-12-30T22:46:46.505Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 11,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.505Z"
+}
+[2025-12-30T22:46:46.507Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.507Z"
+}
+[2025-12-30T22:46:46.507Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 12,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.507Z"
+}
+[2025-12-30T22:46:46.508Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.508Z"
+}
+[2025-12-30T22:46:46.508Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 12,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.508Z"
+}
+[2025-12-30T22:46:46.509Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.509Z"
+}
+[2025-12-30T22:46:46.509Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 13,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.509Z"
+}
+[2025-12-30T22:46:46.559Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.559Z"
+}
+[2025-12-30T22:46:46.559Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.559Z"
+}
+[2025-12-30T22:46:46.604Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.604Z"
+}
+[2025-12-30T22:46:46.604Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 19,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.604Z"
+}
+[2025-12-30T22:46:46.680Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.680Z"
+}
+[2025-12-30T22:46:46.680Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 2,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.680Z"
+}
+[2025-12-30T22:46:46.709Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2025-12-30T22:46:46.709Z"
+}
+[2025-12-30T22:46:46.717Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.717Z"
+}
+[2025-12-30T22:46:46.717Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.717Z"
+}
+[2025-12-30T22:46:46.717Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.717Z"
+}
+[2025-12-30T22:46:46.717Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.717Z"
+}
+[2025-12-30T22:46:46.744Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.744Z"
+}
+[2025-12-30T22:46:46.744Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.744Z"
+}
+[2025-12-30T22:46:46.758Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.758Z"
+}
+[2025-12-30T22:46:46.758Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.758Z"
+}
+[2025-12-30T22:46:46.761Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.761Z"
+}
+[2025-12-30T22:46:46.761Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.761Z"
+}
+[2025-12-30T22:46:46.821Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.821Z"
+}
+[2025-12-30T22:46:46.821Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.821Z"
+}
+[2025-12-30T22:46:46.867Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.867Z"
+}
+[2025-12-30T22:46:46.867Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:46.867Z"
+}
+[2025-12-30T22:46:47.055Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.055Z"
+}
+[2025-12-30T22:46:47.055Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 6,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.055Z"
+}
+[2025-12-30T22:46:47.057Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.057Z"
+}
+[2025-12-30T22:46:47.057Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.057Z"
+}
+[2025-12-30T22:46:47.062Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.062Z"
+}
+[2025-12-30T22:46:47.062Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 10,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.062Z"
+}
+[2025-12-30T22:46:47.065Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.065Z"
+}
+[2025-12-30T22:46:47.065Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 12,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.065Z"
+}
+[2025-12-30T22:46:47.160Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.160Z"
+}
+[2025-12-30T22:46:47.160Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.160Z"
+}
+[2025-12-30T22:46:47.208Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.208Z"
+}
+[2025-12-30T22:46:47.208Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.208Z"
+}
+[2025-12-30T22:46:47.211Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.211Z"
+}
+[2025-12-30T22:46:47.212Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 6,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:46:47.212Z"
+}
+[2025-12-30T22:47:03.826Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:03.826Z"
+}
+[2025-12-30T22:47:03.826Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 115,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:03.826Z"
+}
+[2025-12-30T22:47:16.217Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.217Z"
+}
+[2025-12-30T22:47:16.217Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.217Z"
+}
+[2025-12-30T22:47:16.233Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.233Z"
+}
+[2025-12-30T22:47:16.233Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.233Z"
+}
+[2025-12-30T22:47:16.452Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.452Z"
+}
+[2025-12-30T22:47:16.452Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.452Z"
+}
+[2025-12-30T22:47:16.455Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.455Z"
+}
+[2025-12-30T22:47:16.455Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.455Z"
+}
+[2025-12-30T22:47:16.460Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.460Z"
+}
+[2025-12-30T22:47:16.460Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 9,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.460Z"
+}
+[2025-12-30T22:47:16.508Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.508Z"
+}
+[2025-12-30T22:47:16.508Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 31,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.508Z"
+}
+[2025-12-30T22:47:16.513Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.513Z"
+}
+[2025-12-30T22:47:16.513Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 35,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.513Z"
+}
+[2025-12-30T22:47:16.516Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.516Z"
+}
+[2025-12-30T22:47:16.516Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 38,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.516Z"
+}
+[2025-12-30T22:47:16.518Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.518Z"
+}
+[2025-12-30T22:47:16.518Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 39,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.518Z"
+}
+[2025-12-30T22:47:16.519Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.519Z"
+}
+[2025-12-30T22:47:16.519Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 39,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.519Z"
+}
+[2025-12-30T22:47:16.523Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.523Z"
+}
+[2025-12-30T22:47:16.523Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 30,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.523Z"
+}
+[2025-12-30T22:47:16.528Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.528Z"
+}
+[2025-12-30T22:47:16.528Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 19,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.528Z"
+}
+[2025-12-30T22:47:16.539Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.539Z"
+}
+[2025-12-30T22:47:16.540Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 15,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.540Z"
+}
+[2025-12-30T22:47:16.603Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.603Z"
+}
+[2025-12-30T22:47:16.603Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 17,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.603Z"
+}
+[2025-12-30T22:47:16.606Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.606Z"
+}
+[2025-12-30T22:47:16.606Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 20,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.606Z"
+}
+[2025-12-30T22:47:16.615Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.615Z"
+}
+[2025-12-30T22:47:16.615Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 29,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.615Z"
+}
+[2025-12-30T22:47:16.681Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.681Z"
+}
+[2025-12-30T22:47:16.681Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.681Z"
+}
+[2025-12-30T22:47:16.761Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.761Z"
+}
+[2025-12-30T22:47:16.761Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.761Z"
+}
+[2025-12-30T22:47:16.774Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.774Z"
+}
+[2025-12-30T22:47:16.774Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 2,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.774Z"
+}
+[2025-12-30T22:47:16.776Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.776Z"
+}
+[2025-12-30T22:47:16.776Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.776Z"
+}
+[2025-12-30T22:47:16.778Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.778Z"
+}
+[2025-12-30T22:47:16.778Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.778Z"
+}
+[2025-12-30T22:47:16.927Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.927Z"
+}
+[2025-12-30T22:47:16.927Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 48,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.927Z"
+}
+[2025-12-30T22:47:16.932Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.932Z"
+}
+[2025-12-30T22:47:16.933Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 36,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:16.932Z"
+}
+[2025-12-30T22:47:17.046Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.045Z"
+}
+[2025-12-30T22:47:17.046Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 25,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.046Z"
+}
+[2025-12-30T22:47:17.047Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.047Z"
+}
+[2025-12-30T22:47:17.047Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 11,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.047Z"
+}
+[2025-12-30T22:47:17.085Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.085Z"
+}
+[2025-12-30T22:47:17.085Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 4,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.085Z"
+}
+[2025-12-30T22:47:17.099Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.099Z"
+}
+[2025-12-30T22:47:17.100Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.099Z"
+}
+[2025-12-30T22:47:17.266Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2025-12-30T22:47:17.266Z"
+}
+[2025-12-30T22:47:17.268Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.268Z"
+}
+[2025-12-30T22:47:17.268Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 3,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.268Z"
+}
+[2025-12-30T22:47:17.273Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.273Z"
+}
+[2025-12-30T22:47:17.273Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 7,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.273Z"
+}
+[2025-12-30T22:47:17.351Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.351Z"
+}
+[2025-12-30T22:47:17.351Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 6,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.351Z"
+}
+[2025-12-30T22:47:17.353Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.353Z"
+}
+[2025-12-30T22:47:17.353Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 8,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.353Z"
+}
+[2025-12-30T22:47:17.510Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.510Z"
+}
+[2025-12-30T22:47:17.510Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 27,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.510Z"
+}
+[2025-12-30T22:47:17.706Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.706Z"
+}
+[2025-12-30T22:47:17.706Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 5,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.706Z"
+}
+[2025-12-30T22:47:17.820Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.820Z"
+}
+[2025-12-30T22:47:17.820Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 27,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.820Z"
+}
+[2025-12-30T22:47:17.821Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.821Z"
+}
+[2025-12-30T22:47:17.821Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 26,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.821Z"
+}
+[2025-12-30T22:47:17.836Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.836Z"
+}
+[2025-12-30T22:47:17.837Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 40,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.837Z"
+}
+[2025-12-30T22:47:17.871Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.871Z"
+}
+[2025-12-30T22:47:17.871Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 74,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:17.871Z"
+}
+[2025-12-30T22:47:19.167Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:19.166Z"
+}
+[2025-12-30T22:47:19.167Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 205,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:19.167Z"
+}
+[2025-12-30T22:47:29.036Z] [LOG  ] [EventManager] Tab visible - triggering state refresh
+[2025-12-30T22:47:29.302Z] [LOG  ] [Content] Message received: {
+  "action": "tabActivated",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:47:29.302Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: tabActivated
+[2025-12-30T22:47:29.302Z] [LOG  ] [Content] Received tabActivated broadcast: {
+  "tabId": 2150,
+  "currentTabId": 2150,
+  "timestamp": 1767134849302
+}
+[2025-12-30T22:47:29.302Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Processing tab activation: {
+  "receivedTabId": 2150,
+  "currentTabId": 2150,
+  "hasQuickTabsManager": true,
+  "timestamp": 1767134849302
+}
+[2025-12-30T22:47:29.302Z] [LOG  ] [Content] TAB_ACTIVATED_HANDLER: Tab is now active: {
+  "tabId": 2150,
+  "isThisTab": true
+}
+[2025-12-30T22:47:34.043Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:34.043Z"
+}
+[2025-12-30T22:47:34.043Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 14,
+  "windowSize": 5,
+  "timestamp": "2025-12-30T22:47:34.043Z"
+}
+[2025-12-30T22:47:46.370Z] [LOG  ] [Content] Message received: {
+  "action": "GET_CONTENT_LOGS",
+  "type": "none",
+  "hasData": false
+}
+[2025-12-30T22:47:46.370Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: GET_CONTENT_LOGS
+[2025-12-30T22:47:46.370Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
