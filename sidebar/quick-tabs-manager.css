@@ -535,15 +535,16 @@ html {
 }
 
 /* Issue #2: Enhanced Quick Tab count badge - more prominent styling */
+/* v1.6.4 - FIX: User request - smaller container, bigger number */
 .tab-group-count {
-  font-size: 11px;
+  font-size: 13px; /* v1.6.4: Increased from 11px for bigger number */
   color: var(--count-badge-text);
-  font-weight: 600; /* Issue #2: Bolder font weight */
+  font-weight: 700; /* v1.6.4: Even bolder font weight */
   flex-shrink: 0;
-  padding: 4px 10px; /* Issue #2: More padding for prominence */
+  padding: 2px 6px; /* v1.6.4: Reduced padding for smaller container */
   background: var(--count-badge-bg);
-  border-radius: 10px;
-  min-width: 20px;
+  border-radius: 8px; /* v1.6.4: Slightly smaller radius */
+  min-width: 18px; /* v1.6.4: Reduced min-width */
   text-align: center;
   /* Issue #10: Subtle transition for count updates */
   transition:
