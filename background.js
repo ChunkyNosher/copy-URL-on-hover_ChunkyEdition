@@ -5601,9 +5601,11 @@ function handleQuickTabRemovedMessage(message, sender) {
 
   // Also remove from globalQuickTabState for backward compatibility
   const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  let foundInGlobal = false;
   if (globalIndex >= 0) {
     globalQuickTabState.tabs.splice(globalIndex, 1);
     globalQuickTabState.lastUpdate = Date.now();
+    foundInGlobal = true;
   }
 
   if (found) {
@@ -5621,8 +5623,20 @@ function handleQuickTabRemovedMessage(message, sender) {
     console.warn('[Background] v1.6.3.12-v7 Quick Tab not found for QUICKTAB_REMOVED:', {
       quickTabId,
       senderTabId,
+      foundInGlobal,
       availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
     });
+
+    // v1.6.3.12-v13 - FIX Bug #3: ALWAYS notify sidebar even if Quick Tab not found
+    // This handles the case where the Quick Tab was already removed from session state
+    // (e.g., via storage.onChanged or a previous close operation) but the Manager UI
+    // still shows it. Notifying ensures the Manager gets the latest state.
+    console.log('[Background] v1.6.3.12-v13 Notifying sidebar anyway for UI sync:', {
+      quickTabId,
+      reason: 'ensure_manager_ui_sync',
+      foundInGlobal
+    });
+    notifySidebarOfStateChange();
   }
 }
 
@@ -5716,6 +5730,78 @@ function handleQuickTabResizedMessage(message, sender) {
   }
 
   console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_RESIZED:', {
+    quickTabId,
+    senderTabId,
+    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+  });
+
+  return { success: false, error: 'Quick Tab not found', quickTabId };
+}
+
+/**
+ * Handle UPDATE_QUICK_TAB message from content script (via runtime.sendMessage)
+ * v1.6.3.12-v13 - FIX Bug #1: Handle URL/title updates when Quick Tab iframe navigates
+ * This is different from the port-based handleUpdateQuickTab which handles position/size updates.
+ *
+ * @param {Object} message - Message containing quickTabId and updates
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ * @returns {{ success: boolean, quickTabId: string, error?: string }}
+ */
+function handleUpdateQuickTabMessage(message, sender) {
+  const { quickTabId, updates, originTabId, source, timestamp } = message;
+  const senderTabId = sender?.tab?.id ?? originTabId;
+
+  // Identify what's being updated for logging
+  const updateKeys = updates ? Object.keys(updates) : [];
+  const hasUrlUpdate = updateKeys.includes('url');
+  const hasTitleUpdate = updateKeys.includes('title');
+
+  console.log('[Background] v1.6.3.12-v13 UPDATE_QUICK_TAB received:', {
+    quickTabId,
+    originTabId,
+    senderTabId,
+    source,
+    timestamp: timestamp || Date.now(),
+    updateKeys,
+    hasUrlUpdate,
+    hasTitleUpdate
+  });
+
+  // Update the Quick Tab in both session and global state
+  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
+    // Log before state for debugging
+    const before = {
+      url: qt.url,
+      title: qt.title
+    };
+
+    // Apply updates
+    Object.assign(qt, updates);
+    qt.lastUpdate = Date.now();
+
+    console.log('[Background] v1.6.3.12-v13 UPDATE_QUICK_TAB applied:', {
+      quickTabId,
+      before,
+      after: {
+        url: qt.url,
+        title: qt.title
+      },
+      updateKeys
+    });
+  });
+
+  if (found) {
+    console.log('[Background] v1.6.3.12-v13 Quick Tab updated:', {
+      quickTabId,
+      updateKeys,
+      hasUrlUpdate,
+      hasTitleUpdate
+    });
+    notifySidebarOfStateChange();
+    return { success: true, quickTabId };
+  }
+
+  console.warn('[Background] v1.6.3.12-v13 Quick Tab not found for UPDATE_QUICK_TAB:', {
     quickTabId,
     senderTabId,
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
@@ -8739,6 +8825,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // to update background state and notify sidebar for Manager UI update
   if (message.type === 'QUICKTAB_RESIZED') {
     const result = handleQuickTabResizedMessage(message, sender);
+    sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v13 - FIX Bug #1: Handle UPDATE_QUICK_TAB message from content script
+  // When Quick Tab iframe navigates, window.js sends this message to update URL/title
+  // in background state and notify sidebar for Manager UI update
+  if (message.type === 'UPDATE_QUICK_TAB') {
+    const result = handleUpdateQuickTabMessage(message, sender);
     sendResponse(result);
     return false; // Synchronous response
   }

@@ -1124,12 +1124,15 @@ export class QuickTabWindow {
   }
 
   /**
-   * Setup iframe load handler to update title
+   * Setup iframe load handler to update title and URL
    * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
+   * v1.6.3.12-v13 - FIX Bug #1: Also send URL updates to background when iframe navigates
    */
   setupIframeLoadHandler() {
     this.iframe.addEventListener('load', () => {
       this._updateTitleFromIframe();
+      // v1.6.3.12-v13 - FIX Bug #1: Notify background of URL changes for Manager update
+      this._notifyBackgroundOfUrlChange();
     });
   }
 
@@ -1191,6 +1194,86 @@ export class QuickTabWindow {
       if (this.titlebarBuilder.titleElement) {
         this.titlebarBuilder.titleElement.title = tooltip;
       }
+    }
+  }
+
+  /**
+   * Notify background of URL change when iframe navigates
+   * v1.6.3.12-v13 - FIX Bug #1: Send UPDATE_QUICK_TAB message to background
+   * when iframe URL changes so Manager displays the current URL
+   * @private
+   */
+  async _notifyBackgroundOfUrlChange() {
+    // Get the current iframe URL
+    const newUrl = this._tryGetIframeUrl();
+    if (!newUrl) {
+      return; // Cannot determine URL, skip update
+    }
+
+    // Skip if URL hasn't actually changed
+    if (newUrl === this.url) {
+      return;
+    }
+
+    // Get the new title
+    const newTitle = this._tryGetIframeTitle() || this._tryGetHostname() || this.title;
+
+    console.log('[QuickTabWindow] URL_CHANGED: Notifying background:', {
+      id: this.id,
+      oldUrl: this.url,
+      newUrl,
+      newTitle,
+      originTabId: this.originTabId
+    });
+
+    // Update local state
+    this.url = newUrl;
+
+    try {
+      // Send UPDATE_QUICK_TAB message to background
+      await browser.runtime.sendMessage({
+        type: 'UPDATE_QUICK_TAB',
+        quickTabId: this.id,
+        updates: {
+          url: newUrl,
+          title: newTitle,
+          lastUpdate: Date.now()
+        },
+        originTabId: this.originTabId,
+        source: 'QuickTabWindow.iframeLoad',
+        timestamp: Date.now()
+      });
+
+      console.log('[QuickTabWindow] URL_CHANGED: Background notified successfully:', {
+        id: this.id,
+        newUrl
+      });
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug('[QuickTabWindow] URL_CHANGED: Could not notify background:', {
+        id: this.id,
+        error: err.message
+      });
+    }
+  }
+
+  /**
+   * Try to get the current iframe URL
+   * v1.6.3.12-v13 - FIX Bug #1: Helper to safely get iframe URL
+   * @private
+   * @returns {string|null} The iframe URL or null if unavailable
+   */
+  _tryGetIframeUrl() {
+    try {
+      // Try to get URL from iframe.src first (always available)
+      if (this.iframe?.src) {
+        return this.iframe.src;
+      }
+      // Try contentWindow.location for same-origin iframes
+      return this.iframe?.contentWindow?.location?.href || null;
+    } catch (_e) {
+      // SecurityError thrown for cross-origin iframes - fall back to src attribute
+      return this.iframe?.src || null;
     }
   }
 

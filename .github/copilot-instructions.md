@@ -22,6 +22,14 @@
 
 **v1.6.4 Features (NEW) - Enhanced Manager UI + Bug Fixes:**
 
+- **BUG FIX #1** - Quick Tab URL/title updates when navigating within iframe
+  - ROOT CAUSE: Iframe `load` event only updated local title, not background state
+  - FIX: Added `_notifyBackgroundOfUrlChange()` in window.js to send UPDATE_QUICK_TAB
+  - Added `handleUpdateQuickTabMessage()` in background.js for runtime.sendMessage
+- **BUG FIX #3** - Last Quick Tab close now reflected in Manager
+  - ROOT CAUSE: `handleQuickTabRemovedMessage` only notified sidebar when Quick Tab found
+  - FIX: Always call `notifySidebarOfStateChange()` even when Quick Tab not in session
+  - Ensures Manager UI stays in sync even with race conditions
 - **BUG FIX #2** - "Open in New Tab" button now works correctly
   - ROOT CAUSE: `handleOpenTab` didn't recognize `switchFocus` parameter
   - FIX: Map both `active` and `switchFocus` to browser.tabs.create active param
