@@ -670,7 +670,7 @@ export class QuickTabWindow {
           if (this.clickOverlay && !this.destroyed) {
             this.clickOverlay.style.pointerEvents = 'auto';
           }
-        }, 500);
+        }, OVERLAY_REACTIVATION_DELAY_MS); // Use named constant for consistency
       }
     });
   }

@@ -7459,10 +7459,10 @@ function _findMatchingGroupKey(groups, tabId) {
     return tabId;
   }
 
-  // v1.6.4.3 - FIX Code Review: Use stricter numeric validation
+  // v1.6.4.3 - FIX Code Review: Use stricter numeric validation with NaN check
   // parseInt('123abc', 10) returns 123 which could cause false matches
   const numericId = Number(tabId);
-  if (Number.isInteger(numericId) && groups.has(numericId)) {
+  if (!Number.isNaN(numericId) && Number.isInteger(numericId) && groups.has(numericId)) {
     return numericId;
   }
 
