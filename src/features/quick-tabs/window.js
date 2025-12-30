@@ -324,6 +324,11 @@ export class QuickTabWindow {
     this.titlebarBuilder.config.iframe = this.iframe;
     this.setupIframeLoadHandler();
 
+    // v1.6.4.2 - FIX BUG #1: Add click overlay for cross-origin iframe click detection
+    if (this.clickOverlay) {
+      this.container.appendChild(this.clickOverlay);
+    }
+
     // Step 5: Add to document and mark as rendered
     document.body.appendChild(this.container);
     this.rendered = true;
@@ -565,6 +570,63 @@ export class QuickTabWindow {
       sandbox:
         'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
       allow: 'picture-in-picture; fullscreen'
+    });
+
+    // v1.6.4.2 - FIX BUG #1: Add click overlay that brings window to front on first click
+    // The overlay captures clicks until the window is focused, then becomes transparent to pointer events
+    this._createClickOverlay();
+  }
+
+  /**
+   * Create a transparent click overlay for iframe click detection
+   * v1.6.4.2 - FIX BUG #1: Click to bring Quick Tab to front
+   * This overlay captures clicks on the iframe area and brings the window to front.
+   * After the window is focused, subsequent clicks pass through to the iframe.
+   * @private
+   */
+  _createClickOverlay() {
+    this.clickOverlay = createElement('div', {
+      className: 'quick-tab-click-overlay',
+      style: {
+        position: 'absolute',
+        top: '40px', // Below titlebar
+        left: '0',
+        right: '0',
+        bottom: '0',
+        zIndex: '1', // Above iframe
+        cursor: 'pointer',
+        backgroundColor: 'transparent'
+      }
+    });
+
+    // On click, bring window to front and hide overlay temporarily
+    this.clickOverlay.addEventListener('mousedown', _e => {
+      console.log('[QuickTabWindow] Click overlay triggered - bringing to front:', this.id);
+      this.onFocus(this.id);
+
+      // After bringing to front, let the click pass through to iframe
+      // Use pointer-events: none temporarily
+      this.clickOverlay.style.pointerEvents = 'none';
+
+      // Re-enable after a short delay to catch subsequent clicks when window loses focus
+      setTimeout(() => {
+        if (this.clickOverlay && !this.destroyed) {
+          this.clickOverlay.style.pointerEvents = 'auto';
+        }
+      }, 300);
+    });
+
+    // Also handle pointerdown for touch devices
+    this.clickOverlay.addEventListener('pointerdown', _e => {
+      if (e.pointerType === 'touch') {
+        this.onFocus(this.id);
+        this.clickOverlay.style.pointerEvents = 'none';
+        setTimeout(() => {
+          if (this.clickOverlay && !this.destroyed) {
+            this.clickOverlay.style.pointerEvents = 'auto';
+          }
+        }, 300);
+      }
     });
   }
 
@@ -1586,6 +1648,8 @@ export class QuickTabWindow {
       this.container.remove();
       this.container = null;
       this.iframe = null;
+      // v1.6.4.2 - FIX BUG #1: Cleanup click overlay reference
+      this.clickOverlay = null;
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
