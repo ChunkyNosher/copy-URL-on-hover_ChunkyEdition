@@ -1706,29 +1706,31 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     console.warn(`[Sidebar] Cannot ${messageType} via port - not connected, trying fallback`);
   }
 
-  // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
+  // v1.6.4.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
+  if (portSucceeded) {
+    // Port succeeded, no fallback needed
+    return true;
+  }
+
+  // Port failed or unavailable, try fallback
   browser.runtime
     .sendMessage({
       ...message,
-      source: portSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
+      source: 'sendMessage_fallback'
     })
     .then(() => {
-      console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage`, {
-        quickTabId,
-        method: portSucceeded ? 'backup' : 'fallback'
+      console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage fallback`, {
+        quickTabId
       });
     })
     .catch(sendErr => {
-      const logFn = portSucceeded ? console.log : console.error;
-      logFn(`[Sidebar] ${messageType} runtime.sendMessage result:`, {
+      console.error(`[Sidebar] ${messageType} both port and fallback failed:`, {
         quickTabId,
-        portSucceeded,
-        error: sendErr.message,
-        outcome: portSucceeded ? 'port_succeeded' : 'both_failed'
+        error: sendErr.message
       });
     });
 
-  return portSucceeded;
+  return false;
 }
 
 /**
