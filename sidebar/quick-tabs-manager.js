@@ -520,7 +520,8 @@ function initializeQuickTabsPort() {
     } catch (err) {
       console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
       // v1.6.4 - ADD fallback messaging: Use browser.runtime.sendMessage as fallback
-      browser.runtime.sendMessage({ ...sidebarReadyMessage, source: 'sendMessage_fallback' })
+      browser.runtime
+        .sendMessage({ ...sidebarReadyMessage, source: 'sendMessage_fallback' })
         .then(() => {
           console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback');
         })
@@ -1706,23 +1707,26 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
   }
 
   // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
-  browser.runtime.sendMessage({
-    ...message,
-    source: portSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
-  }).then(() => {
-    console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage`, {
-      quickTabId,
-      method: portSucceeded ? 'backup' : 'fallback'
+  browser.runtime
+    .sendMessage({
+      ...message,
+      source: portSucceeded ? 'sendMessage_backup' : 'sendMessage_fallback'
+    })
+    .then(() => {
+      console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage`, {
+        quickTabId,
+        method: portSucceeded ? 'backup' : 'fallback'
+      });
+    })
+    .catch(sendErr => {
+      const logFn = portSucceeded ? console.log : console.error;
+      logFn(`[Sidebar] ${messageType} runtime.sendMessage result:`, {
+        quickTabId,
+        portSucceeded,
+        error: sendErr.message,
+        outcome: portSucceeded ? 'port_succeeded' : 'both_failed'
+      });
     });
-  }).catch(sendErr => {
-    const logFn = portSucceeded ? console.log : console.error;
-    logFn(`[Sidebar] ${messageType} runtime.sendMessage result:`, {
-      quickTabId,
-      portSucceeded,
-      error: sendErr.message,
-      outcome: portSucceeded ? 'port_succeeded' : 'both_failed'
-    });
-  });
 
   return portSucceeded;
 }
@@ -2710,28 +2714,31 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
       });
 
       // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
-      browser.runtime.sendMessage({
-        ...messageWithCorrelation,
-        source: 'sendMessage_fallback'
-      }).then(response => {
-        clearTimeout(timeout);
-        pendingAcks.delete(correlationId);
-        logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', {
-          messageType: message.type,
-          correlationId
+      browser.runtime
+        .sendMessage({
+          ...messageWithCorrelation,
+          source: 'sendMessage_fallback'
+        })
+        .then(response => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', {
+            messageType: message.type,
+            correlationId
+          });
+          resolve(response);
+        })
+        .catch(sendErr => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
+            messageType: message.type,
+            correlationId,
+            portError: err.message,
+            sendMessageError: sendErr.message
+          });
+          reject(err); // Reject with original port error
         });
-        resolve(response);
-      }).catch(sendErr => {
-        clearTimeout(timeout);
-        pendingAcks.delete(correlationId);
-        logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
-          messageType: message.type,
-          correlationId,
-          portError: err.message,
-          sendMessageError: sendErr.message
-        });
-        reject(err); // Reject with original port error
-      });
       return; // Don't reject here - let the fallback handle it
     }
   });
@@ -4119,27 +4126,30 @@ function sendWithAck(message) {
       console.warn('[Manager] Port send failed, trying runtime.sendMessage fallback:', err.message);
 
       // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
-      browser.runtime.sendMessage({
-        ...messageWithCorrelation,
-        source: 'sendMessage_fallback'
-      }).then(response => {
-        clearTimeout(timeout);
-        pendingAcks.delete(correlationId);
-        console.log('[Manager] Fallback sendMessage succeeded:', {
-          type: message.type,
-          correlationId
+      browser.runtime
+        .sendMessage({
+          ...messageWithCorrelation,
+          source: 'sendMessage_fallback'
+        })
+        .then(response => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          console.log('[Manager] Fallback sendMessage succeeded:', {
+            type: message.type,
+            correlationId
+          });
+          resolve(response || { success: true, method: 'sendMessage_fallback', correlationId });
+        })
+        .catch(sendErr => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          console.error('[Manager] Both port and sendMessage failed:', {
+            type: message.type,
+            portError: err.message,
+            sendMessageError: sendErr.message
+          });
+          reject(err); // Reject with original port error
         });
-        resolve(response || { success: true, method: 'sendMessage_fallback', correlationId });
-      }).catch(sendErr => {
-        clearTimeout(timeout);
-        pendingAcks.delete(correlationId);
-        console.error('[Manager] Both port and sendMessage failed:', {
-          type: message.type,
-          portError: err.message,
-          sendMessageError: sendErr.message
-        });
-        reject(err); // Reject with original port error
-      });
       return; // Don't reject here - let the fallback handle it
     }
   });
@@ -5492,7 +5502,8 @@ function _requestCacheSyncWithFallback(timestamp) {
 
   // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
   if (!portSucceeded) {
-    browser.runtime.sendMessage({ ...syncMessage, source: 'sendMessage_fallback' })
+    browser.runtime
+      .sendMessage({ ...syncMessage, source: 'sendMessage_fallback' })
       .then(() => {
         console.log('[Manager] Cache sync request sent via runtime.sendMessage fallback');
       })
