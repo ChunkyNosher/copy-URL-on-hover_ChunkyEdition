@@ -1238,6 +1238,7 @@ const _portMessageHandlers = {
   },
   // v1.6.4.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
   // These ensure proper logging and prevent "unknown_type" warnings in the port handler
+  // v1.6.4.6 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
   TRANSFER_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1248,9 +1249,19 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
-    // Note: STATE_CHANGED message from background will trigger re-render with updated state
+    // v1.6.4.6 - FIX BUG #1: If transfer succeeded, request fresh state to ensure Manager shows transferred Quick Tab
+    // STATE_CHANGED may not arrive in time or may be dropped, so we explicitly request state
+    if (msg.success) {
+      console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Requesting fresh state after successful transfer');
+      // Clear cache for both old and new origin tabs
+      if (msg.oldOriginTabId) browserTabInfoCache.delete(msg.oldOriginTabId);
+      if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
+      // Request fresh state from background
+      requestAllQuickTabsViaPort();
+    }
   },
   // v1.6.4.4 - FIX BUG #3: Handle duplicate ACK
+  // v1.6.4.6 - FIX BUG #1: Request fresh state after successful duplicate
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1260,7 +1271,14 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
-    // Note: STATE_CHANGED message from background will trigger re-render with updated state
+    // v1.6.4.6 - FIX BUG #1: If duplicate succeeded, request fresh state
+    if (msg.success) {
+      console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK: Requesting fresh state after successful duplicate');
+      // Clear cache for the new origin tab
+      if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
+      // Request fresh state from background
+      requestAllQuickTabsViaPort();
+    }
   }
 };
 
@@ -6729,9 +6747,31 @@ async function _buildGroupsContainer(groups, collapseState) {
 
 /**
  * Get sorted group keys (orphaned last, closed before orphaned)
+ * v1.6.4.6 - FIX BUG #4: Respect user-defined order from orderedGroups Map
+ * If _userGroupOrder is set, preserve Map iteration order (which _applyUserGroupOrder set)
+ * Only apply the orphaned/closed sorting for NEW groups not in user order
  * @private
  */
 function _getSortedGroupKeys(groups) {
+  // v1.6.4.6 - FIX BUG #4: If user has defined an order, preserve Map iteration order
+  // The Map was already ordered by _applyUserGroupOrder() - we only need to move orphaned to end
+  if (_userGroupOrder && _userGroupOrder.length > 0) {
+    const keys = [...groups.keys()];
+    // v1.6.4.6 - FIX Code Review: Single-pass partition using reduce
+    const { regular, orphaned } = keys.reduce(
+      (acc, k) => {
+        if (k === 'orphaned') {
+          acc.orphaned.push(k);
+        } else {
+          acc.regular.push(k);
+        }
+        return acc;
+      },
+      { regular: [], orphaned: [] }
+    );
+    return regular.concat(orphaned);
+  }
+  // Default behavior when no user order is set
   return [...groups.keys()].sort((a, b) => _compareGroupKeys(a, b, groups));
 }
 

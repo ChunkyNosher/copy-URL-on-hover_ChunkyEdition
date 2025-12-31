@@ -107,12 +107,16 @@ export class QuickTabWindow {
    * Initialize visibility-related properties (minimized state)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
    * v1.6.3.12 - Removed Solo/Mute functionality
+   * v1.6.4.6 - FIX BUG #2: Added skipInitialOverlay option for transferred Quick Tabs
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
     // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
     // This removes tight coupling to window.quickTabsManager.currentTabId
     this.currentTabId = options.currentTabId ?? null;
+    // v1.6.4.6 - FIX BUG #2: Flag to skip initial overlay for transferred Quick Tabs
+    // When a Quick Tab is transferred, it should be immediately interactive without requiring a click first
+    this.skipInitialOverlay = options.skipInitialOverlay ?? false;
   }
 
   /**
@@ -588,12 +592,17 @@ export class QuickTabWindow {
    * v1.6.4.2 - FIX BUG #1: Click to bring Quick Tab to front
    * v1.6.4.3 - IMPROVED: Enhanced overlay positioning and z-index
    * v1.6.4.4 - FIX BUG #2: Keep overlay disabled while window is focused
+   * v1.6.4.6 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
    * This overlay captures clicks on the iframe area and brings the window to front.
    * After the window is focused, subsequent clicks pass through to the iframe.
    * The overlay is re-enabled when the window loses focus (focusout or mouseleave).
    * @private
    */
   _createClickOverlay() {
+    // v1.6.4.6 - FIX BUG #2: Transferred Quick Tabs start with overlay disabled
+    // so they're immediately interactive without requiring a click first
+    const initialPointerEvents = this.skipInitialOverlay ? 'none' : 'auto';
+
     this.clickOverlay = createElement('div', {
       className: 'quick-tab-click-overlay',
       style: {
@@ -606,10 +615,15 @@ export class QuickTabWindow {
         zIndex: String(MAX_OVERLAY_Z_INDEX), // Use named constant for clarity
         cursor: 'pointer',
         backgroundColor: 'transparent',
-        // v1.6.4.3 - Ensure overlay doesn't inherit pointer-events from parent
-        pointerEvents: 'auto'
+        // v1.6.4.6 - FIX BUG #2: Use computed initial pointer-events
+        pointerEvents: initialPointerEvents
       }
     });
+
+    // Log if overlay is starting disabled (for debugging transferred Quick Tabs)
+    if (this.skipInitialOverlay) {
+      console.log('[QuickTabWindow] Click overlay disabled for transferred Quick Tab:', this.id);
+    }
 
     // On mousedown, bring window to front and hide overlay temporarily
     this.clickOverlay.addEventListener('mousedown', e => {

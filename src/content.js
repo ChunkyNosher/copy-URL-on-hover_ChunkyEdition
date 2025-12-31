@@ -1928,6 +1928,7 @@ function _validateTransferredInMessage(message) {
 /**
  * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
  * v1.6.4.1 - FIX BUG #1: Cross-tab transfer not working
+ * v1.6.4.6 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
  * When a Quick Tab is transferred to this tab, create it with the received properties.
  * @private
  * @param {Object} message - Transfer in message
@@ -1941,6 +1942,7 @@ function _handleQuickTabTransferredIn(message) {
   const { quickTab } = validation;
 
   // Create the Quick Tab with received properties, updating originTabId to this tab
+  // v1.6.4.6 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
   const createOptions = {
     id: quickTab.id,
     url: quickTab.url,
@@ -1951,7 +1953,8 @@ function _handleQuickTabTransferredIn(message) {
     height: quickTab.height,
     minimized: quickTab.minimized || false,
     zIndex: quickTab.zIndex,
-    originTabId: quickTabsManager.currentTabId // Set to this tab
+    originTabId: quickTabsManager.currentTabId, // Set to this tab
+    skipInitialOverlay: true // v1.6.4.6 - FIX BUG #2: Make transferred Quick Tab immediately interactive
   };
 
   console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
