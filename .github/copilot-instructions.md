@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4  
+**Version:** 1.6.4.8  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,23 +20,28 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4 Features (NEW) - Drag-and-Drop Manager + Bug Fixes:**
+**v1.6.4.8 Bug Fixes (NEW):**
 
-- **BUG FIX #1** - Click-to-Front: Quick Tabs come to front on click (not just
-  drag)
+- **BUG FIX #1 & #2** - Transfer/Duplicate Quick Tabs not appearing in Manager:
+  Removed redundant `requestAllQuickTabsViaPort()` calls that caused race
+  conditions (STATE_CHANGED already contains correct state)
+- **BUG FIX #3** - Quick Tab reordering within groups resets: Added
+  `_userQuickTabOrderByGroup` map for per-group ordering with persistence
+- **BUG FIX #4** - Last Quick Tab close not reflected: Added
+  `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()` monitoring
+
+**v1.6.4 Features - Drag-and-Drop Manager:**
+
+- **BUG FIX #1** - Click-to-Front: Quick Tabs come to front on click
 - **BUG FIX #2** - Open in New Tab: Added `openTab` to MessageRouter allowlist
 - **BUG FIX #3** - Cross-tab Transfer/Duplicate: Fixed via drag-and-drop
 - **BUG FIX #4** - Manager Reordering Persistence: Tab group order now persists
-- **BUG FIX #5** - Alt Key Modifier: Removed (doesn't work), default changed to
-  Shift
-- **FEATURE #1** - Drag-and-Drop Reordering: Reorder tabs and Quick Tabs in
-  Manager
+- **BUG FIX #5** - Alt Key Modifier: Removed, default changed to Shift
+- **FEATURE #1** - Drag-and-Drop Reordering: Reorder tabs and Quick Tabs
 - **FEATURE #2** - Cross-Tab Transfer: Drag Quick Tab to another tab group
-- **FEATURE #3** - Duplicate via Shift+Drag: Hold Shift while dragging to
-  duplicate
-- **FEATURE #4** - Move to Current Tab Button: Replaces "Go to Tab" for Quick
-  Tab items
-- **FEATURE #5** - Tab Group Actions: "Go to Tab" and "Close All in Tab" buttons
+- **FEATURE #3** - Duplicate via Shift+Drag: Hold Shift while dragging
+- **FEATURE #4** - Move to Current Tab Button: Replaces "Go to Tab" for items
+- **FEATURE #5** - Tab Group Actions: "Go to Tab" and "Close All in Tab"
 - **FEATURE #6** - Open in New Tab Button: Per Quick Tab (↗️) in Manager
 - **FEATURE #7** - Smaller count indicator with bigger number
 
@@ -112,7 +117,18 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4 Patterns (Current)
+### v1.6.4.8 Patterns (Current)
+
+- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
+  calls (STATE_CHANGED already contains correct state)
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for per-group
+  ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last Quick
+  Tab close scenarios with `_logLowQuickTabCount()` monitoring
+- **Order Application** - `_applyUserQuickTabOrder()` preserves order during renders
+- **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
+
+### v1.6.4 Patterns
 
 - **Drag-and-Drop Reordering** - Manager supports drag-and-drop for tabs and
   Quick Tabs
@@ -156,9 +172,10 @@ const quickTabsSessionState = {
 
 ### Key Timing Constants
 
-| Constant                                        | Value      | Purpose                        |
-| ----------------------------------------------- | ---------- | ------------------------------ |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646 | Click overlay z-index (v1.6.4) |
+| Constant                                        | Value                             | Purpose                           |
+| ----------------------------------------------- | --------------------------------- | --------------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder'   | Quick Tab order persistence key   |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                        | Click overlay z-index (v1.6.4)    |
 | `OVERLAY_REACTIVATION_DELAY_MS`                 | 500        | Pointer events re-enable delay |
 | `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5          | Failures before circuit trips  |
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000      | Test write interval            |
@@ -200,6 +217,9 @@ const quickTabsSessionState = {
 ---
 
 ## 📝 Logging Prefixes
+
+**v1.6.4.8:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
+`[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
 
 **v1.6.4:** `[Manager] DRAG_DROP:`, `[Manager] TRANSFER_QUICK_TAB:`,
 `[Manager] DUPLICATE_QUICK_TAB:`, `[Manager] MOVE_TO_CURRENT_TAB:`

@@ -3,9 +3,9 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v12), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.4.8), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
-  optimistic UI updates, render lock, orphan recovery UI, button operation fix
+  optimistic UI updates, render lock, orphan recovery UI, Quick Tab order persistence
 tools: ['*']
 ---
 
@@ -37,52 +37,34 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
-State)
+**Version:** 1.6.4.8 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v12 Features (NEW):**
+**v1.6.4.8 Features (NEW):**
 
-- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
-  Restore, Close All, Close Minimized)
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
-    trigger re-render
-  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
-  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
-  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
-- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
-  state version before skipping render (port data update detection)
-- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
-  `browser.tabs.sendMessage` if port unavailable
+- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
+  calls that caused race conditions (STATE_CHANGED already contains correct state)
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for per-group
+  ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last Quick
+  Tab close scenarios with `_logLowQuickTabCount()` monitoring
+- **Order Application** - `_applyUserQuickTabOrder()` preserves order during renders
+- **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
+
+**v1.6.4 Features:**
+
+- **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs in Manager
+- **Cross-Tab Transfer** - Drag Quick Tab to another tab group to transfer
+- **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
+- **Move to Current Tab** - `_handleMoveToCurrentTab()` for Quick Tab items
+- **Tab Group Actions** - `_createGroupActions()` with "Go to Tab", "Close All"
+- **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX`
+
+**v1.6.3.12-v12 Features:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+- **Cross-Tab Render Fix** - Hash AND state version check before skipping render
+- **Fallback Messaging** - Falls back to `browser.tabs.sendMessage` if port unavailable
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
-  - Options object pattern (5 args → 1)
-  - Lookup table refactoring (72 LoC → 42 LoC)
-  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
-
-**v1.6.3.12-v11 Features:**
-
-- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` helper prioritizes
-  port data for all-tabs visibility (Issue #1 fix)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
-  `browserTabInfoCache` on navigation/updates (Issue #12 fix)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` confirms
-  heartbeat started after port reconnection (Issue #20 fix)
-
-**v1.6.3.12-v10 Features:**
-
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
-- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- **Code Health** - background.js: 8.79 → 9.09
-
-**v1.6.3.12-v9 Features:**
-
-- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
-- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
-- **Port Message Validation** - `_validateQuickTabObject()`,
-  `_filterValidQuickTabs()`, `_isValidSequenceNumber()`
-- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
-- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
 
 **Key Manager Features:**
 
@@ -124,16 +106,18 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ## Testing Requirements
 
+- [ ] Transfer/duplicate race fix works (no redundant port calls)
+- [ ] Quick Tab order persistence works (_userQuickTabOrderByGroup)
+- [ ] Empty state transition works (_handleEmptyStateTransition)
+- [ ] Order application during render (_applyUserQuickTabOrder)
+- [ ] Drag-and-drop reordering works
+- [ ] Cross-tab transfer works
+- [ ] Duplicate via modifier key works
+- [ ] Move to current tab works
 - [ ] Button operation fix works (buttons re-enable after timeout)
-- [ ] State version tracking prevents stale renders
-- [ ] Cross-tab render fix works (hash AND version check)
-- [ ] Fallback messaging works (port → sendMessage)
 - [ ] Cross-tab display works (Quick Tabs from all tabs shown)
-- [ ] Tab cache invalidation on navigation
-- [ ] Heartbeat restart logging visible
 - [ ] Optimistic UI updates work
 - [ ] Render lock prevents concurrent renders
-- [ ] Orphan Quick Tab UI displays correctly
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] STATE_CHANGED messages received and rendered
 - [ ] SIDEBAR_READY / SIDEBAR_STATE_SYNC handshake works
@@ -147,6 +131,6 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.3.12-v12 button operation fix,
-cross-tab render fix, fallback messaging, state version tracking, optimistic UI
-timeout, render lock, and comprehensive validation.**
+**Your strength: Manager coordination with v1.6.4.8 transfer/duplicate race fix,
+Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
+transfer, optimistic UI timeout, render lock, and comprehensive validation.**
