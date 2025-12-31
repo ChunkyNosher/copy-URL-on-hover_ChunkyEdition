@@ -1252,7 +1252,9 @@ const _portMessageHandlers = {
     // v1.6.4.6 - FIX BUG #1: If transfer succeeded, request fresh state to ensure Manager shows transferred Quick Tab
     // STATE_CHANGED may not arrive in time or may be dropped, so we explicitly request state
     if (msg.success) {
-      console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Requesting fresh state after successful transfer');
+      console.log(
+        '[Sidebar] TRANSFER_QUICK_TAB_ACK: Requesting fresh state after successful transfer'
+      );
       // Clear cache for both old and new origin tabs
       if (msg.oldOriginTabId) browserTabInfoCache.delete(msg.oldOriginTabId);
       if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
@@ -1273,7 +1275,9 @@ const _portMessageHandlers = {
     });
     // v1.6.4.6 - FIX BUG #1: If duplicate succeeded, request fresh state
     if (msg.success) {
-      console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK: Requesting fresh state after successful duplicate');
+      console.log(
+        '[Sidebar] DUPLICATE_QUICK_TAB_ACK: Requesting fresh state after successful duplicate'
+      );
       // Clear cache for the new origin tab
       if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
       // Request fresh state from background
