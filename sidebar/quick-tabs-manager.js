@@ -866,6 +866,10 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX Issue #11/#14: Log per-origin-tab breakdown for cross-tab visibility
   _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId);
 
+  // v1.6.4.7 - FIX BUG #4: Track if transitioning to empty state for forced render
+  const wasNotEmpty = _allQuickTabsFromPort.length > 0;
+  const isNowEmpty = quickTabs.length === 0;
+
   _allQuickTabsFromPort = quickTabs;
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
@@ -883,6 +887,18 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     tabCount: quickTabs.length,
     latencyMs: Date.now() - receiveTime
   });
+
+  // v1.6.4.7 - FIX BUG #4: Force immediate render when transitioning to empty state
+  // This ensures the "last Quick Tab closed" scenario shows empty state immediately
+  if (wasNotEmpty && isNowEmpty) {
+    console.log('[Sidebar] STATE_SYNC_PATH_EMPTY_TRANSITION: Forcing immediate render', {
+      previousCount: wasNotEmpty ? '>0' : '0',
+      newCount: 0,
+      reason: 'Last Quick Tab closed - forcing immediate render'
+    });
+    _forceImmediateRender('empty-state-transition');
+    return;
+  }
 
   // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
   scheduleRender(renderReason, correlationId);
@@ -1124,6 +1140,83 @@ function _logPortMessageValidationError(type, msg, error) {
 }
 
 /**
+ * Handle successful transfer ACK - update local state and force render
+ * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
+ * @private
+ * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
+ */
+function _handleSuccessfulTransferAck(msg) {
+  console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updating local state and forcing render');
+
+  // Clear cache for both old and new origin tabs
+  _clearTabCacheForTransfer(msg.oldOriginTabId, msg.newOriginTabId);
+
+  // Update _allQuickTabsFromPort optimistically
+  _updateLocalQuickTabOrigin(msg.quickTabId, msg.newOriginTabId);
+
+  // Also update quickTabsState for hash consistency
+  _updateQuickTabsStateOrigin(msg.quickTabId, msg.newOriginTabId);
+
+  // Increment state version and force immediate render
+  _incrementStateVersion('transfer-ack');
+  _forceImmediateRender('transfer-ack-success');
+
+  // Request fresh state from background to ensure we're in sync
+  requestAllQuickTabsViaPort();
+}
+
+/**
+ * Clear browser tab cache for transfer operation
+ * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {number} oldOriginTabId - Old origin tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _clearTabCacheForTransfer(oldOriginTabId, newOriginTabId) {
+  if (oldOriginTabId) browserTabInfoCache.delete(oldOriginTabId);
+  if (newOriginTabId) browserTabInfoCache.delete(newOriginTabId);
+}
+
+/**
+ * Update Quick Tab's originTabId in _allQuickTabsFromPort
+ * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _updateLocalQuickTabOrigin(quickTabId, newOriginTabId) {
+  const quickTabIndex = _allQuickTabsFromPort.findIndex(qt => qt.id === quickTabId);
+  if (quickTabIndex >= 0) {
+    _allQuickTabsFromPort[quickTabIndex].originTabId = newOriginTabId;
+    _allQuickTabsFromPort[quickTabIndex].transferredAt = Date.now();
+    console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updated local Quick Tab originTabId', {
+      quickTabId,
+      newOriginTabId
+    });
+  } else {
+    console.warn('[Sidebar] TRANSFER_QUICK_TAB_ACK: Quick Tab not found in local state', {
+      quickTabId
+    });
+  }
+}
+
+/**
+ * Update Quick Tab's originTabId in quickTabsState for hash consistency
+ * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _updateQuickTabsStateOrigin(quickTabId, newOriginTabId) {
+  if (!quickTabsState?.tabs) return;
+  const stateIndex = quickTabsState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (stateIndex >= 0) {
+    quickTabsState.tabs[stateIndex].originTabId = newOriginTabId;
+    quickTabsState.tabs[stateIndex].transferredAt = Date.now();
+  }
+}
+
+/**
  * Create a state update handler with validation
  * v1.6.3.12-v7 - FIX Code Health: Generic factory for state update handlers
  * v1.6.4 - FIX Issue #15: Filter invalid Quick Tab objects before processing
@@ -1238,7 +1331,7 @@ const _portMessageHandlers = {
   },
   // v1.6.4.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
   // These ensure proper logging and prevent "unknown_type" warnings in the port handler
-  // v1.6.4.6 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
+  // v1.6.4.7 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
   TRANSFER_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1249,21 +1342,13 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
-    // v1.6.4.6 - FIX BUG #1: If transfer succeeded, request fresh state to ensure Manager shows transferred Quick Tab
-    // STATE_CHANGED may not arrive in time or may be dropped, so we explicitly request state
-    if (msg.success) {
-      console.log(
-        '[Sidebar] TRANSFER_QUICK_TAB_ACK: Requesting fresh state after successful transfer'
-      );
-      // Clear cache for both old and new origin tabs
-      if (msg.oldOriginTabId) browserTabInfoCache.delete(msg.oldOriginTabId);
-      if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
-      // Request fresh state from background
-      requestAllQuickTabsViaPort();
+    // v1.6.4.7 - FIX BUG #1: Use extracted helper to handle successful transfer
+    if (msg.success && msg.quickTabId) {
+      _handleSuccessfulTransferAck(msg);
     }
   },
   // v1.6.4.4 - FIX BUG #3: Handle duplicate ACK
-  // v1.6.4.6 - FIX BUG #1: Request fresh state after successful duplicate
+  // v1.6.4.7 - FIX BUG #2: Force immediate render after successful duplicate
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1273,14 +1358,19 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
-    // v1.6.4.6 - FIX BUG #1: If duplicate succeeded, request fresh state
+    // v1.6.4.7 - FIX BUG #2: If duplicate succeeded, increment version and force render
     if (msg.success) {
       console.log(
-        '[Sidebar] DUPLICATE_QUICK_TAB_ACK: Requesting fresh state after successful duplicate'
+        '[Sidebar] DUPLICATE_QUICK_TAB_ACK: Updating state and forcing render after successful duplicate'
       );
       // Clear cache for the new origin tab
       if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
-      // Request fresh state from background
+
+      // v1.6.4.7 - FIX BUG #2: Increment state version and force immediate render
+      _incrementStateVersion('duplicate-ack');
+      _forceImmediateRender('duplicate-ack-success');
+
+      // Request fresh state from background to ensure we have the new Quick Tab data
       requestAllQuickTabsViaPort();
     }
   }
@@ -6458,6 +6548,35 @@ function _renderUIImmediate_force() {
 }
 
 /**
+ * Force immediate render with reason logging (bypasses debounce)
+ * v1.6.4.7 - FIX BUG #1: Used for critical updates like transfer operations
+ * @private
+ * @param {string} reason - Reason for forcing render (for logging)
+ */
+function _forceImmediateRender(reason) {
+  console.log('[Manager] FORCE_IMMEDIATE_RENDER:', {
+    reason,
+    timestamp: Date.now(),
+    previousPendingRender: pendingRenderUI,
+    previousDebounceTimer: !!renderDebounceTimer
+  });
+
+  // Clear any pending debounced render
+  pendingRenderUI = false;
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
+    renderDebounceTimer = null;
+  }
+  debounceStartTimestamp = 0;
+  debounceExtensionCount = 0;
+
+  // Force immediate render
+  requestAnimationFrame(() => {
+    _renderUIImmediate();
+  });
+}
+
+/**
  * Internal render function - performs actual DOM manipulation
  * v1.6.3.7 - FIX Issue #3: Renamed from renderUI, now called via debounce wrapper
  * v1.6.3.7 - FIX Issue #8: Enhanced render logging for debugging
@@ -6804,9 +6923,16 @@ async function _fetchMissingTabInfo(sortedGroupKeys, groups) {
 
 /**
  * Re-sort group keys after fetching tab info
+ * v1.6.4.7 - FIX BUG #3: Only re-sort if user hasn't defined a custom order
  * @private
  */
 function _resortGroupKeys(sortedGroupKeys, groups) {
+  // v1.6.4.7 - FIX BUG #3: Don't re-sort if user has defined a custom order
+  // The user's order should be preserved - only move orphaned groups to end
+  if (_userGroupOrder && _userGroupOrder.length > 0) {
+    console.log('[Manager] RESORT_SKIPPED: User group order is defined, preserving user order');
+    return;
+  }
   sortedGroupKeys.sort((a, b) => _compareGroupKeys(a, b, groups));
 }
 
