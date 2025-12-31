@@ -183,6 +183,8 @@ const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
+// v1.6.4.5 - FIX BUG #4: Storage key for persisting tab group order across sidebar reloads
+const GROUP_ORDER_STORAGE_KEY = 'quickTabsManagerGroupOrder';
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -5375,6 +5377,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
 
+  // v1.6.4.5 - FIX BUG #4: Load saved group order before first render
+  await _loadGroupOrderFromStorage();
+
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -6274,6 +6279,10 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+ * v1.6.4.5 - FIX BUG #1/#2: Skip storage reload when fresh port data exists
+ *   - Port data is the source of truth for Option 4 architecture
+ *   - Storage may not reflect transfer/duplicate operations immediately
+ *   - Only reload from storage if port data is stale or empty
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
@@ -6281,8 +6290,58 @@ async function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
+  // v1.6.4.5 - FIX BUG #1/#2: Skip storage reload when port data is fresh
+  if (_isPortDataFresh()) {
+    return _handleFreshPortData(inMemoryHash, debounceWaitTime);
+  }
+
+  return _checkStorageForStaleState(inMemoryHash, debounceWaitTime);
+}
+
+/**
+ * Check if port data is fresh (received after debounce was set)
+ * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ *
+ * TIMING RELATIONSHIP:
+ * - `debounceSetTimestamp` is set when scheduleRender() queues a render
+ * - `lastEventReceivedTime` is updated when port messages arrive from background
+ * - If lastEventReceivedTime > debounceSetTimestamp, a port message arrived AFTER
+ *   the render was scheduled, meaning port data is more recent than what triggered the render.
+ * - In this case, we should use port data (source of truth in Option 4 architecture)
+ *   instead of potentially stale storage data.
+ *
+ * @private
+ * @returns {boolean} True if port data is fresh (arrived after current render was scheduled)
+ */
+function _isPortDataFresh() {
+  const hasPortData = _allQuickTabsFromPort?.length > 0;
+  const hasValidEventTime = typeof lastEventReceivedTime === 'number' && lastEventReceivedTime > 0;
+  // Port data is "fresh" if it arrived after this render was scheduled
+  return hasPortData && hasValidEventTime && (lastEventReceivedTime > debounceSetTimestamp);
+}
+
+/**
+ * Handle case when port data is fresh - skip storage reload
+ * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * @private
+ */
+function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
+  console.log('[Manager] STALE_CHECK_SKIPPED: Port data is fresh, skipping storage reload', {
+    portTabCount: _allQuickTabsFromPort.length,
+    lastEventReceivedTime,
+    debounceSetTimestamp,
+    freshnessMs: lastEventReceivedTime - debounceSetTimestamp
+  });
+  return _buildStaleCheckResult(false, inMemoryHash, inMemoryHash, debounceWaitTime);
+}
+
+/**
+ * Check storage for stale state and reload if needed
+ * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * @private
+ */
+async function _checkStorageForStaleState(inMemoryHash, debounceWaitTime) {
   try {
-    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
     const freshResult = await browser.storage.local.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
@@ -6292,7 +6351,19 @@ async function _checkAndReloadStaleState() {
       return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
-    // Storage has different state - reload it
+    // v1.6.4.5 - FIX BUG #1/#2: Don't overwrite state if port data exists
+    // Even if storage differs, port data is authoritative for session state
+    if (_allQuickTabsFromPort?.length > 0) {
+      console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
+        portTabCount: _allQuickTabsFromPort.length,
+        storageTabCount: storageState?.tabs?.length ?? 0,
+        inMemoryHash,
+        storageHash
+      });
+      return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
+    }
+
+    // Storage has different state and no port data - reload from storage (fallback mode)
     _applyFreshStorageState(storageState, inMemoryHash, storageHash);
     return _buildStaleCheckResult(true, inMemoryHash, storageHash, debounceWaitTime);
   } catch (err) {
@@ -7528,18 +7599,124 @@ function _handleTabGroupReorder(targetGroup) {
 }
 
 /**
+ * Check if a group order entry is valid (non-empty string after trimming)
+ * v1.6.4.5 - FIX Code Review: Extracted to reduce duplication between save and load
+ * @private
+ * @param {*} id - Entry to validate
+ * @returns {boolean} True if entry is a valid string
+ */
+function _isValidGroupOrderEntry(id) {
+  return typeof id === 'string' && id.trim() !== '';
+}
+
+/**
  * Save user's preferred tab group order from current DOM state
  * v1.6.4.1 - FIX BUG #4: Persist group ordering across re-renders
+ * v1.6.4.5 - FIX BUG #4: Guard against saving empty order during DOM transitions
+ * v1.6.4.5 - FIX Code Review: Filter out undefined/null values from DOM
  * @private
  * @param {HTMLElement} container - Container with tab groups
  */
 function _saveUserGroupOrder(container) {
   const groups = container.querySelectorAll('.tab-group');
-  _userGroupOrder = Array.from(groups).map(g => g.dataset.originTabId);
+  // v1.6.4.5 - FIX Code Review: Filter out undefined/null dataset values
+  const newOrder = Array.from(groups)
+    .map(g => g.dataset.originTabId)
+    .filter(id => id != null);
+  
+  // v1.6.4.5 - FIX BUG #4: Don't save empty order (could happen during DOM transitions)
+  if (newOrder.length === 0) {
+    console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Empty order detected, preserving previous', {
+      previousOrder: _userGroupOrder,
+      timestamp: Date.now()
+    });
+    return;
+  }
+  
+  // v1.6.4.5 - FIX BUG #4: Validate all entries are valid strings
+  const invalidEntries = newOrder.filter(id => !_isValidGroupOrderEntry(id));
+  if (invalidEntries.length > 0) {
+    console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Invalid entries detected', {
+      invalidEntries,
+      newOrder,
+      timestamp: Date.now()
+    });
+    return;
+  }
+  
+  _userGroupOrder = newOrder;
   console.log('[Manager] GROUP_ORDER_SAVED:', {
     order: _userGroupOrder,
     timestamp: Date.now()
   });
+  
+  // v1.6.4.5 - FIX BUG #4: Persist to storage for sidebar reload persistence
+  // Note: This is intentionally fire-and-forget since group order is non-critical
+  // and the async function has internal error handling
+  _persistGroupOrderToStorage(newOrder);
+}
+
+/**
+ * Persist group order to storage (async, fire-and-forget)
+ * v1.6.4.5 - FIX BUG #4: Persist tab group order across sidebar reloads
+ * Note: Has internal error handling, safe to call without awaiting
+ * @private
+ * @param {string[]} order - Array of origin tab IDs in user's preferred order
+ */
+async function _persistGroupOrderToStorage(order) {
+  try {
+    await browser.storage.local.set({ [GROUP_ORDER_STORAGE_KEY]: order });
+    console.log('[Manager] GROUP_ORDER_PERSISTED:', {
+      order,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Manager] GROUP_ORDER_PERSIST_FAILED:', {
+      error: err.message,
+      order
+    });
+  }
+}
+
+/**
+ * Load group order from storage on Manager initialization
+ * v1.6.4.5 - FIX BUG #4: Restore tab group order after sidebar reload
+ * @private
+ */
+async function _loadGroupOrderFromStorage() {
+  try {
+    const result = await browser.storage.local.get(GROUP_ORDER_STORAGE_KEY);
+    const savedOrder = result?.[GROUP_ORDER_STORAGE_KEY];
+    
+    // Early exit if not a valid array
+    if (!Array.isArray(savedOrder) || savedOrder.length === 0) {
+      console.log('[Manager] GROUP_ORDER_LOAD_SKIPPED: No saved order or empty', {
+        savedOrder,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
+    // Validate all entries are strings using shared helper
+    const validOrder = savedOrder.filter(_isValidGroupOrderEntry);
+    if (validOrder.length === 0) {
+      console.log('[Manager] GROUP_ORDER_LOAD_SKIPPED: No valid entries after filter', {
+        savedOrder,
+        timestamp: Date.now()
+      });
+      return;
+    }
+    
+    _userGroupOrder = validOrder;
+    console.log('[Manager] GROUP_ORDER_LOADED:', {
+      order: _userGroupOrder,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Manager] GROUP_ORDER_LOAD_FAILED:', {
+      error: err.message
+    });
+  }
 }
 
 /**
