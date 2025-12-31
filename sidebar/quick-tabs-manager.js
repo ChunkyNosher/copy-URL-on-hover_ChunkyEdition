@@ -2,14 +2,14 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4.8 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
- * v1.6.4.8 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
+ * === v1.6.4 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
+ * v1.6.4 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
  *   - ROOT CAUSE: Race condition between ACK and STATE_CHANGED messages
  *   - FIX: Removed redundant requestAllQuickTabsViaPort() calls from ACK handlers
  *   - STATE_CHANGED message already contains complete updated state
  *   - Enhanced logging to trace message ordering for debugging
  *
- * v1.6.4.8 - FIX BUG #3: Quick Tab reordering within groups resets
+ * v1.6.4 - FIX BUG #3: Quick Tab reordering within groups resets
  *   - ROOT CAUSE: No persistence mechanism for Quick Tab order within groups
  *   - FIX: Added _userQuickTabOrderByGroup storage similar to tab group order
  *   - Added _saveUserQuickTabOrder(), _persistQuickTabOrderToStorage()
@@ -17,7 +17,7 @@
  *   - Modified _handleQuickTabDrop() and _handleTabGroupDrop() to save order
  *   - Modified _createGroupContent() to apply user's Quick Tab order
  *
- * v1.6.4.8 - FIX BUG #4: Last Quick Tab close not reflected in Manager
+ * v1.6.4 - FIX BUG #4: Last Quick Tab close not reflected in Manager
  *   - Enhanced logging for empty state transitions
  *   - Added low-count monitoring for debugging last-close scenarios
  *
@@ -202,9 +202,9 @@ const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
-// v1.6.4.5 - FIX BUG #4: Storage key for persisting tab group order across sidebar reloads
+// v1.6.4 - FIX BUG #4: Storage key for persisting tab group order across sidebar reloads
 const GROUP_ORDER_STORAGE_KEY = 'quickTabsManagerGroupOrder';
-// v1.6.4.8 - FIX BUG #3: Storage key for persisting Quick Tab order within groups
+// v1.6.4 - FIX BUG #3: Storage key for persisting Quick Tab order within groups
 const QUICK_TAB_ORDER_STORAGE_KEY = 'quickTabsManagerQuickTabOrder';
 
 // ==================== v1.6.3.7 CONSTANTS ====================
@@ -425,7 +425,7 @@ let _allQuickTabsFromPort = [];
 
 /**
  * User's preferred tab group order
- * v1.6.4.1 - FIX BUG #4: Persist tab group ordering during re-renders
+ * v1.6.4 - FIX BUG #4: Persist tab group ordering during re-renders
  * Key: origin tab ID, Value: order index
  * @private
  */
@@ -433,7 +433,7 @@ let _userGroupOrder = [];
 
 /**
  * User's preferred Quick Tab order within each group
- * v1.6.4.8 - FIX BUG #3: Persist Quick Tab ordering within groups
+ * v1.6.4 - FIX BUG #3: Persist Quick Tab ordering within groups
  * Key: originTabId (string), Value: array of quickTabIds in preferred order
  * @private
  */
@@ -859,7 +859,7 @@ function _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlati
 
 /**
  * Handle empty state transition for Quick Tabs
- * v1.6.4.8 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * v1.6.4 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
  * @private
  * @param {boolean} wasNotEmpty - Whether state was non-empty before
  * @param {boolean} isNowEmpty - Whether state is now empty
@@ -886,7 +886,7 @@ function _handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId) {
 
 /**
  * Log low Quick Tab count for debugging last-close issues
- * v1.6.4.8 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * v1.6.4 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {boolean} wasNotEmpty - Whether state was non-empty before
@@ -913,7 +913,7 @@ function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
  * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
  * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
- * v1.6.4.8 - FIX BUG #4: Extract empty state handling to reduce complexity
+ * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -946,7 +946,7 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX Issue #11/#14: Log per-origin-tab breakdown for cross-tab visibility
   _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId);
 
-  // v1.6.4.7 - FIX BUG #4: Track if transitioning to empty state for forced render
+  // v1.6.4 - FIX BUG #4: Track if transitioning to empty state for forced render
   const wasNotEmpty = _allQuickTabsFromPort.length > 0;
   const isNowEmpty = quickTabs.length === 0;
 
@@ -968,12 +968,12 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     latencyMs: Date.now() - receiveTime
   });
 
-  // v1.6.4.8 - FIX BUG #4: Handle empty state transition with extracted helper
+  // v1.6.4 - FIX BUG #4: Handle empty state transition with extracted helper
   if (_handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId)) {
     return;
   }
 
-  // v1.6.4.8 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
+  // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
   _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
   // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
@@ -1217,13 +1217,13 @@ function _logPortMessageValidationError(type, msg, error) {
 
 /**
  * Handle successful transfer ACK - update local state and force render
- * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
- * v1.6.4.8 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
+ * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
 function _handleSuccessfulTransferAck(msg) {
-  // v1.6.4.8 - FIX BUG #1/#2: Add logging to trace message ordering
+  // v1.6.4 - FIX BUG #1/#2: Add logging to trace message ordering
   console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updating local state and forcing render', {
     quickTabId: msg.quickTabId,
     oldOriginTabId: msg.oldOriginTabId,
@@ -1246,7 +1246,7 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4.8 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+  // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
   // STATE_CHANGED message is sent by background AFTER the transfer completes and
   // contains the full updated state. Calling requestAllQuickTabsViaPort() here
   // causes a race condition where the response may arrive before STATE_CHANGED,
@@ -1256,7 +1256,7 @@ function _handleSuccessfulTransferAck(msg) {
 
 /**
  * Clear browser tab cache for transfer operation
- * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
  * @private
  * @param {number} oldOriginTabId - Old origin tab ID
  * @param {number} newOriginTabId - New origin tab ID
@@ -1268,7 +1268,7 @@ function _clearTabCacheForTransfer(oldOriginTabId, newOriginTabId) {
 
 /**
  * Update Quick Tab's originTabId in _allQuickTabsFromPort
- * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} newOriginTabId - New origin tab ID
@@ -1291,7 +1291,7 @@ function _updateLocalQuickTabOrigin(quickTabId, newOriginTabId) {
 
 /**
  * Update Quick Tab's originTabId in quickTabsState for hash consistency
- * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} newOriginTabId - New origin tab ID
@@ -1418,9 +1418,9 @@ const _portMessageHandlers = {
   ORIGIN_TAB_CLOSED: msg => {
     _handleOriginTabClosed(msg);
   },
-  // v1.6.4.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
+  // v1.6.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
   // These ensure proper logging and prevent "unknown_type" warnings in the port handler
-  // v1.6.4.7 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
+  // v1.6.4 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
   TRANSFER_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1431,14 +1431,14 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       timestamp: Date.now()
     });
-    // v1.6.4.7 - FIX BUG #1: Use extracted helper to handle successful transfer
+    // v1.6.4 - FIX BUG #1: Use extracted helper to handle successful transfer
     if (msg.success && msg.quickTabId) {
       _handleSuccessfulTransferAck(msg);
     }
   },
-  // v1.6.4.4 - FIX BUG #3: Handle duplicate ACK
-  // v1.6.4.7 - FIX BUG #2: Force immediate render after successful duplicate
-  // v1.6.4.8 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+  // v1.6.4 - FIX BUG #3: Handle duplicate ACK
+  // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
+  // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1450,7 +1450,7 @@ const _portMessageHandlers = {
       timestamp: Date.now(),
       message: 'STATE_CHANGED should follow with complete updated state'
     });
-    // v1.6.4.7 - FIX BUG #2: If duplicate succeeded, increment version and force render
+    // v1.6.4 - FIX BUG #2: If duplicate succeeded, increment version and force render
     if (msg.success) {
       console.log(
         '[Sidebar] DUPLICATE_QUICK_TAB_ACK: Updating state and forcing render after successful duplicate'
@@ -1458,11 +1458,11 @@ const _portMessageHandlers = {
       // Clear cache for the new origin tab
       if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
 
-      // v1.6.4.7 - FIX BUG #2: Increment state version and force immediate render
+      // v1.6.4 - FIX BUG #2: Increment state version and force immediate render
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4.8 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+      // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
       // STATE_CHANGED message is sent by background AFTER the duplicate completes.
       // The optimistic state version increment triggers a render, and STATE_CHANGED
       // will follow with the new Quick Tab included in the full state.
@@ -1914,7 +1914,7 @@ function _executeSidebarPortOperation(messageType, payload = {}) {
     console.warn(`[Sidebar] Cannot ${messageType} via port - not connected, trying fallback`);
   }
 
-  // v1.6.4.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
+  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
   if (portSucceeded) {
     // Port succeeded, no fallback needed
     return true;
@@ -5583,10 +5583,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
 
-  // v1.6.4.5 - FIX BUG #4: Load saved group order before first render
+  // v1.6.4 - FIX BUG #4: Load saved group order before first render
   await _loadGroupOrderFromStorage();
 
-  // v1.6.4.8 - FIX BUG #3: Load saved Quick Tab order within groups before first render
+  // v1.6.4 - FIX BUG #3: Load saved Quick Tab order within groups before first render
   await _loadQuickTabOrderFromStorage();
 
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
@@ -6488,7 +6488,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
- * v1.6.4.5 - FIX BUG #1/#2: Skip storage reload when fresh port data exists
+ * v1.6.4 - FIX BUG #1/#2: Skip storage reload when fresh port data exists
  *   - Port data is the source of truth for Option 4 architecture
  *   - Storage may not reflect transfer/duplicate operations immediately
  *   - Only reload from storage if port data is stale or empty
@@ -6499,7 +6499,7 @@ async function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
-  // v1.6.4.5 - FIX BUG #1/#2: Skip storage reload when port data is fresh
+  // v1.6.4 - FIX BUG #1/#2: Skip storage reload when port data is fresh
   if (_isPortDataFresh()) {
     return _handleFreshPortData(inMemoryHash, debounceWaitTime);
   }
@@ -6509,7 +6509,7 @@ async function _checkAndReloadStaleState() {
 
 /**
  * Check if port data is fresh (received after debounce was set)
- * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
  *
  * TIMING RELATIONSHIP:
  * - `debounceSetTimestamp` is set when scheduleRender() queues a render
@@ -6531,7 +6531,7 @@ function _isPortDataFresh() {
 
 /**
  * Handle case when port data is fresh - skip storage reload
- * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
  * @private
  */
 function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
@@ -6546,7 +6546,7 @@ function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
 
 /**
  * Check storage for stale state and reload if needed
- * v1.6.4.5 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
  * @private
  */
 async function _checkStorageForStaleState(inMemoryHash, debounceWaitTime) {
@@ -6560,7 +6560,7 @@ async function _checkStorageForStaleState(inMemoryHash, debounceWaitTime) {
       return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
-    // v1.6.4.5 - FIX BUG #1/#2: Don't overwrite state if port data exists
+    // v1.6.4 - FIX BUG #1/#2: Don't overwrite state if port data exists
     // Even if storage differs, port data is authoritative for session state
     if (_allQuickTabsFromPort?.length > 0) {
       console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
@@ -6646,7 +6646,7 @@ function _renderUIImmediate_force() {
 
 /**
  * Force immediate render with reason logging (bypasses debounce)
- * v1.6.4.7 - FIX BUG #1: Used for critical updates like transfer operations
+ * v1.6.4 - FIX BUG #1: Used for critical updates like transfer operations
  * @private
  * @param {string} reason - Reason for forcing render (for logging)
  */
@@ -6817,7 +6817,7 @@ async function _executeRenderUIInternal() {
   _showContentState();
   const groupStartTime = Date.now();
   const groups = groupQuickTabsByOriginTab(allTabs);
-  // v1.6.4.1 - FIX BUG #4: Apply user's preferred group order
+  // v1.6.4 - FIX BUG #4: Apply user's preferred group order
   const orderedGroups = _applyUserGroupOrder(groups);
   const groupDuration = Date.now() - groupStartTime;
 
@@ -6967,17 +6967,17 @@ async function _buildGroupsContainer(groups, collapseState) {
 
 /**
  * Get sorted group keys (orphaned last, closed before orphaned)
- * v1.6.4.6 - FIX BUG #4: Respect user-defined order from orderedGroups Map
+ * v1.6.4 - FIX BUG #4: Respect user-defined order from orderedGroups Map
  * If _userGroupOrder is set, preserve Map iteration order (which _applyUserGroupOrder set)
  * Only apply the orphaned/closed sorting for NEW groups not in user order
  * @private
  */
 function _getSortedGroupKeys(groups) {
-  // v1.6.4.6 - FIX BUG #4: If user has defined an order, preserve Map iteration order
+  // v1.6.4 - FIX BUG #4: If user has defined an order, preserve Map iteration order
   // The Map was already ordered by _applyUserGroupOrder() - we only need to move orphaned to end
   if (_userGroupOrder && _userGroupOrder.length > 0) {
     const keys = [...groups.keys()];
-    // v1.6.4.6 - FIX Code Review: Use filter for cleaner partition
+    // v1.6.4 - FIX Code Review: Use filter for cleaner partition
     const regular = keys.filter(k => k !== 'orphaned');
     const orphaned = keys.filter(k => k === 'orphaned');
     return regular.concat(orphaned);
@@ -7020,11 +7020,11 @@ async function _fetchMissingTabInfo(sortedGroupKeys, groups) {
 
 /**
  * Re-sort group keys after fetching tab info
- * v1.6.4.7 - FIX BUG #3: Only re-sort if user hasn't defined a custom order
+ * v1.6.4 - FIX BUG #3: Only re-sort if user hasn't defined a custom order
  * @private
  */
 function _resortGroupKeys(sortedGroupKeys, groups) {
-  // v1.6.4.7 - FIX BUG #3: Don't re-sort if user has defined a custom order
+  // v1.6.4 - FIX BUG #3: Don't re-sort if user has defined a custom order
   // The user's order should be preserved - only move orphaned groups to end
   if (_userGroupOrder && _userGroupOrder.length > 0) {
     console.log('[Manager] RESORT_SKIPPED: User group order is defined, preserving user order');
@@ -7100,7 +7100,7 @@ function renderTabGroup(groupKey, group, collapseState) {
   details.open = collapseState[groupKey] !== true;
 
   // Build header and content
-  // v1.6.4.8 - FIX BUG #3: Pass groupKey to apply user's Quick Tab order
+  // v1.6.4 - FIX BUG #3: Pass groupKey to apply user's Quick Tab order
   const summary = _createGroupHeader(groupKey, group, isOrphaned, isClosedTab);
   const content = _createGroupContent(group.quickTabs, details.open, groupKey);
 
@@ -7311,7 +7311,7 @@ function _createGroupTitle(groupKey, group, isOrphaned, _isClosedTab) {
  * Create group content element with Quick Tab items
  * Issue #2: Removed inline maxHeight initialization - CSS handles initial state
  * Issue #6: Added logging for section header creation
- * v1.6.4.8 - FIX BUG #3: Apply user's preferred Quick Tab order before rendering
+ * v1.6.4 - FIX BUG #3: Apply user's preferred Quick Tab order before rendering
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {boolean} isOpen - Whether group starts open
@@ -7322,7 +7322,7 @@ function _createGroupContent(quickTabs, isOpen, originTabId) {
   const content = document.createElement('div');
   content.className = 'tab-group-content';
 
-  // v1.6.4.8 - FIX BUG #3: Apply user's preferred Quick Tab order first
+  // v1.6.4 - FIX BUG #3: Apply user's preferred Quick Tab order first
   const orderedTabs = _applyUserQuickTabOrder(quickTabs, originTabId);
 
   // Sort: active first, then minimized (preserving user order within each category)
@@ -7474,7 +7474,7 @@ function attachCollapseEventListeners(container, collapseState) {
 /**
  * Cached modifier key for duplicate operations (avoid repeated storage reads)
  * v1.6.4 - FEATURE #5: Cache to improve drag operation responsiveness
- * v1.6.4.1 - FIX BUG #5: Changed default from 'alt' to 'shift'
+ * v1.6.4 - FIX BUG #5: Changed default from 'alt' to 'shift'
  * @private
  */
 let _cachedDuplicateModifierKey = 'shift';
@@ -7504,7 +7504,7 @@ const _dragState = {
 /**
  * Load and cache the duplicate modifier key from storage
  * v1.6.4 - FEATURE #5: Call once on startup and cache
- * v1.6.4.1 - FIX BUG #5: Changed default from 'alt' to 'shift'
+ * v1.6.4 - FIX BUG #5: Changed default from 'alt' to 'shift'
  * @private
  */
 async function _loadDuplicateModifierKey() {
@@ -7524,7 +7524,7 @@ _loadDuplicateModifierKey();
 /**
  * Check if the modifier key for duplicate is pressed
  * v1.6.4 - FEATURE #5: Check configured modifier key
- * v1.6.4.1 - FIX BUG #5: Changed default from altKey to shiftKey
+ * v1.6.4 - FIX BUG #5: Changed default from altKey to shiftKey
  * @private
  * @param {DragEvent} event - Drag event
  * @returns {boolean} True if modifier is pressed
@@ -7799,7 +7799,7 @@ function _handleTabGroupDrop(event) {
   const isCrossTabTransfer = String(targetOriginTabId) !== String(_dragState.originTabId);
 
   if (!isCrossTabTransfer) {
-    // v1.6.4.8 - FIX BUG #3: Same tab reorder - save Quick Tab order within group
+    // v1.6.4 - FIX BUG #3: Same tab reorder - save Quick Tab order within group
     console.log('[Manager] DROP: Same tab reorder', {
       quickTabId: _dragState.quickTabId,
       originTabId: _dragState.originTabId,
@@ -7857,13 +7857,13 @@ function _handleTabGroupReorder(targetGroup) {
     targetGroup.before(draggedGroup);
   }
 
-  // v1.6.4.1 - FIX BUG #4: Save user's preferred group order
+  // v1.6.4 - FIX BUG #4: Save user's preferred group order
   _saveUserGroupOrder(container);
 }
 
 /**
  * Check if a group order entry is valid (non-empty string after trimming)
- * v1.6.4.5 - FIX Code Review: Extracted to reduce duplication between save and load
+ * v1.6.4 - FIX Code Review: Extracted to reduce duplication between save and load
  * @private
  * @param {*} id - Entry to validate
  * @returns {boolean} True if entry is a valid string
@@ -7874,20 +7874,20 @@ function _isValidGroupOrderEntry(id) {
 
 /**
  * Save user's preferred tab group order from current DOM state
- * v1.6.4.1 - FIX BUG #4: Persist group ordering across re-renders
- * v1.6.4.5 - FIX BUG #4: Guard against saving empty order during DOM transitions
- * v1.6.4.5 - FIX Code Review: Filter out undefined/null values from DOM
+ * v1.6.4 - FIX BUG #4: Persist group ordering across re-renders
+ * v1.6.4 - FIX BUG #4: Guard against saving empty order during DOM transitions
+ * v1.6.4 - FIX Code Review: Filter out undefined/null values from DOM
  * @private
  * @param {HTMLElement} container - Container with tab groups
  */
 function _saveUserGroupOrder(container) {
   const groups = container.querySelectorAll('.tab-group');
-  // v1.6.4.5 - FIX Code Review: Filter out undefined/null dataset values
+  // v1.6.4 - FIX Code Review: Filter out undefined/null dataset values
   const newOrder = Array.from(groups)
     .map(g => g.dataset.originTabId)
     .filter(id => id != null);
 
-  // v1.6.4.5 - FIX BUG #4: Don't save empty order (could happen during DOM transitions)
+  // v1.6.4 - FIX BUG #4: Don't save empty order (could happen during DOM transitions)
   if (newOrder.length === 0) {
     console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Empty order detected, preserving previous', {
       previousOrder: _userGroupOrder,
@@ -7896,7 +7896,7 @@ function _saveUserGroupOrder(container) {
     return;
   }
 
-  // v1.6.4.5 - FIX BUG #4: Validate all entries are valid strings
+  // v1.6.4 - FIX BUG #4: Validate all entries are valid strings
   const invalidEntries = newOrder.filter(id => !_isValidGroupOrderEntry(id));
   if (invalidEntries.length > 0) {
     console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Invalid entries detected', {
@@ -7913,7 +7913,7 @@ function _saveUserGroupOrder(container) {
     timestamp: Date.now()
   });
 
-  // v1.6.4.5 - FIX BUG #4: Persist to storage for sidebar reload persistence
+  // v1.6.4 - FIX BUG #4: Persist to storage for sidebar reload persistence
   // Note: This is intentionally fire-and-forget since group order is non-critical
   // and the async function has internal error handling
   _persistGroupOrderToStorage(newOrder);
@@ -7921,7 +7921,7 @@ function _saveUserGroupOrder(container) {
 
 /**
  * Persist group order to storage (async, fire-and-forget)
- * v1.6.4.5 - FIX BUG #4: Persist tab group order across sidebar reloads
+ * v1.6.4 - FIX BUG #4: Persist tab group order across sidebar reloads
  * Note: Has internal error handling, safe to call without awaiting
  * @private
  * @param {string[]} order - Array of origin tab IDs in user's preferred order
@@ -7943,7 +7943,7 @@ async function _persistGroupOrderToStorage(order) {
 
 /**
  * Load group order from storage on Manager initialization
- * v1.6.4.5 - FIX BUG #4: Restore tab group order after sidebar reload
+ * v1.6.4 - FIX BUG #4: Restore tab group order after sidebar reload
  * @private
  */
 async function _loadGroupOrderFromStorage() {
@@ -7982,11 +7982,11 @@ async function _loadGroupOrderFromStorage() {
   }
 }
 
-// ==================== v1.6.4.8 QUICK TAB ORDER WITHIN GROUPS ====================
+// ==================== v1.6.4 QUICK TAB ORDER WITHIN GROUPS ====================
 
 /**
  * Save user's preferred Quick Tab order within a group from current DOM state
- * v1.6.4.8 - FIX BUG #3: Persist Quick Tab ordering within groups across re-renders
+ * v1.6.4 - FIX BUG #3: Persist Quick Tab ordering within groups across re-renders
  * @private
  * @param {string} originTabId - Origin tab ID for the group
  * @param {HTMLElement} groupElement - Group element containing Quick Tab items
@@ -8001,7 +8001,7 @@ function _saveUserQuickTabOrder(originTabId, groupElement) {
   const items = content.querySelectorAll('.quick-tab-item');
   const newOrder = Array.from(items)
     .map(item => item.dataset.tabId)
-    // v1.6.4.8 - Check existence first before calling trim() to avoid potential crash
+    // v1.6.4 - Check existence first before calling trim() to avoid potential crash
     .filter(id => id !== null && id !== undefined && String(id).trim() !== '');
 
   // Don't save empty order (could happen during DOM transitions)
@@ -8027,7 +8027,7 @@ function _saveUserQuickTabOrder(originTabId, groupElement) {
 
 /**
  * Persist Quick Tab order to storage (async, fire-and-forget)
- * v1.6.4.8 - FIX BUG #3: Persist Quick Tab order across sidebar reloads
+ * v1.6.4 - FIX BUG #3: Persist Quick Tab order across sidebar reloads
  * @private
  */
 async function _persistQuickTabOrderToStorage() {
@@ -8046,7 +8046,7 @@ async function _persistQuickTabOrderToStorage() {
 
 /**
  * Load Quick Tab order from storage on Manager initialization
- * v1.6.4.8 - FIX BUG #3: Restore Quick Tab order after sidebar reload
+ * v1.6.4 - FIX BUG #3: Restore Quick Tab order after sidebar reload
  * @private
  */
 async function _loadQuickTabOrderFromStorage() {
@@ -8083,7 +8083,7 @@ async function _loadQuickTabOrderFromStorage() {
 
 /**
  * Apply user's preferred Quick Tab order within a group
- * v1.6.4.8 - FIX BUG #3: Maintain Quick Tab ordering within groups across re-renders
+ * v1.6.4 - FIX BUG #3: Maintain Quick Tab ordering within groups across re-renders
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {string|number} originTabId - Origin tab ID for the group
@@ -8131,8 +8131,8 @@ function _applyUserQuickTabOrder(quickTabs, originTabId) {
 
 /**
  * Apply user's preferred tab group order to a groups Map
- * v1.6.4.1 - FIX BUG #4: Maintain group ordering across re-renders
- * v1.6.4.3 - IMPROVED: More robust type handling for key comparison
+ * v1.6.4 - FIX BUG #4: Maintain group ordering across re-renders
+ * v1.6.4 - IMPROVED: More robust type handling for key comparison
  * Groups not in user order are appended at the end
  * @private
  * @param {Map} groups - Map of originTabId -> group data
@@ -8156,7 +8156,7 @@ function _applyUserGroupOrder(groups) {
 
   // First, add groups in user's preferred order
   for (const tabId of _userGroupOrder) {
-    // v1.6.4.3 - Try all possible key formats: original string, parsed number, explicit string
+    // v1.6.4 - Try all possible key formats: original string, parsed number, explicit string
     const matchedKey = _findMatchingGroupKey(groups, tabId);
 
     if (matchedKey !== null) {
@@ -8187,7 +8187,7 @@ function _applyUserGroupOrder(groups) {
 
 /**
  * Find matching group key trying multiple formats
- * v1.6.4.3 - FIX BUG #4: More robust key matching
+ * v1.6.4 - FIX BUG #4: More robust key matching
  * @private
  * @param {Map} groups - Groups Map
  * @param {string} tabId - Tab ID from user order (always string from DOM dataset)
@@ -8199,7 +8199,7 @@ function _findMatchingGroupKey(groups, tabId) {
     return tabId;
   }
 
-  // v1.6.4.3 - FIX Code Review: Use stricter numeric validation with NaN check
+  // v1.6.4 - FIX Code Review: Use stricter numeric validation with NaN check
   // parseInt('123abc', 10) returns 123 which could cause false matches
   const numericId = Number(tabId);
   if (!Number.isNaN(numericId) && Number.isInteger(numericId) && groups.has(numericId)) {
@@ -8266,7 +8266,7 @@ function _handleQuickTabDragLeave(event) {
  * Handle drop on Quick Tab items (for reordering within group OR cross-tab transfer)
  * v1.6.4 - FEATURE #2/#3: Reorder Quick Tabs within group or transfer across tabs
  * v1.6.4 - FIX BUG #3b: Handle cross-tab transfer here since stopPropagation prevents tab group handler
- * v1.6.4.8 - FIX BUG #3: Save Quick Tab order after same-group reorder
+ * v1.6.4 - FIX BUG #3: Save Quick Tab order after same-group reorder
  * @private
  * @param {DragEvent} event - Drop event
  */
@@ -8326,7 +8326,7 @@ function _handleQuickTabDrop(event) {
     targetItem.after(draggedItem);
   }
 
-  // v1.6.4.8 - FIX BUG #3: Save Quick Tab order after reorder within same group
+  // v1.6.4 - FIX BUG #3: Save Quick Tab order after reorder within same group
   const originTabId = targetGroup.dataset.originTabId;
   _saveUserQuickTabOrder(originTabId, targetGroup);
 }

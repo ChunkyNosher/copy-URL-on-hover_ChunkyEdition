@@ -535,17 +535,17 @@ html {
 }
 
 /* Issue #2: Enhanced Quick Tab count badge - more prominent styling */
-/* v1.6.4.5 - FIX BUG #3: Narrower indicator - thin vertical rectangle per user request */
-/* v1.6.4.6 - FIX BUG #3: Further narrowed per additional user feedback */
+/* v1.6.4 - FIX BUG #3: Narrower indicator - thin vertical rectangle per user request */
+/* v1.6.4 - FIX BUG #3: Further narrowed per additional user feedback */
 .tab-group-count {
-  font-size: 12px; /* v1.6.4.2: Slightly smaller number per user request */
+  font-size: 12px; /* v1.6.4: Slightly smaller number per user request */
   color: var(--count-badge-text);
   font-weight: 700; /* v1.6.4: Even bolder font weight */
   flex-shrink: 0;
-  padding: 3px 1px; /* v1.6.4.6: Minimal L/R padding (2px->1px) for very narrow badge */
+  padding: 3px 1px; /* v1.6.4: Minimal L/R padding (2px->1px) for very narrow badge */
   background: var(--count-badge-bg);
-  border-radius: 3px; /* v1.6.4.6: Smaller radius for tighter fit */
-  min-width: 10px; /* v1.6.4.6: Further reduced min-width (12px->10px) for narrower badge */
+  border-radius: 3px; /* v1.6.4: Smaller radius for tighter fit */
+  min-width: 10px; /* v1.6.4: Further reduced min-width (12px->10px) for narrower badge */
   text-align: center;
   /* Issue #10: Subtle transition for count updates */
   transition:

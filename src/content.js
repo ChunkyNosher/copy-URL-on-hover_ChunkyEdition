@@ -1814,7 +1814,7 @@ function _isStateUpdateMessage(type) {
 
 /**
  * Check if message is a cross-tab transfer message
- * v1.6.4.1 - FIX BUG #1: Add handler for cross-tab transfer messages
+ * v1.6.4 - FIX BUG #1: Add handler for cross-tab transfer messages
  * @private
  * @param {string} type - Message type
  * @returns {boolean}
@@ -1829,7 +1829,7 @@ function _isTransferMessage(type) {
 
 /**
  * Handle QUICK_TAB_TRANSFERRED_OUT message - remove Quick Tab from this tab
- * v1.6.4.1 - FIX BUG #1: Cross-tab transfer not working
+ * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * When a Quick Tab is transferred to another tab, the source tab receives this message
  * and should remove/minimize the Quick Tab from its display.
  * @private
@@ -1838,7 +1838,7 @@ function _isTransferMessage(type) {
  * @param {number} message.newOriginTabId - The new tab where Quick Tab is going (logged for debugging)
  */
 function _handleQuickTabTransferredOut(message) {
-  // v1.6.4.1 - Validate message is an object with required properties
+  // v1.6.4 - Validate message is an object with required properties
   if (!message || typeof message !== 'object') {
     console.error('[Content] QUICK_TAB_TRANSFERRED_OUT: Invalid message (not an object):', message);
     return;
@@ -1846,7 +1846,7 @@ function _handleQuickTabTransferredOut(message) {
 
   const { quickTabId, newOriginTabId } = message;
 
-  // v1.6.4.1 - Validate quickTabId is present
+  // v1.6.4 - Validate quickTabId is present
   if (!quickTabId) {
     console.error('[Content] QUICK_TAB_TRANSFERRED_OUT: Missing quickTabId in message');
     return;
@@ -1872,7 +1872,7 @@ function _handleQuickTabTransferredOut(message) {
 
   // Close the Quick Tab on this tab (it's being moved to another tab)
   try {
-    // v1.6.4.1 - Type-safe check for closeById method
+    // v1.6.4 - Type-safe check for closeById method
     if (typeof quickTabsManager.closeById === 'function') {
       quickTabsManager.closeById(quickTabId);
       console.log('[Content] QUICK_TAB_TRANSFERRED_OUT: Quick Tab removed:', quickTabId);
@@ -1889,7 +1889,7 @@ function _handleQuickTabTransferredOut(message) {
 
 /**
  * Validate QUICK_TAB_TRANSFERRED_IN message has required properties
- * v1.6.4.1 - FIX Code Health: Extract validation to reduce complexity
+ * v1.6.4 - FIX Code Health: Extract validation to reduce complexity
  * @private
  * @param {Object} message - Message to validate
  * @returns {{ valid: boolean, quickTab?: Object, oldOriginTabId?: number }}
@@ -1927,8 +1927,8 @@ function _validateTransferredInMessage(message) {
 
 /**
  * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
- * v1.6.4.1 - FIX BUG #1: Cross-tab transfer not working
- * v1.6.4.6 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+ * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
+ * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
  * When a Quick Tab is transferred to this tab, create it with the received properties.
  * @private
  * @param {Object} message - Transfer in message
@@ -1942,7 +1942,7 @@ function _handleQuickTabTransferredIn(message) {
   const { quickTab } = validation;
 
   // Create the Quick Tab with received properties, updating originTabId to this tab
-  // v1.6.4.6 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
+  // v1.6.4 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
   const createOptions = {
     id: quickTab.id,
     url: quickTab.url,
@@ -1954,7 +1954,7 @@ function _handleQuickTabTransferredIn(message) {
     minimized: quickTab.minimized || false,
     zIndex: quickTab.zIndex,
     originTabId: quickTabsManager.currentTabId, // Set to this tab
-    skipInitialOverlay: true // v1.6.4.6 - FIX BUG #2: Make transferred Quick Tab immediately interactive
+    skipInitialOverlay: true // v1.6.4 - FIX BUG #2: Make transferred Quick Tab immediately interactive
   };
 
   console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
@@ -1988,7 +1988,7 @@ function _handleQuickTabTransferredIn(message) {
 
 /**
  * Handle cross-tab transfer messages
- * v1.6.4.1 - FIX BUG #1: Route transfer messages to appropriate handlers
+ * v1.6.4 - FIX BUG #1: Route transfer messages to appropriate handlers
  * @private
  * @param {Object} message - Transfer message
  * @returns {boolean} True if message was handled
@@ -2006,7 +2006,7 @@ function _handleTransferMessage(message) {
     return true;
   }
 
-  // v1.6.4.2 - FIX BUG #6/#8: Handle duplicate creation from Manager
+  // v1.6.4 - FIX BUG #6/#8: Handle duplicate creation from Manager
   if (type === 'CREATE_QUICK_TAB_FROM_DUPLICATE') {
     _handleQuickTabTransferredIn(message);
     return true;
@@ -2036,7 +2036,7 @@ function _handlePendingRequest(requestId, message) {
 /**
  * Handle response from background for pending requests
  * v1.6.3.12-v2 - FIX Code Health: Reduced complexity using helpers
- * v1.6.4.1 - FIX BUG #1: Add handler for cross-tab transfer messages
+ * v1.6.4 - FIX BUG #1: Add handler for cross-tab transfer messages
  * @param {Object} message - Response message from background
  */
 function handleQuickTabsPortResponse(message) {
@@ -2064,7 +2064,7 @@ function handleQuickTabsPortResponse(message) {
     return;
   }
 
-  // v1.6.4.1 - FIX BUG #1: Handle cross-tab transfer messages
+  // v1.6.4 - FIX BUG #1: Handle cross-tab transfer messages
   if (_isTransferMessage(type)) {
     _handleTransferMessage(message);
     return;
@@ -5699,7 +5699,7 @@ const TYPE_HANDLERS = {
     return true;
   },
 
-  // v1.6.4.3 - FIX BUG #2: Handle transfer messages received via browser.runtime.onMessage
+  // v1.6.4 - FIX BUG #2: Handle transfer messages received via browser.runtime.onMessage
   // These are sent by background when the port is not available for the target tab
   QUICK_TAB_TRANSFERRED_IN: (message, sendResponse) => {
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN via sendMessage:', {
@@ -5721,7 +5721,7 @@ const TYPE_HANDLERS = {
     return true;
   },
 
-  // v1.6.4.3 - FIX Code Review: Document that this handler intentionally reuses
+  // v1.6.4 - FIX Code Review: Document that this handler intentionally reuses
   // _handleQuickTabTransferredIn because both operations create a Quick Tab on the
   // target tab with the same properties. The only difference is in the background
   // script's handling (transfer removes from source, duplicate creates new ID).

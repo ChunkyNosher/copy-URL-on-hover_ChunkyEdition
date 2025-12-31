@@ -870,7 +870,7 @@ indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 
 
 ---
 
-## v1.6.4.8 Bug Fixes (December 2025)
+## v1.6.4 Bug Fixes (December 2025)
 
 **Added from User Feedback:** December 31, 2025
 
@@ -881,7 +881,7 @@ in Manager. **Root Cause:** Redundant `requestAllQuickTabsViaPort()` calls
 caused race conditions - STATE_CHANGED message already contains the correct
 updated state. **Fix:** Removed redundant `requestAllQuickTabsViaPort()` calls
 after transfer/duplicate operations. STATE_CHANGED push notification from
-background is sufficient. **Status:** ✅ FIXED in v1.6.4.8
+background is sufficient. **Status:** ✅ FIXED in v1.6.4
 
 ### Bug 3c: Quick Tab Reordering Within Groups Resets (FIXED)
 
@@ -892,7 +892,7 @@ Quick Tab order within groups. **Fix:** Added `_userQuickTabOrderByGroup` map
 `QUICK_TAB_ORDER_STORAGE_KEY` ('quickTabsManagerQuickTabOrder') for persistence.
 Added `_applyUserQuickTabOrder()` to preserve order during renders. Added
 `_saveUserQuickTabOrder()` to capture DOM order after reorder. **Status:** ✅
-FIXED in v1.6.4.8
+FIXED in v1.6.4
 
 ### Bug 4c: Last Quick Tab Close Not Reflected in Manager (FIXED)
 
@@ -901,7 +901,7 @@ Manager UI to show empty state. **Root Cause:** Edge case handling for
 transitioning to empty state was missing. **Fix:** Extracted
 `_handleEmptyStateTransition()` helper for handling last Quick Tab close
 scenarios. Added `_logLowQuickTabCount()` for monitoring when Quick Tab count
-drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4.8
+drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
 
 ---
 
@@ -910,4 +910,4 @@ drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4.8
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Last Review Date:** December 31, 2025  
-**Behavior Model:** Tab-Scoped (v1.6.4.8)
+**Behavior Model:** Tab-Scoped (v1.6.4)

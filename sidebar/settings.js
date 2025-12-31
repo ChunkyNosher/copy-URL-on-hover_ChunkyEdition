@@ -21,15 +21,15 @@ const _failedButtonInitializations = [];
 
 // ==================== v1.6.4 FIX ISSUE 9: TIMEOUT PROTECTION ====================
 // Default timeout for async browser.runtime.sendMessage operations
-// v1.6.4.4 - FIX BUG #2: Default timeout is 10000ms, but EXPORT_LOGS uses 30000ms
+// v1.6.4 - FIX BUG #2: Default timeout is 10000ms, but EXPORT_LOGS uses 30000ms
 const MESSAGE_TIMEOUT_MS = 10000;
-// v1.6.4.4 - FIX BUG #2: Extended timeout for log export (download can take time)
+// v1.6.4 - FIX BUG #2: Extended timeout for log export (download can take time)
 const EXPORT_LOGS_TIMEOUT_MS = 30000;
 
 /**
  * Send message to background script with timeout protection
  * v1.6.4 - FIX Issue 9: Prevent indefinite hangs when background doesn't respond
- * v1.6.4.4 - FIX BUG #2: Updated default timeout, added extended timeout for exports
+ * v1.6.4 - FIX BUG #2: Updated default timeout, added extended timeout for exports
  * @param {Object} message - Message to send
  * @param {number} timeoutMs - Timeout in milliseconds (default: 10000)
  * @returns {Promise<Object>} Response from background script
@@ -148,7 +148,7 @@ async function getContentScriptLogs() {
 
 /**
  * Format logs as plain text
- * v1.6.4.4 - FIX BUG #3: Add first log timestamp at top of export
+ * v1.6.4 - FIX BUG #3: Add first log timestamp at top of export
  * @param {Array} logs - Array of log entries
  * @param {string} version - Extension version
  * @returns {string} Formatted log text
@@ -156,7 +156,7 @@ async function getContentScriptLogs() {
 function formatLogsAsText(logs, version) {
   const now = new Date();
 
-  // v1.6.4.4 - FIX BUG #3: Calculate first log timestamp
+  // v1.6.4 - FIX BUG #3: Calculate first log timestamp
   const firstLogTimestamp = logs[0]?.timestamp;
   const firstLogDate = firstLogTimestamp ? new Date(firstLogTimestamp) : null;
 
@@ -168,7 +168,7 @@ function formatLogsAsText(logs, version) {
     `Version: ${version}`,
     `Export Date: ${now.toISOString()}`,
     `Export Date (Local): ${now.toLocaleString()}`,
-    // v1.6.4.4 - FIX BUG #3: Add first log timestamp
+    // v1.6.4 - FIX BUG #3: Add first log timestamp
     `First Log: ${firstLogDate ? firstLogDate.toISOString() : 'Unknown'}`,
     `First Log (Local): ${firstLogDate ? firstLogDate.toLocaleString() : 'Unknown'}`,
     `Total Logs: ${logs.length}`,
@@ -293,7 +293,7 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
  * Delegate log export to background script
  * v1.6.4 - FIX Issue 9: Added timeout protection
  * v1.6.4 - FIX Issue 7: Added comprehensive logging
- * v1.6.4.4 - FIX BUG #2: Use extended timeout (30s) for export operation
+ * v1.6.4 - FIX BUG #2: Use extended timeout (30s) for export operation
  * @param {string} logText - Formatted log text
  * @param {string} filename - Export filename
  */
@@ -302,7 +302,7 @@ async function _delegateLogExport(logText, filename) {
   console.log(`[Settings] _delegateLogExport: Filename: ${filename}`);
   console.log(`[Settings] _delegateLogExport: Log text size: ${logText.length} chars`);
 
-  // v1.6.4.4 - FIX BUG #2: Use extended timeout for export (download can take time)
+  // v1.6.4 - FIX BUG #2: Use extended timeout for export (download can take time)
   const response = await sendMessageWithTimeout(
     {
       action: 'EXPORT_LOGS',

@@ -42,13 +42,13 @@ const DEFAULT_HEIGHT = 300;
 const DEFAULT_LEFT = 100;
 const DEFAULT_TOP = 100;
 
-// v1.6.4.2 - FIX Code Review: Extract magic numbers into named constants
+// v1.6.4 - FIX Code Review: Extract magic numbers into named constants
 // Maximum z-index value to ensure overlay is always on top of iframe content
 const MAX_OVERLAY_Z_INDEX = 2147483646;
-// v1.6.4.4 - FIX BUG #2: OVERLAY_REACTIVATION_DELAY_MS removed (no longer used)
+// v1.6.4 - FIX BUG #2: OVERLAY_REACTIVATION_DELAY_MS removed (no longer used)
 // The overlay is now re-enabled via focusout and mouseleave events instead of a fixed timeout
 
-// v1.6.4.1 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
+// v1.6.4 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
 // This avoids polluting the DOM API by not adding properties to document objects
 const _iframeDocsWithFocusListeners = new WeakSet();
 
@@ -107,14 +107,14 @@ export class QuickTabWindow {
    * Initialize visibility-related properties (minimized state)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
    * v1.6.3.12 - Removed Solo/Mute functionality
-   * v1.6.4.6 - FIX BUG #2: Added skipInitialOverlay option for transferred Quick Tabs
+   * v1.6.4 - FIX BUG #2: Added skipInitialOverlay option for transferred Quick Tabs
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
     // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
     // This removes tight coupling to window.quickTabsManager.currentTabId
     this.currentTabId = options.currentTabId ?? null;
-    // v1.6.4.6 - FIX BUG #2: Flag to skip initial overlay for transferred Quick Tabs
+    // v1.6.4 - FIX BUG #2: Flag to skip initial overlay for transferred Quick Tabs
     // When a Quick Tab is transferred, it should be immediately interactive without requiring a click first
     this.skipInitialOverlay = options.skipInitialOverlay ?? false;
   }
@@ -334,7 +334,7 @@ export class QuickTabWindow {
     this.titlebarBuilder.config.iframe = this.iframe;
     this.setupIframeLoadHandler();
 
-    // v1.6.4.2 - FIX BUG #1: Add click overlay for cross-origin iframe click detection
+    // v1.6.4 - FIX BUG #1: Add click overlay for cross-origin iframe click detection
     if (this.clickOverlay) {
       this.container.appendChild(this.clickOverlay);
     }
@@ -582,24 +582,24 @@ export class QuickTabWindow {
       allow: 'picture-in-picture; fullscreen'
     });
 
-    // v1.6.4.2 - FIX BUG #1: Add click overlay that brings window to front on first click
+    // v1.6.4 - FIX BUG #1: Add click overlay that brings window to front on first click
     // The overlay captures clicks until the window is focused, then becomes transparent to pointer events
     this._createClickOverlay();
   }
 
   /**
    * Create a transparent click overlay for iframe click detection
-   * v1.6.4.2 - FIX BUG #1: Click to bring Quick Tab to front
-   * v1.6.4.3 - IMPROVED: Enhanced overlay positioning and z-index
-   * v1.6.4.4 - FIX BUG #2: Keep overlay disabled while window is focused
-   * v1.6.4.6 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+   * v1.6.4 - FIX BUG #1: Click to bring Quick Tab to front
+   * v1.6.4 - IMPROVED: Enhanced overlay positioning and z-index
+   * v1.6.4 - FIX BUG #2: Keep overlay disabled while window is focused
+   * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
    * This overlay captures clicks on the iframe area and brings the window to front.
    * After the window is focused, subsequent clicks pass through to the iframe.
    * The overlay is re-enabled when the window loses focus (focusout or mouseleave).
    * @private
    */
   _createClickOverlay() {
-    // v1.6.4.6 - FIX BUG #2: Transferred Quick Tabs start with overlay disabled
+    // v1.6.4 - FIX BUG #2: Transferred Quick Tabs start with overlay disabled
     // so they're immediately interactive without requiring a click first
     const initialPointerEvents = this.skipInitialOverlay ? 'none' : 'auto';
 
@@ -611,32 +611,32 @@ export class QuickTabWindow {
         left: '0',
         right: '0',
         bottom: '0',
-        // v1.6.4.3 - FIX BUG #1: Higher z-index to ensure overlay is above iframe
+        // v1.6.4 - FIX BUG #1: Higher z-index to ensure overlay is above iframe
         zIndex: String(MAX_OVERLAY_Z_INDEX), // Use named constant for clarity
         cursor: 'pointer',
         backgroundColor: 'transparent',
-        // v1.6.4.6 - FIX BUG #2: Use computed initial pointer-events
+        // v1.6.4 - FIX BUG #2: Use computed initial pointer-events
         pointerEvents: initialPointerEvents
       }
     });
 
-    // v1.6.4.6 - FIX Code Review: Remove debug log for production
+    // v1.6.4 - FIX Code Review: Remove debug log for production
     // skipInitialOverlay flag is checked silently
 
     // On mousedown, bring window to front and hide overlay temporarily
     this.clickOverlay.addEventListener('mousedown', e => {
       console.log('[QuickTabWindow] Click overlay mousedown - bringing to front:', this.id);
 
-      // v1.6.4.3 - FIX BUG #1: Call onFocus to bring to front
+      // v1.6.4 - FIX BUG #1: Call onFocus to bring to front
       if (typeof this.onFocus === 'function') {
         this.onFocus(this.id);
       }
 
       // After bringing to front, let the click pass through to iframe
-      // v1.6.4.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
+      // v1.6.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
       this.clickOverlay.style.pointerEvents = 'none';
 
-      // v1.6.4.3 - FIX BUG #1: Re-dispatch the event to the iframe underneath
+      // v1.6.4 - FIX BUG #1: Re-dispatch the event to the iframe underneath
       // Store event coordinates for pass-through
       const x = e.clientX;
       const y = e.clientY;
@@ -653,7 +653,7 @@ export class QuickTabWindow {
             clientX: x,
             clientY: y,
             button: e.button,
-            // v1.6.4.3 - FIX Code Review: Copy additional mouse event properties
+            // v1.6.4 - FIX Code Review: Copy additional mouse event properties
             buttons: e.buttons,
             ctrlKey: e.ctrlKey,
             shiftKey: e.shiftKey,
@@ -664,7 +664,7 @@ export class QuickTabWindow {
         }
       }, 0);
 
-      // v1.6.4.4 - FIX BUG #2: Removed the 500ms setTimeout that re-enabled pointer-events
+      // v1.6.4 - FIX BUG #2: Removed the 500ms setTimeout that re-enabled pointer-events
       // The overlay is now re-enabled via focusout and mouseleave listeners below
     });
 
@@ -675,14 +675,14 @@ export class QuickTabWindow {
         if (typeof this.onFocus === 'function') {
           this.onFocus(this.id);
         }
-        // v1.6.4.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
+        // v1.6.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
         this.clickOverlay.style.pointerEvents = 'none';
-        // v1.6.4.4 - FIX BUG #2: Removed the 500ms setTimeout
+        // v1.6.4 - FIX BUG #2: Removed the 500ms setTimeout
         // The overlay is now re-enabled via focusout and mouseleave listeners below
       }
     });
 
-    // v1.6.4.4 - FIX BUG #2: Re-enable overlay when focus leaves the Quick Tab window
+    // v1.6.4 - FIX BUG #2: Re-enable overlay when focus leaves the Quick Tab window
     // This ensures the overlay captures clicks when user returns to this window
     this.container.addEventListener('focusout', e => {
       // Only re-enable if focus is leaving the container entirely (not moving within it)
@@ -692,7 +692,7 @@ export class QuickTabWindow {
       }
     });
 
-    // v1.6.4.4 - FIX BUG #2: Also re-enable when mouse leaves the container
+    // v1.6.4 - FIX BUG #2: Also re-enable when mouse leaves the container
     // This handles the case where user moves mouse out without clicking elsewhere
     this.container.addEventListener('mouseleave', () => {
       if (this.clickOverlay && !this.destroyed) {
@@ -887,7 +887,7 @@ export class QuickTabWindow {
 
   /**
    * Setup focus handlers
-   * v1.6.4.1 - FIX BUG #2: Use capture phase AND transparent overlay for iframe clicks
+   * v1.6.4 - FIX BUG #2: Use capture phase AND transparent overlay for iframe clicks
    * The mousedown event on container can be intercepted by iframe content in cross-origin scenarios.
    * Using capture: true helps, but for cross-origin iframes we need an additional overlay approach.
    * The overlay captures the first click to bring the window to front, then allows interaction.
@@ -911,7 +911,7 @@ export class QuickTabWindow {
       { capture: true }
     );
 
-    // v1.6.4.1 - FIX BUG #2: Add focus event on iframe to detect when user clicks inside
+    // v1.6.4 - FIX BUG #2: Add focus event on iframe to detect when user clicks inside
     // When iframe gets focus, it means user clicked inside it - bring window to front
     if (this.iframe) {
       this.iframe.addEventListener('focus', () => {
@@ -919,7 +919,7 @@ export class QuickTabWindow {
         this.onFocus(this.id);
       });
 
-      // v1.6.4.1 - FIX Code Review: Use flag to prevent duplicate load listeners
+      // v1.6.4 - FIX Code Review: Use flag to prevent duplicate load listeners
       // This ensures the load event handler only adds mousedown listener once
       if (!this._iframeLoadListenerAdded) {
         this._iframeLoadListenerAdded = true;
@@ -928,7 +928,7 @@ export class QuickTabWindow {
           try {
             // Try to detect focus inside iframe for same-origin content
             const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
-            // v1.6.4.1 - FIX Code Review: Use WeakSet instead of polluting DOM
+            // v1.6.4 - FIX Code Review: Use WeakSet instead of polluting DOM
             if (iframeDoc && !_iframeDocsWithFocusListeners.has(iframeDoc)) {
               _iframeDocsWithFocusListeners.add(iframeDoc);
               iframeDoc.addEventListener(
@@ -1720,7 +1720,7 @@ export class QuickTabWindow {
       this.container.remove();
       this.container = null;
       this.iframe = null;
-      // v1.6.4.2 - FIX BUG #1: Cleanup click overlay reference
+      // v1.6.4 - FIX BUG #1: Cleanup click overlay reference
       this.clickOverlay = null;
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');

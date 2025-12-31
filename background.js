@@ -5898,7 +5898,7 @@ function notifyContentScriptOfStateChange(tabId) {
     });
   }
 
-  // v1.6.4.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
+  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
   if (portSendSucceeded) {
     // Port succeeded, no fallback needed
     return;
@@ -7393,7 +7393,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
  * @param {Object} quickTabData - Quick Tab data
  */
 function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
-  // v1.6.4.2 - FIX BUG #6/#7: Enhanced logging for debugging transfer issues
+  // v1.6.4 - FIX BUG #6/#7: Enhanced logging for debugging transfer issues
   console.log('[Background] _notifyContentScriptOfTransfer: Starting', {
     oldOriginTabId,
     newOriginTabId,
@@ -7426,7 +7426,7 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
     console.warn('[Background] No port for old tab:', oldOriginTabId);
   }
 
-  // v1.6.4.4 - FIX BUG #1: Only use fallback when port fails or is unavailable for TRANSFER_OUT
+  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable for TRANSFER_OUT
   if (!oldPortSucceeded) {
     browser.tabs
       .sendMessage(oldOriginTabId, {
@@ -7449,7 +7449,7 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
   }
 
   // Notify new tab to create the Quick Tab
-  // v1.6.4.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN because target tab may not have port
+  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN because target tab may not have port
   // This is a CRITICAL message - target tab may never have had Quick Tabs before
   const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
   let portSendSucceeded = false;
@@ -7472,7 +7472,7 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
       availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
     });
   }
-  // v1.6.4.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN as it's critical
+  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN as it's critical
   // Even if port send succeeded, the target tab may not have processed it
   _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId);
   console.log('[Background] TRANSFER_IN sent via fallback for reliability:', {
@@ -7484,7 +7484,7 @@ function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTab
 
 /**
  * Send QUICK_TAB_TRANSFERRED_IN message via browser.tabs.sendMessage fallback
- * v1.6.4.3 - FIX BUG #2: Fallback when port is not available
+ * v1.6.4 - FIX BUG #2: Fallback when port is not available
  * @private
  * @param {number} newOriginTabId - Target tab ID
  * @param {Object} quickTabData - Quick Tab data to send
@@ -7574,14 +7574,14 @@ function _addQuickTabToState(newQuickTab, newOriginTabId) {
 /**
  * Notify target tab of duplicated Quick Tab
  * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
- * v1.6.4.3 - FIX BUG #2: Add browser.tabs.sendMessage fallback
- * v1.6.4.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE (critical message)
+ * v1.6.4 - FIX BUG #2: Add browser.tabs.sendMessage fallback
+ * v1.6.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE (critical message)
  * @private
  * @param {number} newOriginTabId - Target tab ID
  * @param {Object} newQuickTab - New Quick Tab data
  */
 function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
-  // v1.6.4.2 - FIX BUG #6/#8: Enhanced logging for debugging duplicate issues
+  // v1.6.4 - FIX BUG #6/#8: Enhanced logging for debugging duplicate issues
   console.log('[Background] _notifyTargetTabOfDuplicate: Starting', {
     newOriginTabId,
     quickTabId: newQuickTab?.id,
@@ -7612,7 +7612,7 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
     });
   }
 
-  // v1.6.4.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE as it's critical
+  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE as it's critical
   // Even if port send succeeded, the target tab may not have processed it
   _sendDuplicateMessageFallback(newOriginTabId, newQuickTab);
   console.log('[Background] DUPLICATE sent via fallback for reliability:', {
@@ -7624,7 +7624,7 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
 
 /**
  * Send CREATE_QUICK_TAB_FROM_DUPLICATE message via browser.tabs.sendMessage fallback
- * v1.6.4.3 - FIX BUG #2: Fallback when port is not available
+ * v1.6.4 - FIX BUG #2: Fallback when port is not available
  * @private
  * @param {number} newOriginTabId - Target tab ID
  * @param {Object} newQuickTab - New Quick Tab data

@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4.8  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,7 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4.8 Bug Fixes (NEW):**
+**v1.6.4 Bug Fixes (NEW):**
 
 - **BUG FIX #1 & #2** - Transfer/Duplicate Quick Tabs not appearing in Manager:
   Removed redundant `requestAllQuickTabsViaPort()` calls that caused race
@@ -117,7 +117,7 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4.8 Patterns (Current)
+### v1.6.4 Patterns (Current)
 
 - **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
   calls (STATE_CHANGED already contains correct state)
@@ -218,7 +218,7 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.4.8:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
+**v1.6.4:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
 `[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
 
 **v1.6.4:** `[Manager] DRAG_DROP:`, `[Manager] TRANSFER_QUICK_TAB:`,

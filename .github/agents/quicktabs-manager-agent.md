@@ -3,7 +3,7 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.4.8), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.4), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
   optimistic UI updates, render lock, orphan recovery UI, Quick Tab order persistence
 tools: ['*']
@@ -37,9 +37,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4.8 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.4.8 Features (NEW):**
+**v1.6.4 Features (NEW):**
 
 - **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
   calls that caused race conditions (STATE_CHANGED already contains correct state)
@@ -131,6 +131,6 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.4.8 transfer/duplicate race fix,
+**Your strength: Manager coordination with v1.6.4 transfer/duplicate race fix,
 Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
 transfer, optimistic UI timeout, render lock, and comprehensive validation.**
