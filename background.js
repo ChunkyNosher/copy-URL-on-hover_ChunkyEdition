@@ -5714,10 +5714,13 @@ function _handleQuickTabPropertyUpdate({
   });
 
   if (found) {
-    console.log(`[Background] v1.6.4 Quick Tab ${messageType.replace('QUICKTAB_', '').toLowerCase()} updated:`, {
-      quickTabId,
-      ...successLogFn(extractedProps)
-    });
+    console.log(
+      `[Background] v1.6.4 Quick Tab ${messageType.replace('QUICKTAB_', '').toLowerCase()} updated:`,
+      {
+        quickTabId,
+        ...successLogFn(extractedProps)
+      }
+    );
     notifySidebarOfStateChange();
     return { success: true, quickTabId };
   }
@@ -7309,11 +7312,18 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
   try {
     sidebarPort.postMessage(ackMessage);
     if (ackMessage.success) {
-      console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', { quickTabId, correlationId });
+      console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', {
+        quickTabId,
+        correlationId
+      });
     }
   } catch (err) {
     if (ackMessage.success) {
-      console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', { error: err.message, quickTabId, correlationId });
+      console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', {
+        error: err.message,
+        quickTabId,
+        correlationId
+      });
     } else {
       console.warn('[Background] TRANSFER_QUICK_TAB_ACK (error) port failed:', err.message);
     }
@@ -7366,7 +7376,10 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
 
   console.log('[Background] TRANSFER_QUICK_TAB_ENTRY:', {
-    quickTabId, newOriginTabId, correlationId, timestamp: Date.now()
+    quickTabId,
+    newOriginTabId,
+    correlationId,
+    timestamp: Date.now()
   });
 
   // Find and remove the Quick Tab from its current tab
@@ -7374,10 +7387,18 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
 
   if (!quickTabData) {
     console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
-    _sendTransferAck(sidebarPort, {
-      type: 'TRANSFER_QUICK_TAB_ACK', success: false,
-      error: 'Quick Tab not found', quickTabId, correlationId
-    }, quickTabId, correlationId);
+    _sendTransferAck(
+      sidebarPort,
+      {
+        type: 'TRANSFER_QUICK_TAB_ACK',
+        success: false,
+        error: 'Quick Tab not found',
+        quickTabId,
+        correlationId
+      },
+      quickTabId,
+      correlationId
+    );
     return;
   }
 
@@ -7385,10 +7406,19 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
   _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId);
 
   // Send success ACK to sidebar
-  _sendTransferAck(sidebarPort, {
-    type: 'TRANSFER_QUICK_TAB_ACK', success: true,
-    quickTabId, oldOriginTabId, newOriginTabId, correlationId
-  }, quickTabId, correlationId);
+  _sendTransferAck(
+    sidebarPort,
+    {
+      type: 'TRANSFER_QUICK_TAB_ACK',
+      success: true,
+      quickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      correlationId
+    },
+    quickTabId,
+    correlationId
+  );
 
   // Notify sidebar and content scripts
   notifySidebarOfStateChange();
@@ -7396,8 +7426,12 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
 
   const durationMs = performance.now() - handlerStartTime;
   console.log('[Background] TRANSFER_QUICK_TAB_EXIT:', {
-    quickTabId, oldOriginTabId, newOriginTabId, success: true,
-    durationMs: durationMs.toFixed(2), correlationId
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    success: true,
+    durationMs: durationMs.toFixed(2),
+    correlationId
   });
 }
 
@@ -7444,9 +7478,18 @@ function _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId) {
 
   // Only use fallback when port fails or is unavailable
   if (!portSucceeded) {
-    browser.tabs.sendMessage(oldOriginTabId, { ...message, source: 'sendMessage_fallback' })
-      .then(() => console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', { oldOriginTabId, quickTabId }))
-      .catch(err => console.warn('[Background] TRANSFER_OUT_FALLBACK_FAILED:', { oldOriginTabId, quickTabId, sendMessageError: err.message }));
+    browser.tabs
+      .sendMessage(oldOriginTabId, { ...message, source: 'sendMessage_fallback' })
+      .then(() =>
+        console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', { oldOriginTabId, quickTabId })
+      )
+      .catch(err =>
+        console.warn('[Background] TRANSFER_OUT_FALLBACK_FAILED:', {
+          oldOriginTabId,
+          quickTabId,
+          sendMessageError: err.message
+        })
+      );
   }
 }
 
@@ -7476,7 +7519,9 @@ function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
   });
 
   console.log('[Background] TRANSFER_IN sent via fallback for reliability:', {
-    newOriginTabId, quickTabId: quickTabData?.id, portAlsoUsed: portSucceeded
+    newOriginTabId,
+    quickTabId: quickTabData?.id,
+    portAlsoUsed: portSucceeded
   });
 }
 
@@ -7492,7 +7537,9 @@ function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
  */
 function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
   console.log('[Background] _notifyContentScriptOfTransfer: Starting', {
-    oldOriginTabId, newOriginTabId, quickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    quickTabId,
     hasOldPort: !!quickTabsSessionState.contentScriptPorts[oldOriginTabId],
     hasNewPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
     allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
@@ -7525,11 +7572,14 @@ async function _sendContentMessageFallback(opts) {
       source: 'sendMessage_fallback'
     });
     console.log(`[Background] ${operationName}_FALLBACK_SUCCESS: Notified tab via sendMessage:`, {
-      tabId, quickTabId
+      tabId,
+      quickTabId
     });
   } catch (err) {
     console.error(`[Background] ${operationName}_FALLBACK_FAILED: Could not notify target tab:`, {
-      tabId, quickTabId, error: err.message,
+      tabId,
+      quickTabId,
+      error: err.message,
       hint: 'Target tab may not have content script loaded. User should refresh the tab.'
     });
   }
@@ -7643,7 +7693,9 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
     quickTabId: newQuickTab?.id
   });
   console.log('[Background] DUPLICATE sent via fallback for reliability:', {
-    newOriginTabId, quickTabId: newQuickTab?.id, portAlsoUsed: portSendSucceeded
+    newOriginTabId,
+    quickTabId: newQuickTab?.id,
+    portAlsoUsed: portSendSucceeded
   });
 }
 

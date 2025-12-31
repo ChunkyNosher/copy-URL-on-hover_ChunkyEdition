@@ -565,11 +565,15 @@ function _sendSidebarReadyMessage() {
     console.log('[Sidebar] SIDEBAR_READY sent to background via port');
   } catch (err) {
     console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
-    browser.runtime.sendMessage({ ...message, source: 'sendMessage_fallback' })
+    browser.runtime
+      .sendMessage({ ...message, source: 'sendMessage_fallback' })
       .then(() => console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback'))
-      .catch(sendErr => console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
-        portError: err.message, sendMessageError: sendErr.message
-      }));
+      .catch(sendErr =>
+        console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
+          portError: err.message,
+          sendMessageError: sendErr.message
+        })
+      );
   }
 }
 
@@ -583,8 +587,10 @@ function initializeQuickTabsPort() {
   if (_checkCircuitBreakerTripped()) return;
 
   console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
-    timestamp: Date.now(), portName: 'quick-tabs-port',
-    existingPort: !!quickTabsPort, reconnectAttempt: _quickTabsPortReconnectAttempts
+    timestamp: Date.now(),
+    portName: 'quick-tabs-port',
+    existingPort: !!quickTabsPort,
+    reconnectAttempt: _quickTabsPortReconnectAttempts
   });
 
   try {
@@ -592,8 +598,11 @@ function initializeQuickTabsPort() {
     _resetCircuitBreakerOnSuccess();
 
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
-      timestamp: Date.now(), portName: 'quick-tabs-port', success: true,
-      circuitBreakerReset: true, autoResetTimerCleared: true
+      timestamp: Date.now(),
+      portName: 'quick-tabs-port',
+      success: true,
+      circuitBreakerReset: true,
+      autoResetTimerCleared: true
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
@@ -602,13 +611,17 @@ function initializeQuickTabsPort() {
     _sendSidebarReadyMessage();
 
     console.log('[Sidebar] Sidebar requesting initial state after port connection', {
-      timestamp: Date.now(), portConnected: !!quickTabsPort
+      timestamp: Date.now(),
+      portConnected: !!quickTabsPort
     });
     requestAllQuickTabsViaPort();
   } catch (err) {
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
-      timestamp: Date.now(), portName: 'quick-tabs-port',
-      error: err.message, success: false, reconnectAttempt: _quickTabsPortReconnectAttempts
+      timestamp: Date.now(),
+      portName: 'quick-tabs-port',
+      error: err.message,
+      success: false,
+      reconnectAttempt: _quickTabsPortReconnectAttempts
     });
     _scheduleQuickTabsPortReconnect(Date.now());
   }
@@ -2912,8 +2925,11 @@ function _createPortMessageTimeout(opts) {
   return setTimeout(() => {
     pendingAcks.delete(correlationId);
     logPortLifecycle('MESSAGE_TIMEOUT', {
-      messageType, correlationId, waitedMs: Date.now() - sentAt,
-      timeoutMs, recoveryAction: 'treating as zombie port'
+      messageType,
+      correlationId,
+      waitedMs: Date.now() - sentAt,
+      timeoutMs,
+      recoveryAction: 'treating as zombie port'
     });
     reject(new Error('Port message timeout'));
   }, timeoutMs);
@@ -2934,13 +2950,17 @@ function _createPortMessageTimeout(opts) {
  * @param {Function} opts.reject - Promise reject function
  */
 function _handlePortSendFailure(opts) {
-  const { err, messageWithCorrelation, timeout, correlationId, messageType, resolve, reject } = opts;
+  const { err, messageWithCorrelation, timeout, correlationId, messageType, resolve, reject } =
+    opts;
   logPortLifecycle('MESSAGE_SEND_FAILED', {
-    messageType, correlationId, error: err.message,
+    messageType,
+    correlationId,
+    error: err.message,
     recoveryAction: 'trying runtime.sendMessage fallback'
   });
 
-  browser.runtime.sendMessage({ ...messageWithCorrelation, source: 'sendMessage_fallback' })
+  browser.runtime
+    .sendMessage({ ...messageWithCorrelation, source: 'sendMessage_fallback' })
     .then(response => {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
@@ -2951,7 +2971,10 @@ function _handlePortSendFailure(opts) {
       clearTimeout(timeout);
       pendingAcks.delete(correlationId);
       logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
-        messageType, correlationId, portError: err.message, sendMessageError: sendErr.message
+        messageType,
+        correlationId,
+        portError: err.message,
+        sendMessageError: sendErr.message
       });
       reject(err);
     });
@@ -2972,22 +2995,39 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     const messageWithCorrelation = { ...message, correlationId };
     const sentAt = Date.now();
 
-    logPortLifecycle('MESSAGE_ACK_PENDING', { messageType: message.type, correlationId, timeoutMs });
+    logPortLifecycle('MESSAGE_ACK_PENDING', {
+      messageType: message.type,
+      correlationId,
+      timeoutMs
+    });
 
     const timeout = _createPortMessageTimeout({
-      correlationId, sentAt, timeoutMs, messageType: message.type, reject
+      correlationId,
+      sentAt,
+      timeoutMs,
+      messageType: message.type,
+      reject
     });
 
     pendingAcks.set(correlationId, {
-      resolve, reject, timeout, sentAt, messageType: message.type
+      resolve,
+      reject,
+      timeout,
+      sentAt,
+      messageType: message.type
     });
 
     try {
       backgroundPort.postMessage(messageWithCorrelation);
     } catch (err) {
       _handlePortSendFailure({
-        err, messageWithCorrelation, timeout, correlationId,
-        messageType: message.type, resolve, reject
+        err,
+        messageWithCorrelation,
+        timeout,
+        correlationId,
+        messageType: message.type,
+        resolve,
+        reject
       });
     }
   });
@@ -6605,7 +6645,8 @@ function _shouldSkipStorageOverwrite(storageState, inMemoryHash, storageHash) {
   console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
     portTabCount: _allQuickTabsFromPort.length,
     storageTabCount: storageState?.tabs?.length ?? 0,
-    inMemoryHash, storageHash
+    inMemoryHash,
+    storageHash
   });
   return true;
 }
@@ -7526,7 +7567,6 @@ function attachCollapseEventListeners(container, collapseState) {
   }
 }
 
-
 // ==================== v1.6.4 DRAG AND DROP ====================
 // FEATURE #2, #3, #5: Drag-and-Drop Reordering and Cross-Tab Transfer
 // v1.6.4 - Code Health: Delegated to DragDropManager.js module
@@ -7551,11 +7591,11 @@ _initDragDrop();
 function _attachDragDropListeners(container) {
   attachDragDropEventListeners(container, {
     // Callback to get Quick Tab data by ID
-    getQuickTabData: (quickTabId) => {
+    getQuickTabData: quickTabId => {
       return _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
     },
     // Callback to save group order after reorder
-    saveGroupOrder: (containerEl) => {
+    saveGroupOrder: containerEl => {
       saveUserGroupOrder(containerEl);
     },
     // Callback to save Quick Tab order after reorder within group

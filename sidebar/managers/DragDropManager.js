@@ -378,9 +378,7 @@ function _handleQuickTabDragStart(event, item) {
   const quickTabId = item.dataset.tabId;
 
   // Find the Quick Tab data using callback
-  const quickTabData = _callbacks.getQuickTabData
-    ? _callbacks.getQuickTabData(quickTabId)
-    : null;
+  const quickTabData = _callbacks.getQuickTabData ? _callbacks.getQuickTabData(quickTabId) : null;
 
   if (!quickTabData) {
     console.warn('[Manager] DRAG_START: Quick Tab data not found', { quickTabId });

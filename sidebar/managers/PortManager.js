@@ -483,7 +483,10 @@ function sendPortMessage(messageType, payload = {}) {
         method: 'port'
       });
     } catch (err) {
-      console.warn(`[PortManager] Port send failed for ${messageType}, trying fallback:`, err.message);
+      console.warn(
+        `[PortManager] Port send failed for ${messageType}, trying fallback:`,
+        err.message
+      );
     }
   } else {
     console.warn(`[PortManager] Cannot ${messageType} via port - not connected, trying fallback`);
@@ -497,7 +500,9 @@ function sendPortMessage(messageType, payload = {}) {
   browser.runtime
     .sendMessage({ ...message, source: 'sendMessage_fallback' })
     .then(() => {
-      console.log(`[PortManager] ${messageType} sent via runtime.sendMessage fallback`, { quickTabId });
+      console.log(`[PortManager] ${messageType} sent via runtime.sendMessage fallback`, {
+        quickTabId
+      });
     })
     .catch(sendErr => {
       console.error(`[PortManager] ${messageType} both methods failed:`, {

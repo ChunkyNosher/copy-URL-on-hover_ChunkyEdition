@@ -909,5 +909,6 @@ drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** December 31, 2025  
+**Last
+Review Date:** December 31, 2025  
 **Behavior Model:** Tab-Scoped (v1.6.4)

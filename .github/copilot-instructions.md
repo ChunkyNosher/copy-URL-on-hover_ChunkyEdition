@@ -28,7 +28,8 @@
 - **BUG FIX #3** - Quick Tab reordering within groups resets: Added
   `_userQuickTabOrderByGroup` map for per-group ordering with persistence
 - **BUG FIX #4** - Last Quick Tab close not reflected: Added
-  `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()` monitoring
+  `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()`
+  monitoring
 
 **v1.6.4 Code Health Refactoring:**
 
@@ -127,13 +128,15 @@ const quickTabsSessionState = {
 
 ### v1.6.4 Patterns (Current)
 
-- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
-  calls (STATE_CHANGED already contains correct state)
-- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for per-group
-  ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
-- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last Quick
-  Tab close scenarios with `_logLowQuickTabCount()` monitoring
-- **Order Application** - `_applyUserQuickTabOrder()` preserves order during renders
+- **Transfer/Duplicate Race Fix** - Removed redundant
+  `requestAllQuickTabsViaPort()` calls (STATE_CHANGED already contains correct
+  state)
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for
+  per-group ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last
+  Quick Tab close scenarios with `_logLowQuickTabCount()` monitoring
+- **Order Application** - `_applyUserQuickTabOrder()` preserves order during
+  renders
 - **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
 
 ### v1.6.4 Patterns
@@ -180,15 +183,15 @@ const quickTabsSessionState = {
 
 ### Key Timing Constants
 
-| Constant                                        | Value                             | Purpose                           |
-| ----------------------------------------------- | --------------------------------- | --------------------------------- |
-| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder'   | Quick Tab order persistence key   |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                        | Click overlay z-index (v1.6.4)    |
-| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500        | Pointer events re-enable delay |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5          | Failures before circuit trips  |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000      | Test write interval            |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000      | Auto-reset circuit breaker     |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10         | Max reconnection attempts      |
+| Constant                                        | Value                           | Purpose                         |
+| ----------------------------------------------- | ------------------------------- | ------------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
+| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
+| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
 
 ---
 
@@ -314,21 +317,21 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                              | Features                             |
-| --------------------------------- | ------------------------------------ |
-| `src/constants.js`                | Centralized constants                |
-| `src/utils/shadow-dom.js`         | Shadow DOM link detection            |
-| `src/utils/storage-utils.js`      | Storage utilities                    |
-| `src/background/tab-events.js`    | Tabs API listeners                   |
-| `src/utils/structured-logger.js`  | StructuredLogger class with contexts |
-| `src/messaging/message-router.js` | ACTION-based routing                 |
-| `background.js`                   | In-memory state, port handlers       |
-| `sidebar/quick-tabs-manager.js`   | Port-based queries to background     |
-| `sidebar/managers/PortManager.js` | Port connection, circuit breaker (v1.6.4)  |
-| `sidebar/managers/RenderManager.js` | Render scheduling, UI helpers (v1.6.4) |
-| `sidebar/managers/DragDropManager.js` | Drag-and-drop reordering (v1.6.4) |
-| `sidebar/managers/OrderManager.js` | Group/Quick Tab order persistence (v1.6.4) |
-| `src/content.js`                  | Port messaging for Quick Tabs        |
+| File                                  | Features                                   |
+| ------------------------------------- | ------------------------------------------ |
+| `src/constants.js`                    | Centralized constants                      |
+| `src/utils/shadow-dom.js`             | Shadow DOM link detection                  |
+| `src/utils/storage-utils.js`          | Storage utilities                          |
+| `src/background/tab-events.js`        | Tabs API listeners                         |
+| `src/utils/structured-logger.js`      | StructuredLogger class with contexts       |
+| `src/messaging/message-router.js`     | ACTION-based routing                       |
+| `background.js`                       | In-memory state, port handlers             |
+| `sidebar/quick-tabs-manager.js`       | Port-based queries to background           |
+| `sidebar/managers/PortManager.js`     | Port connection, circuit breaker (v1.6.4)  |
+| `sidebar/managers/RenderManager.js`   | Render scheduling, UI helpers (v1.6.4)     |
+| `sidebar/managers/DragDropManager.js` | Drag-and-drop reordering (v1.6.4)          |
+| `sidebar/managers/OrderManager.js`    | Group/Quick Tab order persistence (v1.6.4) |
+| `src/content.js`                      | Port messaging for Quick Tabs              |
 
 ### Storage (v1.6.3.12-v8+)
 

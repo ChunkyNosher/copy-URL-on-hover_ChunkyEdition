@@ -41,13 +41,15 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.4 Features (NEW):**
 
-- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()`
-  calls that caused race conditions (STATE_CHANGED already contains correct state)
-- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for per-group
-  ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
-- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last Quick
-  Tab close scenarios with `_logLowQuickTabCount()` monitoring
-- **Order Application** - `_applyUserQuickTabOrder()` preserves order during renders
+- **Transfer/Duplicate Race Fix** - Removed redundant
+  `requestAllQuickTabsViaPort()` calls that caused race conditions
+  (STATE_CHANGED already contains correct state)
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for
+  per-group ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last
+  Quick Tab close scenarios with `_logLowQuickTabCount()` monitoring
+- **Order Application** - `_applyUserQuickTabOrder()` preserves order during
+  renders
 - **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
 
 **v1.6.4 Features:**
@@ -63,7 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 - **Button Operation Fix** - Manager buttons now work reliably
 - **Cross-Tab Render Fix** - Hash AND state version check before skipping render
-- **Fallback Messaging** - Falls back to `browser.tabs.sendMessage` if port unavailable
+- **Fallback Messaging** - Falls back to `browser.tabs.sendMessage` if port
+  unavailable
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
 **Key Manager Features:**
@@ -107,9 +110,9 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 ## Testing Requirements
 
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
-- [ ] Quick Tab order persistence works (_userQuickTabOrderByGroup)
-- [ ] Empty state transition works (_handleEmptyStateTransition)
-- [ ] Order application during render (_applyUserQuickTabOrder)
+- [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)
+- [ ] Empty state transition works (\_handleEmptyStateTransition)
+- [ ] Order application during render (\_applyUserQuickTabOrder)
 - [ ] Drag-and-drop reordering works
 - [ ] Cross-tab transfer works
 - [ ] Duplicate via modifier key works
