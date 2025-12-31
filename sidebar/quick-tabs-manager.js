@@ -176,6 +176,32 @@ import {
   applyUserQuickTabOrder as _applyUserQuickTabOrder,
   getUserGroupOrder as _getUserGroupOrder
 } from './managers/OrderManager.js';
+// v1.6.4 - Import PortManager for port-related functionality (extracted for code health)
+import {
+  isValidMessageObject as _isValidMessageObjectFromPM,
+  isValidQuickTabsField as _isValidQuickTabsFieldFromPM,
+  isValidSequenceNumber as _isValidSequenceNumberFromPM,
+  validateStateUpdateMessage as _validateStateUpdateMessageFromPM,
+  validateAckMessage as _validateAckMessageFromPM,
+  logValidationError as _logPortMessageValidationErrorFromPM,
+  checkMessageSequence as _checkMessageSequenceFromPM,
+  buildAckLogData as _buildAckLogDataFromPM,
+  SEQUENCE_GAP_WARNING_ENABLED as _SEQUENCE_GAP_WARNING_ENABLED_FROM_PM
+} from './managers/PortManager.js';
+// v1.6.4 - Import RenderManager for render-related functionality (extracted for code health)
+import {
+  incrementStateVersion as _incrementStateVersionFromRM,
+  forceImmediateRender as _forceImmediateRenderFromRM,
+  logRenderStart as _logRenderStartFromRM,
+  logRenderComplete as _logRenderCompleteFromRM,
+  logGroupRendering as _logGroupRenderingFromRM,
+  logRenderPerformance as _logRenderPerformanceFromRM,
+  showEmptyState as _showEmptyStateFromRM,
+  showContentState as _showContentStateFromRM,
+  RENDER_DEBOUNCE_MS as _RENDER_DEBOUNCE_MS_FROM_RM,
+  RENDER_DEBOUNCE_MAX_WAIT_MS as _RENDER_DEBOUNCE_MAX_WAIT_MS_FROM_RM,
+  MAX_CONSECUTIVE_RERENDERS as _MAX_CONSECUTIVE_RERENDERS_FROM_RM
+} from './managers/RenderManager.js';
 import {
   computeStateHash,
   createFavicon,

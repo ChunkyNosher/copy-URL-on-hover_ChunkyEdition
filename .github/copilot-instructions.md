@@ -30,6 +30,14 @@
 - **BUG FIX #4** - Last Quick Tab close not reflected: Added
   `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()` monitoring
 
+**v1.6.4 Code Health Refactoring:**
+
+- **PortManager.js** - Extracted port connection, circuit breaker, validation
+  (Code Health: 9.68)
+- **RenderManager.js** - Extracted render scheduling, UI state helpers (Code
+  Health: 9.17)
+- Both modules imported into quick-tabs-manager.js for gradual migration
+
 **v1.6.4 Features - Drag-and-Drop Manager:**
 
 - **BUG FIX #1** - Click-to-Front: Quick Tabs come to front on click
@@ -316,6 +324,10 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `src/messaging/message-router.js` | ACTION-based routing                 |
 | `background.js`                   | In-memory state, port handlers       |
 | `sidebar/quick-tabs-manager.js`   | Port-based queries to background     |
+| `sidebar/managers/PortManager.js` | Port connection, circuit breaker (v1.6.4)  |
+| `sidebar/managers/RenderManager.js` | Render scheduling, UI helpers (v1.6.4) |
+| `sidebar/managers/DragDropManager.js` | Drag-and-drop reordering (v1.6.4) |
+| `sidebar/managers/OrderManager.js` | Group/Quick Tab order persistence (v1.6.4) |
 | `src/content.js`                  | Port messaging for Quick Tabs        |
 
 ### Storage (v1.6.3.12-v8+)
