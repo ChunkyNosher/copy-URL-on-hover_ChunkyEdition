@@ -6757,18 +6757,9 @@ function _getSortedGroupKeys(groups) {
   // The Map was already ordered by _applyUserGroupOrder() - we only need to move orphaned to end
   if (_userGroupOrder && _userGroupOrder.length > 0) {
     const keys = [...groups.keys()];
-    // v1.6.4.6 - FIX Code Review: Single-pass partition using reduce
-    const { regular, orphaned } = keys.reduce(
-      (acc, k) => {
-        if (k === 'orphaned') {
-          acc.orphaned.push(k);
-        } else {
-          acc.regular.push(k);
-        }
-        return acc;
-      },
-      { regular: [], orphaned: [] }
-    );
+    // v1.6.4.6 - FIX Code Review: Use filter for cleaner partition
+    const regular = keys.filter(k => k !== 'orphaned');
+    const orphaned = keys.filter(k => k === 'orphaned');
     return regular.concat(orphaned);
   }
   // Default behavior when no user order is set

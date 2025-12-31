@@ -620,10 +620,8 @@ export class QuickTabWindow {
       }
     });
 
-    // Log if overlay is starting disabled (for debugging transferred Quick Tabs)
-    if (this.skipInitialOverlay) {
-      console.log('[QuickTabWindow] Click overlay disabled for transferred Quick Tab:', this.id);
-    }
+    // v1.6.4.6 - FIX Code Review: Remove debug log for production
+    // skipInitialOverlay flag is checked silently
 
     // On mousedown, bring window to front and hide overlay temporarily
     this.clickOverlay.addEventListener('mousedown', e => {
