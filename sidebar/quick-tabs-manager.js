@@ -1118,6 +1118,7 @@ function _validateQuickTabObject(qt) {
 /**
  * Filter and validate Quick Tab objects array, logging invalid entries
  * v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects before processing
+ * v1.6.4.1 - FIX: Add critical warning when ALL Quick Tabs fail validation
  * @private
  * @param {Array} quickTabs - Quick Tabs array to validate
  * @param {string} messageType - Message type for logging
@@ -1125,6 +1126,21 @@ function _validateQuickTabObject(qt) {
  */
 function _filterValidQuickTabs(quickTabs, messageType) {
   if (!Array.isArray(quickTabs)) {
+    // Use console.error for unexpected non-array input (likely a bug)
+    console.error('[Manager] _filterValidQuickTabs: Input is not an array (unexpected)', {
+      messageType,
+      receivedType: typeof quickTabs,
+      timestamp: Date.now()
+    });
+    return [];
+  }
+
+  // v1.6.4.1 - FIX: Handle empty array case explicitly
+  if (quickTabs.length === 0) {
+    console.log('[Manager] _filterValidQuickTabs: Empty array received (valid)', {
+      messageType,
+      timestamp: Date.now()
+    });
     return [];
   }
 
@@ -1146,6 +1162,21 @@ function _filterValidQuickTabs(quickTabs, messageType) {
   // Log validation failures for debugging
   if (invalidCount.total > 0) {
     _logQuickTabValidationFailures(quickTabs.length, validTabs.length, invalidCount, messageType);
+  }
+
+  // v1.6.4.1 - FIX: Critical warning when ALL Quick Tabs fail validation
+  if (quickTabs.length > 0 && validTabs.length === 0) {
+    // Generate dynamic hint based on actual validation errors
+    const errorTypes = Object.keys(invalidCount.reasons);
+    console.error('[Manager] CRITICAL_VALIDATION_FAILURE: ALL Quick Tabs failed validation!', {
+      messageType,
+      inputCount: quickTabs.length,
+      validCount: 0,
+      invalidReasons: invalidCount.reasons,
+      firstQuickTab: quickTabs[0],
+      timestamp: Date.now(),
+      hint: `Check Quick Tab object structure. Validation errors: ${errorTypes.join(', ')}`
+    });
   }
 
   return validTabs;
@@ -6589,36 +6620,45 @@ async function _checkAndReloadStaleState() {
 /**
  * Check if port data is fresh (received after debounce was set)
  * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
- *
- * TIMING RELATIONSHIP:
- * - `debounceSetTimestamp` is set when scheduleRender() queues a render
- * - `lastEventReceivedTime` is updated when port messages arrive from background
- * - If lastEventReceivedTime > debounceSetTimestamp, a port message arrived AFTER
- *   the render was scheduled, meaning port data is more recent than what triggered the render.
- * - In this case, we should use port data (source of truth in Option 4 architecture)
- *   instead of potentially stale storage data.
+ * v1.6.4.1 - FIX BUG: Port data should ALWAYS be considered fresh if it exists
+ *   The timing comparison (lastEventReceivedTime > debounceSetTimestamp) was flawed because
+ *   requestAnimationFrame callbacks can run AFTER the port message handler completes,
+ *   making debounceSetTimestamp newer than lastEventReceivedTime even though port data is valid.
+ *   In Option 4 architecture, port data is the source of truth - if it exists, use it.
  *
  * @private
- * @returns {boolean} True if port data is fresh (arrived after current render was scheduled)
+ * @returns {boolean} True if port data exists (source of truth in Option 4 architecture)
  */
 function _isPortDataFresh() {
   const hasPortData = _allQuickTabsFromPort?.length > 0;
-  const hasValidEventTime = typeof lastEventReceivedTime === 'number' && lastEventReceivedTime > 0;
-  // Port data is "fresh" if it arrived after this render was scheduled
-  return hasPortData && hasValidEventTime && lastEventReceivedTime > debounceSetTimestamp;
+
+  // v1.6.4.1 - FIX: Simplified check - if we have port data, it's authoritative
+  // The previous timing comparison was flawed due to requestAnimationFrame timing
+  if (hasPortData) {
+    console.log('[Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh', {
+      portTabCount: _allQuickTabsFromPort.length,
+      lastEventReceivedTime,
+      debounceSetTimestamp,
+      note: 'Port data is source of truth in Option 4 architecture'
+    });
+    return true;
+  }
+
+  return false;
 }
 
 /**
  * Handle case when port data is fresh - skip storage reload
  * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4.1 - Updated logging to reflect simplified freshness check
  * @private
  */
 function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
-  console.log('[Manager] STALE_CHECK_SKIPPED: Port data is fresh, skipping storage reload', {
+  console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth', {
     portTabCount: _allQuickTabsFromPort.length,
     lastEventReceivedTime,
     debounceSetTimestamp,
-    freshnessMs: lastEventReceivedTime - debounceSetTimestamp
+    note: 'Option 4 architecture: port data is authoritative'
   });
   return _buildStaleCheckResult(false, inMemoryHash, inMemoryHash, debounceWaitTime);
 }
