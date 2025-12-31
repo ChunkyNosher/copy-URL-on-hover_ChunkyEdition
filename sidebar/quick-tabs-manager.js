@@ -2,6 +2,25 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4.8 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
+ * v1.6.4.8 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
+ *   - ROOT CAUSE: Race condition between ACK and STATE_CHANGED messages
+ *   - FIX: Removed redundant requestAllQuickTabsViaPort() calls from ACK handlers
+ *   - STATE_CHANGED message already contains complete updated state
+ *   - Enhanced logging to trace message ordering for debugging
+ *
+ * v1.6.4.8 - FIX BUG #3: Quick Tab reordering within groups resets
+ *   - ROOT CAUSE: No persistence mechanism for Quick Tab order within groups
+ *   - FIX: Added _userQuickTabOrderByGroup storage similar to tab group order
+ *   - Added _saveUserQuickTabOrder(), _persistQuickTabOrderToStorage()
+ *   - Added _loadQuickTabOrderFromStorage(), _applyUserQuickTabOrder()
+ *   - Modified _handleQuickTabDrop() and _handleTabGroupDrop() to save order
+ *   - Modified _createGroupContent() to apply user's Quick Tab order
+ *
+ * v1.6.4.8 - FIX BUG #4: Last Quick Tab close not reflected in Manager
+ *   - Enhanced logging for empty state transitions
+ *   - Added low-count monitoring for debugging last-close scenarios
+ *
  * === v1.6.3.12-v12 BUTTON OPERATION FIX & STATE VERSION TRACKING ===
  * v1.6.3.12-v12 - FIX Issue #48: Manager buttons not working (Close, Minimize, Restore, Close All, Close Minimized)
  *   - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always trigger re-render
@@ -185,6 +204,8 @@ const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.4.5 - FIX BUG #4: Storage key for persisting tab group order across sidebar reloads
 const GROUP_ORDER_STORAGE_KEY = 'quickTabsManagerGroupOrder';
+// v1.6.4.8 - FIX BUG #3: Storage key for persisting Quick Tab order within groups
+const QUICK_TAB_ORDER_STORAGE_KEY = 'quickTabsManagerQuickTabOrder';
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -409,6 +430,14 @@ let _allQuickTabsFromPort = [];
  * @private
  */
 let _userGroupOrder = [];
+
+/**
+ * User's preferred Quick Tab order within each group
+ * v1.6.4.8 - FIX BUG #3: Persist Quick Tab ordering within groups
+ * Key: originTabId (string), Value: array of quickTabIds in preferred order
+ * @private
+ */
+let _userQuickTabOrderByGroup = {};
 
 /**
  * Track sent Quick Tab port operations for roundtrip time calculation
@@ -829,11 +858,62 @@ function _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlati
 }
 
 /**
+ * Handle empty state transition for Quick Tabs
+ * v1.6.4.8 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {boolean} wasNotEmpty - Whether state was non-empty before
+ * @param {boolean} isNowEmpty - Whether state is now empty
+ * @param {string|null} correlationId - Correlation ID for async tracing
+ * @returns {boolean} True if immediate render was forced, false otherwise
+ */
+function _handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId) {
+  if (!wasNotEmpty || !isNowEmpty) {
+    return false;
+  }
+
+  console.log('[Sidebar] STATE_SYNC_PATH_EMPTY_TRANSITION: Forcing immediate render', {
+    previousCount: _allQuickTabsFromPort.length,
+    newCount: 0,
+    wasNotEmpty,
+    isNowEmpty,
+    correlationId: correlationId || null,
+    reason: 'Last Quick Tab closed - forcing immediate render',
+    timestamp: Date.now()
+  });
+  _forceImmediateRender('empty-state-transition');
+  return true;
+}
+
+/**
+ * Log low Quick Tab count for debugging last-close issues
+ * v1.6.4.8 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {boolean} wasNotEmpty - Whether state was non-empty before
+ * @param {string|null} correlationId - Correlation ID for async tracing
+ */
+function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
+  if (quickTabs.length > 1) {
+    return;
+  }
+
+  console.log('[Sidebar] STATE_SYNC_PATH_LOW_COUNT:', {
+    previousCount: wasNotEmpty ? '>0' : '0',
+    newCount: quickTabs.length,
+    correlationId: correlationId || null,
+    quickTabIds: quickTabs.map(qt => qt.id),
+    timestamp: Date.now(),
+    message: 'Low Quick Tab count - monitoring for last-close issue'
+  });
+}
+
+/**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
  * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
+ * v1.6.4.8 - FIX BUG #4: Extract empty state handling to reduce complexity
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -888,17 +968,13 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     latencyMs: Date.now() - receiveTime
   });
 
-  // v1.6.4.7 - FIX BUG #4: Force immediate render when transitioning to empty state
-  // This ensures the "last Quick Tab closed" scenario shows empty state immediately
-  if (wasNotEmpty && isNowEmpty) {
-    console.log('[Sidebar] STATE_SYNC_PATH_EMPTY_TRANSITION: Forcing immediate render', {
-      previousCount: wasNotEmpty ? '>0' : '0',
-      newCount: 0,
-      reason: 'Last Quick Tab closed - forcing immediate render'
-    });
-    _forceImmediateRender('empty-state-transition');
+  // v1.6.4.8 - FIX BUG #4: Handle empty state transition with extracted helper
+  if (_handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId)) {
     return;
   }
+
+  // v1.6.4.8 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
+  _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
   // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
   scheduleRender(renderReason, correlationId);
@@ -1142,11 +1218,20 @@ function _logPortMessageValidationError(type, msg, error) {
 /**
  * Handle successful transfer ACK - update local state and force render
  * v1.6.4.7 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
+ * v1.6.4.8 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
 function _handleSuccessfulTransferAck(msg) {
-  console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updating local state and forcing render');
+  // v1.6.4.8 - FIX BUG #1/#2: Add logging to trace message ordering
+  console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updating local state and forcing render', {
+    quickTabId: msg.quickTabId,
+    oldOriginTabId: msg.oldOriginTabId,
+    newOriginTabId: msg.newOriginTabId,
+    currentPortDataCount: _allQuickTabsFromPort.length,
+    timestamp: Date.now(),
+    message: 'STATE_CHANGED should follow with complete updated state'
+  });
 
   // Clear cache for both old and new origin tabs
   _clearTabCacheForTransfer(msg.oldOriginTabId, msg.newOriginTabId);
@@ -1161,8 +1246,12 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // Request fresh state from background to ensure we're in sync
-  requestAllQuickTabsViaPort();
+  // v1.6.4.8 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+  // STATE_CHANGED message is sent by background AFTER the transfer completes and
+  // contains the full updated state. Calling requestAllQuickTabsViaPort() here
+  // causes a race condition where the response may arrive before STATE_CHANGED,
+  // leading to inconsistent state display. The optimistic local update above
+  // combined with the incoming STATE_CHANGED is sufficient.
 }
 
 /**
@@ -1349,6 +1438,7 @@ const _portMessageHandlers = {
   },
   // v1.6.4.4 - FIX BUG #3: Handle duplicate ACK
   // v1.6.4.7 - FIX BUG #2: Force immediate render after successful duplicate
+  // v1.6.4.8 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1356,7 +1446,9 @@ const _portMessageHandlers = {
       newOriginTabId: msg.newOriginTabId || null,
       error: msg.error || null,
       correlationId: msg.correlationId || null,
-      timestamp: Date.now()
+      currentPortDataCount: _allQuickTabsFromPort.length,
+      timestamp: Date.now(),
+      message: 'STATE_CHANGED should follow with complete updated state'
     });
     // v1.6.4.7 - FIX BUG #2: If duplicate succeeded, increment version and force render
     if (msg.success) {
@@ -1370,8 +1462,10 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // Request fresh state from background to ensure we have the new Quick Tab data
-      requestAllQuickTabsViaPort();
+      // v1.6.4.8 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+      // STATE_CHANGED message is sent by background AFTER the duplicate completes.
+      // The optimistic state version increment triggers a render, and STATE_CHANGED
+      // will follow with the new Quick Tab included in the full state.
     }
   }
 };
@@ -5492,6 +5586,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.4.5 - FIX BUG #4: Load saved group order before first render
   await _loadGroupOrderFromStorage();
 
+  // v1.6.4.8 - FIX BUG #3: Load saved Quick Tab order within groups before first render
+  await _loadQuickTabOrderFromStorage();
+
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -7003,8 +7100,9 @@ function renderTabGroup(groupKey, group, collapseState) {
   details.open = collapseState[groupKey] !== true;
 
   // Build header and content
+  // v1.6.4.8 - FIX BUG #3: Pass groupKey to apply user's Quick Tab order
   const summary = _createGroupHeader(groupKey, group, isOrphaned, isClosedTab);
-  const content = _createGroupContent(group.quickTabs, details.open);
+  const content = _createGroupContent(group.quickTabs, details.open, groupKey);
 
   details.appendChild(summary);
   details.appendChild(content);
@@ -7213,22 +7311,23 @@ function _createGroupTitle(groupKey, group, isOrphaned, _isClosedTab) {
  * Create group content element with Quick Tab items
  * Issue #2: Removed inline maxHeight initialization - CSS handles initial state
  * Issue #6: Added logging for section header creation
+ * v1.6.4.8 - FIX BUG #3: Apply user's preferred Quick Tab order before rendering
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {boolean} isOpen - Whether group starts open
+ * @param {string|number} originTabId - Origin tab ID for applying user ordering
  * @returns {HTMLElement}
  */
-function _createGroupContent(quickTabs, isOpen) {
+function _createGroupContent(quickTabs, isOpen, originTabId) {
   const content = document.createElement('div');
   content.className = 'tab-group-content';
 
-  // Sort: active first, then minimized
-  const sortedTabs = [...quickTabs].sort((a, b) => {
-    return (isTabMinimizedHelper(a) ? 1 : 0) - (isTabMinimizedHelper(b) ? 1 : 0);
-  });
+  // v1.6.4.8 - FIX BUG #3: Apply user's preferred Quick Tab order first
+  const orderedTabs = _applyUserQuickTabOrder(quickTabs, originTabId);
 
-  const activeTabs = sortedTabs.filter(t => !isTabMinimizedHelper(t));
-  const minimizedTabs = sortedTabs.filter(t => isTabMinimizedHelper(t));
+  // Sort: active first, then minimized (preserving user order within each category)
+  const activeTabs = orderedTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = orderedTabs.filter(t => isTabMinimizedHelper(t));
   const hasBothSections = activeTabs.length > 0 && minimizedTabs.length > 0;
 
   // Issue #6: Log section creation with counts before DOM insertion
@@ -7700,11 +7799,14 @@ function _handleTabGroupDrop(event) {
   const isCrossTabTransfer = String(targetOriginTabId) !== String(_dragState.originTabId);
 
   if (!isCrossTabTransfer) {
-    // Same tab - just reorder within group (DOM only, no state change needed)
-    console.log('[Manager] DROP: Same tab reorder (no state change)', {
+    // v1.6.4.8 - FIX BUG #3: Same tab reorder - save Quick Tab order within group
+    console.log('[Manager] DROP: Same tab reorder', {
       quickTabId: _dragState.quickTabId,
-      originTabId: _dragState.originTabId
+      originTabId: _dragState.originTabId,
+      timestamp: Date.now()
     });
+    // Save the Quick Tab order for this group after DOM reorder
+    _saveUserQuickTabOrder(targetOriginTabId, targetGroup);
     return;
   }
 
@@ -7880,6 +7982,153 @@ async function _loadGroupOrderFromStorage() {
   }
 }
 
+// ==================== v1.6.4.8 QUICK TAB ORDER WITHIN GROUPS ====================
+
+/**
+ * Save user's preferred Quick Tab order within a group from current DOM state
+ * v1.6.4.8 - FIX BUG #3: Persist Quick Tab ordering within groups across re-renders
+ * @private
+ * @param {string} originTabId - Origin tab ID for the group
+ * @param {HTMLElement} groupElement - Group element containing Quick Tab items
+ */
+function _saveUserQuickTabOrder(originTabId, groupElement) {
+  const content = groupElement.querySelector('.tab-group-content');
+  if (!content) {
+    console.warn('[Manager] QUICK_TAB_ORDER_SAVE_SKIPPED: No content element', { originTabId });
+    return;
+  }
+
+  const items = content.querySelectorAll('.quick-tab-item');
+  const newOrder = Array.from(items)
+    .map(item => item.dataset.tabId)
+    // v1.6.4.8 - Check existence first before calling trim() to avoid potential crash
+    .filter(id => id !== null && id !== undefined && String(id).trim() !== '');
+
+  // Don't save empty order (could happen during DOM transitions)
+  if (newOrder.length === 0) {
+    console.warn('[Manager] QUICK_TAB_ORDER_SAVE_SKIPPED: Empty order detected', {
+      originTabId,
+      previousOrder: _userQuickTabOrderByGroup[originTabId] || [],
+      timestamp: Date.now()
+    });
+    return;
+  }
+
+  _userQuickTabOrderByGroup[originTabId] = newOrder;
+  console.log('[Manager] QUICK_TAB_ORDER_SAVED:', {
+    originTabId,
+    order: newOrder,
+    timestamp: Date.now()
+  });
+
+  // Persist to storage (fire-and-forget)
+  _persistQuickTabOrderToStorage();
+}
+
+/**
+ * Persist Quick Tab order to storage (async, fire-and-forget)
+ * v1.6.4.8 - FIX BUG #3: Persist Quick Tab order across sidebar reloads
+ * @private
+ */
+async function _persistQuickTabOrderToStorage() {
+  try {
+    await browser.storage.local.set({ [QUICK_TAB_ORDER_STORAGE_KEY]: _userQuickTabOrderByGroup });
+    console.log('[Manager] QUICK_TAB_ORDER_PERSISTED:', {
+      groupCount: Object.keys(_userQuickTabOrderByGroup).length,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Manager] QUICK_TAB_ORDER_PERSIST_FAILED:', {
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Load Quick Tab order from storage on Manager initialization
+ * v1.6.4.8 - FIX BUG #3: Restore Quick Tab order after sidebar reload
+ * @private
+ */
+async function _loadQuickTabOrderFromStorage() {
+  try {
+    const result = await browser.storage.local.get(QUICK_TAB_ORDER_STORAGE_KEY);
+    const savedOrder = result?.[QUICK_TAB_ORDER_STORAGE_KEY];
+
+    // Early exit if not a valid object (null check explicit for clarity)
+    if (
+      savedOrder === null ||
+      savedOrder === undefined ||
+      typeof savedOrder !== 'object' ||
+      Array.isArray(savedOrder)
+    ) {
+      console.log('[Manager] QUICK_TAB_ORDER_LOAD_SKIPPED: No saved order or invalid format', {
+        savedOrder,
+        timestamp: Date.now()
+      });
+      return;
+    }
+
+    _userQuickTabOrderByGroup = savedOrder;
+    console.log('[Manager] QUICK_TAB_ORDER_LOADED:', {
+      groupCount: Object.keys(_userQuickTabOrderByGroup).length,
+      groups: Object.keys(_userQuickTabOrderByGroup),
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.warn('[Manager] QUICK_TAB_ORDER_LOAD_FAILED:', {
+      error: err.message
+    });
+  }
+}
+
+/**
+ * Apply user's preferred Quick Tab order within a group
+ * v1.6.4.8 - FIX BUG #3: Maintain Quick Tab ordering within groups across re-renders
+ * @private
+ * @param {Array} quickTabs - Array of Quick Tab objects
+ * @param {string|number} originTabId - Origin tab ID for the group
+ * @returns {Array} Quick Tabs in user's preferred order
+ */
+function _applyUserQuickTabOrder(quickTabs, originTabId) {
+  const tabIdStr = String(originTabId);
+  const savedOrder = _userQuickTabOrderByGroup[tabIdStr];
+
+  // If no saved order for this group, return as-is
+  if (!savedOrder || !Array.isArray(savedOrder) || savedOrder.length === 0) {
+    return quickTabs;
+  }
+
+  const orderedTabs = [];
+  const processedIds = new Set();
+  const tabsById = new Map(quickTabs.map(qt => [qt.id, qt]));
+
+  // First, add Quick Tabs in user's preferred order
+  for (const quickTabId of savedOrder) {
+    if (tabsById.has(quickTabId) && !processedIds.has(quickTabId)) {
+      orderedTabs.push(tabsById.get(quickTabId));
+      processedIds.add(quickTabId);
+    }
+  }
+
+  // Then, append any Quick Tabs not in user's order (new Quick Tabs)
+  for (const qt of quickTabs) {
+    if (!processedIds.has(qt.id)) {
+      orderedTabs.push(qt);
+    }
+  }
+
+  console.log('[Manager] QUICK_TAB_ORDER_APPLIED:', {
+    originTabId: tabIdStr,
+    savedOrder,
+    inputCount: quickTabs.length,
+    outputCount: orderedTabs.length,
+    inputIds: quickTabs.map(qt => qt.id),
+    outputIds: orderedTabs.map(qt => qt.id)
+  });
+
+  return orderedTabs;
+}
+
 /**
  * Apply user's preferred tab group order to a groups Map
  * v1.6.4.1 - FIX BUG #4: Maintain group ordering across re-renders
@@ -8017,6 +8266,7 @@ function _handleQuickTabDragLeave(event) {
  * Handle drop on Quick Tab items (for reordering within group OR cross-tab transfer)
  * v1.6.4 - FEATURE #2/#3: Reorder Quick Tabs within group or transfer across tabs
  * v1.6.4 - FIX BUG #3b: Handle cross-tab transfer here since stopPropagation prevents tab group handler
+ * v1.6.4.8 - FIX BUG #3: Save Quick Tab order after same-group reorder
  * @private
  * @param {DragEvent} event - Drop event
  */
@@ -8075,6 +8325,10 @@ function _handleQuickTabDrop(event) {
   } else {
     targetItem.after(draggedItem);
   }
+
+  // v1.6.4.8 - FIX BUG #3: Save Quick Tab order after reorder within same group
+  const originTabId = targetGroup.dataset.originTabId;
+  _saveUserQuickTabOrder(originTabId, targetGroup);
 }
 
 /**
