@@ -157,6 +157,25 @@
  */
 
 // ==================== IMPORTS ====================
+// v1.6.4 - Code Health: Import extracted manager modules first
+import {
+  initialize as initializeDragDrop,
+  attachDragDropEventListeners,
+  getDragState as _getDragState,
+  resetDragState as _resetDragState,
+  getCachedModifierKey as _getCachedModifierKey
+} from './managers/DragDropManager.js';
+import {
+  GROUP_ORDER_STORAGE_KEY as _GROUP_ORDER_STORAGE_KEY,
+  QUICK_TAB_ORDER_STORAGE_KEY as _QUICK_TAB_ORDER_STORAGE_KEY,
+  saveUserGroupOrder,
+  loadGroupOrderFromStorage,
+  applyUserGroupOrder as _applyUserGroupOrder,
+  saveUserQuickTabOrder,
+  loadQuickTabOrderFromStorage,
+  applyUserQuickTabOrder as _applyUserQuickTabOrder,
+  getUserGroupOrder as _getUserGroupOrder
+} from './managers/OrderManager.js';
 import {
   computeStateHash,
   createFavicon,
@@ -202,10 +221,7 @@ const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
-// v1.6.4 - FIX BUG #4: Storage key for persisting tab group order across sidebar reloads
-const GROUP_ORDER_STORAGE_KEY = 'quickTabsManagerGroupOrder';
-// v1.6.4 - FIX BUG #3: Storage key for persisting Quick Tab order within groups
-const QUICK_TAB_ORDER_STORAGE_KEY = 'quickTabsManagerQuickTabOrder';
+// v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -423,21 +439,8 @@ let quickTabsPort = null;
  */
 let _allQuickTabsFromPort = [];
 
-/**
- * User's preferred tab group order
- * v1.6.4 - FIX BUG #4: Persist tab group ordering during re-renders
- * Key: origin tab ID, Value: order index
- * @private
- */
-let _userGroupOrder = [];
-
-/**
- * User's preferred Quick Tab order within each group
- * v1.6.4 - FIX BUG #3: Persist Quick Tab ordering within groups
- * Key: originTabId (string), Value: array of quickTabIds in preferred order
- * @private
- */
-let _userQuickTabOrderByGroup = {};
+// v1.6.4 - Note: _userGroupOrder and _userQuickTabOrderByGroup now managed by OrderManager.js
+// These module-level variables have been removed to reduce code duplication
 
 /**
  * Track sent Quick Tab port operations for roundtrip time calculation
@@ -5593,11 +5596,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
 
-  // v1.6.4 - FIX BUG #4: Load saved group order before first render
-  await _loadGroupOrderFromStorage();
+  // v1.6.4 - FIX BUG #4: Load saved group order before first render (delegated to OrderManager)
+  await loadGroupOrderFromStorage();
 
-  // v1.6.4 - FIX BUG #3: Load saved Quick Tab order within groups before first render
-  await _loadQuickTabOrderFromStorage();
+  // v1.6.4 - FIX BUG #3: Load saved Quick Tab order within groups before first render (delegated to OrderManager)
+  await loadQuickTabOrderFromStorage();
 
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
@@ -6865,8 +6868,8 @@ async function _executeRenderUIInternal() {
   // eliminating the visual gap/flicker that occurs with innerHTML='' followed by appendChild()
   containersList.replaceChildren(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
-  // v1.6.4 - FEATURE #2/#3/#5: Attach drag-and-drop event listeners
-  attachDragDropEventListeners(groupsContainer);
+  // v1.6.4 - FEATURE #2/#3/#5: Attach drag-and-drop event listeners (delegated to DragDropManager)
+  _attachDragDropListeners(groupsContainer);
   const domDuration = Date.now() - domStartTime;
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
@@ -6995,12 +6998,14 @@ async function _buildGroupsContainer(groups, collapseState) {
  * v1.6.4 - FIX BUG #4: Respect user-defined order from orderedGroups Map
  * If _userGroupOrder is set, preserve Map iteration order (which _applyUserGroupOrder set)
  * Only apply the orphaned/closed sorting for NEW groups not in user order
+ * v1.6.4 - Code Health: Uses _getUserGroupOrder() from OrderManager
  * @private
  */
 function _getSortedGroupKeys(groups) {
   // v1.6.4 - FIX BUG #4: If user has defined an order, preserve Map iteration order
   // The Map was already ordered by _applyUserGroupOrder() - we only need to move orphaned to end
-  if (_userGroupOrder && _userGroupOrder.length > 0) {
+  const userOrder = _getUserGroupOrder();
+  if (userOrder && userOrder.length > 0) {
     const keys = [...groups.keys()];
     // v1.6.4 - FIX Code Review: Use filter for cleaner partition
     const regular = keys.filter(k => k !== 'orphaned');
@@ -7046,12 +7051,14 @@ async function _fetchMissingTabInfo(sortedGroupKeys, groups) {
 /**
  * Re-sort group keys after fetching tab info
  * v1.6.4 - FIX BUG #3: Only re-sort if user hasn't defined a custom order
+ * v1.6.4 - Code Health: Uses _getUserGroupOrder() from OrderManager
  * @private
  */
 function _resortGroupKeys(sortedGroupKeys, groups) {
   // v1.6.4 - FIX BUG #3: Don't re-sort if user has defined a custom order
   // The user's order should be preserved - only move orphaned groups to end
-  if (_userGroupOrder && _userGroupOrder.length > 0) {
+  const userOrder = _getUserGroupOrder();
+  if (userOrder && userOrder.length > 0) {
     console.log('[Manager] RESORT_SKIPPED: User group order is defined, preserving user order');
     return;
   }
@@ -7493,906 +7500,51 @@ function attachCollapseEventListeners(container, collapseState) {
   }
 }
 
+
 // ==================== v1.6.4 DRAG AND DROP ====================
 // FEATURE #2, #3, #5: Drag-and-Drop Reordering and Cross-Tab Transfer
+// v1.6.4 - Code Health: Delegated to DragDropManager.js module
 
 /**
- * Cached modifier key for duplicate operations (avoid repeated storage reads)
- * v1.6.4 - FEATURE #5: Cache to improve drag operation responsiveness
- * v1.6.4 - FIX BUG #5: Changed default from 'alt' to 'shift'
+ * Initialize drag-and-drop functionality
+ * v1.6.4 - Delegates to DragDropManager module
  * @private
  */
-let _cachedDuplicateModifierKey = 'shift';
-
-/**
- * Current drag state for drag-and-drop operations
- * v1.6.4 - FEATURE #2/#3/#5: Track drag state for transfer/duplicate
- * @private
- */
-const _dragState = {
-  /** Element being dragged */
-  draggedElement: null,
-  /** Type of element: 'tab-group' or 'quick-tab' */
-  dragType: null,
-  /** Quick Tab ID if dragging a Quick Tab */
-  quickTabId: null,
-  /** Origin tab ID of the dragged Quick Tab */
-  originTabId: null,
-  /** Full Quick Tab data */
-  quickTabData: null,
-  /** Whether modifier key is held for duplicate */
-  isDuplicate: false,
-  /** Cached modifier key for this drag operation */
-  modifierKey: 'shift'
-};
-
-/**
- * Load and cache the duplicate modifier key from storage
- * v1.6.4 - FEATURE #5: Call once on startup and cache
- * v1.6.4 - FIX BUG #5: Changed default from 'alt' to 'shift'
- * @private
- */
-async function _loadDuplicateModifierKey() {
-  try {
-    const result = await browser.storage.local.get('quickTabDuplicateModifier');
-    _cachedDuplicateModifierKey = result.quickTabDuplicateModifier || 'shift';
-    console.log('[Manager] DRAG_DROP: Modifier key loaded:', _cachedDuplicateModifierKey);
-  } catch (err) {
-    console.warn('[Manager] DRAG_DROP: Failed to read modifier key setting:', err.message);
-    _cachedDuplicateModifierKey = 'shift'; // Default to Shift
-  }
+async function _initDragDrop() {
+  await initializeDragDrop();
 }
 
-// Load modifier key on module initialization
-_loadDuplicateModifierKey();
+// Initialize drag-drop on module load
+_initDragDrop();
 
 /**
- * Check if the modifier key for duplicate is pressed
- * v1.6.4 - FEATURE #5: Check configured modifier key
- * v1.6.4 - FIX BUG #5: Changed default from altKey to shiftKey
- * @private
- * @param {DragEvent} event - Drag event
- * @returns {boolean} True if modifier is pressed
- */
-function _isModifierKeyPressed(event) {
-  switch (_cachedDuplicateModifierKey) {
-    case 'alt':
-      return event.altKey;
-    case 'ctrl':
-      return event.ctrlKey;
-    case 'shift':
-      return event.shiftKey;
-    case 'none':
-      return false;
-    default:
-      return event.shiftKey; // Default to Shift
-  }
-}
-
-/**
- * Attach drag-and-drop event listeners to tab groups and Quick Tab items
- * v1.6.4 - FEATURE #2/#3/#5: Drag-and-drop reordering and transfer
+ * Wrapper to attach drag-and-drop event listeners using DragDropManager
+ * v1.6.4 - Code Health: Delegates to DragDropManager module with callbacks
  * @param {HTMLElement} container - Container with tab groups
  */
-function attachDragDropEventListeners(container) {
-  const tabGroups = container.querySelectorAll('.tab-group');
-  const quickTabItems = container.querySelectorAll('.quick-tab-item');
-
-  // Make tab group headers draggable for group reordering
-  tabGroups.forEach(group => {
-    const header = group.querySelector('.tab-group-header');
-    if (header) {
-      header.setAttribute('draggable', 'true');
-      header.addEventListener('dragstart', e => _handleTabGroupDragStart(e, group));
-      header.addEventListener('dragend', _handleDragEnd);
+function _attachDragDropListeners(container) {
+  attachDragDropEventListeners(container, {
+    // Callback to get Quick Tab data by ID
+    getQuickTabData: (quickTabId) => {
+      return _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
+    },
+    // Callback to save group order after reorder
+    saveGroupOrder: (containerEl) => {
+      saveUserGroupOrder(containerEl);
+    },
+    // Callback to save Quick Tab order after reorder within group
+    saveQuickTabOrder: (originTabId, groupElement) => {
+      saveUserQuickTabOrder(originTabId, groupElement);
+    },
+    // Callback to transfer Quick Tab to another tab
+    transferQuickTab: (quickTabId, newOriginTabId) => {
+      _transferQuickTabToTab(quickTabId, newOriginTabId);
+    },
+    // Callback to duplicate Quick Tab to another tab
+    duplicateQuickTab: (quickTabData, newOriginTabId) => {
+      _duplicateQuickTabToTab(quickTabData, newOriginTabId);
     }
-
-    // Make groups drop targets for cross-tab transfer
-    group.addEventListener('dragover', _handleTabGroupDragOver);
-    group.addEventListener('dragleave', _handleTabGroupDragLeave);
-    group.addEventListener('drop', _handleTabGroupDrop);
   });
-
-  // Make Quick Tab items draggable
-  quickTabItems.forEach(item => {
-    item.setAttribute('draggable', 'true');
-    item.addEventListener('dragstart', e => _handleQuickTabDragStart(e, item));
-    item.addEventListener('dragend', _handleDragEnd);
-    item.addEventListener('dragover', _handleQuickTabDragOver);
-    item.addEventListener('dragleave', _handleQuickTabDragLeave);
-    item.addEventListener('drop', _handleQuickTabDrop);
-  });
-
-  console.log('[Manager] DRAG_DROP: Event listeners attached', {
-    tabGroups: tabGroups.length,
-    quickTabItems: quickTabItems.length,
-    timestamp: Date.now()
-  });
-}
-
-/**
- * Handle drag start for tab group headers
- * v1.6.4 - FEATURE #2: Tab group reordering
- * @private
- * @param {DragEvent} event - Drag event
- * @param {HTMLElement} group - Tab group element
- */
-function _handleTabGroupDragStart(event, group) {
-  const originTabId = group.dataset.originTabId;
-
-  console.log('[Manager] DRAG_START: Tab group', {
-    originTabId,
-    timestamp: Date.now()
-  });
-
-  _dragState.draggedElement = group;
-  _dragState.dragType = 'tab-group';
-  _dragState.originTabId = originTabId;
-  _dragState.quickTabId = null;
-  _dragState.quickTabData = null;
-
-  group.classList.add('dragging');
-
-  // Set drag data
-  event.dataTransfer.effectAllowed = 'move';
-  event.dataTransfer.setData(
-    'text/plain',
-    JSON.stringify({
-      type: 'tab-group',
-      originTabId
-    })
-  );
-}
-
-/**
- * Handle drag start for Quick Tab items
- * v1.6.4 - FEATURE #2/#3/#5: Quick Tab drag with transfer/duplicate
- * @private
- * @param {DragEvent} event - Drag event
- * @param {HTMLElement} item - Quick Tab item element
- */
-function _handleQuickTabDragStart(event, item) {
-  const quickTabId = item.dataset.tabId;
-
-  // Find the Quick Tab data from our cached state
-  const quickTabData = _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
-  if (!quickTabData) {
-    console.warn('[Manager] DRAG_START: Quick Tab data not found', { quickTabId });
-    event.preventDefault();
-    return;
-  }
-
-  // Check modifier key for duplicate (use cached modifier key)
-  const isDuplicate = _isModifierKeyPressed(event);
-
-  console.log('[Manager] DRAG_START: Quick Tab', {
-    quickTabId,
-    originTabId: quickTabData.originTabId,
-    isDuplicate,
-    modifierKey: _cachedDuplicateModifierKey,
-    timestamp: Date.now()
-  });
-
-  _dragState.draggedElement = item;
-  _dragState.dragType = 'quick-tab';
-  _dragState.quickTabId = quickTabId;
-  _dragState.originTabId = quickTabData.originTabId;
-  _dragState.quickTabData = quickTabData;
-  _dragState.isDuplicate = isDuplicate;
-
-  item.classList.add('dragging');
-
-  // Set drag data
-  event.dataTransfer.effectAllowed = isDuplicate ? 'copy' : 'move';
-  event.dataTransfer.setData(
-    'text/plain',
-    JSON.stringify({
-      type: 'quick-tab',
-      quickTabId,
-      originTabId: quickTabData.originTabId,
-      isDuplicate
-    })
-  );
-}
-
-/**
- * Handle drag end - cleanup drag state
- * v1.6.4 - FEATURE #2/#3/#5: Cleanup after drag
- * @private
- */
-function _handleDragEnd() {
-  console.log('[Manager] DRAG_END:', {
-    dragType: _dragState.dragType,
-    timestamp: Date.now()
-  });
-
-  // Remove all drag classes
-  document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
-  document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
-  document
-    .querySelectorAll('.drag-over-bottom')
-    .forEach(el => el.classList.remove('drag-over-bottom'));
-  document.querySelectorAll('.drag-transfer').forEach(el => el.classList.remove('drag-transfer'));
-  document.querySelectorAll('.drag-duplicate').forEach(el => el.classList.remove('drag-duplicate'));
-  document.querySelectorAll('.drag-invalid').forEach(el => el.classList.remove('drag-invalid'));
-
-  // Reset drag state
-  _dragState.draggedElement = null;
-  _dragState.dragType = null;
-  _dragState.quickTabId = null;
-  _dragState.originTabId = null;
-  _dragState.quickTabData = null;
-  _dragState.isDuplicate = false;
-}
-
-/**
- * Handle tab group reorder during drag over
- * v1.6.4 - Extracted to reduce nesting depth
- * @private
- * @param {DragEvent} event - Drag event
- * @returns {boolean} True if handled
- */
-function _handleTabGroupReorderDragOver(event) {
-  if (_dragState.dragType !== 'tab-group') return false;
-
-  const targetGroup = event.currentTarget;
-  if (targetGroup === _dragState.draggedElement) return true;
-
-  event.dataTransfer.dropEffect = 'move';
-  targetGroup.classList.add('drag-over');
-  return true;
-}
-
-/**
- * Handle drag over for tab groups (for cross-tab transfer)
- * v1.6.4 - FEATURE #3: Cross-tab transfer visual feedback
- * @private
- * @param {DragEvent} event - Drag event
- */
-function _handleTabGroupDragOver(event) {
-  event.preventDefault();
-
-  // Only allow Quick Tab drops on groups (not group-to-group)
-  if (_dragState.dragType !== 'quick-tab') {
-    _handleTabGroupReorderDragOver(event);
-    return;
-  }
-
-  const targetGroup = event.currentTarget;
-  const targetOriginTabId = targetGroup.dataset.originTabId;
-
-  // Check if transferring to a different tab
-  const isCrossTabTransfer = String(targetOriginTabId) !== String(_dragState.originTabId);
-
-  // Check modifier for duplicate (use cached modifier key)
-  const isDuplicate = _isModifierKeyPressed(event);
-  _dragState.isDuplicate = isDuplicate;
-
-  // Update visual classes
-  targetGroup.classList.remove('drag-over', 'drag-transfer', 'drag-duplicate');
-
-  if (isCrossTabTransfer) {
-    if (isDuplicate) {
-      targetGroup.classList.add('drag-duplicate');
-      event.dataTransfer.dropEffect = 'copy';
-    } else {
-      targetGroup.classList.add('drag-transfer');
-      event.dataTransfer.dropEffect = 'move';
-    }
-  } else {
-    targetGroup.classList.add('drag-over');
-    event.dataTransfer.dropEffect = 'move';
-  }
-}
-
-/**
- * Handle drag leave for tab groups
- * v1.6.4 - FEATURE #3: Remove visual feedback
- * @private
- * @param {DragEvent} event - Drag event
- */
-function _handleTabGroupDragLeave(event) {
-  const targetGroup = event.currentTarget;
-  targetGroup.classList.remove('drag-over', 'drag-transfer', 'drag-duplicate');
-}
-
-/**
- * Handle drop on tab groups (for cross-tab transfer or group reordering)
- * v1.6.4 - FEATURE #2/#3/#5: Handle transfer/duplicate/reorder
- * @private
- * @param {DragEvent} event - Drop event
- */
-function _handleTabGroupDrop(event) {
-  event.preventDefault();
-
-  const targetGroup = event.currentTarget;
-  const targetOriginTabId = targetGroup.dataset.originTabId;
-
-  targetGroup.classList.remove('drag-over', 'drag-transfer', 'drag-duplicate');
-
-  // Handle tab group reordering
-  if (_dragState.dragType === 'tab-group') {
-    _handleTabGroupReorder(targetGroup);
-    return;
-  }
-
-  // Handle Quick Tab drop
-  if (_dragState.dragType !== 'quick-tab' || !_dragState.quickTabData) {
-    return;
-  }
-
-  const isCrossTabTransfer = String(targetOriginTabId) !== String(_dragState.originTabId);
-
-  if (!isCrossTabTransfer) {
-    // v1.6.4 - FIX BUG #3: Same tab reorder - save Quick Tab order within group
-    console.log('[Manager] DROP: Same tab reorder', {
-      quickTabId: _dragState.quickTabId,
-      originTabId: _dragState.originTabId,
-      timestamp: Date.now()
-    });
-    // Save the Quick Tab order for this group after DOM reorder
-    _saveUserQuickTabOrder(targetOriginTabId, targetGroup);
-    return;
-  }
-
-  // Cross-tab transfer or duplicate (use cached modifier key)
-  const isDuplicate = _isModifierKeyPressed(event);
-
-  console.log('[Manager] DROP: Cross-tab operation', {
-    quickTabId: _dragState.quickTabId,
-    fromTabId: _dragState.originTabId,
-    toTabId: targetOriginTabId,
-    isDuplicate,
-    timestamp: Date.now()
-  });
-
-  if (isDuplicate) {
-    _duplicateQuickTabToTab(_dragState.quickTabData, parseInt(targetOriginTabId, 10));
-  } else {
-    _transferQuickTabToTab(_dragState.quickTabId, parseInt(targetOriginTabId, 10));
-  }
-}
-
-/**
- * Handle tab group reordering (DOM only)
- * v1.6.4 - FEATURE #2: Tab group visual reorder
- * @private
- * @param {HTMLElement} targetGroup - Target group to drop before/after
- */
-function _handleTabGroupReorder(targetGroup) {
-  const draggedGroup = _dragState.draggedElement;
-  if (!draggedGroup || draggedGroup === targetGroup) return;
-
-  const container = draggedGroup.parentElement;
-  const groups = Array.from(container.children);
-  const draggedIndex = groups.indexOf(draggedGroup);
-  const targetIndex = groups.indexOf(targetGroup);
-
-  console.log('[Manager] REORDER: Tab groups', {
-    fromIndex: draggedIndex,
-    toIndex: targetIndex,
-    fromTabId: draggedGroup.dataset.originTabId,
-    toTabId: targetGroup.dataset.originTabId
-  });
-
-  // Move in DOM
-  if (draggedIndex < targetIndex) {
-    targetGroup.after(draggedGroup);
-  } else {
-    targetGroup.before(draggedGroup);
-  }
-
-  // v1.6.4 - FIX BUG #4: Save user's preferred group order
-  _saveUserGroupOrder(container);
-}
-
-/**
- * Check if a group order entry is valid (non-empty string after trimming)
- * v1.6.4 - FIX Code Review: Extracted to reduce duplication between save and load
- * @private
- * @param {*} id - Entry to validate
- * @returns {boolean} True if entry is a valid string
- */
-function _isValidGroupOrderEntry(id) {
-  return typeof id === 'string' && id.trim() !== '';
-}
-
-/**
- * Save user's preferred tab group order from current DOM state
- * v1.6.4 - FIX BUG #4: Persist group ordering across re-renders
- * v1.6.4 - FIX BUG #4: Guard against saving empty order during DOM transitions
- * v1.6.4 - FIX Code Review: Filter out undefined/null values from DOM
- * @private
- * @param {HTMLElement} container - Container with tab groups
- */
-function _saveUserGroupOrder(container) {
-  const groups = container.querySelectorAll('.tab-group');
-  // v1.6.4 - FIX Code Review: Filter out undefined/null dataset values
-  const newOrder = Array.from(groups)
-    .map(g => g.dataset.originTabId)
-    .filter(id => id != null);
-
-  // v1.6.4 - FIX BUG #4: Don't save empty order (could happen during DOM transitions)
-  if (newOrder.length === 0) {
-    console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Empty order detected, preserving previous', {
-      previousOrder: _userGroupOrder,
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  // v1.6.4 - FIX BUG #4: Validate all entries are valid strings
-  const invalidEntries = newOrder.filter(id => !_isValidGroupOrderEntry(id));
-  if (invalidEntries.length > 0) {
-    console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Invalid entries detected', {
-      invalidEntries,
-      newOrder,
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  _userGroupOrder = newOrder;
-  console.log('[Manager] GROUP_ORDER_SAVED:', {
-    order: _userGroupOrder,
-    timestamp: Date.now()
-  });
-
-  // v1.6.4 - FIX BUG #4: Persist to storage for sidebar reload persistence
-  // Note: This is intentionally fire-and-forget since group order is non-critical
-  // and the async function has internal error handling
-  _persistGroupOrderToStorage(newOrder);
-}
-
-/**
- * Persist group order to storage (async, fire-and-forget)
- * v1.6.4 - FIX BUG #4: Persist tab group order across sidebar reloads
- * Note: Has internal error handling, safe to call without awaiting
- * @private
- * @param {string[]} order - Array of origin tab IDs in user's preferred order
- */
-async function _persistGroupOrderToStorage(order) {
-  try {
-    await browser.storage.local.set({ [GROUP_ORDER_STORAGE_KEY]: order });
-    console.log('[Manager] GROUP_ORDER_PERSISTED:', {
-      order,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] GROUP_ORDER_PERSIST_FAILED:', {
-      error: err.message,
-      order
-    });
-  }
-}
-
-/**
- * Load group order from storage on Manager initialization
- * v1.6.4 - FIX BUG #4: Restore tab group order after sidebar reload
- * @private
- */
-async function _loadGroupOrderFromStorage() {
-  try {
-    const result = await browser.storage.local.get(GROUP_ORDER_STORAGE_KEY);
-    const savedOrder = result?.[GROUP_ORDER_STORAGE_KEY];
-
-    // Early exit if not a valid array
-    if (!Array.isArray(savedOrder) || savedOrder.length === 0) {
-      console.log('[Manager] GROUP_ORDER_LOAD_SKIPPED: No saved order or empty', {
-        savedOrder,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    // Validate all entries are strings using shared helper
-    const validOrder = savedOrder.filter(_isValidGroupOrderEntry);
-    if (validOrder.length === 0) {
-      console.log('[Manager] GROUP_ORDER_LOAD_SKIPPED: No valid entries after filter', {
-        savedOrder,
-        timestamp: Date.now()
-      });
-      return;
-    }
-
-    _userGroupOrder = validOrder;
-    console.log('[Manager] GROUP_ORDER_LOADED:', {
-      order: _userGroupOrder,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] GROUP_ORDER_LOAD_FAILED:', {
-      error: err.message
-    });
-  }
-}
-
-// ==================== v1.6.4 QUICK TAB ORDER WITHIN GROUPS ====================
-
-/**
- * Save user's preferred Quick Tab order within a group from current DOM state
- * v1.6.4 - FIX BUG #3: Persist Quick Tab ordering within groups across re-renders
- * @private
- * @param {string} originTabId - Origin tab ID for the group
- * @param {HTMLElement} groupElement - Group element containing Quick Tab items
- */
-function _saveUserQuickTabOrder(originTabId, groupElement) {
-  const content = groupElement.querySelector('.tab-group-content');
-  if (!content) {
-    console.warn('[Manager] QUICK_TAB_ORDER_SAVE_SKIPPED: No content element', { originTabId });
-    return;
-  }
-
-  const items = content.querySelectorAll('.quick-tab-item');
-  const newOrder = Array.from(items)
-    .map(item => item.dataset.tabId)
-    // v1.6.4 - Check existence first before calling trim() to avoid potential crash
-    .filter(id => id !== null && id !== undefined && String(id).trim() !== '');
-
-  // Don't save empty order (could happen during DOM transitions)
-  if (newOrder.length === 0) {
-    console.warn('[Manager] QUICK_TAB_ORDER_SAVE_SKIPPED: Empty order detected', {
-      originTabId,
-      previousOrder: _userQuickTabOrderByGroup[originTabId] || [],
-      timestamp: Date.now()
-    });
-    return;
-  }
-
-  _userQuickTabOrderByGroup[originTabId] = newOrder;
-  console.log('[Manager] QUICK_TAB_ORDER_SAVED:', {
-    originTabId,
-    order: newOrder,
-    timestamp: Date.now()
-  });
-
-  // Persist to storage (fire-and-forget)
-  _persistQuickTabOrderToStorage();
-}
-
-/**
- * Persist Quick Tab order to storage (async, fire-and-forget)
- * v1.6.4 - FIX BUG #3: Persist Quick Tab order across sidebar reloads
- * @private
- */
-async function _persistQuickTabOrderToStorage() {
-  try {
-    await browser.storage.local.set({ [QUICK_TAB_ORDER_STORAGE_KEY]: _userQuickTabOrderByGroup });
-    console.log('[Manager] QUICK_TAB_ORDER_PERSISTED:', {
-      groupCount: Object.keys(_userQuickTabOrderByGroup).length,
-      timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] QUICK_TAB_ORDER_PERSIST_FAILED:', {
-      error: err.message
-    });
-  }
-}
-
-/**
- * Load Quick Tab order from storage on Manager initialization
- * v1.6.4 - FIX BUG #3: Restore Quick Tab order after sidebar reload
- * @private
- */
-/**
- * Validate if saved order is a valid non-array object
- * v1.6.4 - FIX Code Health: Extracted to simplify _loadQuickTabOrderFromStorage
- * @private
- * @param {*} savedOrder - Saved order value from storage
- * @returns {boolean} True if valid order object
- */
-function _isValidOrderObject(savedOrder) {
-  return savedOrder !== null &&
-    savedOrder !== undefined &&
-    typeof savedOrder === 'object' &&
-    !Array.isArray(savedOrder);
-}
-
-async function _loadQuickTabOrderFromStorage() {
-  try {
-    const result = await browser.storage.local.get(QUICK_TAB_ORDER_STORAGE_KEY);
-    const savedOrder = result?.[QUICK_TAB_ORDER_STORAGE_KEY];
-
-    if (!_isValidOrderObject(savedOrder)) {
-      console.log('[Manager] QUICK_TAB_ORDER_LOAD_SKIPPED: No saved order or invalid format', {
-        savedOrder, timestamp: Date.now()
-      });
-      return;
-    }
-
-    _userQuickTabOrderByGroup = savedOrder;
-    console.log('[Manager] QUICK_TAB_ORDER_LOADED:', {
-      groupCount: Object.keys(_userQuickTabOrderByGroup).length,
-      groups: Object.keys(_userQuickTabOrderByGroup), timestamp: Date.now()
-    });
-  } catch (err) {
-    console.warn('[Manager] QUICK_TAB_ORDER_LOAD_FAILED:', { error: err.message });
-  }
-}
-
-/**
- * Check if saved order is valid for applying
- * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserQuickTabOrder complexity
- * @private
- * @param {*} savedOrder - Saved order array
- * @returns {boolean} True if valid non-empty array
- */
-function _isValidSavedOrder(savedOrder) {
-  return Array.isArray(savedOrder) && savedOrder.length > 0;
-}
-
-/**
- * Build ordered tabs from saved order
- * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserQuickTabOrder complexity
- * @private
- * @param {Array} savedOrder - User's saved order
- * @param {Map} tabsById - Map of quickTabId -> quickTab object
- * @returns {{ orderedTabs: Array, processedIds: Set }}
- */
-function _buildOrderedTabsFromSavedOrder(savedOrder, tabsById) {
-  const orderedTabs = [];
-  const processedIds = new Set();
-
-  for (const quickTabId of savedOrder) {
-    const tab = tabsById.get(quickTabId);
-    if (tab && !processedIds.has(quickTabId)) {
-      orderedTabs.push(tab);
-      processedIds.add(quickTabId);
-    }
-  }
-
-  return { orderedTabs, processedIds };
-}
-
-/**
- * Apply user's preferred Quick Tab order within a group
- * v1.6.4 - FIX BUG #3: Maintain Quick Tab ordering within groups across re-renders
- * v1.6.4 - FIX Code Health: Extracted helpers to reduce complexity (cc=9 -> cc=4)
- * @private
- * @param {Array} quickTabs - Array of Quick Tab objects
- * @param {string|number} originTabId - Origin tab ID for the group
- * @returns {Array} Quick Tabs in user's preferred order
- */
-function _applyUserQuickTabOrder(quickTabs, originTabId) {
-  const tabIdStr = String(originTabId);
-  const savedOrder = _userQuickTabOrderByGroup[tabIdStr];
-
-  if (!_isValidSavedOrder(savedOrder)) {
-    return quickTabs;
-  }
-
-  const tabsById = new Map(quickTabs.map(qt => [qt.id, qt]));
-  const { orderedTabs, processedIds } = _buildOrderedTabsFromSavedOrder(savedOrder, tabsById);
-
-  // Append any Quick Tabs not in user's order (new Quick Tabs)
-  for (const qt of quickTabs) {
-    if (!processedIds.has(qt.id)) {
-      orderedTabs.push(qt);
-    }
-  }
-
-  console.log('[Manager] QUICK_TAB_ORDER_APPLIED:', {
-    originTabId: tabIdStr, savedOrder,
-    inputCount: quickTabs.length, outputCount: orderedTabs.length,
-    inputIds: quickTabs.map(qt => qt.id), outputIds: orderedTabs.map(qt => qt.id)
-  });
-
-  return orderedTabs;
-}
-
-/**
- * Build ordered groups from user's preferred order
- * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserGroupOrder complexity
- * @private
- * @param {Map} groups - Groups Map
- * @returns {{ orderedGroups: Map, processedKeys: Set }}
- */
-function _buildOrderedGroupsFromUserOrder(groups) {
-  const orderedGroups = new Map();
-  const processedKeys = new Set();
-
-  for (const tabId of _userGroupOrder) {
-    const matchedKey = _findMatchingGroupKey(groups, tabId);
-    if (matchedKey !== null) {
-      orderedGroups.set(matchedKey, groups.get(matchedKey));
-      processedKeys.add(String(matchedKey));
-    }
-  }
-
-  return { orderedGroups, processedKeys };
-}
-
-/**
- * Apply user's preferred tab group order to a groups Map
- * v1.6.4 - FIX BUG #4: Maintain group ordering across re-renders
- * v1.6.4 - FIX Code Health: Extracted helper to reduce complexity
- * Groups not in user order are appended at the end
- * @private
- * @param {Map} groups - Map of originTabId -> group data
- * @returns {Map} New Map with groups in user's preferred order
- */
-function _applyUserGroupOrder(groups) {
-  if (!_userGroupOrder || _userGroupOrder.length === 0) {
-    console.log('[Manager] GROUP_ORDER_SKIPPED: No user order set');
-    return groups;
-  }
-
-  console.log('[Manager] GROUP_ORDER_APPLYING:', {
-    userOrder: _userGroupOrder,
-    groupKeys: Array.from(groups.keys()),
-    groupKeyTypes: Array.from(groups.keys()).map(k => typeof k)
-  });
-
-  const { orderedGroups, processedKeys } = _buildOrderedGroupsFromUserOrder(groups);
-
-  // Append any groups not in user's order (new groups)
-  for (const [key, value] of groups) {
-    if (!processedKeys.has(String(key))) {
-      orderedGroups.set(key, value);
-    }
-  }
-
-  console.log('[Manager] GROUP_ORDER_APPLIED:', {
-    userOrder: _userGroupOrder, resultOrder: Array.from(orderedGroups.keys()),
-    inputGroupCount: groups.size, outputGroupCount: orderedGroups.size, timestamp: Date.now()
-  });
-
-  return orderedGroups;
-}
-
-/**
- * Check if value is a valid integer for group key matching
- * v1.6.4 - FIX Code Health: Extracted to reduce _findMatchingGroupKey complexity
- * @private
- * @param {number} num - Number to check
- * @returns {boolean} True if valid integer
- */
-function _isValidIntegerKey(num) {
-  return !Number.isNaN(num) && Number.isInteger(num);
-}
-
-/**
- * Find matching group key trying multiple formats
- * v1.6.4 - FIX BUG #4: More robust key matching
- * v1.6.4 - FIX Code Health: Extracted helper to reduce complexity
- * @private
- * @param {Map} groups - Groups Map
- * @param {string} tabId - Tab ID from user order (always string from DOM dataset)
- * @returns {*} Matching key or null if not found
- */
-function _findMatchingGroupKey(groups, tabId) {
-  // Try string version first (from dataset)
-  if (groups.has(tabId)) return tabId;
-
-  // Try as integer
-  const numericId = Number(tabId);
-  if (_isValidIntegerKey(numericId) && groups.has(numericId)) {
-    return numericId;
-  }
-
-  // Try explicit string conversion of the original value
-  const strId = String(tabId);
-  if (groups.has(strId)) {
-    return strId;
-  }
-
-  console.log('[Manager] GROUP_ORDER_KEY_NOT_FOUND:', {
-    tabId,
-    triedFormats: [tabId, numericId, strId],
-    availableKeys: Array.from(groups.keys())
-  });
-
-  return null;
-}
-
-/**
- * Handle drag over for Quick Tab items (for reordering within group)
- * v1.6.4 - FEATURE #2: Reorder visual feedback
- * @private
- * @param {DragEvent} event - Drag event
- */
-function _handleQuickTabDragOver(event) {
-  event.preventDefault();
-
-  if (_dragState.dragType !== 'quick-tab') return;
-
-  const targetItem = event.currentTarget;
-  if (targetItem === _dragState.draggedElement) return;
-
-  // Remove existing classes
-  targetItem.classList.remove('drag-over', 'drag-over-bottom');
-
-  // Determine if dropping above or below based on mouse position
-  const rect = targetItem.getBoundingClientRect();
-  const midpoint = rect.top + rect.height / 2;
-
-  if (event.clientY < midpoint) {
-    targetItem.classList.add('drag-over');
-  } else {
-    targetItem.classList.add('drag-over-bottom');
-  }
-
-  event.dataTransfer.dropEffect = 'move';
-}
-
-/**
- * Handle drag leave for Quick Tab items
- * v1.6.4 - FEATURE #2: Remove reorder visual feedback
- * @private
- * @param {DragEvent} event - Drag event
- */
-function _handleQuickTabDragLeave(event) {
-  const targetItem = event.currentTarget;
-  targetItem.classList.remove('drag-over', 'drag-over-bottom');
-}
-
-/**
- * Handle drop on Quick Tab items (for reordering within group OR cross-tab transfer)
- * v1.6.4 - FEATURE #2/#3: Reorder Quick Tabs within group or transfer across tabs
- * v1.6.4 - FIX BUG #3b: Handle cross-tab transfer here since stopPropagation prevents tab group handler
- * v1.6.4 - FIX BUG #3: Save Quick Tab order after same-group reorder
- * @private
- * @param {DragEvent} event - Drop event
- */
-function _handleQuickTabDrop(event) {
-  event.preventDefault();
-  event.stopPropagation(); // Prevent bubbling to tab group
-
-  if (_dragState.dragType !== 'quick-tab') return;
-
-  const targetItem = event.currentTarget;
-  const draggedItem = _dragState.draggedElement;
-
-  if (!draggedItem || targetItem === draggedItem) return;
-
-  targetItem.classList.remove('drag-over', 'drag-over-bottom');
-
-  // Check if same parent group (reorder) or different group (transfer)
-  const draggedGroup = draggedItem.closest('.tab-group');
-  const targetGroup = targetItem.closest('.tab-group');
-
-  if (draggedGroup !== targetGroup) {
-    // v1.6.4 - FIX BUG #3b: Cross-group drop - perform transfer/duplicate here
-    // Since stopPropagation prevents the tab group drop handler from running,
-    // we need to handle the cross-tab transfer directly
-    const targetOriginTabId = targetGroup.dataset.originTabId;
-    const isDuplicate = _isModifierKeyPressed(event);
-
-    console.log('[Manager] DROP: Cross-tab operation (via Quick Tab item)', {
-      quickTabId: _dragState.quickTabId,
-      fromTabId: _dragState.originTabId,
-      toTabId: targetOriginTabId,
-      isDuplicate,
-      timestamp: Date.now()
-    });
-
-    if (isDuplicate) {
-      _duplicateQuickTabToTab(_dragState.quickTabData, parseInt(targetOriginTabId, 10));
-    } else {
-      _transferQuickTabToTab(_dragState.quickTabId, parseInt(targetOriginTabId, 10));
-    }
-    return;
-  }
-
-  // Same group - reorder in DOM
-  const rect = targetItem.getBoundingClientRect();
-  const midpoint = rect.top + rect.height / 2;
-
-  console.log('[Manager] REORDER: Quick Tab items', {
-    draggedId: _dragState.quickTabId,
-    targetId: targetItem.dataset.tabId,
-    dropPosition: event.clientY < midpoint ? 'before' : 'after'
-  });
-
-  if (event.clientY < midpoint) {
-    targetItem.before(draggedItem);
-  } else {
-    targetItem.after(draggedItem);
-  }
-
-  // v1.6.4 - FIX BUG #3: Save Quick Tab order after reorder within same group
-  const originTabId = targetGroup.dataset.originTabId;
-  _saveUserQuickTabOrder(originTabId, targetGroup);
 }
 
 /**
@@ -8427,7 +7579,7 @@ function _transferQuickTabToTab(quickTabId, newOriginTabId) {
 
 /**
  * Duplicate a Quick Tab to a different browser tab
- * v1.6.4 - FEATURE #5: Alt+drag duplicate via port message
+ * v1.6.4 - FEATURE #5: Shift+drag duplicate via port message
  * @private
  * @param {Object} quickTabData - Quick Tab data to duplicate
  * @param {number} newOriginTabId - Target origin tab ID
