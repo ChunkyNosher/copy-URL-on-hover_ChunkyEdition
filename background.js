@@ -5674,46 +5674,55 @@ function handleQuickTabRemovedMessage(message, sender) {
 }
 
 /**
- * Handle QUICKTAB_MOVED message from content script UpdateHandler
- * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
- * When a Quick Tab is dragged, UpdateHandler sends this message to update
- * the background's in-memory state and notify the sidebar.
- *
- * @param {Object} message - Message containing quickTabId, left, top, originTabId
- * @param {browser.runtime.MessageSender} sender - Message sender info
+ * Generic handler for Quick Tab property update messages (moved/resized)
+ * v1.6.4 - FIX Code Health: Eliminate duplication between moved/resized handlers
+ * @private
+ * @param {Object} options - Handler options
+ * @param {Object} options.message - Message from content script
+ * @param {browser.runtime.MessageSender} options.sender - Message sender info
+ * @param {string} options.messageType - Message type for logging (QUICKTAB_MOVED, QUICKTAB_RESIZED)
+ * @param {Function} options.propertyExtractor - Function to extract properties from message
+ * @param {Function} options.updateFn - Function to update Quick Tab properties
+ * @param {Function} options.successLogFn - Function to generate success log data
+ * @returns {{ success: boolean, quickTabId: string, error?: string }}
  */
-function handleQuickTabMovedMessage(message, sender) {
-  const { quickTabId, left, top, originTabId, source, timestamp } = message;
+function _handleQuickTabPropertyUpdate({
+  message,
+  sender,
+  messageType,
+  propertyExtractor,
+  updateFn,
+  successLogFn
+}) {
+  const { quickTabId, originTabId, source, timestamp } = message;
   const senderTabId = sender?.tab?.id ?? originTabId;
+  const extractedProps = propertyExtractor(message);
 
-  console.log('[Background] v1.6.3.12-v12 QUICKTAB_MOVED received:', {
+  console.log(`[Background] v1.6.4 ${messageType} received:`, {
     quickTabId,
-    left,
-    top,
+    ...extractedProps,
     originTabId,
     senderTabId,
     source,
     timestamp: timestamp || Date.now()
   });
 
-  // Update the Quick Tab's position in both session and global state
+  // Update the Quick Tab's properties in both session and global state
   const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
-    qt.left = Math.round(left);
-    qt.top = Math.round(top);
+    updateFn(qt, extractedProps);
     qt.lastUpdate = Date.now();
   });
 
   if (found) {
-    console.log('[Background] v1.6.3.12-v12 Quick Tab position updated:', {
+    console.log(`[Background] v1.6.4 Quick Tab ${messageType.replace('QUICKTAB_', '').toLowerCase()} updated:`, {
       quickTabId,
-      left: Math.round(left),
-      top: Math.round(top)
+      ...successLogFn(extractedProps)
     });
     notifySidebarOfStateChange();
     return { success: true, quickTabId };
   }
 
-  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_MOVED:', {
+  console.warn(`[Background] v1.6.4 Quick Tab not found for ${messageType}:`, {
     quickTabId,
     senderTabId,
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
@@ -5723,8 +5732,33 @@ function handleQuickTabMovedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_MOVED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
+ * v1.6.4 - Refactored to use generic _handleQuickTabPropertyUpdate
+ * When a Quick Tab is dragged, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, left, top, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabMovedMessage(message, sender) {
+  return _handleQuickTabPropertyUpdate({
+    message,
+    sender,
+    messageType: 'QUICKTAB_MOVED',
+    propertyExtractor: msg => ({ left: msg.left, top: msg.top }),
+    updateFn: (qt, props) => {
+      qt.left = Math.round(props.left);
+      qt.top = Math.round(props.top);
+    },
+    successLogFn: props => ({ left: Math.round(props.left), top: Math.round(props.top) })
+  });
+}
+
+/**
  * Handle QUICKTAB_RESIZED message from content script UpdateHandler
  * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for size updates
+ * v1.6.4 - Refactored to use generic _handleQuickTabPropertyUpdate
  * When a Quick Tab is resized, UpdateHandler sends this message to update
  * the background's in-memory state and notify the sidebar.
  *
@@ -5732,43 +5766,17 @@ function handleQuickTabMovedMessage(message, sender) {
  * @param {browser.runtime.MessageSender} sender - Message sender info
  */
 function handleQuickTabResizedMessage(message, sender) {
-  const { quickTabId, width, height, originTabId, source, timestamp } = message;
-  const senderTabId = sender?.tab?.id ?? originTabId;
-
-  console.log('[Background] v1.6.3.12-v12 QUICKTAB_RESIZED received:', {
-    quickTabId,
-    width,
-    height,
-    originTabId,
-    senderTabId,
-    source,
-    timestamp: timestamp || Date.now()
+  return _handleQuickTabPropertyUpdate({
+    message,
+    sender,
+    messageType: 'QUICKTAB_RESIZED',
+    propertyExtractor: msg => ({ width: msg.width, height: msg.height }),
+    updateFn: (qt, props) => {
+      qt.width = Math.round(props.width);
+      qt.height = Math.round(props.height);
+    },
+    successLogFn: props => ({ width: Math.round(props.width), height: Math.round(props.height) })
   });
-
-  // Update the Quick Tab's size in both session and global state
-  const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
-    qt.width = Math.round(width);
-    qt.height = Math.round(height);
-    qt.lastUpdate = Date.now();
-  });
-
-  if (found) {
-    console.log('[Background] v1.6.3.12-v12 Quick Tab size updated:', {
-      quickTabId,
-      width: Math.round(width),
-      height: Math.round(height)
-    });
-    notifySidebarOfStateChange();
-    return { success: true, quickTabId };
-  }
-
-  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_RESIZED:', {
-    quickTabId,
-    senderTabId,
-    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
-  });
-
-  return { success: false, error: 'Quick Tab not found', quickTabId };
 }
 
 /**
@@ -7269,57 +7277,59 @@ function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
 // FEATURE #3, #5: Cross-Tab Transfer and Duplicate
 
 /**
- * Handle sidebar request to transfer a Quick Tab to a different browser tab
- * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
- * @param {Object} msg - Message with quickTabId and newOriginTabId
- * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ * Find and remove Quick Tab from session state for transfer
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {{ quickTabData: Object|null, oldOriginTabId: number|null }}
  */
-function handleSidebarTransferQuickTab(msg, sidebarPort) {
-  const { quickTabId, newOriginTabId } = msg;
-  const handlerStartTime = performance.now();
-  const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
-
-  console.log('[Background] TRANSFER_QUICK_TAB_ENTRY:', {
-    quickTabId,
-    newOriginTabId,
-    correlationId,
-    timestamp: Date.now()
-  });
-
-  // Find the Quick Tab in session state
-  let quickTabData = null;
-  let oldOriginTabId = null;
-
+function _findAndRemoveQuickTabForTransfer(quickTabId) {
   for (const tabId in quickTabsSessionState.quickTabsByTab) {
     const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
     const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
     if (index >= 0) {
-      quickTabData = tabQuickTabs[index];
-      oldOriginTabId = parseInt(tabId, 10);
-      // Remove from old tab
+      const quickTabData = tabQuickTabs[index];
       tabQuickTabs.splice(index, 1);
-      break;
+      return { quickTabData, oldOriginTabId: parseInt(tabId, 10) };
     }
   }
+  return { quickTabData: null, oldOriginTabId: null };
+}
 
-  if (!quickTabData) {
-    console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
-    // v1.6.4 - ADD fallback messaging: Wrap in try-catch
-    const errorAck = {
-      type: 'TRANSFER_QUICK_TAB_ACK',
-      success: false,
-      error: 'Quick Tab not found',
-      quickTabId,
-      correlationId
-    };
-    try {
-      sidebarPort.postMessage(errorAck);
-    } catch (err) {
+/**
+ * Send transfer ACK to sidebar with try-catch
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port
+ * @param {Object} ackMessage - ACK message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {string} correlationId - Correlation ID for logging
+ */
+function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
+  try {
+    sidebarPort.postMessage(ackMessage);
+    if (ackMessage.success) {
+      console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', { quickTabId, correlationId });
+    }
+  } catch (err) {
+    if (ackMessage.success) {
+      console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', { error: err.message, quickTabId, correlationId });
+    } else {
       console.warn('[Background] TRANSFER_QUICK_TAB_ACK (error) port failed:', err.message);
     }
-    return;
   }
+}
 
+/**
+ * Update session and global state for Quick Tab transfer
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {Object} quickTabData - Quick Tab data to transfer
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ * @param {number} oldOriginTabId - Old origin tab ID
+ */
+function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId) {
   // Update the Quick Tab's origin tab ID
   quickTabData.originTabId = newOriginTabId;
   quickTabData.transferredAt = Date.now();
@@ -7341,51 +7351,139 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
 
   // Update host tracking
   quickTabHostTabs.set(quickTabId, newOriginTabId);
+}
 
-  // Send ACK to sidebar
-  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
-  const successAck = {
-    type: 'TRANSFER_QUICK_TAB_ACK',
-    success: true,
-    quickTabId,
-    oldOriginTabId,
-    newOriginTabId,
-    correlationId
-  };
-  try {
-    sidebarPort.postMessage(successAck);
-    console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', {
-      quickTabId,
-      correlationId
-    });
-  } catch (err) {
-    console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', {
-      error: err.message,
-      quickTabId,
-      correlationId
-    });
+/**
+ * Handle sidebar request to transfer a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (85 -> ~40)
+ * @param {Object} msg - Message with quickTabId and newOriginTabId
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarTransferQuickTab(msg, sidebarPort) {
+  const { quickTabId, newOriginTabId } = msg;
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
+
+  console.log('[Background] TRANSFER_QUICK_TAB_ENTRY:', {
+    quickTabId, newOriginTabId, correlationId, timestamp: Date.now()
+  });
+
+  // Find and remove the Quick Tab from its current tab
+  const { quickTabData, oldOriginTabId } = _findAndRemoveQuickTabForTransfer(quickTabId);
+
+  if (!quickTabData) {
+    console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
+    _sendTransferAck(sidebarPort, {
+      type: 'TRANSFER_QUICK_TAB_ACK', success: false,
+      error: 'Quick Tab not found', quickTabId, correlationId
+    }, quickTabId, correlationId);
+    return;
   }
 
-  // Notify sidebar of state change
-  notifySidebarOfStateChange();
+  // Update all state
+  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId);
 
-  // Notify content scripts of the change
+  // Send success ACK to sidebar
+  _sendTransferAck(sidebarPort, {
+    type: 'TRANSFER_QUICK_TAB_ACK', success: true,
+    quickTabId, oldOriginTabId, newOriginTabId, correlationId
+  }, quickTabId, correlationId);
+
+  // Notify sidebar and content scripts
+  notifySidebarOfStateChange();
   _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData);
 
   const durationMs = performance.now() - handlerStartTime;
   console.log('[Background] TRANSFER_QUICK_TAB_EXIT:', {
+    quickTabId, oldOriginTabId, newOriginTabId, success: true,
+    durationMs: durationMs.toFixed(2), correlationId
+  });
+}
+
+/**
+ * Try to send message via port, returns success status
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ * @param {browser.runtime.Port|null} port - Port to send message on
+ * @param {Object} message - Message to send
+ * @param {string} logLabel - Label for logging (e.g., 'old tab', 'new tab')
+ * @param {number} tabId - Tab ID for logging
+ * @returns {boolean} True if send succeeded
+ */
+function _tryPortSend(port, message, logLabel, tabId) {
+  if (!port) {
+    console.log(`[Background] No port for ${logLabel}:`, tabId);
+    return false;
+  }
+  try {
+    port.postMessage(message);
+    console.log(`[Background] Notified ${logLabel} via port:`, tabId);
+    return true;
+  } catch (err) {
+    console.warn(`[Background] Failed to notify ${logLabel} via port:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Send TRANSFER_OUT message to old tab (via port with fallback)
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ */
+function _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId) {
+  const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
+  const message = {
+    type: 'QUICK_TAB_TRANSFERRED_OUT',
     quickTabId,
-    oldOriginTabId,
     newOriginTabId,
-    success: true,
-    durationMs: durationMs.toFixed(2),
-    correlationId
+    timestamp: Date.now()
+  };
+
+  const portSucceeded = _tryPortSend(oldPort, message, 'old tab of transfer out', oldOriginTabId);
+
+  // Only use fallback when port fails or is unavailable
+  if (!portSucceeded) {
+    browser.tabs.sendMessage(oldOriginTabId, { ...message, source: 'sendMessage_fallback' })
+      .then(() => console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', { oldOriginTabId, quickTabId }))
+      .catch(err => console.warn('[Background] TRANSFER_OUT_FALLBACK_FAILED:', { oldOriginTabId, quickTabId, sendMessageError: err.message }));
+  }
+}
+
+/**
+ * Send TRANSFER_IN message to new tab (via port + always fallback)
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ */
+function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
+  const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+  const message = {
+    type: 'QUICK_TAB_TRANSFERRED_IN',
+    quickTab: quickTabData,
+    oldOriginTabId,
+    timestamp: Date.now()
+  };
+
+  const portSucceeded = _tryPortSend(newPort, message, 'new tab of transfer in', newOriginTabId);
+
+  // ALWAYS send fallback for TRANSFER_IN as it's critical (target tab may not have port)
+  _sendContentMessageFallback({
+    tabId: newOriginTabId,
+    messageType: 'QUICK_TAB_TRANSFERRED_IN',
+    payload: { quickTab: quickTabData, oldOriginTabId },
+    operationName: 'TRANSFER_IN',
+    quickTabId: quickTabData?.id
+  });
+
+  console.log('[Background] TRANSFER_IN sent via fallback for reliability:', {
+    newOriginTabId, quickTabId: quickTabData?.id, portAlsoUsed: portSucceeded
   });
 }
 
 /**
  * Notify content scripts of Quick Tab transfer
  * v1.6.4 - FEATURE #3: Send removal to old tab, creation to new tab
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (77 -> ~20)
  * @private
  * @param {number} oldOriginTabId - Previous origin tab ID
  * @param {number} newOriginTabId - New origin tab ID
@@ -7393,122 +7491,45 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
  * @param {Object} quickTabData - Quick Tab data
  */
 function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
-  // v1.6.4 - FIX BUG #6/#7: Enhanced logging for debugging transfer issues
   console.log('[Background] _notifyContentScriptOfTransfer: Starting', {
-    oldOriginTabId,
-    newOriginTabId,
-    quickTabId,
+    oldOriginTabId, newOriginTabId, quickTabId,
     hasOldPort: !!quickTabsSessionState.contentScriptPorts[oldOriginTabId],
     hasNewPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
     allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
     timestamp: Date.now()
   });
 
-  // v1.6.4 - ADD fallback messaging: Notify old tab to remove the Quick Tab with fallback
-  const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
-  const oldTabMessage = {
-    type: 'QUICK_TAB_TRANSFERRED_OUT',
-    quickTabId,
-    newOriginTabId,
-    timestamp: Date.now()
-  };
-  let oldPortSucceeded = false;
-
-  if (oldPort) {
-    try {
-      oldPort.postMessage(oldTabMessage);
-      oldPortSucceeded = true;
-      console.log('[Background] Notified old tab of transfer out via port:', oldOriginTabId);
-    } catch (err) {
-      console.warn('[Background] Failed to notify old tab via port:', err.message);
-    }
-  } else {
-    console.warn('[Background] No port for old tab:', oldOriginTabId);
-  }
-
-  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable for TRANSFER_OUT
-  if (!oldPortSucceeded) {
-    browser.tabs
-      .sendMessage(oldOriginTabId, {
-        ...oldTabMessage,
-        source: 'sendMessage_fallback'
-      })
-      .then(() => {
-        console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', {
-          oldOriginTabId,
-          quickTabId
-        });
-      })
-      .catch(err => {
-        console.warn('[Background] TRANSFER_OUT_FALLBACK_FAILED:', {
-          oldOriginTabId,
-          quickTabId,
-          sendMessageError: err.message
-        });
-      });
-  }
-
-  // Notify new tab to create the Quick Tab
-  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN because target tab may not have port
-  // This is a CRITICAL message - target tab may never have had Quick Tabs before
-  const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
-  let portSendSucceeded = false;
-  if (newPort) {
-    try {
-      newPort.postMessage({
-        type: 'QUICK_TAB_TRANSFERRED_IN',
-        quickTab: quickTabData,
-        oldOriginTabId,
-        timestamp: Date.now()
-      });
-      portSendSucceeded = true;
-      console.log('[Background] Notified new tab of transfer in via port:', newOriginTabId);
-    } catch (err) {
-      console.warn('[Background] Failed to notify new tab via port:', err.message);
-    }
-  } else {
-    console.log('[Background] No port for new tab, will use sendMessage fallback:', {
-      newOriginTabId,
-      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
-    });
-  }
-  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for TRANSFER_IN as it's critical
-  // Even if port send succeeded, the target tab may not have processed it
-  _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId);
-  console.log('[Background] TRANSFER_IN sent via fallback for reliability:', {
-    newOriginTabId,
-    quickTabId: quickTabData?.id,
-    portAlsoUsed: portSendSucceeded
-  });
+  _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId);
+  _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId);
 }
 
 /**
- * Send QUICK_TAB_TRANSFERRED_IN message via browser.tabs.sendMessage fallback
- * v1.6.4 - FIX BUG #2: Fallback when port is not available
+ * Generic content message fallback sender via browser.tabs.sendMessage
+ * v1.6.4 - FIX Code Health: Eliminate duplication between transfer/duplicate fallbacks
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
  * @private
- * @param {number} newOriginTabId - Target tab ID
- * @param {Object} quickTabData - Quick Tab data to send
- * @param {number} oldOriginTabId - Previous origin tab ID for logging
+ * @param {Object} opts - Options object
+ * @param {number} opts.tabId - Target tab ID
+ * @param {string} opts.messageType - Message type to send
+ * @param {Object} opts.payload - Additional message payload
+ * @param {string} opts.operationName - Operation name for logging
+ * @param {string} opts.quickTabId - Quick Tab ID for logging
  */
-async function _sendTransferInMessageFallback(newOriginTabId, quickTabData, oldOriginTabId) {
+async function _sendContentMessageFallback(opts) {
+  const { tabId, messageType, payload, operationName, quickTabId } = opts;
   try {
-    await browser.tabs.sendMessage(newOriginTabId, {
-      type: 'QUICK_TAB_TRANSFERRED_IN',
-      quickTab: quickTabData,
-      oldOriginTabId,
+    await browser.tabs.sendMessage(tabId, {
+      type: messageType,
+      ...payload,
       timestamp: Date.now(),
       source: 'sendMessage_fallback'
     });
-    console.log('[Background] TRANSFER_FALLBACK_SUCCESS: Notified new tab via sendMessage:', {
-      newOriginTabId,
-      quickTabId: quickTabData?.id
+    console.log(`[Background] ${operationName}_FALLBACK_SUCCESS: Notified tab via sendMessage:`, {
+      tabId, quickTabId
     });
   } catch (err) {
-    // Content script may not be loaded on the target tab
-    console.error('[Background] TRANSFER_FALLBACK_FAILED: Could not notify target tab:', {
-      newOriginTabId,
-      quickTabId: quickTabData?.id,
-      error: err.message,
+    console.error(`[Background] ${operationName}_FALLBACK_FAILED: Could not notify target tab:`, {
+      tabId, quickTabId, error: err.message,
       hint: 'Target tab may not have content script loaded. User should refresh the tab.'
     });
   }
@@ -7614,42 +7635,16 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
 
   // v1.6.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE as it's critical
   // Even if port send succeeded, the target tab may not have processed it
-  _sendDuplicateMessageFallback(newOriginTabId, newQuickTab);
-  console.log('[Background] DUPLICATE sent via fallback for reliability:', {
-    newOriginTabId,
-    quickTabId: newQuickTab?.id,
-    portAlsoUsed: portSendSucceeded
+  _sendContentMessageFallback({
+    tabId: newOriginTabId,
+    messageType: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
+    payload: { quickTab: newQuickTab },
+    operationName: 'DUPLICATE',
+    quickTabId: newQuickTab?.id
   });
-}
-
-/**
- * Send CREATE_QUICK_TAB_FROM_DUPLICATE message via browser.tabs.sendMessage fallback
- * v1.6.4 - FIX BUG #2: Fallback when port is not available
- * @private
- * @param {number} newOriginTabId - Target tab ID
- * @param {Object} newQuickTab - New Quick Tab data
- */
-async function _sendDuplicateMessageFallback(newOriginTabId, newQuickTab) {
-  try {
-    await browser.tabs.sendMessage(newOriginTabId, {
-      type: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
-      quickTab: newQuickTab,
-      timestamp: Date.now(),
-      source: 'sendMessage_fallback'
-    });
-    console.log('[Background] DUPLICATE_FALLBACK_SUCCESS: Notified target tab via sendMessage:', {
-      newOriginTabId,
-      quickTabId: newQuickTab?.id
-    });
-  } catch (err) {
-    // Content script may not be loaded on the target tab
-    console.error('[Background] DUPLICATE_FALLBACK_FAILED: Could not notify target tab:', {
-      newOriginTabId,
-      quickTabId: newQuickTab?.id,
-      error: err.message,
-      hint: 'Target tab may not have content script loaded. User should refresh the tab.'
-    });
-  }
+  console.log('[Background] DUPLICATE sent via fallback for reliability:', {
+    newOriginTabId, quickTabId: newQuickTab?.id, portAlsoUsed: portSendSucceeded
+  });
 }
 
 /**

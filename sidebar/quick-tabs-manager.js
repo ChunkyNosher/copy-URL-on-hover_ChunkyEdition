@@ -469,120 +469,118 @@ let _sequenceGapsDetected = 0;
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
  */
-function initializeQuickTabsPort() {
-  // v1.6.3.12-v7 - FIX Issue #30: Check circuit breaker state
-  if (_quickTabsPortCircuitBreakerTripped) {
-    console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
-      timestamp: Date.now(),
-      attempts: _quickTabsPortReconnectAttempts,
-      maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
-      message: 'Connection attempts exhausted. Use manual reconnect button.'
-    });
-    return;
-  }
+/**
+ * Check if circuit breaker is tripped and log if so
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ * @returns {boolean} True if circuit breaker is tripped and execution should be aborted
+ */
+function _checkCircuitBreakerTripped() {
+  if (!_quickTabsPortCircuitBreakerTripped) return false;
 
-  // v1.6.3.12 - Gap #1: Log port connection attempt
-  console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
+  console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
     timestamp: Date.now(),
-    portName: 'quick-tabs-port',
-    existingPort: !!quickTabsPort,
-    reconnectAttempt: _quickTabsPortReconnectAttempts
+    attempts: _quickTabsPortReconnectAttempts,
+    maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
+    message: 'Connection attempts exhausted. Use manual reconnect button.'
+  });
+  return true;
+}
+
+/**
+ * Reset circuit breaker state on successful connection
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _resetCircuitBreakerOnSuccess() {
+  _quickTabsPortReconnectAttempts = 0;
+  _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+  _quickTabsPortCircuitBreakerTripped = false;
+  _clearCircuitBreakerAutoResetTimer();
+}
+
+/**
+ * Handle port disconnect event
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _handleQuickTabsPortDisconnect() {
+  // CRITICAL: Capture browser.runtime.lastError IMMEDIATELY - browser clears it after callback
+  const lastError = browser.runtime?.lastError;
+  const disconnectTimestamp = Date.now();
+
+  console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
+    reason: lastError?.message || 'unknown',
+    errorCaptured: !!lastError,
+    timestamp: disconnectTimestamp,
+    pendingOperations: _quickTabPortOperationTimestamps.size,
+    portWasConnected: !!quickTabsPort,
+    cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage,
+    reconnectAttempts: _quickTabsPortReconnectAttempts
+  });
+
+  quickTabsPort = null;
+  _quickTabPortOperationTimestamps.clear();
+  _scheduleQuickTabsPortReconnect(disconnectTimestamp);
+}
+
+/**
+ * Send SIDEBAR_READY message with fallback
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _sendSidebarReadyMessage() {
+  const message = { type: 'SIDEBAR_READY', timestamp: Date.now() };
+  try {
+    quickTabsPort.postMessage(message);
+    console.log('[Sidebar] SIDEBAR_READY sent to background via port');
+  } catch (err) {
+    console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
+    browser.runtime.sendMessage({ ...message, source: 'sendMessage_fallback' })
+      .then(() => console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback'))
+      .catch(sendErr => console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
+        portError: err.message, sendMessageError: sendErr.message
+      }));
+  }
+}
+
+/**
+ * Initialize Quick Tabs port connection
+ * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
+ * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (84 -> ~35)
+ */
+function initializeQuickTabsPort() {
+  if (_checkCircuitBreakerTripped()) return;
+
+  console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
+    timestamp: Date.now(), portName: 'quick-tabs-port',
+    existingPort: !!quickTabsPort, reconnectAttempt: _quickTabsPortReconnectAttempts
   });
 
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
+    _resetCircuitBreakerOnSuccess();
 
-    // v1.6.3.12-v7 - FIX Issue #30: Reset circuit breaker on successful connection
-    _quickTabsPortReconnectAttempts = 0;
-    _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
-    _quickTabsPortCircuitBreakerTripped = false;
-
-    // v1.6.4 - FIX Issue #20: Clear any pending auto-reset timer on successful connection
-    _clearCircuitBreakerAutoResetTimer();
-
-    // v1.6.3.12 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
-      timestamp: Date.now(),
-      portName: 'quick-tabs-port',
-      success: true,
-      circuitBreakerReset: true,
-      autoResetTimerCleared: true
+      timestamp: Date.now(), portName: 'quick-tabs-port', success: true,
+      circuitBreakerReset: true, autoResetTimerCleared: true
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
+    quickTabsPort.onDisconnect.addListener(_handleQuickTabsPortDisconnect);
 
-    quickTabsPort.onDisconnect.addListener(() => {
-      // v1.6.3.12-v4 - Gap #4 CRITICAL FIX: Capture browser.runtime.lastError IMMEDIATELY
-      // This MUST be the very first line in the callback - any delay can clear the error context
-      // The browser clears lastError after the callback returns or after any async operation
-      const lastError = browser.runtime?.lastError;
-      const lastErrorMessage = lastError?.message || 'unknown';
-      const disconnectTimestamp = Date.now();
+    _sendSidebarReadyMessage();
 
-      // v1.6.3.12-v4 - Gap #4: Enhanced disconnect logging with captured error
-      console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
-        reason: lastErrorMessage,
-        errorCaptured: !!lastError,
-        timestamp: disconnectTimestamp,
-        pendingOperations: _quickTabPortOperationTimestamps.size,
-        portWasConnected: !!quickTabsPort,
-        cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage,
-        reconnectAttempts: _quickTabsPortReconnectAttempts
-      });
-
-      quickTabsPort = null;
-
-      // Clear pending operation timestamps on disconnect
-      _quickTabPortOperationTimestamps.clear();
-
-      // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker
-      _scheduleQuickTabsPortReconnect(disconnectTimestamp);
-    });
-
-    // Send SIDEBAR_READY to get initial state
-    // v1.6.4 - ADD fallback messaging: Wrap in try-catch with runtime.sendMessage fallback
-    const sidebarReadyMessage = {
-      type: 'SIDEBAR_READY',
-      timestamp: Date.now()
-    };
-    try {
-      quickTabsPort.postMessage(sidebarReadyMessage);
-      console.log('[Sidebar] SIDEBAR_READY sent to background via port');
-    } catch (err) {
-      console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
-      // v1.6.4 - ADD fallback messaging: Use browser.runtime.sendMessage as fallback
-      browser.runtime
-        .sendMessage({ ...sidebarReadyMessage, source: 'sendMessage_fallback' })
-        .then(() => {
-          console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback');
-        })
-        .catch(sendErr => {
-          console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
-            portError: err.message,
-            sendMessageError: sendErr.message
-          });
-        });
-    }
-
-    // v1.6.3.12-v7 - FIX Issue #10: Explicitly request initial state after port connection
-    // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
-    // even if that message is delayed, lost, or the port was reconnected
     console.log('[Sidebar] Sidebar requesting initial state after port connection', {
-      timestamp: Date.now(),
-      portConnected: !!quickTabsPort
+      timestamp: Date.now(), portConnected: !!quickTabsPort
     });
     requestAllQuickTabsViaPort();
   } catch (err) {
-    // v1.6.3.12 - Gap #1: Log port connection failure
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
-      timestamp: Date.now(),
-      portName: 'quick-tabs-port',
-      error: err.message,
-      success: false,
-      reconnectAttempt: _quickTabsPortReconnectAttempts
+      timestamp: Date.now(), portName: 'quick-tabs-port',
+      error: err.message, success: false, reconnectAttempt: _quickTabsPortReconnectAttempts
     });
-
-    // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
     _scheduleQuickTabsPortReconnect(Date.now());
   }
 }
@@ -2867,6 +2865,73 @@ async function sendHeartbeat() {
  * @param {number} timeoutMs - Timeout in milliseconds (defaults to PORT_MESSAGE_TIMEOUT_MS)
  * @returns {Promise<Object>} Response from background
  */
+/**
+ * Create timeout handler for port message
+ * v1.6.4 - FIX Code Health: Extracted to reduce sendPortMessageWithTimeout line count
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
+ * @private
+ * @param {Object} opts - Options object
+ * @param {string} opts.correlationId - Correlation ID for tracking
+ * @param {number} opts.sentAt - Timestamp when message was sent
+ * @param {number} opts.timeoutMs - Timeout duration in milliseconds
+ * @param {string} opts.messageType - Type of message being sent
+ * @param {Function} opts.reject - Promise reject function
+ * @returns {number} Timeout ID
+ */
+function _createPortMessageTimeout(opts) {
+  const { correlationId, sentAt, timeoutMs, messageType, reject } = opts;
+  return setTimeout(() => {
+    pendingAcks.delete(correlationId);
+    logPortLifecycle('MESSAGE_TIMEOUT', {
+      messageType, correlationId, waitedMs: Date.now() - sentAt,
+      timeoutMs, recoveryAction: 'treating as zombie port'
+    });
+    reject(new Error('Port message timeout'));
+  }, timeoutMs);
+}
+
+/**
+ * Handle port message send failure with fallback
+ * v1.6.4 - FIX Code Health: Extracted to reduce sendPortMessageWithTimeout line count
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
+ * @private
+ * @param {Object} opts - Options object
+ * @param {Error} opts.err - Original port send error
+ * @param {Object} opts.messageWithCorrelation - Message with correlation ID
+ * @param {number} opts.timeout - Timeout ID to clear
+ * @param {string} opts.correlationId - Correlation ID for tracking
+ * @param {string} opts.messageType - Type of message being sent
+ * @param {Function} opts.resolve - Promise resolve function
+ * @param {Function} opts.reject - Promise reject function
+ */
+function _handlePortSendFailure(opts) {
+  const { err, messageWithCorrelation, timeout, correlationId, messageType, resolve, reject } = opts;
+  logPortLifecycle('MESSAGE_SEND_FAILED', {
+    messageType, correlationId, error: err.message,
+    recoveryAction: 'trying runtime.sendMessage fallback'
+  });
+
+  browser.runtime.sendMessage({ ...messageWithCorrelation, source: 'sendMessage_fallback' })
+    .then(response => {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', { messageType, correlationId });
+      resolve(response);
+    })
+    .catch(sendErr => {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
+        messageType, correlationId, portError: err.message, sendMessageError: sendErr.message
+      });
+      reject(err);
+    });
+}
+
+/**
+ * Send message via port with timeout and fallback
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (70 -> ~30)
+ */
 function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     if (!backgroundPort) {
@@ -2878,78 +2943,23 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     const messageWithCorrelation = { ...message, correlationId };
     const sentAt = Date.now();
 
-    // v1.6.3.10-v1 - FIX Issue #6: Log message send with context
-    logPortLifecycle('MESSAGE_ACK_PENDING', {
-      messageType: message.type,
-      correlationId,
-      timeoutMs
+    logPortLifecycle('MESSAGE_ACK_PENDING', { messageType: message.type, correlationId, timeoutMs });
+
+    const timeout = _createPortMessageTimeout({
+      correlationId, sentAt, timeoutMs, messageType: message.type, reject
     });
 
-    // Set up timeout
-    const timeout = setTimeout(() => {
-      pendingAcks.delete(correlationId);
-
-      // v1.6.3.10-v1 - FIX Issue #6: Log timeout with context
-      logPortLifecycle('MESSAGE_TIMEOUT', {
-        messageType: message.type,
-        correlationId,
-        waitedMs: Date.now() - sentAt,
-        timeoutMs,
-        recoveryAction: 'treating as zombie port'
-      });
-
-      reject(new Error('Port message timeout'));
-    }, timeoutMs);
-
-    // Track pending ack
     pendingAcks.set(correlationId, {
-      resolve,
-      reject,
-      timeout,
-      sentAt,
-      messageType: message.type
+      resolve, reject, timeout, sentAt, messageType: message.type
     });
 
-    // Send message
-    // v1.6.4 - ADD fallback messaging: Wrap port.postMessage and try runtime.sendMessage on failure
     try {
       backgroundPort.postMessage(messageWithCorrelation);
     } catch (err) {
-      // v1.6.3.10-v1 - FIX Issue #6: Log send failure
-      logPortLifecycle('MESSAGE_SEND_FAILED', {
-        messageType: message.type,
-        correlationId,
-        error: err.message,
-        recoveryAction: 'trying runtime.sendMessage fallback'
+      _handlePortSendFailure({
+        err, messageWithCorrelation, timeout, correlationId,
+        messageType: message.type, resolve, reject
       });
-
-      // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
-      browser.runtime
-        .sendMessage({
-          ...messageWithCorrelation,
-          source: 'sendMessage_fallback'
-        })
-        .then(response => {
-          clearTimeout(timeout);
-          pendingAcks.delete(correlationId);
-          logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', {
-            messageType: message.type,
-            correlationId
-          });
-          resolve(response);
-        })
-        .catch(sendErr => {
-          clearTimeout(timeout);
-          pendingAcks.delete(correlationId);
-          logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
-            messageType: message.type,
-            correlationId,
-            portError: err.message,
-            sendMessageError: sendErr.message
-          });
-          reject(err); // Reject with original port error
-        });
-      return; // Don't reject here - let the fallback handle it
     }
   });
 }
@@ -6549,30 +6559,45 @@ function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
  * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
  * @private
  */
+/**
+ * Check if port data takes precedence over storage
+ * v1.6.4 - FIX Code Health: Extracted to reduce _checkStorageForStaleState complexity
+ * @private
+ * @param {Object} storageState - Storage state
+ * @param {number} inMemoryHash - In-memory state hash
+ * @param {number} storageHash - Storage state hash
+ * @returns {boolean} True if port data should be used instead
+ */
+function _shouldSkipStorageOverwrite(storageState, inMemoryHash, storageHash) {
+  if (!_allQuickTabsFromPort || _allQuickTabsFromPort.length === 0) {
+    return false;
+  }
+
+  console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
+    portTabCount: _allQuickTabsFromPort.length,
+    storageTabCount: storageState?.tabs?.length ?? 0,
+    inMemoryHash, storageHash
+  });
+  return true;
+}
+
 async function _checkStorageForStaleState(inMemoryHash, debounceWaitTime) {
   try {
     const freshResult = await browser.storage.local.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
 
-    // Compare in-memory state against storage state
+    // State matches - no stale check needed
     if (storageHash === inMemoryHash) {
       return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
-    // v1.6.4 - FIX BUG #1/#2: Don't overwrite state if port data exists
-    // Even if storage differs, port data is authoritative for session state
-    if (_allQuickTabsFromPort?.length > 0) {
-      console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
-        portTabCount: _allQuickTabsFromPort.length,
-        storageTabCount: storageState?.tabs?.length ?? 0,
-        inMemoryHash,
-        storageHash
-      });
+    // Port data is authoritative - don't overwrite
+    if (_shouldSkipStorageOverwrite(storageState, inMemoryHash, storageHash)) {
       return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
-    // Storage has different state and no port data - reload from storage (fallback mode)
+    // Reload from storage (fallback mode)
     _applyFreshStorageState(storageState, inMemoryHash, storageHash);
     return _buildStaleCheckResult(true, inMemoryHash, storageHash, debounceWaitTime);
   } catch (err) {
@@ -8049,21 +8074,28 @@ async function _persistQuickTabOrderToStorage() {
  * v1.6.4 - FIX BUG #3: Restore Quick Tab order after sidebar reload
  * @private
  */
+/**
+ * Validate if saved order is a valid non-array object
+ * v1.6.4 - FIX Code Health: Extracted to simplify _loadQuickTabOrderFromStorage
+ * @private
+ * @param {*} savedOrder - Saved order value from storage
+ * @returns {boolean} True if valid order object
+ */
+function _isValidOrderObject(savedOrder) {
+  return savedOrder !== null &&
+    savedOrder !== undefined &&
+    typeof savedOrder === 'object' &&
+    !Array.isArray(savedOrder);
+}
+
 async function _loadQuickTabOrderFromStorage() {
   try {
     const result = await browser.storage.local.get(QUICK_TAB_ORDER_STORAGE_KEY);
     const savedOrder = result?.[QUICK_TAB_ORDER_STORAGE_KEY];
 
-    // Early exit if not a valid object (null check explicit for clarity)
-    if (
-      savedOrder === null ||
-      savedOrder === undefined ||
-      typeof savedOrder !== 'object' ||
-      Array.isArray(savedOrder)
-    ) {
+    if (!_isValidOrderObject(savedOrder)) {
       console.log('[Manager] QUICK_TAB_ORDER_LOAD_SKIPPED: No saved order or invalid format', {
-        savedOrder,
-        timestamp: Date.now()
+        savedOrder, timestamp: Date.now()
       });
       return;
     }
@@ -8071,19 +8103,51 @@ async function _loadQuickTabOrderFromStorage() {
     _userQuickTabOrderByGroup = savedOrder;
     console.log('[Manager] QUICK_TAB_ORDER_LOADED:', {
       groupCount: Object.keys(_userQuickTabOrderByGroup).length,
-      groups: Object.keys(_userQuickTabOrderByGroup),
-      timestamp: Date.now()
+      groups: Object.keys(_userQuickTabOrderByGroup), timestamp: Date.now()
     });
   } catch (err) {
-    console.warn('[Manager] QUICK_TAB_ORDER_LOAD_FAILED:', {
-      error: err.message
-    });
+    console.warn('[Manager] QUICK_TAB_ORDER_LOAD_FAILED:', { error: err.message });
   }
+}
+
+/**
+ * Check if saved order is valid for applying
+ * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserQuickTabOrder complexity
+ * @private
+ * @param {*} savedOrder - Saved order array
+ * @returns {boolean} True if valid non-empty array
+ */
+function _isValidSavedOrder(savedOrder) {
+  return Array.isArray(savedOrder) && savedOrder.length > 0;
+}
+
+/**
+ * Build ordered tabs from saved order
+ * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserQuickTabOrder complexity
+ * @private
+ * @param {Array} savedOrder - User's saved order
+ * @param {Map} tabsById - Map of quickTabId -> quickTab object
+ * @returns {{ orderedTabs: Array, processedIds: Set }}
+ */
+function _buildOrderedTabsFromSavedOrder(savedOrder, tabsById) {
+  const orderedTabs = [];
+  const processedIds = new Set();
+
+  for (const quickTabId of savedOrder) {
+    const tab = tabsById.get(quickTabId);
+    if (tab && !processedIds.has(quickTabId)) {
+      orderedTabs.push(tab);
+      processedIds.add(quickTabId);
+    }
+  }
+
+  return { orderedTabs, processedIds };
 }
 
 /**
  * Apply user's preferred Quick Tab order within a group
  * v1.6.4 - FIX BUG #3: Maintain Quick Tab ordering within groups across re-renders
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce complexity (cc=9 -> cc=4)
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {string|number} originTabId - Origin tab ID for the group
@@ -8093,24 +8157,14 @@ function _applyUserQuickTabOrder(quickTabs, originTabId) {
   const tabIdStr = String(originTabId);
   const savedOrder = _userQuickTabOrderByGroup[tabIdStr];
 
-  // If no saved order for this group, return as-is
-  if (!savedOrder || !Array.isArray(savedOrder) || savedOrder.length === 0) {
+  if (!_isValidSavedOrder(savedOrder)) {
     return quickTabs;
   }
 
-  const orderedTabs = [];
-  const processedIds = new Set();
   const tabsById = new Map(quickTabs.map(qt => [qt.id, qt]));
+  const { orderedTabs, processedIds } = _buildOrderedTabsFromSavedOrder(savedOrder, tabsById);
 
-  // First, add Quick Tabs in user's preferred order
-  for (const quickTabId of savedOrder) {
-    if (tabsById.has(quickTabId) && !processedIds.has(quickTabId)) {
-      orderedTabs.push(tabsById.get(quickTabId));
-      processedIds.add(quickTabId);
-    }
-  }
-
-  // Then, append any Quick Tabs not in user's order (new Quick Tabs)
+  // Append any Quick Tabs not in user's order (new Quick Tabs)
   for (const qt of quickTabs) {
     if (!processedIds.has(qt.id)) {
       orderedTabs.push(qt);
@@ -8118,35 +8172,50 @@ function _applyUserQuickTabOrder(quickTabs, originTabId) {
   }
 
   console.log('[Manager] QUICK_TAB_ORDER_APPLIED:', {
-    originTabId: tabIdStr,
-    savedOrder,
-    inputCount: quickTabs.length,
-    outputCount: orderedTabs.length,
-    inputIds: quickTabs.map(qt => qt.id),
-    outputIds: orderedTabs.map(qt => qt.id)
+    originTabId: tabIdStr, savedOrder,
+    inputCount: quickTabs.length, outputCount: orderedTabs.length,
+    inputIds: quickTabs.map(qt => qt.id), outputIds: orderedTabs.map(qt => qt.id)
   });
 
   return orderedTabs;
 }
 
 /**
+ * Build ordered groups from user's preferred order
+ * v1.6.4 - FIX Code Health: Extracted to reduce _applyUserGroupOrder complexity
+ * @private
+ * @param {Map} groups - Groups Map
+ * @returns {{ orderedGroups: Map, processedKeys: Set }}
+ */
+function _buildOrderedGroupsFromUserOrder(groups) {
+  const orderedGroups = new Map();
+  const processedKeys = new Set();
+
+  for (const tabId of _userGroupOrder) {
+    const matchedKey = _findMatchingGroupKey(groups, tabId);
+    if (matchedKey !== null) {
+      orderedGroups.set(matchedKey, groups.get(matchedKey));
+      processedKeys.add(String(matchedKey));
+    }
+  }
+
+  return { orderedGroups, processedKeys };
+}
+
+/**
  * Apply user's preferred tab group order to a groups Map
  * v1.6.4 - FIX BUG #4: Maintain group ordering across re-renders
- * v1.6.4 - IMPROVED: More robust type handling for key comparison
+ * v1.6.4 - FIX Code Health: Extracted helper to reduce complexity
  * Groups not in user order are appended at the end
  * @private
  * @param {Map} groups - Map of originTabId -> group data
  * @returns {Map} New Map with groups in user's preferred order
  */
 function _applyUserGroupOrder(groups) {
-  // If no user order has been set, return as-is
   if (!_userGroupOrder || _userGroupOrder.length === 0) {
     console.log('[Manager] GROUP_ORDER_SKIPPED: No user order set');
     return groups;
   }
-
-  const orderedGroups = new Map();
-  const processedKeys = new Set();
 
   console.log('[Manager] GROUP_ORDER_APPLYING:', {
     userOrder: _userGroupOrder,
@@ -8154,40 +8223,38 @@ function _applyUserGroupOrder(groups) {
     groupKeyTypes: Array.from(groups.keys()).map(k => typeof k)
   });
 
-  // First, add groups in user's preferred order
-  for (const tabId of _userGroupOrder) {
-    // v1.6.4 - Try all possible key formats: original string, parsed number, explicit string
-    const matchedKey = _findMatchingGroupKey(groups, tabId);
+  const { orderedGroups, processedKeys } = _buildOrderedGroupsFromUserOrder(groups);
 
-    if (matchedKey !== null) {
-      orderedGroups.set(matchedKey, groups.get(matchedKey));
-      // Store string version for consistent comparison in processedKeys
-      processedKeys.add(String(matchedKey));
-    }
-  }
-
-  // Then, append any groups not in user's order (new groups)
+  // Append any groups not in user's order (new groups)
   for (const [key, value] of groups) {
-    const keyStr = String(key);
-    if (!processedKeys.has(keyStr)) {
+    if (!processedKeys.has(String(key))) {
       orderedGroups.set(key, value);
     }
   }
 
   console.log('[Manager] GROUP_ORDER_APPLIED:', {
-    userOrder: _userGroupOrder,
-    resultOrder: Array.from(orderedGroups.keys()),
-    inputGroupCount: groups.size,
-    outputGroupCount: orderedGroups.size,
-    timestamp: Date.now()
+    userOrder: _userGroupOrder, resultOrder: Array.from(orderedGroups.keys()),
+    inputGroupCount: groups.size, outputGroupCount: orderedGroups.size, timestamp: Date.now()
   });
 
   return orderedGroups;
 }
 
 /**
+ * Check if value is a valid integer for group key matching
+ * v1.6.4 - FIX Code Health: Extracted to reduce _findMatchingGroupKey complexity
+ * @private
+ * @param {number} num - Number to check
+ * @returns {boolean} True if valid integer
+ */
+function _isValidIntegerKey(num) {
+  return !Number.isNaN(num) && Number.isInteger(num);
+}
+
+/**
  * Find matching group key trying multiple formats
  * v1.6.4 - FIX BUG #4: More robust key matching
+ * v1.6.4 - FIX Code Health: Extracted helper to reduce complexity
  * @private
  * @param {Map} groups - Groups Map
  * @param {string} tabId - Tab ID from user order (always string from DOM dataset)
@@ -8195,14 +8262,11 @@ function _applyUserGroupOrder(groups) {
  */
 function _findMatchingGroupKey(groups, tabId) {
   // Try string version first (from dataset)
-  if (groups.has(tabId)) {
-    return tabId;
-  }
+  if (groups.has(tabId)) return tabId;
 
-  // v1.6.4 - FIX Code Review: Use stricter numeric validation with NaN check
-  // parseInt('123abc', 10) returns 123 which could cause false matches
+  // Try as integer
   const numericId = Number(tabId);
-  if (!Number.isNaN(numericId) && Number.isInteger(numericId) && groups.has(numericId)) {
+  if (_isValidIntegerKey(numericId) && groups.has(numericId)) {
     return numericId;
   }
 
