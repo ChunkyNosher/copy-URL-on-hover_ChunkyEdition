@@ -6317,7 +6317,7 @@ function _isPortDataFresh() {
   const hasPortData = _allQuickTabsFromPort?.length > 0;
   const hasValidEventTime = typeof lastEventReceivedTime === 'number' && lastEventReceivedTime > 0;
   // Port data is "fresh" if it arrived after this render was scheduled
-  return hasPortData && hasValidEventTime && (lastEventReceivedTime > debounceSetTimestamp);
+  return hasPortData && hasValidEventTime && lastEventReceivedTime > debounceSetTimestamp;
 }
 
 /**
@@ -7623,7 +7623,7 @@ function _saveUserGroupOrder(container) {
   const newOrder = Array.from(groups)
     .map(g => g.dataset.originTabId)
     .filter(id => id != null);
-  
+
   // v1.6.4.5 - FIX BUG #4: Don't save empty order (could happen during DOM transitions)
   if (newOrder.length === 0) {
     console.warn('[Manager] GROUP_ORDER_SAVE_SKIPPED: Empty order detected, preserving previous', {
@@ -7632,7 +7632,7 @@ function _saveUserGroupOrder(container) {
     });
     return;
   }
-  
+
   // v1.6.4.5 - FIX BUG #4: Validate all entries are valid strings
   const invalidEntries = newOrder.filter(id => !_isValidGroupOrderEntry(id));
   if (invalidEntries.length > 0) {
@@ -7643,13 +7643,13 @@ function _saveUserGroupOrder(container) {
     });
     return;
   }
-  
+
   _userGroupOrder = newOrder;
   console.log('[Manager] GROUP_ORDER_SAVED:', {
     order: _userGroupOrder,
     timestamp: Date.now()
   });
-  
+
   // v1.6.4.5 - FIX BUG #4: Persist to storage for sidebar reload persistence
   // Note: This is intentionally fire-and-forget since group order is non-critical
   // and the async function has internal error handling
@@ -7687,7 +7687,7 @@ async function _loadGroupOrderFromStorage() {
   try {
     const result = await browser.storage.local.get(GROUP_ORDER_STORAGE_KEY);
     const savedOrder = result?.[GROUP_ORDER_STORAGE_KEY];
-    
+
     // Early exit if not a valid array
     if (!Array.isArray(savedOrder) || savedOrder.length === 0) {
       console.log('[Manager] GROUP_ORDER_LOAD_SKIPPED: No saved order or empty', {
@@ -7696,7 +7696,7 @@ async function _loadGroupOrderFromStorage() {
       });
       return;
     }
-    
+
     // Validate all entries are strings using shared helper
     const validOrder = savedOrder.filter(_isValidGroupOrderEntry);
     if (validOrder.length === 0) {
@@ -7706,7 +7706,7 @@ async function _loadGroupOrderFromStorage() {
       });
       return;
     }
-    
+
     _userGroupOrder = validOrder;
     console.log('[Manager] GROUP_ORDER_LOADED:', {
       order: _userGroupOrder,
