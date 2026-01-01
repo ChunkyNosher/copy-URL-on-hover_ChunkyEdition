@@ -33,7 +33,8 @@
 
 - **Live Log Action Metrics Footer** - Quick Tab count, logs/sec, total logs.
   Configurable interval (500ms-30s), toggle in settings.
-- **Expandable Category Breakdown** - Click metrics to expand/collapse per-category counts
+- **Expandable Category Breakdown** - Click metrics to expand/collapse
+  per-category counts
 - **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
 - **Footer Visibility** - Save/Reset buttons hidden on Manager tab
 
@@ -132,11 +133,14 @@ const quickTabsSessionState = {
 ### v1.6.4-v3 Patterns (Current)
 
 - **Title Update Fix** - Quick Tab title updates from link text to page title
-- **State Version Race Fix** - "Move to Current Tab" properly reflects in Manager
+- **State Version Race Fix** - "Move to Current Tab" properly reflects in
+  Manager
 - **forceEmpty Fix** - VisibilityHandler handles last Quick Tab close
-- **Navigation Update** - Manager updates when navigating within Quick Tab iframe
+- **Navigation Update** - Manager updates when navigating within Quick Tab
+  iframe
 - **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
-- **Immediate State Refresh** - `requestAllQuickTabsViaPort()` after Transfer/Duplicate ACK
+- **Immediate State Refresh** - `requestAllQuickTabsViaPort()` after
+  Transfer/Duplicate ACK
 - **Live Metrics Footer** - Configurable sidebar metrics with category breakdown
 - **Filter-Aware Counting** - Log metrics sync with Live Console Output Filters
 

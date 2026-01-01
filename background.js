@@ -5502,7 +5502,7 @@ function notifySidebarOfStateChange() {
 
   const allTabs = getAllQuickTabsFromMemory();
   const correlationId = `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  
+
   // v1.6.4-v3 - DEBUG: Log all Quick Tab IDs being sent with their originTabIds
   console.log('[Background] STATE_CHANGED_PAYLOAD_DEBUG:', {
     correlationId,
@@ -5510,7 +5510,7 @@ function notifySidebarOfStateChange() {
     quickTabDetails: allTabs.map(qt => ({ id: qt.id, originTabId: qt.originTabId })),
     timestamp: Date.now()
   });
-  
+
   const message = {
     type: 'STATE_CHANGED',
     quickTabs: allTabs,

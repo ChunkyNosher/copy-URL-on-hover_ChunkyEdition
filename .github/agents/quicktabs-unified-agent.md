@@ -67,8 +67,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
   STATE_CHANGED not received
 - **Bug #8d Cross-Tab Transfer Race Fix** - Immediate
-  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for
-  "Move to Current Tab" and drag transfer
+  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for "Move to
+  Current Tab" and drag transfer
 - **Bug #9d Total Logs Count Reset Fix** - settings.js sends
   `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
 
@@ -117,18 +117,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Architecture Components:**
 
-| Component                      | Purpose                          |
-| ------------------------------ | -------------------------------- |
-| `quickTabsSessionState`        | Memory-based state in background |
-| `contentScriptPorts`           | Tab ID → Port mapping            |
-| `sidebarPort`                  | Manager sidebar port             |
-| `notifySidebarOfStateChange()` | Push updates to sidebar          |
-| `_isRenderInProgress`          | Render lock flag                 |
-| `_stateVersion`                | State version for consistency    |
-| `_logActionsByCategory`        | Per-category log tracking        |
-| `_detectCategoryFromLog()`     | Extracts category from log prefix|
-| `_loadLiveFilterSettings()`    | Loads Live Console Output Filter |
-| `_isCategoryFilterEnabled()`   | Checks if category is enabled    |
+| Component                      | Purpose                           |
+| ------------------------------ | --------------------------------- |
+| `quickTabsSessionState`        | Memory-based state in background  |
+| `contentScriptPorts`           | Tab ID → Port mapping             |
+| `sidebarPort`                  | Manager sidebar port              |
+| `notifySidebarOfStateChange()` | Push updates to sidebar           |
+| `_isRenderInProgress`          | Render lock flag                  |
+| `_stateVersion`                | State version for consistency     |
+| `_logActionsByCategory`        | Per-category log tracking         |
+| `_detectCategoryFromLog()`     | Extracts category from log prefix |
+| `_loadLiveFilterSettings()`    | Loads Live Console Output Filter  |
+| `_isCategoryFilterEnabled()`   | Checks if category is enabled     |
 
 **Key Modules:**
 
@@ -165,7 +165,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
 - [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
 - [ ] Expandable category breakdown (click footer to expand/collapse)
-- [ ] Filter-aware log counting via _loadLiveFilterSettings()
+- [ ] Filter-aware log counting via \_loadLiveFilterSettings()
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders

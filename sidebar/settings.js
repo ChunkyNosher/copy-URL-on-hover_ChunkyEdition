@@ -1879,7 +1879,7 @@ function _initMetricsElementCache() {
   _metricsDetailsEl = document.getElementById('metricsDetails');
   _metricsBreakdownEl = document.getElementById('metricsBreakdown');
   _metricsExpandHintEl = document.getElementById('metricsExpandHint');
-  
+
   // Set up toggle click handler
   if (_metricsToggleEl) {
     _metricsToggleEl.addEventListener('click', _toggleMetricsDetails);
@@ -1893,7 +1893,7 @@ function _initMetricsElementCache() {
  */
 function _toggleMetricsDetails() {
   _metricsDetailsExpanded = !_metricsDetailsExpanded;
-  
+
   if (_metricsDetailsEl) {
     if (_metricsDetailsExpanded) {
       _metricsDetailsEl.classList.add('expanded');
@@ -1901,7 +1901,7 @@ function _toggleMetricsDetails() {
       _metricsDetailsEl.classList.remove('expanded');
     }
   }
-  
+
   if (_metricsExpandHintEl) {
     _metricsExpandHintEl.textContent = _metricsDetailsExpanded ? '▲' : '▼';
   }
@@ -1925,22 +1925,22 @@ function _validateMetricsMessage(event) {
 // Category display names for the breakdown
 const CATEGORY_DISPLAY_NAMES = {
   'url-detection': '🔍 URL Detection',
-  'hover': '👆 Hover',
-  'clipboard': '📋 Clipboard',
-  'keyboard': '⌨️ Keyboard',
+  hover: '👆 Hover',
+  clipboard: '📋 Clipboard',
+  keyboard: '⌨️ Keyboard',
   'quick-tabs': '🪟 Quick Tabs',
   'quick-tab-manager': '📊 Manager',
   'event-bus': '📡 Event Bus',
-  'config': '⚙️ Config',
-  'state': '💾 State',
-  'storage': '💿 Storage',
-  'messaging': '💬 Messaging',
-  'webrequest': '🌐 WebRequest',
-  'tabs': '📑 Tabs',
-  'performance': '⏱️ Perf',
-  'errors': '❌ Errors',
-  'initialization': '🚀 Init',
-  'uncategorized': '❓ Other'
+  config: '⚙️ Config',
+  state: '💾 State',
+  storage: '💿 Storage',
+  messaging: '💬 Messaging',
+  webrequest: '🌐 WebRequest',
+  tabs: '📑 Tabs',
+  performance: '⏱️ Perf',
+  errors: '❌ Errors',
+  initialization: '🚀 Init',
+  uncategorized: '❓ Other'
 };
 
 /**
@@ -1954,18 +1954,18 @@ const CATEGORY_DISPLAY_NAMES = {
 function _createBreakdownItem(displayName, count) {
   const item = document.createElement('div');
   item.className = 'metrics-breakdown-item';
-  
+
   const nameSpan = document.createElement('span');
   nameSpan.className = 'cat-name';
   nameSpan.textContent = displayName;
-  
+
   const countSpan = document.createElement('span');
   countSpan.className = 'cat-count';
   countSpan.textContent = String(count);
-  
+
   item.appendChild(nameSpan);
   item.appendChild(countSpan);
-  
+
   return item;
 }
 
@@ -1977,15 +1977,15 @@ function _createBreakdownItem(displayName, count) {
  */
 function _updateCategoryBreakdown(categoryBreakdown) {
   if (!_metricsBreakdownEl) return;
-  
+
   // Sort categories by count (descending) and filter out zeros
   const sortedCategories = Object.entries(categoryBreakdown || {})
     .filter(([_, count]) => count > 0)
     .sort((a, b) => b[1] - a[1]);
-  
+
   // Clear existing content
   _metricsBreakdownEl.textContent = '';
-  
+
   if (sortedCategories.length === 0) {
     const emptyMsg = document.createElement('span');
     emptyMsg.style.color = '#666';
@@ -1993,7 +1993,7 @@ function _updateCategoryBreakdown(categoryBreakdown) {
     _metricsBreakdownEl.appendChild(emptyMsg);
     return;
   }
-  
+
   // Create breakdown items using safe DOM manipulation
   sortedCategories.forEach(([category, count]) => {
     const displayName = CATEGORY_DISPLAY_NAMES[category] || category;
@@ -2013,7 +2013,7 @@ function _updateMetricsDOM(data) {
   if (_metricQuickTabsEl) _metricQuickTabsEl.textContent = String(data.quickTabCount || 0);
   if (_metricLogsPerSecondEl) _metricLogsPerSecondEl.textContent = `${data.logsPerSecond || 0}/s`;
   if (_metricTotalLogsEl) _metricTotalLogsEl.textContent = String(data.totalLogs || 0);
-  
+
   // v1.6.4-v3 - Task 2: Update category breakdown if provided
   if (data.categoryBreakdown) {
     _updateCategoryBreakdown(data.categoryBreakdown);

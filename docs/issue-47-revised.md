@@ -1027,7 +1027,10 @@ conditions, but left no fallback. **Fix:** Added
 `STATE_CHANGED_SAFETY_TIMEOUT_MS` (500ms) safety mechanism - after receiving
 `TRANSFER_QUICK_TAB_ACK` or `DUPLICATE_QUICK_TAB_ACK`, if no `STATE_CHANGED` is
 received within 500ms, sidebar requests full state via
-`requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures state is always refreshed regardless of STATE_CHANGED broadcast success. **Status:** ✅ FIXED in v1.6.4-v3
+`requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety
+timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures
+state is always refreshed regardless of STATE_CHANGED broadcast success.
+**Status:** ✅ FIXED in v1.6.4-v3
 
 ### Bug 9d: Total Logs Count Reset Fix (FIXED)
 
@@ -1036,7 +1039,8 @@ Log History" button in Settings. **Root Cause:** settings.js cleared log history
 but didn't notify the quick-tabs-manager.js iframe to reset its counters.
 **Fix:** Added `CLEAR_LOG_ACTION_COUNTS` postMessage from settings.js to iframe.
 quick-tabs-manager.js handles message and resets `_totalLogActions`,
-`_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in v1.6.4-v3
+`_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in
+v1.6.4-v3
 
 ---
 
@@ -1057,10 +1061,11 @@ metrics for log action tracking (changed from storage/memory tracking):
 - Update interval setting: 500ms to 30 seconds (default: 1 second)
 - When metrics are disabled, footer shows extension name only
 
-**Implementation:** Added console interceptors for `console.log`, `console.warn`,
-`console.error` to track log actions. Uses sliding window for accurate per-second
-rate calculation. Added `_trackLogAction()`, `_calculateLogsPerSecond()`,
-`_installConsoleInterceptors()`, `_clearLogActionCounts()` functions.
+**Implementation:** Added console interceptors for `console.log`,
+`console.warn`, `console.error` to track log actions. Uses sliding window for
+accurate per-second rate calculation. Added `_trackLogAction()`,
+`_calculateLogsPerSecond()`, `_installConsoleInterceptors()`,
+`_clearLogActionCounts()` functions.
 
 ### Feature 9: Footer Visibility Based on Active Tab
 
@@ -1079,9 +1084,12 @@ on the Settings tabs.
 Settings tabs in the sidebar, not just when viewing the Manager.
 
 **Implementation:**
+
 - Added metrics footer HTML/CSS to settings.html parent window
-- Added postMessage communication from iframe (quick-tabs-manager.js) to parent (settings.js)
-- Parent window receives METRICS_UPDATE messages and updates its own metrics display
+- Added postMessage communication from iframe (quick-tabs-manager.js) to parent
+  (settings.js)
+- Parent window receives METRICS_UPDATE messages and updates its own metrics
+  display
 - Both displays update simultaneously using same data source
 
 **Status:** ✅ IMPLEMENTED in v1.6.4-v3
@@ -1091,13 +1099,15 @@ Settings tabs in the sidebar, not just when viewing the Manager.
 **Description:** Click on the metrics footer to expand/collapse a category
 breakdown showing log counts per category:
 
-- **User Actions:** URL Detection, Hover Events, Clipboard, Keyboard, Quick Tabs, Quick Tab Manager
-- **System Operations:** Event Bus, Config, State, Storage, Messaging, Web Requests, Tabs
+- **User Actions:** URL Detection, Hover Events, Clipboard, Keyboard, Quick
+  Tabs, Quick Tab Manager
+- **System Operations:** Event Bus, Config, State, Storage, Messaging, Web
+  Requests, Tabs
 - **Diagnostics:** Performance, Errors, Initialization
 
-**Implementation:** Added `_categoryLogCounts` tracking object, `_metricsExpanded`
-toggle state, `_renderCategoryBreakdown()` function. Categories match the
-Advanced settings tab categorization for consistency.
+**Implementation:** Added `_categoryLogCounts` tracking object,
+`_metricsExpanded` toggle state, `_renderCategoryBreakdown()` function.
+Categories match the Advanced settings tab categorization for consistency.
 
 **Status:** ✅ IMPLEMENTED in v1.6.4-v3
 
@@ -1108,6 +1118,7 @@ Output Filters. If URL Detection or Hover Events are toggled OFF in settings,
 those logs won't be counted in the metrics.
 
 **Implementation:**
+
 - Added `_enabledLogFilters` object synced with storage.onChanged
 - Modified `_trackLogAction()` to check filter state before counting
 - Loads initial filter state from storage at startup
@@ -1121,5 +1132,6 @@ those logs won't be counted in the metrics.
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 1, 2026  
+**Last
+Review Date:** January 1, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v3)

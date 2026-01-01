@@ -58,8 +58,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
   STATE_CHANGED not received
 - **Bug #8d Cross-Tab Transfer Race Fix** - Immediate
-  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for
-  "Move to Current Tab" and drag transfer
+  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for "Move to
+  Current Tab" and drag transfer
 - **Bug #9d Total Logs Count Reset Fix** - settings.js sends
   `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
 
@@ -168,7 +168,7 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
 - [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
 - [ ] Expandable category breakdown (click footer to expand/collapse)
-- [ ] Filter-aware log counting via _loadLiveFilterSettings()
+- [ ] Filter-aware log counting via \_loadLiveFilterSettings()
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
 - [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)

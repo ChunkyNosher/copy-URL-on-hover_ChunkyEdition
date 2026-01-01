@@ -586,7 +586,7 @@ async function _loadLiveFilterSettings() {
   try {
     const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
     _liveFilterSettingsCache = result.liveConsoleCategoriesEnabled || null;
-    
+
     // Use regular console here - interceptors not yet installed during init
     // This log will be counted once interceptors are installed (non-issue)
     console.log('[Manager] METRICS: Live filter settings loaded', {
@@ -608,50 +608,53 @@ async function _loadLiveFilterSettings() {
  */
 function _detectCategoryFromLog(args) {
   if (!args || args.length === 0) return 'uncategorized';
-  
+
   const firstArg = args[0];
   if (typeof firstArg !== 'string') return 'uncategorized';
-  
+
   // Match pattern: [emoji displayName] or [displayName] at start
   const match = firstArg.match(/^\[([^\]]+)\]/);
   if (!match) return 'uncategorized';
-  
-  const prefix = match[1].toLowerCase().replace(/[^\w\s-]/g, '').trim();
-  
+
+  const prefix = match[1]
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim();
+
   // Category mapping based on common prefixes
   const mapping = {
     'url detection': 'url-detection',
     'hover events': 'hover',
-    'hover': 'hover',
+    hover: 'hover',
     'clipboard operations': 'clipboard',
-    'clipboard': 'clipboard',
+    clipboard: 'clipboard',
     'keyboard shortcuts': 'keyboard',
-    'keyboard': 'keyboard',
+    keyboard: 'keyboard',
     'quick tab actions': 'quick-tabs',
     'quick tabs': 'quick-tabs',
     'quick tab manager': 'quick-tab-manager',
-    'manager': 'quick-tab-manager',
+    manager: 'quick-tab-manager',
     'event bus': 'event-bus',
-    'configuration': 'config',
-    'config': 'config',
+    configuration: 'config',
+    config: 'config',
     'state management': 'state',
-    'state': 'state',
+    state: 'state',
     'browser storage': 'storage',
-    'storage': 'storage',
+    storage: 'storage',
     'message passing': 'messaging',
-    'messaging': 'messaging',
+    messaging: 'messaging',
     'web requests': 'webrequest',
-    'webrequest': 'webrequest',
+    webrequest: 'webrequest',
     'tab management': 'tabs',
-    'tabs': 'tabs',
-    'performance': 'performance',
-    'errors': 'errors',
-    'initialization': 'initialization',
-    'background': 'state',
-    'sidebar': 'quick-tab-manager',
-    'settings': 'config'
+    tabs: 'tabs',
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization',
+    background: 'state',
+    sidebar: 'quick-tab-manager',
+    settings: 'config'
   };
-  
+
   return mapping[prefix] || 'uncategorized';
 }
 
@@ -665,13 +668,13 @@ function _detectCategoryFromLog(args) {
 function _isCategoryFilterEnabled(category) {
   // If no filter settings cached, count all logs
   if (!_liveFilterSettingsCache) return true;
-  
+
   // 'uncategorized' always counted
   if (category === 'uncategorized') return true;
-  
+
   // Check if category exists in filter settings
   if (!(category in _liveFilterSettingsCache)) return true;
-  
+
   return _liveFilterSettingsCache[category] === true;
 }
 
@@ -684,16 +687,16 @@ function _isCategoryFilterEnabled(category) {
 function _trackLogAction(args) {
   // v1.6.4-v3 - Task 2: Detect category from log message
   const category = _detectCategoryFromLog(args);
-  
+
   // v1.6.4-v3 - Task 3: Only count if category is enabled in live filters
   if (!_isCategoryFilterEnabled(category)) {
     return; // Don't count filtered-out logs
   }
-  
+
   const now = Date.now();
   _totalLogActions++;
   _logActionsWindow.push(now);
-  
+
   // v1.6.4-v3 - Task 2: Increment category counter
   _logActionsByCategory[category] = (_logActionsByCategory[category] || 0) + 1;
 
@@ -1014,14 +1017,16 @@ function _handleMetricsSettingsChange(changes, areaName) {
 function _handleParentWindowMessage(event) {
   // Only accept messages from same origin
   if (event.origin !== window.location.origin) return;
-  
+
   const data = event.data || {};
-  
+
   if (data.type === 'CLEAR_LOG_ACTION_COUNTS') {
     _clearLogActionCounts();
     // Use original console to avoid incrementing counter
     if (console._originalLog) {
-      console._originalLog('[Manager] METRICS: Log action counts cleared via parent window message');
+      console._originalLog(
+        '[Manager] METRICS: Log action counts cleared via parent window message'
+      );
     }
   }
 }

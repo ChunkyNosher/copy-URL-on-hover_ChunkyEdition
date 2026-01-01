@@ -114,10 +114,10 @@ quota monitoring, code health 9.0+, render queue priority, simplified init
 
 **Key Settings Functions (v1.6.4-v3):**
 
-| Function                        | Purpose                              |
-| ------------------------------- | ------------------------------------ |
-| `CLEAR_LOG_ACTION_COUNTS` msg   | postMessage to reset log counters    |
-| Live Console Output Filter      | Checkboxes for enabled log categories|
+| Function                      | Purpose                               |
+| ----------------------------- | ------------------------------------- |
+| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters     |
+| Live Console Output Filter    | Checkboxes for enabled log categories |
 
 **v1.6.3.6 Fixes:**
 
@@ -253,7 +253,7 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 
 - [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
 - [ ] Expandable category breakdown (click footer to expand/collapse)
-- [ ] Filter-aware log counting via _loadLiveFilterSettings()
+- [ ] Filter-aware log counting via \_loadLiveFilterSettings()
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Live Metrics toggle works in settings
