@@ -1027,30 +1027,42 @@ conditions, but left no fallback. **Fix:** Added
 `STATE_CHANGED_SAFETY_TIMEOUT_MS` (500ms) safety mechanism - after receiving
 `TRANSFER_QUICK_TAB_ACK` or `DUPLICATE_QUICK_TAB_ACK`, if no `STATE_CHANGED` is
 received within 500ms, sidebar requests full state via
-`requestAllQuickTabsViaPort()`. **Status:** ✅ FIXED in v1.6.4-v3
+`requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures state is always refreshed regardless of STATE_CHANGED broadcast success. **Status:** ✅ FIXED in v1.6.4-v3
 
 ---
 
 ## v1.6.4-v3 New Features (January 2026)
 
-### Feature 8: Live Metrics Footer in Quick Tab Manager
+### Feature 8: Live Log Action Metrics Footer in Quick Tab Manager
 
 **Description:** Quick Tab Manager sidebar footer now shows live updating
-metrics:
+metrics for log action tracking (changed from storage/memory tracking):
 
 - 📑 Quick Tab count
-- 💾 Storage usage (from browser.storage.local)
-- 🧠 Memory usage (estimated based on Quick Tab count)
+- 📊 Log actions per second (real-time rate)
+- 📈 Total log actions since last clear
 
 **Settings:**
 
 - Toggle to enable/disable live metrics (default: enabled)
 - Update interval setting: 500ms to 30 seconds (default: 1 second)
+- When metrics are disabled, footer shows extension name only
 
-**Implementation:** Added `initializeMetrics()`, `_updateMetrics()`,
-`_startMetricsInterval()`, `_stopMetricsInterval()` functions with cleanup on
-sidebar close. Settings stored via `quickTabsMetricsEnabled` and
-`quickTabsMetricsIntervalMs` keys. **Status:** ✅ IMPLEMENTED in v1.6.4-v3
+**Implementation:** Added console interceptors for `console.log`, `console.warn`,
+`console.error` to track log actions. Uses sliding window for accurate per-second
+rate calculation. Added `_trackLogAction()`, `_calculateLogsPerSecond()`,
+`_installConsoleInterceptors()`, `_clearLogActionCounts()` functions.
+
+### Feature 9: Footer Visibility Based on Active Tab
+
+**Description:** Save Settings and Reset to Defaults buttons in sidebar footer
+are now hidden when the Quick Tab Manager tab is active. They only appear when
+on the Settings tabs.
+
+**Implementation:** Added CSS display toggle in `_switchToManagerTab()` and
+`_switchToSettingsTab()` functions in settings.js.
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
 
 ---
 
@@ -1058,6 +1070,5 @@ sidebar close. Settings stored via `quickTabsMetricsEnabled` and
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 1, 2026  
+**Last Review Date:** January 1, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v3)

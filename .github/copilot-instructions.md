@@ -34,13 +34,16 @@
 - **BUG FIX #6d** - Cross-Tab Transfer duplicate messages fix (duplicate
   QUICK_TAB_TRANSFERRED_IN causing UI desyncs)
 - **BUG FIX #7d** - Open in New Tab UI flicker fix (added optimistic UI)
-- **BUG FIX #8d** - Cross-Tab Transfer STATE_CHANGED race fix (500ms safety
-  timeout triggers requestAllQuickTabsViaPort)
+- **BUG FIX #8d** - Cross-Tab Transfer STATE_CHANGED race fix (immediate
+  requestAllQuickTabsViaPort after ACK replaces safety timeout)
 
 **v1.6.4-v3 Features (NEW):**
 
-- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
-  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
+- **Live Log Action Metrics Footer** - Sidebar footer shows live Quick Tab count,
+  log actions per second, total log actions. Configurable interval (500ms-30s),
+  toggle in settings.
+- **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown only
+  on Settings tabs.
 
 **v1.6.4-v3 Code Health:**
 
