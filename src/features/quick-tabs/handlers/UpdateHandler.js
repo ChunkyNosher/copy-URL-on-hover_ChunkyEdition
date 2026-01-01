@@ -148,13 +148,9 @@ export class UpdateHandler {
     // v1.6.3.12-v4 - FIX Issue #8: Initialize or increment event counter
     if (this._dragDebounceTimers[key]) {
       // Subsequent event during debounce window
+      // v1.6.4-v3 - FIX BUG #4: Removed excessive logging (60+ logs/sec during drag)
+      // Keep counter logic but remove console.log to reduce log noise
       this._debounceEventCounts[key] = (this._debounceEventCounts[key] || 0) + 1;
-      console.log('[DEBOUNCE][DRAG_EVENT_QUEUED] Event during debounce window', {
-        key,
-        debouncedEventCount: this._debounceEventCounts[key],
-        scheduledDelayMs,
-        timestamp: new Date().toISOString()
-      });
       clearTimeout(this._dragDebounceTimers[key]);
     } else {
       // v1.6.3.12-v4 - FIX Issue #8: Log debounce trigger
@@ -490,12 +486,9 @@ export class UpdateHandler {
     // v1.6.3.4 - FIX Issue #2: Clear any existing debounce timer
     if (this._debounceTimer) {
       // v1.6.3.12-v4 - FIX Issue #8: Increment event counter during debounce
+      // v1.6.4-v3 - FIX BUG #4: Removed excessive logging (60+ logs/sec during resize/move)
+      // Keep counter logic but remove console.log to reduce log noise
       this._mainDebounceEventCount++;
-      console.log('[DEBOUNCE][MAIN_EVENT_QUEUED] Event during debounce window', {
-        debouncedEventCount: this._mainDebounceEventCount,
-        scheduledDelayMs,
-        timestamp: new Date().toISOString()
-      });
       clearTimeout(this._debounceTimer);
     } else {
       // v1.6.3.12-v4 - FIX Issue #8: Log debounce trigger

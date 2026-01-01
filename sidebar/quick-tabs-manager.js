@@ -2,21 +2,22 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v3 STATE_CHANGED SAFETY TIMEOUT FIX ===
- * v1.6.4-v3 - FIX BUG #1/#2/#3: Transfer/duplicate/Move to Current Tab not appearing in Manager
- *   - ROOT CAUSE: STATE_CHANGED message not received by sidebar after transfer/duplicate
- *     The background script calls notifySidebarOfStateChange() but if the sidebar port
- *     is disconnected or null, the message is dropped (BROADCAST_DROPPED).
- *     Without STATE_CHANGED, the sidebar never gets the updated Quick Tab state.
- *   - FIX: Added safety timeout after transfer/duplicate ACK
- *     - Added STATE_CHANGED_SAFETY_TIMEOUT_MS (500ms) constant
- *     - Added _stateChangedSafetyTimeoutId tracking variable
- *     - Added _scheduleStateChangedSafetyTimeout() helper function
- *     - Added _clearStateChangedSafetyTimeout() to cancel on STATE_CHANGED receipt
- *     - Modified _handleSuccessfulTransferAck() to schedule safety timeout
- *     - Modified DUPLICATE_QUICK_TAB_ACK handler to schedule safety timeout
- *     - Modified _handleQuickTabsStateUpdate() to clear safety timeout on STATE_CHANGED
- *   - BEHAVIOR: If STATE_CHANGED doesn't arrive within 500ms, requests fresh state via port
+ * === v1.6.4-v3 TRANSFER/DUPLICATE STATE SYNC FIX ===
+ * v1.6.4-v3 - FIX BUG #1/#2: Transfer/duplicate Quick Tabs not appearing in Manager
+ *   - ROOT CAUSE: setTimeout(0) wrapper around requestAllQuickTabsViaPort() caused
+ *     inconsistent state sync. The event loop deferral meant the request could be
+ *     processed after unrelated state changes, causing stale data.
+ *   - FIX: Removed setTimeout(0) wrapper, call requestAllQuickTabsViaPort() directly
+ *     - Modified _handleSuccessfulTransferAck() - direct call after optimistic update
+ *     - Modified DUPLICATE_QUICK_TAB_ACK handler - direct call after optimistic update
+ *   - BEHAVIOR: Immediate state request after ACK ensures Manager gets updated state
+ *   - NOTE: STATE_CHANGED safety timeout removed as direct call is more reliable
+ *
+ * v1.6.4-v3 - FIX BUG #4: Excessive logging during drag operations (60+ logs/sec)
+ *   - ROOT CAUSE: [DEBOUNCE][DRAG_EVENT_QUEUED] and [DEBOUNCE][MAIN_EVENT_QUEUED]
+ *     logs were firing on every mouse move during drag operations
+ *   - FIX: Removed console.log calls in UpdateHandler.js, kept counter logic
+ *   - Files: src/features/quick-tabs/handlers/UpdateHandler.js lines 152, 494
  *
  * === v1.6.4-v2 MOVE TO CURRENT TAB STATE SYNC FIX ===
  * v1.6.4-v2 - FIX BUG #2: "Move to Current Tab" Quick Tab not appearing in Manager
@@ -1924,8 +1925,7 @@ function _logPortMessageValidationError(type, msg, error) {
 /**
  * Handle successful transfer ACK - update local state and force render
  * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
- * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
- * v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+ * v1.6.4-v3 - FIX BUG #1/#2: Direct requestAllQuickTabsViaPort() call without setTimeout
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
@@ -1937,7 +1937,7 @@ function _handleSuccessfulTransferAck(msg) {
     newOriginTabId: msg.newOriginTabId,
     currentPortDataCount: _allQuickTabsFromPort.length,
     timestamp: Date.now(),
-    message: 'STATE_CHANGED should follow with complete updated state'
+    message: 'Requesting fresh state immediately after ACK'
   });
 
   // Clear cache for both old and new origin tabs
@@ -1953,19 +1953,15 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after transfer to ensure consistency
-  // Previous approach relied on STATE_CHANGED broadcast which may be dropped if sidebarPort is null.
-  // This direct request ensures we get the updated state even if the broadcast fails.
-  // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
-  // messages before we request fresh state, ensuring proper ordering
-  setTimeout(() => {
-    console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
-      quickTabId: msg.quickTabId,
-      newOriginTabId: msg.newOriginTabId,
-      timestamp: Date.now()
-    });
-    requestAllQuickTabsViaPort();
-  }, 0);
+  // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after transfer ACK
+  // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
+  // Removed setTimeout(0) wrapper as it was causing inconsistent state sync.
+  console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    timestamp: Date.now()
+  });
+  requestAllQuickTabsViaPort();
 }
 
 /**
@@ -2212,8 +2208,7 @@ const _portMessageHandlers = {
   },
   // v1.6.4 - FIX BUG #3: Handle duplicate ACK
   // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
-  // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
-  // v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout for STATE_CHANGED
+  // v1.6.4-v3 - FIX BUG #1/#2: Direct requestAllQuickTabsViaPort() call without setTimeout
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -2223,7 +2218,7 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       currentPortDataCount: _allQuickTabsFromPort.length,
       timestamp: Date.now(),
-      message: 'STATE_CHANGED should follow with complete updated state'
+      message: 'Requesting fresh state immediately after ACK'
     });
     // v1.6.4 - FIX BUG #2: If duplicate succeeded, increment version and force render
     if (msg.success) {
@@ -2237,16 +2232,15 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after duplicate to ensure consistency
-      // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
-      setTimeout(() => {
-        console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
-          newQuickTabId: msg.newQuickTabId,
-          newOriginTabId: msg.newOriginTabId,
-          timestamp: Date.now()
-        });
-        requestAllQuickTabsViaPort();
-      }, 0);
+      // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after duplicate ACK
+      // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
+      // Removed setTimeout(0) wrapper as it was causing inconsistent state sync.
+      console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
+        newQuickTabId: msg.newQuickTabId,
+        newOriginTabId: msg.newOriginTabId,
+        timestamp: Date.now()
+      });
+      requestAllQuickTabsViaPort();
     }
   }
 };
