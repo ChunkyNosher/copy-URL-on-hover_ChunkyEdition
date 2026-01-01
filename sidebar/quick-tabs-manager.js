@@ -482,14 +482,8 @@ let _metricsIntervalId = null;
 // Current metrics settings
 let _metricsEnabled = METRICS_DEFAULT_ENABLED;
 let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
-// DOM element references for metrics (cached for performance)
-let _metricsFooterEl = null;
-let _metricsContentEl = null;
-let _metricsDisabledEl = null;
-let _metricQuickTabsEl = null;
-// v1.6.4-v3 - Changed from storage/memory to log action tracking
-let _metricLogsPerSecondEl = null;
-let _metricTotalLogsEl = null;
+// v1.6.4-v3 REMOVED: DOM element references removed - metrics footer now only in settings.html
+// The postMessage to parent window is still active for the expandable footer
 
 // v1.6.4-v3 - Log action tracking state
 let _totalLogActions = 0;
@@ -524,21 +518,13 @@ function _incrementStateVersion(source) {
  * Initialize metrics footer DOM element references
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Changed to log action tracking elements
+ * v1.6.4-v3 - REMOVED: Local DOM elements removed - metrics footer now only in settings.html
  * @private
  */
 function _initMetricsDOMReferences() {
-  _metricsFooterEl = document.getElementById('metricsFooter');
-  _metricsContentEl = document.getElementById('metricsContent');
-  _metricsDisabledEl = document.getElementById('metricsDisabled');
-  _metricQuickTabsEl = document.getElementById('metricQuickTabs');
-  // v1.6.4-v3 - Changed from storage/memory to log action tracking
-  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecond');
-  _metricTotalLogsEl = document.getElementById('metricTotalLogs');
-
-  if (!_metricsFooterEl) {
-    console.warn('[Manager] METRICS: Footer element not found in DOM');
-    return false;
-  }
+  // v1.6.4-v3 REMOVED: Local metrics footer DOM elements no longer needed
+  // Metrics are sent to parent window via postMessage for display in settings.html
+  console.log('[Manager] METRICS: DOM references init skipped - using parent window only');
   return true;
 }
 
@@ -807,16 +793,7 @@ function _installConsoleInterceptors() {
  * @param {HTMLElement} element - The metric value element
  * @param {string} newValue - The new value to display
  */
-function _updateMetricValue(element, newValue) {
-  if (!element) return;
-
-  const oldValue = element.textContent;
-  if (oldValue !== newValue) {
-    element.textContent = newValue;
-    element.classList.add('updated');
-    setTimeout(() => element.classList.remove('updated'), 300);
-  }
-}
+// v1.6.4-v3 REMOVED: _updateMetricValue() function removed - local DOM elements no longer exist
 
 /**
  * Update all metrics display
@@ -824,10 +801,11 @@ function _updateMetricValue(element, newValue) {
  * v1.6.4-v3 - Changed to log action tracking
  * v1.6.4-v3 - Also send metrics to parent window for display in settings.html
  * v1.6.4-v3 - Task 2: Include category breakdown in metrics update
+ * v1.6.4-v3 - MODIFIED: Local DOM updates removed - only sends postMessage to parent
  * @private
  */
 function _updateMetrics() {
-  // Get metrics data even if local display is disabled (parent might show it)
+  // Get metrics data for parent window
   const quickTabCount = _allQuickTabsFromPort.length;
   const logsPerSecond = _calculateLogsPerSecond();
   const totalLogs = _totalLogActions;
@@ -854,37 +832,18 @@ function _updateMetrics() {
     // Ignore cross-origin errors - parent might not be available
   }
 
-  // Skip local update if metrics disabled or footer not available
-  if (!_metricsEnabled || !_metricsFooterEl) return;
-
-  try {
-    // Update DOM
-    _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
-    _updateMetricValue(_metricLogsPerSecondEl, `${logsPerSecond}/s`);
-    _updateMetricValue(_metricTotalLogsEl, String(totalLogs));
-  } catch (err) {
-    // Use original console to avoid infinite loop
-    if (console._originalWarn) {
-      console._originalWarn('[Manager] METRICS: Update failed', err.message);
-    }
-  }
+  // v1.6.4-v3 REMOVED: Local DOM updates removed - metrics footer now only in settings.html
 }
 
 /**
  * Show/hide metrics based on enabled state
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - REMOVED: Local footer no longer exists - this is now a no-op
  * @private
  */
 function _applyMetricsVisibility() {
-  if (!_metricsContentEl || !_metricsDisabledEl) return;
-
-  if (_metricsEnabled) {
-    _metricsContentEl.style.display = 'flex';
-    _metricsDisabledEl.style.display = 'none';
-  } else {
-    _metricsContentEl.style.display = 'none';
-    _metricsDisabledEl.style.display = 'block';
-  }
+  // v1.6.4-v3 REMOVED: Local metrics footer DOM elements no longer exist
+  // Visibility is now controlled by parent window (settings.html)
 }
 
 /**
