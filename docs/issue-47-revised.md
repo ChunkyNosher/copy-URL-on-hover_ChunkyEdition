@@ -1064,6 +1064,19 @@ on the Settings tabs.
 
 **Status:** ✅ IMPLEMENTED in v1.6.4-v3
 
+### Feature 10: Metrics Footer on All Tabs (v1.6.4-v3)
+
+**Description:** Metrics footer is now visible on both Quick Tab Manager tab AND
+Settings tabs in the sidebar, not just when viewing the Manager.
+
+**Implementation:**
+- Added metrics footer HTML/CSS to settings.html parent window
+- Added postMessage communication from iframe (quick-tabs-manager.js) to parent (settings.js)
+- Parent window receives METRICS_UPDATE messages and updates its own metrics display
+- Both displays update simultaneously using same data source
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
 ---
 
 **End of Scenarios Document**
