@@ -31,6 +31,9 @@
 - **BUG FIX #4d** - Manager updates when navigating to different URL within
   iframe
 - **BUG FIX #5d** - "Open in New Tab" closes Quick Tab after opening URL
+- **BUG FIX #6d** - Cross-Tab Transfer duplicate messages fix (duplicate
+  QUICK_TAB_TRANSFERRED_IN causing UI desyncs)
+- **BUG FIX #7d** - Open in New Tab UI flicker fix (added optimistic UI)
 
 **v1.6.4-v2 Code Health:**
 
@@ -38,6 +41,8 @@
 - **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers extracted)
 - **StorageChangeAnalyzer.js** - New module (20 functions from
   quick-tabs-manager.js)
+- **content.js** - Code Health: 8.54 → 9.09 (extracted _isValidQuickTabObject,
+  _isAckMessage helpers)
 
 **v1.6.4 Bug Fixes:**
 

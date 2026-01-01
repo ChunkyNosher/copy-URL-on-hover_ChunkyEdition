@@ -981,12 +981,42 @@ tab. Added logging for the close operation. **Status:** ✅ FIXED in v1.6.4-v2
 - Created `StorageChangeAnalyzer.js` module with 20 extracted functions
 - Reduced function count from 367 to 347
 
+### content.js Refactoring (v1.6.4-v2 update)
+
+- Extracted `_isValidQuickTabObject()` helper (CC=10 → resolved)
+- Extracted `_isAckMessage()` helper (CC=9 → resolved)
+- Code Health: 8.54 → 9.09
+
+---
+
+## v1.6.4-v2 Additional Bug Fixes (January 2026)
+
+**Added from User Feedback:** January 1, 2026
+
+### Bug 6d: Cross-Tab Transfer Duplicate Messages (FIXED)
+
+**Issue:** When dragging Quick Tab to another tab, duplicate `QUICK_TAB_TRANSFERRED_IN`
+messages caused UI desyncs where Quick Tab appeared on target tab but not in Manager.
+**Root Cause:** `_notifyNewTabOfTransfer()` and `_notifyTargetTabOfDuplicate()` always sent
+fallback `browser.tabs.sendMessage` even when port messaging succeeded, causing duplicate
+Quick Tab creation attempts. **Fix:** Added check `!portSucceeded` before sending fallback
+messages. Added deduplication guard in `_handleQuickTabTransferredIn()` using session cache.
+**Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 7d: "Open in New Tab" UI Flicker (FIXED)
+
+**Issue:** Clicking "Open in New Tab" button caused Quick Tab to flicker in Manager before
+disappearing (or sometimes persisting). **Root Cause:** `openInNewTab` action was missing
+from `_optimisticUIActionConfig` lookup table, so no immediate visual feedback was applied.
+**Fix:** Added `openInNewTab: { class: 'closing', title: 'Opening...' }` to config. Added
+CSS rules for `.operation-pending`, `.closing`, `.minimizing`, `.restoring` states with
+smooth transitions. **Status:** ✅ FIXED in v1.6.4-v2
+
 ---
 
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 1, 2026  
+**Last Review Date:** January 1, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v2)
