@@ -710,6 +710,7 @@ function _updateMetrics() {
   const totalLogs = _totalLogActions;
 
   // v1.6.4-v3 - Send metrics to parent window (settings.html) for display
+  // Uses window.location.origin for security instead of '*'
   try {
     if (window.parent && window.parent !== window) {
       window.parent.postMessage(
@@ -720,7 +721,7 @@ function _updateMetrics() {
           totalLogs,
           enabled: _metricsEnabled
         },
-        '*'
+        window.location.origin
       );
     }
   } catch {

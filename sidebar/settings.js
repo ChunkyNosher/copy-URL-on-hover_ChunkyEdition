@@ -1839,6 +1839,25 @@ async function refreshLiveConsoleFiltersInAllTabs() {
 // ==================== END FILTER SETTINGS FUNCTIONS ====================
 
 // ==================== v1.6.4-v3: METRICS FOOTER COMMUNICATION ====================
+// Cached DOM element references for metrics footer (populated on first message)
+let _metricsFooterParent = null;
+let _metricQuickTabsEl = null;
+let _metricLogsPerSecondEl = null;
+let _metricTotalLogsEl = null;
+
+/**
+ * Initialize metrics DOM element cache
+ * v1.6.4-v3 - FEATURE: Cache element references to avoid repeated getElementById
+ * @private
+ */
+function _initMetricsElementCache() {
+  if (_metricsFooterParent) return; // Already initialized
+  _metricsFooterParent = document.getElementById('metricsFooterParent');
+  _metricQuickTabsEl = document.getElementById('metricQuickTabsParent');
+  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecondParent');
+  _metricTotalLogsEl = document.getElementById('metricTotalLogsParent');
+}
+
 /**
  * Check if a metrics message event is valid
  * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
@@ -1847,6 +1866,7 @@ async function refreshLiveConsoleFiltersInAllTabs() {
  * @returns {{valid: boolean, data: Object|null}} Validation result
  */
 function _validateMetricsMessage(event) {
+  // Accept messages from same origin only
   if (event.origin !== window.location.origin) return { valid: false, data: null };
   const data = event.data || {};
   if (data.type !== 'METRICS_UPDATE') return { valid: false, data: null };
@@ -1854,19 +1874,15 @@ function _validateMetricsMessage(event) {
 }
 
 /**
- * Update metrics DOM elements
+ * Update metrics DOM elements using cached references
  * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
  * @private
  * @param {Object} data - Metrics data
  */
 function _updateMetricsDOM(data) {
-  const qtEl = document.getElementById('metricQuickTabsParent');
-  const lpsEl = document.getElementById('metricLogsPerSecondParent');
-  const tlEl = document.getElementById('metricTotalLogsParent');
-
-  if (qtEl) qtEl.textContent = String(data.quickTabCount || 0);
-  if (lpsEl) lpsEl.textContent = `${data.logsPerSecond || 0}/s`;
-  if (tlEl) tlEl.textContent = String(data.totalLogs || 0);
+  if (_metricQuickTabsEl) _metricQuickTabsEl.textContent = String(data.quickTabCount || 0);
+  if (_metricLogsPerSecondEl) _metricLogsPerSecondEl.textContent = `${data.logsPerSecond || 0}/s`;
+  if (_metricTotalLogsEl) _metricTotalLogsEl.textContent = String(data.totalLogs || 0);
 }
 
 /**
@@ -1879,10 +1895,11 @@ function _handleMetricsMessage(event) {
   const { valid, data } = _validateMetricsMessage(event);
   if (!valid) return;
 
-  const metricsFooter = document.getElementById('metricsFooterParent');
-  if (!metricsFooter) return;
+  // Initialize cache on first message
+  _initMetricsElementCache();
+  if (!_metricsFooterParent) return;
 
-  metricsFooter.style.display = data.enabled ? 'flex' : 'none';
+  _metricsFooterParent.style.display = data.enabled ? 'flex' : 'none';
   if (data.enabled) _updateMetricsDOM(data);
 }
 
