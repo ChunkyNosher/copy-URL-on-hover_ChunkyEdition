@@ -1769,9 +1769,15 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout to request fresh state if STATE_CHANGED doesn't arrive
-  // This handles the case where the sidebar port is disconnected or the background fails to send STATE_CHANGED
-  _scheduleStateChangedSafetyTimeout('transfer-ack', msg.quickTabId);
+  // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after transfer to ensure consistency
+  // Previous approach relied on STATE_CHANGED broadcast which may be dropped if sidebarPort is null.
+  // This direct request ensures we get the updated state even if the broadcast fails.
+  console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    timestamp: Date.now()
+  });
+  requestAllQuickTabsViaPort();
 }
 
 /**
@@ -2043,8 +2049,13 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout to request fresh state if STATE_CHANGED doesn't arrive
-      _scheduleStateChangedSafetyTimeout('duplicate-ack', msg.newQuickTabId);
+      // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after duplicate to ensure consistency
+      console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
+        newQuickTabId: msg.newQuickTabId,
+        newOriginTabId: msg.newOriginTabId,
+        timestamp: Date.now()
+      });
+      requestAllQuickTabsViaPort();
     }
   }
 };
