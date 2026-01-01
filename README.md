@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.4-v2** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,12 +8,28 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4 Status:** Drag-and-Drop ✅ | Cross-Tab Transfer ✅ | Click-to-Front
-✅
+**🔧 v1.6.4-v2 Status:** Title Sync ✅ | Move to Tab ✅ | Last Close Fix ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.4-v2
+
+**🔧 Title Updates + State Sync + Bug Fixes ✅**
+
+- ✅ **Quick Tab Title Updates** - Titles now update from link text to actual
+  page title after iframe loads
+- ✅ **Move to Current Tab Fix** - Quick Tabs properly appear in Manager after
+  transfer
+- ✅ **Last Quick Tab Close Fix** - Manager properly reflects when all Quick
+  Tabs are closed
+- ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
+  Tab
+- ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
+- ✅ **Code Health Improvements** - window.js and VisibilityHandler.js refactored
+  to 9.38 score
+- ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
 
 ## 🎉 What's New in v1.6.4
 
