@@ -514,19 +514,9 @@ function _incrementStateVersion(source) {
 
 // ==================== v1.6.4-v2 FEATURE: LIVE METRICS FUNCTIONS ====================
 
-/**
- * Initialize metrics footer DOM element references
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * v1.6.4-v3 - Changed to log action tracking elements
- * v1.6.4-v3 - REMOVED: Local DOM elements removed - metrics footer now only in settings.html
- * @private
- */
-function _initMetricsDOMReferences() {
-  // v1.6.4-v3 REMOVED: Local metrics footer DOM elements no longer needed
-  // Metrics are sent to parent window via postMessage for display in settings.html
-  console.log('[Manager] METRICS: DOM references init skipped - using parent window only');
-  return true;
-}
+// v1.6.4-v3 REMOVED: _initMetricsDOMReferences() function deleted
+// Metrics footer DOM elements no longer exist in quick-tabs-manager.html
+// Metrics are sent to parent window via postMessage for display in settings.html
 
 /**
  * Load metrics settings from storage
@@ -835,16 +825,8 @@ function _updateMetrics() {
   // v1.6.4-v3 REMOVED: Local DOM updates removed - metrics footer now only in settings.html
 }
 
-/**
- * Show/hide metrics based on enabled state
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * v1.6.4-v3 - REMOVED: Local footer no longer exists - this is now a no-op
- * @private
- */
-function _applyMetricsVisibility() {
-  // v1.6.4-v3 REMOVED: Local metrics footer DOM elements no longer exist
-  // Visibility is now controlled by parent window (settings.html)
-}
+// v1.6.4-v3 REMOVED: _applyMetricsVisibility() function deleted
+// Local metrics footer no longer exists - visibility controlled by parent window (settings.html)
 
 /**
  * Start the metrics update interval
@@ -900,17 +882,14 @@ async function initializeMetrics() {
   // v1.6.4-v3 - Install console interceptors FIRST (before any other logs)
   _installConsoleInterceptors();
 
-  // Initialize DOM references
-  if (!_initMetricsDOMReferences()) {
-    console.warn('[Manager] METRICS: Initialization failed - DOM elements not found');
-    return;
-  }
+  // v1.6.4-v3 REMOVED: DOM references init no longer needed (metrics footer in parent window)
+  // Previously: if (!_initMetricsDOMReferences()) { return; }
 
   // Load settings from storage
   await _loadMetricsSettings();
 
-  // Apply visibility based on settings
-  _applyMetricsVisibility();
+  // v1.6.4-v3 REMOVED: Visibility application no longer needed (controlled by parent window)
+  // Previously: _applyMetricsVisibility();
 
   // Start interval if enabled
   _startMetricsInterval();
@@ -963,7 +942,7 @@ function _handleMetricsSettingsChange(changes, areaName) {
   }
 
   if (settingsChanged) {
-    _applyMetricsVisibility();
+    // v1.6.4-v3 REMOVED: _applyMetricsVisibility() no longer needed (controlled by parent window)
     _startMetricsInterval(); // Restart with new settings
   }
 }
