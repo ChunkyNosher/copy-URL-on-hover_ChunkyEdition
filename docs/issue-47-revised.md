@@ -1269,6 +1269,31 @@ report how many write operations were prevented.
 
 **Status:** ✅ FIXED in v1.6.4-v3
 
+### Bug Fix #15d: State Refresh Response Using Debounced Render
+
+**Description:** Even after fixing Bug #10d-#12d, transferred/dragged Quick Tabs
+still didn't appear in the Manager. The Quick Tab would visually appear on the
+target tab but the Manager list wouldn't update, and "Close All" couldn't close
+the transferred Quick Tab.
+
+**Root Cause:** When `GET_ALL_QUICK_TABS_RESPONSE` arrived after
+transfer/duplicate operations, it went through `_handleQuickTabsStateUpdate()`
+which called `scheduleRender()` - a debounced render function. The debounce
+mechanism could delay or skip the render because:
+1. The previous immediate render from the ACK updated `lastRenderedStateHash`
+2. The hash comparison in `scheduleRender()` could skip the render
+3. Even if not skipped, the debounce timer would delay the update
+
+**Fix:** Added `_pendingCriticalStateRefresh` flag to force immediate render:
+1. Set flag before `requestAllQuickTabsViaPort()` in transfer/duplicate ACK handlers
+2. Check flag in `_handleQuickTabsStateUpdate()` and call
+   `_forceImmediateRender('critical-state-refresh')` instead of `scheduleRender()`
+3. Clear flag after forcing immediate render
+
+**Files Changed:** `sidebar/quick-tabs-manager.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
+
 ---
 
 ## v1.6.4-v3 New Features (January 2026)

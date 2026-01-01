@@ -26,6 +26,7 @@
   open-and-close, duplicate messages, UI flicker, STATE_CHANGED race, total logs
 - **BUG FIX #10d-#14d** - Transfer/Duplicate sync (no setTimeout), single
   metrics footer, reduced DEBOUNCE logging
+- **BUG FIX #15d** - Critical state refresh force immediate render
 
 **v1.6.4-v3 Features (NEW):**
 
@@ -139,6 +140,8 @@ const quickTabsSessionState = {
 - **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
 - **Direct State Refresh** - `requestAllQuickTabsViaPort()` called directly
   after ACK (no setTimeout)
+- **Critical State Refresh** - `_pendingCriticalStateRefresh` flag forces
+  immediate render after transfer/duplicate response (bypass debounce)
 - **Single Metrics Footer** - Only settings.html has metrics (quick-tabs-manager
   sends postMessage)
 - **Reduced Logging** - DEBOUNCE event-queuing logs removed, completion logs
