@@ -252,5 +252,5 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 
 ---
 
-**Your strength: Creating intuitive, accessible user interfaces with Live Metrics
-Footer configuration support.**
+**Your strength: Creating intuitive, accessible user interfaces with Live
+Metrics Footer configuration support.**

@@ -54,8 +54,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
 - **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
   smooth close animation
-- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after Transfer/Duplicate
-  ACK triggers `requestAllQuickTabsViaPort()` if STATE_CHANGED not received
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
+  Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
+  STATE_CHANGED not received
 
 **v1.6.4-v3 Features (NEW):**
 

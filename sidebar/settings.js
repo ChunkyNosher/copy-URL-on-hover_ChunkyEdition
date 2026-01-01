@@ -686,7 +686,9 @@ function loadSettings() {
 
     // v1.6.4-v2 - FEATURE: Live metrics settings
     document.getElementById('quickTabsMetricsEnabled').checked = items.quickTabsMetricsEnabled;
-    document.getElementById('quickTabsMetricsInterval').value = String(items.quickTabsMetricsIntervalMs);
+    document.getElementById('quickTabsMetricsInterval').value = String(
+      items.quickTabsMetricsIntervalMs
+    );
 
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifDisplayMode').value = items.notifDisplayMode;

@@ -18,9 +18,10 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **🔧 Live Metrics + Transfer Sync Fix ✅**
 
-- ✅ **Live Metrics Footer** - Quick Tab Manager shows live Quick Tab count, storage
-  usage, and memory metrics
-- ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30 seconds
+- ✅ **Live Metrics Footer** - Quick Tab Manager shows live Quick Tab count,
+  storage usage, and memory metrics
+- ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30
+  seconds
 - ✅ **Metrics Toggle** - Enable/disable live metrics in settings
 - ✅ **Cross-Tab Transfer Sync Fix** - STATE_CHANGED safety timeout ensures
   transferred Quick Tabs appear in Manager

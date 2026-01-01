@@ -539,11 +539,16 @@ async function _loadMetricsSettings() {
     const result = await browser.storage.local.get([METRICS_ENABLED_KEY, METRICS_INTERVAL_KEY]);
 
     _metricsEnabled =
-      result[METRICS_ENABLED_KEY] !== undefined ? result[METRICS_ENABLED_KEY] : METRICS_DEFAULT_ENABLED;
+      result[METRICS_ENABLED_KEY] !== undefined
+        ? result[METRICS_ENABLED_KEY]
+        : METRICS_DEFAULT_ENABLED;
 
     _metricsIntervalMs =
       result[METRICS_INTERVAL_KEY] !== undefined
-        ? Math.max(METRICS_MIN_INTERVAL_MS, Math.min(METRICS_MAX_INTERVAL_MS, result[METRICS_INTERVAL_KEY]))
+        ? Math.max(
+            METRICS_MIN_INTERVAL_MS,
+            Math.min(METRICS_MAX_INTERVAL_MS, result[METRICS_INTERVAL_KEY])
+          )
         : METRICS_DEFAULT_INTERVAL_MS;
 
     console.log('[Manager] METRICS: Settings loaded', {
