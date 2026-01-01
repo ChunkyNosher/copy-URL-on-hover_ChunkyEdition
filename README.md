@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.4-v3** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,12 +8,52 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4 Status:** Drag-and-Drop ✅ | Cross-Tab Transfer ✅ | Click-to-Front
-✅
+**🔧 v1.6.4-v3 Status:** Metrics on All Tabs ✅ | Transfer Sync ✅ | Footer
+Fixed ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.4-v3
+
+**🔧 Log Action Metrics + Transfer Sync Fix + Footer Visibility ✅**
+
+- ✅ **Live Log Action Metrics** - Quick Tab Manager shows Quick Tab count, log
+  actions per second, and total log actions
+- ✅ **Expandable Category Breakdown** - Click metrics to expand/collapse
+  per-category log counts (User Actions, System Ops, Diagnostics)
+- ✅ **Filter-Aware Log Counting** - Metrics only count logs for enabled filter
+  categories in Live Console Output Filters
+- ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30
+  seconds
+- ✅ **Metrics Toggle** - Enable/disable live metrics in settings
+- ✅ **Metrics on All Tabs** - Metrics footer visible on both Manager and
+  Settings tabs
+- ✅ **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown
+  only on Settings tabs
+- ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
+  transfer/duplicate ACK
+- ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
+
+## 🎉 What's New in v1.6.4-v2
+
+**🔧 Title Updates + State Sync + Bug Fixes ✅**
+
+- ✅ **Quick Tab Title Updates** - Titles now update from link text to actual
+  page title after iframe loads
+- ✅ **Move to Current Tab Fix** - Quick Tabs properly appear in Manager after
+  transfer
+- ✅ **Last Quick Tab Close Fix** - Manager properly reflects when all Quick
+  Tabs are closed
+- ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
+  Tab
+- ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
+- ✅ **Cross-Tab Transfer Fix** - Fixed duplicate messages causing UI desyncs
+- ✅ **UI Flicker Fix** - Optimistic UI for smooth close animations
+- ✅ **Code Health Improvements** - window.js, VisibilityHandler.js, content.js
+  all above 9.0
+- ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
 
 ## 🎉 What's New in v1.6.4
 

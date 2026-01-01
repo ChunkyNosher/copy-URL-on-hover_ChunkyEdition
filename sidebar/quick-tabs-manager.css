@@ -1121,4 +1121,159 @@ html {
   cursor: not-allowed;
 }
 
+/* ========================================
+ * Optimistic UI States (v1.6.4-v3)
+ * FIX: "Open in New Tab" flicker - immediate visual feedback
+ * ======================================== */
+
+/* Operation pending state - reduces opacity to indicate processing */
+.quick-tab-item.operation-pending {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* Closing state - fade out animation */
+.quick-tab-item.closing {
+  opacity: 0.3;
+  transform: translateX(-10px);
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out;
+}
+
+/* Minimizing state - slight scale down */
+.quick-tab-item.minimizing {
+  opacity: 0.6;
+  transform: scale(0.98);
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+/* Restoring state - slight scale up */
+.quick-tab-item.restoring {
+  opacity: 0.7;
+  transform: scale(1.01);
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
+}
+
+/* ========================================
+ * Live Metrics Footer (v1.6.4-v2)
+ * FEATURE: Display live RAM, storage, and Quick Tab count
+ * ======================================== */
+
+.metrics-footer {
+  position: sticky;
+  bottom: 0;
+  background: var(--secondary-bg);
+  border-top: 1px solid var(--border-color);
+  padding: 8px 16px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.metrics-content {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 12px;
+}
+
+.metric-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: default;
+  transition: color 0.2s ease;
+}
+
+.metric-item:hover {
+  color: var(--text-primary);
+}
+
+.metric-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.metric-value {
+  font-weight: 500;
+  font-family: monospace;
+  font-size: 11px;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Metric value update animation */
+.metric-value.updated {
+  animation: metricPulse 0.3s ease-out;
+}
+
+@keyframes metricPulse {
+  0% {
+    color: var(--green-indicator);
+    transform: scale(1.1);
+  }
+  100% {
+    color: inherit;
+    transform: scale(1);
+  }
+}
+
+/* Disabled state - show extension name only */
+.metrics-disabled {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.extension-name {
+  opacity: 0.7;
+}
+
+/* Responsive adjustments for metrics footer */
+@media (max-width: 300px) {
+  .metrics-footer {
+    padding: 6px 12px;
+  }
+
+  .metrics-content {
+    gap: 8px;
+  }
+
+  .metric-item {
+    font-size: 10px;
+  }
+
+  .metric-icon {
+    font-size: 10px;
+  }
+
+  .metric-value {
+    font-size: 10px;
+    min-width: 32px;
+  }
+}
+
+@media (max-width: 250px) {
+  .metric-icon {
+    display: none;
+  }
+
+  .metric-item {
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .metric-value {
+    text-align: center;
+  }
+}
+
 /* ======================================== */

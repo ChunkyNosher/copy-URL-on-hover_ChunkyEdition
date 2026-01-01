@@ -268,6 +268,94 @@
         flex-shrink: 0;
       }
 
+      /* v1.6.4-v3: Metrics footer in parent window */
+      .metrics-footer-parent {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 8px;
+        background: #1a1a1a;
+        border-radius: 6px;
+        border: 1px solid #333;
+      }
+
+      .metrics-footer-parent .metrics-main-row {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
+      }
+
+      .metrics-footer-parent .metric-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: #aaa;
+      }
+
+      .metrics-footer-parent .metric-icon {
+        font-size: 14px;
+      }
+
+      .metrics-footer-parent .metric-value {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        color: #4caf50;
+        min-width: 40px;
+        text-align: right;
+      }
+
+      /* v1.6.4-v3 - Task 2: Expandable metrics details */
+      .metrics-details {
+        display: none;
+        font-size: 10px;
+        background: #222;
+        padding: 6px;
+        border-radius: 4px;
+        margin-top: 4px;
+      }
+
+      .metrics-details.expanded {
+        display: block;
+      }
+
+      .metrics-details-header {
+        font-weight: bold;
+        margin-bottom: 4px;
+        color: #4caf50;
+      }
+
+      .metrics-breakdown {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2px 8px;
+      }
+
+      .metrics-breakdown-item {
+        display: flex;
+        justify-content: space-between;
+        color: #888;
+      }
+
+      .metrics-breakdown-item .cat-name {
+        color: #aaa;
+      }
+
+      .metrics-breakdown-item .cat-count {
+        font-family: 'Consolas', 'Monaco', monospace;
+        color: #4caf50;
+      }
+
+      .metrics-expand-hint {
+        font-size: 10px;
+        color: #666;
+        text-align: center;
+        margin-left: 4px;
+      }
+
       .footer-buttons {
         display: flex;
         gap: 8px;
@@ -743,6 +831,45 @@
             <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
               Hold this key while dragging a Quick Tab to another tab to duplicate it instead of
               moving.
+            </small>
+          </div>
+
+          <!-- v1.6.4-v2 FEATURE: Live Metrics Settings -->
+          <div class="setting-group">
+            <h4 style="margin-bottom: 8px; font-size: 13px; color: #4caf50">📊 Manager Metrics</h4>
+            <div class="checkbox-group">
+              <input type="checkbox" id="quickTabsMetricsEnabled" checked />
+              <label for="quickTabsMetricsEnabled">Show live metrics in Manager footer</label>
+            </div>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              Display Quick Tab count, storage usage, and memory estimates in the Manager sidebar
+              footer.
+            </small>
+          </div>
+
+          <div class="setting-group">
+            <label>Metrics update interval:</label>
+            <select
+              id="quickTabsMetricsInterval"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="500">Fast (500ms)</option>
+              <option value="1000" selected>Normal (1 second)</option>
+              <option value="2000">Slow (2 seconds)</option>
+              <option value="5000">Very Slow (5 seconds)</option>
+              <option value="10000">Minimal (10 seconds)</option>
+              <option value="30000">Rare (30 seconds)</option>
+            </select>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              How often to update the live metrics. Slower intervals use less resources.
             </small>
           </div>
 
@@ -1624,6 +1751,33 @@
 
       <!-- Footer -->
       <div class="footer">
+        <!-- v1.6.4-v3: Metrics footer visible on all tabs -->
+        <div id="metricsFooterParent" class="metrics-footer-parent">
+          <div
+            class="metrics-main-row"
+            id="metricsToggle"
+            title="Click to expand/collapse category breakdown"
+          >
+            <div class="metric-item" title="Quick Tab count">
+              <span class="metric-icon">📑</span>
+              <span id="metricQuickTabsParent" class="metric-value">0</span>
+            </div>
+            <div class="metric-item" title="Log actions per second">
+              <span class="metric-icon">📊</span>
+              <span id="metricLogsPerSecondParent" class="metric-value">0/s</span>
+            </div>
+            <div class="metric-item" title="Total log actions since clear">
+              <span class="metric-icon">📈</span>
+              <span id="metricTotalLogsParent" class="metric-value">0</span>
+            </div>
+            <span class="metrics-expand-hint" id="metricsExpandHint">▼</span>
+          </div>
+          <!-- v1.6.4-v3 - Task 2: Expandable details section -->
+          <div id="metricsDetails" class="metrics-details">
+            <div class="metrics-details-header">📊 Breakdown by Category:</div>
+            <div id="metricsBreakdown" class="metrics-breakdown"></div>
+          </div>
+        </div>
         <div class="footer-buttons">
           <button id="saveBtn" class="save-btn">✓ Save Settings</button>
           <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>

@@ -70,7 +70,22 @@
  * - Cross-tab ownership validation for all operations
  * - Container isolation validation for all operations
  *
- * @version 1.6.4
+ * v1.6.4-v3 - FIX Bug #3: Pass forceEmpty=true to persistStateToStorage when
+ *   state.tabs is empty. This fixes the issue where closing the last Quick Tab
+ *   via UI button would not update the Manager because visibility operations
+ *   (focus, minimize, restore) that fire after destruction would have their
+ *   empty state persist rejected with "Empty write rejected (forceEmpty required)".
+ *
+ * v1.6.4-v4 - REFACTOR: Code Health improvements (8.28 → 9.0+ target)
+ *   - _validateContainerForOperation: Extracted predicates to reduce CC from 13 to 6
+ *     - _isCurrentContainerUnknown(): Check if currentContainerId is null/undefined
+ *     - _isLegacyQuickTab(): Check if Quick Tab has no originContainerId
+ *     - _doContainerIdsMatch(): Check if container IDs match
+ *   - handleFocus: Extracted helpers to reduce CC from 9 to 5
+ *     - _shouldRecycleZIndices(): Check if z-index threshold exceeded
+ *     - _emitFocusEvent(): Emit focus event if eventBus available
+ *
+ * @version 1.6.4-v4
  */
 
 import {
@@ -185,8 +200,41 @@ export class VisibilityHandler {
   }
 
   /**
+   * Check if currentContainerId is unknown (null/undefined)
+   * v1.6.4-v4 - REFACTOR: Extracted predicate to reduce _validateContainerForOperation CC
+   * @private
+   * @returns {boolean} True if currentContainerId is null or undefined
+   */
+  _isCurrentContainerUnknown() {
+    return this.currentContainerId === null || this.currentContainerId === undefined;
+  }
+
+  /**
+   * Check if Quick Tab is a legacy tab without container info
+   * v1.6.4-v4 - REFACTOR: Extracted predicate to reduce _validateContainerForOperation CC
+   * @private
+   * @param {Object} quickTab - Quick Tab window instance
+   * @returns {boolean} True if Quick Tab has no originContainerId (legacy)
+   */
+  _isLegacyQuickTab(quickTab) {
+    return quickTab?.originContainerId === null || quickTab?.originContainerId === undefined;
+  }
+
+  /**
+   * Check if container IDs match
+   * v1.6.4-v4 - REFACTOR: Extracted predicate to reduce _validateContainerForOperation CC
+   * @private
+   * @param {Object} quickTab - Quick Tab window instance
+   * @returns {boolean} True if container IDs match
+   */
+  _doContainerIdsMatch(quickTab) {
+    return quickTab.originContainerId === this.currentContainerId;
+  }
+
+  /**
    * Unified container validation helper for all operations
    * v1.6.3.12-v5 - FIX Issue #20: Single source of truth for container validation logic
+   * v1.6.4-v4 - REFACTOR: Extracted predicates to reduce CC from 13 to 6
    * Ensures consistent behavior across all code paths:
    * - Case 1: currentContainerId is null/undefined → fail-closed (deny operation for safety)
    * - Case 2: Legacy Quick Tab (no originContainerId) → allow for backward compatibility
@@ -200,21 +248,13 @@ export class VisibilityHandler {
     const logPrefix = `${this._logPrefix} [CONTAINER_VALIDATION] ${operation}`;
 
     // Case 1: Current container ID unknown - fail-closed for safety
-    // This handles the edge case where identity system hasn't initialized
-    if (this.currentContainerId === null || this.currentContainerId === undefined) {
-      // Only log warning if Quick Tab has container info (not legacy)
-      if (quickTab?.originContainerId) {
-        console.warn(`${logPrefix}: currentContainerId is null - denying operation for safety`, {
-          quickTabId: quickTab?.id,
-          originContainerId: quickTab?.originContainerId
-        });
-      }
+    if (this._isCurrentContainerUnknown()) {
+      this._logContainerUnknownWarning(logPrefix, quickTab);
       return { valid: false, reason: 'currentContainerId_unknown' };
     }
 
     // Case 2: Legacy Quick Tab (no container info) - allow for backward compatibility
-    // Quick Tabs created before container tracking was added won't have originContainerId
-    if (quickTab?.originContainerId === null || quickTab?.originContainerId === undefined) {
+    if (this._isLegacyQuickTab(quickTab)) {
       console.log(`${logPrefix}: Legacy Quick Tab (no originContainerId) - allowing`, {
         quickTabId: quickTab?.id,
         currentContainerId: this.currentContainerId
@@ -223,8 +263,7 @@ export class VisibilityHandler {
     }
 
     // Case 3: Container IDs must match for container isolation
-    const matches = quickTab.originContainerId === this.currentContainerId;
-    if (!matches) {
+    if (!this._doContainerIdsMatch(quickTab)) {
       console.warn(`${logPrefix}: Container mismatch - blocking`, {
         quickTabId: quickTab.id,
         originContainerId: quickTab.originContainerId,
@@ -234,6 +273,23 @@ export class VisibilityHandler {
     }
 
     return { valid: true, reason: 'container_match' };
+  }
+
+  /**
+   * Log warning when currentContainerId is unknown (only for non-legacy Quick Tabs)
+   * v1.6.4-v4 - REFACTOR: Extracted to reduce _validateContainerForOperation CC
+   * @private
+   * @param {string} logPrefix - Log prefix string
+   * @param {Object} quickTab - Quick Tab window instance
+   */
+  _logContainerUnknownWarning(logPrefix, quickTab) {
+    // Only log warning if Quick Tab has container info (not legacy)
+    if (quickTab?.originContainerId) {
+      console.warn(`${logPrefix}: currentContainerId is null - denying operation for safety`, {
+        quickTabId: quickTab?.id,
+        originContainerId: quickTab?.originContainerId
+      });
+    }
   }
 
   /**
@@ -1681,6 +1737,28 @@ export class VisibilityHandler {
   }
 
   /**
+   * Check if z-index recycling is needed
+   * v1.6.4-v4 - REFACTOR: Extracted predicate to reduce handleFocus CC
+   * @private
+   * @returns {boolean} True if z-index counter exceeds threshold
+   */
+  _shouldRecycleZIndices() {
+    return this.currentZIndex.value >= Z_INDEX_RECYCLE_THRESHOLD;
+  }
+
+  /**
+   * Emit focus event if eventBus is available
+   * v1.6.4-v4 - REFACTOR: Extracted to reduce handleFocus CC
+   * @private
+   * @param {string} id - Quick Tab ID
+   */
+  _emitFocusEvent(id) {
+    if (this.eventBus && this.Events) {
+      this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, { id });
+    }
+  }
+
+  /**
    * Handle Quick Tab focus (bring to front)
    * v1.6.3 - Local only (no cross-tab sync)
    * v1.6.3.4 - FIX Issue #3: Persist z-index to storage after focus
@@ -1691,6 +1769,7 @@ export class VisibilityHandler {
    * v1.6.3.5-v12 - FIX Issue #2: Add fallback DOM query for z-index update
    * v1.6.3.10-v4 - FIX Issues #9, #10: Cross-tab ownership validation
    * v1.6.3.12-v5 - FIX Issue #17: Use atomic z-index persistence pattern
+   * v1.6.4-v4 - REFACTOR: Extracted helpers to reduce CC from 9 to 5
    *
    * NOTE: This method changed from sync to async in v1.6.3.12-v5 for atomic z-index
    * persistence. Callers should not depend on synchronous completion. The method
@@ -1719,7 +1798,7 @@ export class VisibilityHandler {
     if (!this._validateFocusOwnership(id, tabWindow)) return;
 
     // v1.6.3.10-v10 - FIX Issue 3.2: Recycle z-indices if threshold exceeded
-    if (this.currentZIndex.value >= Z_INDEX_RECYCLE_THRESHOLD) {
+    if (this._shouldRecycleZIndices()) {
       await this._recycleZIndicesAtomic();
     }
 
@@ -1736,9 +1815,7 @@ export class VisibilityHandler {
     });
 
     // Emit focus event
-    if (this.eventBus && this.Events) {
-      this.eventBus.emit(this.Events.QUICK_TAB_FOCUSED, { id });
-    }
+    this._emitFocusEvent(id);
 
     // Persist z-index change to storage (debounced)
     this._debouncedPersist(id, 'focus', 'UI');
@@ -2207,9 +2284,17 @@ export class VisibilityHandler {
       // by the individual tab validation in buildStateForStorage
     }
 
+    // v1.6.4-v3 - FIX Bug #3: Set forceEmpty=true when state.tabs is empty
+    // When visibility operations (focus, minimize, restore) complete after the last
+    // Quick Tab is destroyed, the persist may fire with 0 tabs. Without forceEmpty=true,
+    // this causes "Empty write rejected (forceEmpty required)" error.
+    // This mirrors the fix in DestroyHandler._debouncedPersistToStorage().
+    const forceEmpty = state.tabs.length === 0;
+
     // v1.6.3.4-v2 - FIX Bug #1: Log tab count and minimized states
     console.log(
-      `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`
+      `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`,
+      { forceEmpty }
     );
 
     // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
@@ -2218,7 +2303,7 @@ export class VisibilityHandler {
     try {
       const success = await coordinator.queueWrite(
         'VisibilityHandler',
-        () => persistStateToStorage(state, '[VisibilityHandler]'),
+        () => persistStateToStorage(state, '[VisibilityHandler]', forceEmpty),
         QUEUE_PRIORITY.HIGH // State changes are high priority
       );
 

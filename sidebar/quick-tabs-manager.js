@@ -2,6 +2,35 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v3 STATE_CHANGED SAFETY TIMEOUT FIX ===
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Transfer/duplicate/Move to Current Tab not appearing in Manager
+ *   - ROOT CAUSE: STATE_CHANGED message not received by sidebar after transfer/duplicate
+ *     The background script calls notifySidebarOfStateChange() but if the sidebar port
+ *     is disconnected or null, the message is dropped (BROADCAST_DROPPED).
+ *     Without STATE_CHANGED, the sidebar never gets the updated Quick Tab state.
+ *   - FIX: Added safety timeout after transfer/duplicate ACK
+ *     - Added STATE_CHANGED_SAFETY_TIMEOUT_MS (500ms) constant
+ *     - Added _stateChangedSafetyTimeoutId tracking variable
+ *     - Added _scheduleStateChangedSafetyTimeout() helper function
+ *     - Added _clearStateChangedSafetyTimeout() to cancel on STATE_CHANGED receipt
+ *     - Modified _handleSuccessfulTransferAck() to schedule safety timeout
+ *     - Modified DUPLICATE_QUICK_TAB_ACK handler to schedule safety timeout
+ *     - Modified _handleQuickTabsStateUpdate() to clear safety timeout on STATE_CHANGED
+ *   - BEHAVIOR: If STATE_CHANGED doesn't arrive within 500ms, requests fresh state via port
+ *
+ * === v1.6.4-v2 MOVE TO CURRENT TAB STATE SYNC FIX ===
+ * v1.6.4-v2 - FIX BUG #2: "Move to Current Tab" Quick Tab not appearing in Manager
+ *   - ROOT CAUSE: State version race condition during render
+ *     When ACK triggers _forceImmediateRender(), STATE_CHANGED may arrive during render.
+ *     The render completion was setting _lastRenderedStateVersion = _stateVersion,
+ *     but _stateVersion had already been incremented by STATE_CHANGED. This caused
+ *     the STATE_CHANGED re-render to be skipped as version appeared already rendered.
+ *   - FIX: Capture state version at render START, not END
+ *     - Added stateVersionAtRenderStart in _executeRenderUIInternal()
+ *     - _lastRenderedStateVersion now uses captured version, not current version
+ *     - STATE_CHANGED render now proceeds since its version > captured version
+ *   - Added STATE_VERSION_DRIFT_DURING_RENDER logging for debugging
+ *
  * === v1.6.4 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
  * v1.6.4 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
  *   - ROOT CAUSE: Race condition between ACK and STATE_CHANGED messages
@@ -202,6 +231,31 @@ import {
   RENDER_DEBOUNCE_MAX_WAIT_MS as _RENDER_DEBOUNCE_MAX_WAIT_MS_FROM_RM,
   MAX_CONSECUTIVE_RERENDERS as _MAX_CONSECUTIVE_RERENDERS_FROM_RM
 } from './managers/RenderManager.js';
+// v1.6.4 - Import StorageChangeAnalyzer for storage change handling (extracted for code health)
+import {
+  SAVEID_RECONCILED as _SAVEID_RECONCILED_FROM_SCA,
+  SAVEID_CLEARED as _SAVEID_CLEARED_FROM_SCA,
+  buildAnalysisResult as _buildAnalysisResultFromSCA,
+  buildTabCountChangeResult as _buildTabCountChangeResultFromSCA,
+  buildMetadataOnlyResult as _buildMetadataOnlyResultFromSCA,
+  buildDataChangeResult as _buildDataChangeResultFromSCA,
+  buildNoChangesResult as _buildNoChangesResultFromSCA,
+  getTabsFromValue as _getTabsFromValueFromSCA,
+  checkSingleTabDataChanges as _checkSingleTabDataChangesFromSCA,
+  checkTabChanges as _checkTabChangesFromSCA,
+  buildResultFromChangeAnalysis as _buildResultFromChangeAnalysisFromSCA,
+  analyzeStorageChange as _analyzeStorageChangeFromSCA,
+  hasPositionDiff as _hasPositionDiffFromSCA,
+  hasSizeDiff as _hasSizeDiffFromSCA,
+  identifyChangedTabs as _identifyChangedTabsFromSCA,
+  isSingleTabDeletion as _isSingleTabDeletionFromSCA,
+  isExplicitClearOperation as _isExplicitClearOperationFromSCA,
+  isSuspiciousStorageDrop as _isSuspiciousStorageDropFromSCA,
+  buildStorageChangeContext as _buildStorageChangeContextFromSCA,
+  logStorageChangeEvent as _logStorageChangeEventFromSCA,
+  logTabIdChanges as _logTabIdChangesFromSCA,
+  logPositionSizeChanges as _logPositionSizeChangesFromSCA
+} from './managers/StorageChangeAnalyzer.js';
 import {
   computeStateHash,
   createFavicon,
@@ -243,8 +297,9 @@ const MANAGER_STATE_KEY = 'manager_state_v2';
 // v1.6.4 - FIX Issue #48/#7: Debounce delay for scroll position save (prevents excessive writes)
 const SCROLL_POSITION_SAVE_DEBOUNCE_MS = 200;
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
-const SAVEID_RECONCILED = 'reconciled';
-const SAVEID_CLEARED = 'cleared';
+// v1.6.4 - Note: SAVEID_RECONCILED and SAVEID_CLEARED now imported from StorageChangeAnalyzer.js
+const SAVEID_RECONCILED = _SAVEID_RECONCILED_FROM_SCA;
+const SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
@@ -293,6 +348,11 @@ const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th per
 // Browser tab info cache audit interval
 const BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+// ==================== v1.6.4-v3 FIX BUG #1/#2/#3 CONSTANTS ====================
+// Safety timeout for STATE_CHANGED after transfer/duplicate operations
+// If STATE_CHANGED doesn't arrive within this time, request fresh state
+const STATE_CHANGED_SAFETY_TIMEOUT_MS = 500;
+
 // ==================== v1.6.3.12-v7 FIX Issue #30 CONSTANTS ====================
 // Port reconnection circuit breaker for Quick Tabs port
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
@@ -304,6 +364,17 @@ const QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS = 60000; // 60 seconds befor
 // ==================== v1.6.3.12-v7 FIX Issue #13 CONSTANTS ====================
 // Port messaging FIFO ordering - sequence number tracking
 const SEQUENCE_GAP_WARNING_ENABLED = true; // Enable/disable out-of-order detection logging
+
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS CONSTANTS ====================
+// Settings keys for live metrics feature
+const METRICS_ENABLED_KEY = 'quickTabsMetricsEnabled';
+const METRICS_INTERVAL_KEY = 'quickTabsMetricsIntervalMs';
+// Default values for metrics settings
+const METRICS_DEFAULT_ENABLED = true;
+const METRICS_DEFAULT_INTERVAL_MS = 1000; // 1 second
+const METRICS_MIN_INTERVAL_MS = 500; // Minimum 500ms
+const METRICS_MAX_INTERVAL_MS = 30000; // Maximum 30 seconds
+// v1.6.4-v3 - Removed ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES (no longer using memory tracking)
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -404,6 +475,32 @@ const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
 // Browser tab info cache
 const browserTabInfoCache = new Map();
 
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS STATE ====================
+// Interval ID for metrics update timer
+let _metricsIntervalId = null;
+// Current metrics settings
+let _metricsEnabled = METRICS_DEFAULT_ENABLED;
+let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
+// DOM element references for metrics (cached for performance)
+let _metricsFooterEl = null;
+let _metricsContentEl = null;
+let _metricsDisabledEl = null;
+let _metricQuickTabsEl = null;
+// v1.6.4-v3 - Changed from storage/memory to log action tracking
+let _metricLogsPerSecondEl = null;
+let _metricTotalLogsEl = null;
+
+// v1.6.4-v3 - Log action tracking state
+let _totalLogActions = 0;
+// Log actions in the current sliding window (for calculating actions per second)
+let _logActionsWindow = [];
+// Window size in milliseconds for calculating logs per second
+const LOG_ACTIONS_WINDOW_MS = 5000; // 5 second sliding window
+// v1.6.4-v3 - Task 2: Track log actions per category for breakdown display
+let _logActionsByCategory = {};
+// v1.6.4-v3 - Task 3: Cache of live console filter settings (loaded from storage)
+let _liveFilterSettingsCache = null;
+
 /**
  * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
  * Call this when state is updated from external sources (port messages, storage.onChanged)
@@ -419,6 +516,534 @@ function _incrementStateVersion(source) {
     timestamp: Date.now()
   });
 }
+
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS FUNCTIONS ====================
+
+/**
+ * Initialize metrics footer DOM element references
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Changed to log action tracking elements
+ * @private
+ */
+function _initMetricsDOMReferences() {
+  _metricsFooterEl = document.getElementById('metricsFooter');
+  _metricsContentEl = document.getElementById('metricsContent');
+  _metricsDisabledEl = document.getElementById('metricsDisabled');
+  _metricQuickTabsEl = document.getElementById('metricQuickTabs');
+  // v1.6.4-v3 - Changed from storage/memory to log action tracking
+  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecond');
+  _metricTotalLogsEl = document.getElementById('metricTotalLogs');
+
+  if (!_metricsFooterEl) {
+    console.warn('[Manager] METRICS: Footer element not found in DOM');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Load metrics settings from storage
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @returns {Promise<void>}
+ */
+async function _loadMetricsSettings() {
+  try {
+    const result = await browser.storage.local.get([METRICS_ENABLED_KEY, METRICS_INTERVAL_KEY]);
+
+    _metricsEnabled =
+      result[METRICS_ENABLED_KEY] !== undefined
+        ? result[METRICS_ENABLED_KEY]
+        : METRICS_DEFAULT_ENABLED;
+
+    _metricsIntervalMs =
+      result[METRICS_INTERVAL_KEY] !== undefined
+        ? Math.max(
+            METRICS_MIN_INTERVAL_MS,
+            Math.min(METRICS_MAX_INTERVAL_MS, result[METRICS_INTERVAL_KEY])
+          )
+        : METRICS_DEFAULT_INTERVAL_MS;
+
+    console.log('[Manager] METRICS: Settings loaded', {
+      enabled: _metricsEnabled,
+      intervalMs: _metricsIntervalMs
+    });
+  } catch (err) {
+    console.warn('[Manager] METRICS: Failed to load settings, using defaults', err.message);
+    _metricsEnabled = METRICS_DEFAULT_ENABLED;
+    _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
+  }
+}
+
+/**
+ * Load live console filter settings from storage
+ * v1.6.4-v3 - Task 3: Filter-aware log counting
+ * Note: Uses standard console here since interceptors not yet installed during init
+ * @private
+ * @returns {Promise<void>}
+ */
+async function _loadLiveFilterSettings() {
+  try {
+    const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
+    _liveFilterSettingsCache = result.liveConsoleCategoriesEnabled || null;
+
+    // Use regular console here - interceptors not yet installed during init
+    // This log will be counted once interceptors are installed (non-issue)
+    console.log('[Manager] METRICS: Live filter settings loaded', {
+      hasSettings: !!_liveFilterSettingsCache
+    });
+  } catch (err) {
+    // Use regular console for error - important to log even during init
+    console.warn('[Manager] METRICS: Failed to load filter settings', err.message);
+    _liveFilterSettingsCache = null; // Count all logs if settings unavailable
+  }
+}
+
+/**
+ * Detect log category from log message prefix
+ * v1.6.4-v3 - Task 2: Parse log prefix to determine category
+ * @private
+ * @param {Array} args - Arguments passed to console method
+ * @returns {string} Category ID or 'uncategorized'
+ */
+function _detectCategoryFromLog(args) {
+  if (!args || args.length === 0) return 'uncategorized';
+
+  const firstArg = args[0];
+  if (typeof firstArg !== 'string') return 'uncategorized';
+
+  // Match pattern: [emoji displayName] or [displayName] at start
+  const match = firstArg.match(/^\[([^\]]+)\]/);
+  if (!match) return 'uncategorized';
+
+  const prefix = match[1]
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim();
+
+  // Category mapping based on common prefixes
+  const mapping = {
+    'url detection': 'url-detection',
+    'hover events': 'hover',
+    hover: 'hover',
+    'clipboard operations': 'clipboard',
+    clipboard: 'clipboard',
+    'keyboard shortcuts': 'keyboard',
+    keyboard: 'keyboard',
+    'quick tab actions': 'quick-tabs',
+    'quick tabs': 'quick-tabs',
+    'quick tab manager': 'quick-tab-manager',
+    manager: 'quick-tab-manager',
+    'event bus': 'event-bus',
+    configuration: 'config',
+    config: 'config',
+    'state management': 'state',
+    state: 'state',
+    'browser storage': 'storage',
+    storage: 'storage',
+    'message passing': 'messaging',
+    messaging: 'messaging',
+    'web requests': 'webrequest',
+    webrequest: 'webrequest',
+    'tab management': 'tabs',
+    tabs: 'tabs',
+    performance: 'performance',
+    errors: 'errors',
+    initialization: 'initialization',
+    background: 'state',
+    sidebar: 'quick-tab-manager',
+    settings: 'config'
+  };
+
+  return mapping[prefix] || 'uncategorized';
+}
+
+/**
+ * Check if a category is enabled in live console filters
+ * v1.6.4-v3 - Task 3: Filter-aware log counting
+ * @private
+ * @param {string} category - Category ID to check
+ * @returns {boolean} True if category is enabled
+ */
+function _isCategoryFilterEnabled(category) {
+  // If no filter settings cached, count all logs
+  if (!_liveFilterSettingsCache) return true;
+
+  // 'uncategorized' always counted
+  if (category === 'uncategorized') return true;
+
+  // Check if category exists in filter settings
+  if (!(category in _liveFilterSettingsCache)) return true;
+
+  return _liveFilterSettingsCache[category] === true;
+}
+
+/**
+ * Track a log action (called when console.log, console.warn, console.error are invoked)
+ * v1.6.4-v3 - FEATURE: Log action tracking with category detection and filtering
+ * @private
+ * @param {Array} args - Arguments passed to the console method
+ */
+function _trackLogAction(args) {
+  // v1.6.4-v3 - Task 2: Detect category from log message
+  const category = _detectCategoryFromLog(args);
+
+  // v1.6.4-v3 - Task 3: Only count if category is enabled in live filters
+  if (!_isCategoryFilterEnabled(category)) {
+    return; // Don't count filtered-out logs
+  }
+
+  const now = Date.now();
+  _totalLogActions++;
+  _logActionsWindow.push(now);
+
+  // v1.6.4-v3 - Task 2: Increment category counter
+  _logActionsByCategory[category] = (_logActionsByCategory[category] || 0) + 1;
+
+  // Remove old entries outside the window
+  _pruneLogActionsWindow(now);
+}
+
+/**
+ * Remove log action timestamps outside the sliding window
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * @private
+ * @param {number} now - Current timestamp
+ */
+function _pruneLogActionsWindow(now) {
+  const windowStart = now - LOG_ACTIONS_WINDOW_MS;
+  while (_logActionsWindow.length > 0 && _logActionsWindow[0] < windowStart) {
+    _logActionsWindow.shift();
+  }
+}
+
+/**
+ * Calculate log actions per second based on sliding window
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * Uses actual time span of data in window for accurate rate calculation
+ * @private
+ * @returns {number} Log actions per second (rounded to 1 decimal)
+ */
+function _calculateLogsPerSecond() {
+  const now = Date.now();
+  _pruneLogActionsWindow(now);
+
+  const actionsInWindow = _logActionsWindow.length;
+
+  // If no actions or only one action, return 0 (can't calculate meaningful rate)
+  if (actionsInWindow <= 1) {
+    return 0;
+  }
+
+  // Calculate rate using actual time span between first and last action in window
+  // This provides accurate rate even when window isn't full
+  const oldestTimestamp = _logActionsWindow[0];
+  const actualTimeSpanMs = now - oldestTimestamp;
+
+  // Avoid division by zero; require at least 100ms of data
+  if (actualTimeSpanMs < 100) {
+    return 0;
+  }
+
+  const actualTimeSpanSeconds = actualTimeSpanMs / 1000;
+  const rate = actionsInWindow / actualTimeSpanSeconds;
+
+  return Math.round(rate * 10) / 10; // Round to 1 decimal
+}
+
+/**
+ * Clear log action counts (resets total and window)
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * Called on page refresh or via explicit reset
+ * Note: Uses original console to avoid triggering the interceptor
+ */
+function _clearLogActionCounts() {
+  _totalLogActions = 0;
+  _logActionsWindow = [];
+  // v1.6.4-v3 - Task 2: Also reset category breakdown
+  _logActionsByCategory = {};
+  // Use original console to avoid incrementing counter during clear
+  if (console._originalLog) {
+    console._originalLog('[Manager] METRICS: Log action counts cleared');
+  }
+}
+
+/**
+ * Install console interceptors to track log actions
+ * v1.6.4-v3 - FEATURE: Log action tracking with category detection
+ * @private
+ */
+function _installConsoleInterceptors() {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+
+  console.log = function (...args) {
+    _trackLogAction(args);
+    originalLog.apply(console, args);
+  };
+
+  console.warn = function (...args) {
+    _trackLogAction(args);
+    originalWarn.apply(console, args);
+  };
+
+  console.error = function (...args) {
+    _trackLogAction(args);
+    originalError.apply(console, args);
+  };
+
+  // Store originals for potential restoration
+  console._originalLog = originalLog;
+  console._originalWarn = originalWarn;
+  console._originalError = originalError;
+}
+
+/**
+ * Update a metric value with animation if changed
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @param {HTMLElement} element - The metric value element
+ * @param {string} newValue - The new value to display
+ */
+function _updateMetricValue(element, newValue) {
+  if (!element) return;
+
+  const oldValue = element.textContent;
+  if (oldValue !== newValue) {
+    element.textContent = newValue;
+    element.classList.add('updated');
+    setTimeout(() => element.classList.remove('updated'), 300);
+  }
+}
+
+/**
+ * Update all metrics display
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Changed to log action tracking
+ * v1.6.4-v3 - Also send metrics to parent window for display in settings.html
+ * v1.6.4-v3 - Task 2: Include category breakdown in metrics update
+ * @private
+ */
+function _updateMetrics() {
+  // Get metrics data even if local display is disabled (parent might show it)
+  const quickTabCount = _allQuickTabsFromPort.length;
+  const logsPerSecond = _calculateLogsPerSecond();
+  const totalLogs = _totalLogActions;
+  // v1.6.4-v3 - Task 2: Include category breakdown
+  const categoryBreakdown = { ..._logActionsByCategory };
+
+  // v1.6.4-v3 - Send metrics to parent window (settings.html) for display
+  // Uses window.location.origin for security instead of '*'
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: 'METRICS_UPDATE',
+          quickTabCount,
+          logsPerSecond,
+          totalLogs,
+          categoryBreakdown,
+          enabled: _metricsEnabled
+        },
+        window.location.origin
+      );
+    }
+  } catch {
+    // Ignore cross-origin errors - parent might not be available
+  }
+
+  // Skip local update if metrics disabled or footer not available
+  if (!_metricsEnabled || !_metricsFooterEl) return;
+
+  try {
+    // Update DOM
+    _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
+    _updateMetricValue(_metricLogsPerSecondEl, `${logsPerSecond}/s`);
+    _updateMetricValue(_metricTotalLogsEl, String(totalLogs));
+  } catch (err) {
+    // Use original console to avoid infinite loop
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Update failed', err.message);
+    }
+  }
+}
+
+/**
+ * Show/hide metrics based on enabled state
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _applyMetricsVisibility() {
+  if (!_metricsContentEl || !_metricsDisabledEl) return;
+
+  if (_metricsEnabled) {
+    _metricsContentEl.style.display = 'flex';
+    _metricsDisabledEl.style.display = 'none';
+  } else {
+    _metricsContentEl.style.display = 'none';
+    _metricsDisabledEl.style.display = 'block';
+  }
+}
+
+/**
+ * Start the metrics update interval
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _startMetricsInterval() {
+  // Clear any existing interval
+  _stopMetricsInterval();
+
+  if (!_metricsEnabled) {
+    console.log('[Manager] METRICS: Not starting interval - metrics disabled');
+    return;
+  }
+
+  console.log('[Manager] METRICS: Starting interval', {
+    intervalMs: _metricsIntervalMs
+  });
+
+  // Run immediately once
+  _updateMetrics();
+
+  // Set up recurring interval
+  _metricsIntervalId = setInterval(_updateMetrics, _metricsIntervalMs);
+}
+
+/**
+ * Stop the metrics update interval
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _stopMetricsInterval() {
+  if (_metricsIntervalId !== null) {
+    clearInterval(_metricsIntervalId);
+    _metricsIntervalId = null;
+    console.log('[Manager] METRICS: Interval stopped');
+  }
+}
+
+/**
+ * Initialize live metrics feature
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Added console interceptors for log action tracking
+ * v1.6.4-v3 - Task 3: Load live filter settings for filtered log counting
+ * Called on sidebar initialization
+ */
+async function initializeMetrics() {
+  console.log('[Manager] METRICS: Initializing...');
+
+  // v1.6.4-v3 - Task 3: Load live filter settings BEFORE installing interceptors
+  await _loadLiveFilterSettings();
+
+  // v1.6.4-v3 - Install console interceptors FIRST (before any other logs)
+  _installConsoleInterceptors();
+
+  // Initialize DOM references
+  if (!_initMetricsDOMReferences()) {
+    console.warn('[Manager] METRICS: Initialization failed - DOM elements not found');
+    return;
+  }
+
+  // Load settings from storage
+  await _loadMetricsSettings();
+
+  // Apply visibility based on settings
+  _applyMetricsVisibility();
+
+  // Start interval if enabled
+  _startMetricsInterval();
+
+  // Listen for settings changes
+  browser.storage.onChanged.addListener(_handleMetricsSettingsChange);
+
+  // v1.6.4-v3 - FIX Task 1: Listen for CLEAR_LOG_ACTION_COUNTS from parent window (settings.js)
+  window.addEventListener('message', _handleParentWindowMessage);
+
+  console.log('[Manager] METRICS: Initialization complete');
+}
+
+/**
+ * Handle storage changes for metrics settings
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Task 3: Also refresh live filter settings when they change
+ * @private
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ */
+function _handleMetricsSettingsChange(changes, areaName) {
+  if (areaName !== 'local') return;
+
+  let settingsChanged = false;
+
+  if (changes[METRICS_ENABLED_KEY] !== undefined) {
+    _metricsEnabled = changes[METRICS_ENABLED_KEY].newValue;
+    settingsChanged = true;
+    console.log('[Manager] METRICS: Enabled setting changed', {
+      enabled: _metricsEnabled
+    });
+  }
+
+  if (changes[METRICS_INTERVAL_KEY] !== undefined) {
+    _metricsIntervalMs = Math.max(
+      METRICS_MIN_INTERVAL_MS,
+      Math.min(METRICS_MAX_INTERVAL_MS, changes[METRICS_INTERVAL_KEY].newValue)
+    );
+    settingsChanged = true;
+    console.log('[Manager] METRICS: Interval setting changed', {
+      intervalMs: _metricsIntervalMs
+    });
+  }
+
+  // v1.6.4-v3 - Task 3: Update live filter settings cache when they change
+  if (changes.liveConsoleCategoriesEnabled !== undefined) {
+    _liveFilterSettingsCache = changes.liveConsoleCategoriesEnabled.newValue || null;
+    console.log('[Manager] METRICS: Live filter settings updated');
+  }
+
+  if (settingsChanged) {
+    _applyMetricsVisibility();
+    _startMetricsInterval(); // Restart with new settings
+  }
+}
+
+/**
+ * Handle messages from parent window (settings.js)
+ * v1.6.4-v3 - FIX Task 1: Reset log action counts when Clear Log History clicked
+ * @private
+ * @param {MessageEvent} event - Message event from parent window
+ */
+function _handleParentWindowMessage(event) {
+  // Only accept messages from same origin
+  if (event.origin !== window.location.origin) return;
+
+  const data = event.data || {};
+
+  if (data.type === 'CLEAR_LOG_ACTION_COUNTS') {
+    _clearLogActionCounts();
+    // Use original console to avoid incrementing counter
+    if (console._originalLog) {
+      console._originalLog(
+        '[Manager] METRICS: Log action counts cleared via parent window message'
+      );
+    }
+  }
+}
+
+/**
+ * Cleanup metrics on sidebar close
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ */
+function cleanupMetrics() {
+  _stopMetricsInterval();
+  browser.storage.onChanged.removeListener(_handleMetricsSettingsChange);
+  // v1.6.4-v3 - Also remove parent window message listener
+  window.removeEventListener('message', _handleParentWindowMessage);
+  console.log('[Manager] METRICS: Cleanup complete');
+}
+
+// ==================== END LIVE METRICS FUNCTIONS ====================
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -492,6 +1117,13 @@ let _quickTabsPortCircuitBreakerAutoResetTimerId = null;
  */
 let _lastReceivedSequence = 0;
 let _sequenceGapsDetected = 0;
+
+/**
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout for STATE_CHANGED
+ * Tracks pending safety timeout after transfer/duplicate operations
+ * Cleared when STATE_CHANGED arrives
+ */
+let _stateChangedSafetyTimeoutId = null;
 
 /**
  * Initialize Quick Tabs port connection
@@ -962,6 +1594,9 @@ function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
 function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
   const receiveTime = Date.now();
 
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
+  _clearStateChangedSafetyTimeout();
+
   // v1.6.3.12 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
@@ -1290,6 +1925,7 @@ function _logPortMessageValidationError(type, msg, error) {
  * Handle successful transfer ACK - update local state and force render
  * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
  * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout to request fresh state if STATE_CHANGED doesn't arrive
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
@@ -1317,12 +1953,19 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
-  // STATE_CHANGED message is sent by background AFTER the transfer completes and
-  // contains the full updated state. Calling requestAllQuickTabsViaPort() here
-  // causes a race condition where the response may arrive before STATE_CHANGED,
-  // leading to inconsistent state display. The optimistic local update above
-  // combined with the incoming STATE_CHANGED is sufficient.
+  // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after transfer to ensure consistency
+  // Previous approach relied on STATE_CHANGED broadcast which may be dropped if sidebarPort is null.
+  // This direct request ensures we get the updated state even if the broadcast fails.
+  // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
+  // messages before we request fresh state, ensuring proper ordering
+  setTimeout(() => {
+    console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
+      quickTabId: msg.quickTabId,
+      newOriginTabId: msg.newOriginTabId,
+      timestamp: Date.now()
+    });
+    requestAllQuickTabsViaPort();
+  }, 0);
 }
 
 /**
@@ -1373,6 +2016,66 @@ function _updateQuickTabsStateOrigin(quickTabId, newOriginTabId) {
   if (stateIndex >= 0) {
     quickTabsState.tabs[stateIndex].originTabId = newOriginTabId;
     quickTabsState.tabs[stateIndex].transferredAt = Date.now();
+  }
+}
+
+/**
+ * Schedule safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Handles edge case where sidebar port is disconnected
+ * or background fails to send STATE_CHANGED after transfer/duplicate
+ *
+ * Note: Clearing existing timeout before setting new one is INTENTIONAL behavior.
+ * Rapid successive operations (e.g., multiple transfers) should only result in
+ * ONE fresh state request after the last operation, not multiple requests.
+ * The fresh state request will contain ALL Quick Tabs including all transferred ones.
+ *
+ * @private
+ * @param {string} source - Source of the operation ('transfer-ack' or 'duplicate-ack')
+ * @param {string} quickTabId - Quick Tab ID for logging
+ */
+function _scheduleStateChangedSafetyTimeout(source, quickTabId) {
+  // Clear any existing safety timeout - intentional for batching rapid operations
+  if (_stateChangedSafetyTimeoutId) {
+    clearTimeout(_stateChangedSafetyTimeoutId);
+  }
+
+  _stateChangedSafetyTimeoutId = setTimeout(() => {
+    console.warn('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT:', {
+      source,
+      quickTabId,
+      timeoutMs: STATE_CHANGED_SAFETY_TIMEOUT_MS,
+      timestamp: Date.now(),
+      message: 'STATE_CHANGED not received within timeout, requesting fresh state'
+    });
+
+    // Request fresh state from background
+    requestAllQuickTabsViaPort();
+
+    // Clear the timeout ID
+    _stateChangedSafetyTimeoutId = null;
+  }, STATE_CHANGED_SAFETY_TIMEOUT_MS);
+
+  console.log('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT_SCHEDULED:', {
+    source,
+    quickTabId,
+    timeoutMs: STATE_CHANGED_SAFETY_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Clear the STATE_CHANGED safety timeout
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Called when STATE_CHANGED is received to cancel pending request
+ * @private
+ */
+function _clearStateChangedSafetyTimeout() {
+  if (_stateChangedSafetyTimeoutId) {
+    clearTimeout(_stateChangedSafetyTimeoutId);
+    _stateChangedSafetyTimeoutId = null;
+    console.log('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT_CLEARED:', {
+      timestamp: Date.now(),
+      reason: 'STATE_CHANGED received'
+    });
   }
 }
 
@@ -1510,6 +2213,7 @@ const _portMessageHandlers = {
   // v1.6.4 - FIX BUG #3: Handle duplicate ACK
   // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
   // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout for STATE_CHANGED
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1533,10 +2237,16 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
-      // STATE_CHANGED message is sent by background AFTER the duplicate completes.
-      // The optimistic state version increment triggers a render, and STATE_CHANGED
-      // will follow with the new Quick Tab included in the full state.
+      // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after duplicate to ensure consistency
+      // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
+      setTimeout(() => {
+        console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
+          newQuickTabId: msg.newQuickTabId,
+          newOriginTabId: msg.newOriginTabId,
+          timestamp: Date.now()
+        });
+        requestAllQuickTabsViaPort();
+      }, 0);
     }
   }
 };
@@ -5759,6 +6469,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
 
+  // v1.6.4-v2 - FEATURE: Initialize live metrics footer
+  await initializeMetrics();
+
   // Auto-refresh every 2 seconds
   // v1.6.3.11-v12 - FIX Issue #6: Enhanced with staleness detection
   setInterval(async () => {
@@ -5970,6 +6683,7 @@ function _markEventReceived() {
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
 // v1.6.3.12-v7 - FIX Issue #11: Also disconnect quickTabsPort on unload
 // v1.6.3.12-v11 - FIX Issue #12: Also stop tab update listener on unload
+// v1.6.4-v2 - FEATURE: Also cleanup metrics on unload
 window.addEventListener('unload', () => {
   console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
     timestamp: Date.now(),
@@ -5988,6 +6702,9 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v11 - FIX Issue #12: Stop tab update listener
   _stopTabUpdateListener();
+
+  // v1.6.4-v2 - FEATURE: Cleanup live metrics
+  cleanupMetrics();
 
   // v1.6.3.12-v7 - FIX Issue #11: Disconnect quickTabsPort on unload
   if (quickTabsPort) {
@@ -6919,6 +7636,10 @@ function _getAllQuickTabsForRender() {
  */
 async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
+  // v1.6.4-v2 - FIX BUG #2: Capture state version at render START to prevent
+  // race condition where STATE_CHANGED arrives during render and increments
+  // _stateVersion before we set _lastRenderedStateVersion
+  const stateVersionAtRenderStart = _stateVersion;
   // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
   const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
@@ -6938,6 +7659,9 @@ async function _executeRenderUIInternal() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
+
+    // v1.6.4-v2 - FIX BUG #2: Also update version tracker for empty state
+    _lastRenderedStateVersion = stateVersionAtRenderStart;
 
     // v1.6.3.12-v7 - FIX Area E: Log render performance even for empty state
     const emptyDuration = Date.now() - renderStartTime;
@@ -6979,11 +7703,8 @@ async function _executeRenderUIInternal() {
   _attachDragDropListeners(groupsContainer);
   const domDuration = Date.now() - domStartTime;
 
-  // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
-  lastRenderedHash = computeStateHash(quickTabsState);
-  lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
-  // v1.6.3.12-v12 - FIX Issue #48: Update state version tracker after successful render
-  _lastRenderedStateVersion = _stateVersion;
+  // v1.6.4-v2 - FIX BUG #2: Update trackers with captured version from render START
+  _updateRenderTrackers(stateVersionAtRenderStart);
 
   // v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging
   const totalDuration = Date.now() - renderStartTime;
@@ -7008,6 +7729,33 @@ async function _executeRenderUIInternal() {
   });
 
   _logRenderComplete(allTabs, groups, renderStartTime);
+}
+
+/**
+ * Update render trackers after successful render
+ * v1.6.4-v2 - FIX BUG #2: Extracted to reduce _executeRenderUIInternal line count
+ * Updates hash and state version trackers using captured version from render START
+ * to prevent race condition when STATE_CHANGED arrives during render
+ * @private
+ * @param {number} stateVersionAtRenderStart - State version captured at render start
+ */
+function _updateRenderTrackers(stateVersionAtRenderStart) {
+  // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
+  lastRenderedHash = computeStateHash(quickTabsState);
+  lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
+  // v1.6.3.12-v12 - FIX Issue #48: Update state version tracker after successful render
+  // v1.6.4-v2 - FIX BUG #2: Use captured version from render START, not current version
+  _lastRenderedStateVersion = stateVersionAtRenderStart;
+
+  // v1.6.4-v2 - FIX BUG #2: Log if state version changed during render
+  if (_stateVersion !== stateVersionAtRenderStart) {
+    console.log('[Manager] STATE_VERSION_DRIFT_DURING_RENDER:', {
+      versionAtStart: stateVersionAtRenderStart,
+      currentVersion: _stateVersion,
+      drift: _stateVersion - stateVersionAtRenderStart,
+      message: 'State was updated during render - next render will process newer state'
+    });
+  }
 }
 
 /**
@@ -8198,12 +8946,14 @@ function _applyOptimisticClasses(options) {
 /**
  * Action-to-config lookup table for optimistic UI updates
  * v1.6.3.12-v12 - FIX Code Review: Moved outside function scope to avoid recreation
+ * v1.6.4-v3 - FIX: Added openInNewTab to prevent flicker when opening and closing Quick Tab
  * @private
  */
 const _optimisticUIActionConfig = {
   minimize: { class: 'minimizing', title: 'Minimizing...' },
   restore: { class: 'restoring', title: 'Restoring...' },
-  close: { class: 'closing', title: 'Closing...' }
+  close: { class: 'closing', title: 'Closing...' },
+  openInNewTab: { class: 'closing', title: 'Opening...' }
 };
 
 function _applyOptimisticUIUpdate(action, quickTabId, button) {
@@ -8575,6 +9325,16 @@ async function _handleOpenInNewTab(url, quickTabId) {
       url,
       tabId: response?.tabId
     });
+
+    // v1.6.4-v2 - FIX BUG #5: Close the Quick Tab after successfully opening in new tab
+    // This ensures the Quick Tab is removed from both the origin tab and the Manager
+    if (quickTabId) {
+      console.log('[Manager] OPEN_IN_NEW_TAB_CLOSING_QUICK_TAB:', {
+        quickTabId,
+        reason: 'URL opened in new tab successfully'
+      });
+      closeQuickTabViaPort(quickTabId);
+    }
   } catch (err) {
     console.error('[Manager] OPEN_IN_NEW_TAB_FAILED:', {
       quickTabId,
@@ -8819,10 +9579,11 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity from 23 to <9
+ * v1.6.4 - FIX Code Health: Use imported functions from StorageChangeAnalyzer
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
-  const context = _buildStorageChangeContext(change);
+  const context = _buildStorageChangeContextFromSCA(change, currentBrowserTabId);
 
   // v1.6.3.7 - FIX Issue #8: Log storage listener entry
   console.log('[Manager] STORAGE_LISTENER:', {
@@ -8833,22 +9594,22 @@ function _handleStorageChange(change) {
   });
 
   // Log the storage change
-  _logStorageChangeEvent(context);
+  _logStorageChangeEventFromSCA(context, currentBrowserTabId);
 
   // Log tab ID changes (added/removed)
-  _logTabIdChanges(context);
+  _logTabIdChangesFromSCA(context);
 
   // Log position/size updates
-  _logPositionSizeChanges(context);
+  _logPositionSizeChangesFromSCA(context);
 
   // Check for and handle suspicious drops
-  if (_isSuspiciousStorageDrop(context.oldTabCount, context.newTabCount, context.newValue)) {
+  if (_isSuspiciousStorageDropFromSCA(context.oldTabCount, context.newTabCount, context.newValue)) {
     _handleSuspiciousStorageDrop(context.oldValue);
     return;
   }
 
   // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
-  const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
+  const changeAnalysis = _analyzeStorageChangeFromSCA(context.oldValue, context.newValue);
 
   // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
@@ -8873,240 +9634,12 @@ function _handleStorageChange(change) {
   _scheduleStorageUpdate();
 }
 
-/**
- * Build analysis result for storage change
- * v1.6.3.11-v3 - FIX CodeScene: Extract from _analyzeStorageChange
- * v1.6.3.11-v9 - FIX CodeScene: Use options object to reduce argument count
- * @private
- * @param {Object} options - Analysis result options
- * @param {boolean} options.requiresRender - Whether render is required
- * @param {boolean} options.hasDataChange - Whether data changed
- * @param {string} options.changeType - Type of change
- * @param {string} options.changeReason - Reason for change
- * @param {string} [options.skipReason] - Reason for skipping (optional)
- * @returns {Object} Analysis result
- */
-function _buildAnalysisResult(options) {
-  return {
-    requiresRender: options.requiresRender,
-    hasDataChange: options.hasDataChange,
-    changeType: options.changeType,
-    changeReason: options.changeReason,
-    skipReason: options.skipReason ?? null
-  };
-}
-
-/**
- * Create analysis result for tab count change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {number} oldCount - Previous tab count
- * @param {number} newCount - New tab count
- * @returns {Object} Analysis result
- */
-function _buildTabCountChangeResult(oldCount, newCount) {
-  return _buildAnalysisResult({
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'tab-count',
-    changeReason: `Tab count changed: ${oldCount} → ${newCount}`
-  });
-}
-
-/**
- * Create analysis result for metadata-only change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} zIndexChanges - Z-index change details
- * @returns {Object} Analysis result
- */
-function _buildMetadataOnlyResult(zIndexChanges) {
-  return _buildAnalysisResult({
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'metadata-only',
-    changeReason: 'z-index only',
-    skipReason: `Only z-index changed: ${JSON.stringify(zIndexChanges)}`
-  });
-}
-
-/**
- * Create analysis result for data change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Array<string>} dataChangeReasons - Reasons for data change
- * @returns {Object} Analysis result
- */
-function _buildDataChangeResult(dataChangeReasons) {
-  return _buildAnalysisResult({
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'data',
-    changeReason: dataChangeReasons.join('; ')
-  });
-}
-
-/**
- * Create analysis result for no changes
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @returns {Object} Analysis result
- */
-function _buildNoChangesResult() {
-  return _buildAnalysisResult({
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'none',
-    changeReason: 'no changes',
-    skipReason: 'No detectable changes between old and new state'
-  });
-}
-
-/**
- * Get tabs array from storage value safely
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} value - Storage value object
- * @returns {Array} Tabs array or empty array
- */
-function _getTabsFromValue(value) {
-  return value?.tabs || [];
-}
-
-/**
- * Determine the appropriate result based on change analysis
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} changeResults - Results from _checkTabChanges
- * @returns {Object} Analysis result
- */
-function _buildResultFromChangeAnalysis(changeResults) {
-  // If only z-index changed, skip render
-  if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return _buildMetadataOnlyResult(changeResults.zIndexChanges);
-  }
-
-  // If there are data changes, render is required
-  if (changeResults.hasDataChange) {
-    return _buildDataChangeResult(changeResults.dataChangeReasons);
-  }
-
-  // No changes detected
-  return _buildNoChangesResult();
-}
-
-/**
- * Analyze storage change to determine if renderUI() is needed
- * v1.6.3.7 - FIX Issue #3: Differential update detection
- * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting result builder
- * v1.6.3.11-v9 - FIX CodeScene: Reduce complexity by extracting result factories and change analysis
- * @private
- * @param {Object} oldValue - Previous storage value
- * @param {Object} newValue - New storage value
- * @returns {{ requiresRender: boolean, hasDataChange: boolean, changeType: string, changeReason: string, skipReason: string }}
- */
-function _analyzeStorageChange(oldValue, newValue) {
-  const oldTabs = _getTabsFromValue(oldValue);
-  const newTabs = _getTabsFromValue(newValue);
-
-  // Tab count change always requires render
-  if (oldTabs.length !== newTabs.length) {
-    return _buildTabCountChangeResult(oldTabs.length, newTabs.length);
-  }
-
-  // Check for structural changes and determine result
-  const changeResults = _checkTabChanges(oldTabs, newTabs);
-  return _buildResultFromChangeAnalysis(changeResults);
-}
-
-/**
- * Check a single tab for data changes
- * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
- * v1.6.3.11-v3 - FIX CodeScene: Use data-driven approach to reduce complexity
- * @private
- * @param {Object} oldTab - Previous tab state
- * @param {Object} newTab - New tab state
- * @returns {{ hasDataChange: boolean, reasons: Array<string> }}
- */
-function _checkSingleTabDataChanges(oldTab, newTab) {
-  const reasons = [];
-  const tabId = newTab.id;
-
-  // Data-driven change checks
-  const checks = [
-    {
-      cond: oldTab.originTabId !== newTab.originTabId,
-      msg: `originTabId changed for ${tabId}: ${oldTab.originTabId} → ${newTab.originTabId}`
-    },
-    { cond: oldTab.minimized !== newTab.minimized, msg: `minimized changed for ${tabId}` },
-    {
-      cond: oldTab.left !== newTab.left || oldTab.top !== newTab.top,
-      msg: `position changed for ${tabId}`
-    },
-    {
-      cond: oldTab.width !== newTab.width || oldTab.height !== newTab.height,
-      msg: `size changed for ${tabId}`
-    },
-    {
-      cond: oldTab.title !== newTab.title || oldTab.url !== newTab.url,
-      msg: `title/url changed for ${tabId}`
-    }
-  ];
-
-  checks.forEach(check => {
-    if (check.cond) reasons.push(check.msg);
-  });
-
-  return { hasDataChange: reasons.length > 0, reasons };
-}
-
-/**
- * Check all tabs for data and metadata changes
- * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
- * @private
- * @param {Array} oldTabs - Previous tabs array
- * @param {Array} newTabs - New tabs array
- * @returns {{ hasDataChange: boolean, hasMetadataOnlyChange: boolean, zIndexChanges: Array, dataChangeReasons: Array }}
- */
-function _checkTabChanges(oldTabs, newTabs) {
-  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-
-  let hasDataChange = false;
-  let hasMetadataOnlyChange = false;
-  const zIndexChanges = [];
-  const dataChangeReasons = [];
-
-  for (const newTab of newTabs) {
-    const oldTab = oldTabMap.get(newTab.id);
-
-    if (!oldTab) {
-      // New tab ID - requires render
-      hasDataChange = true;
-      dataChangeReasons.push(`New tab: ${newTab.id}`);
-      continue;
-    }
-
-    // Check for data changes
-    const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
-    if (dataResult.hasDataChange) {
-      hasDataChange = true;
-      dataChangeReasons.push(...dataResult.reasons);
-    }
-
-    // Check for metadata-only changes (z-index)
-    if (oldTab.zIndex !== newTab.zIndex) {
-      hasMetadataOnlyChange = true;
-      zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
-    }
-  }
-
-  return {
-    hasDataChange,
-    hasMetadataOnlyChange,
-    zIndexChanges,
-    dataChangeReasons
-  };
-}
+// v1.6.4 - Note: The following functions have been extracted to StorageChangeAnalyzer.js:
+// _buildAnalysisResult, _buildTabCountChangeResult, _buildMetadataOnlyResult, _buildDataChangeResult,
+// _buildNoChangesResult, _getTabsFromValue, _buildResultFromChangeAnalysis, _analyzeStorageChange,
+// _checkSingleTabDataChanges, _checkTabChanges, _buildStorageChangeContext, _logStorageChangeEvent,
+// _logTabIdChanges, _logPositionSizeChanges, _identifyChangedTabs, _hasPositionDiff, _hasSizeDiff,
+// _isSuspiciousStorageDrop, _isSingleTabDeletion, _isExplicitClearOperation
 
 /**
  * Update local state cache without triggering renderUI()
@@ -9122,212 +9655,6 @@ function _updateLocalStateCache(newValue) {
     // v1.6.4 - FIX Issue #21: Increment state version
     _incrementStateVersion('_updateLocalStateCache');
   }
-}
-
-/**
- * Build context object for storage change handling
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} change - Storage change object
- * @returns {Object} Context with parsed values
- */
-function _buildStorageChangeContext(change) {
-  const newValue = change.newValue;
-  const oldValue = change.oldValue;
-  const oldTabCount = oldValue?.tabs?.length ?? 0;
-  const newTabCount = newValue?.tabs?.length ?? 0;
-  const sourceTabId = newValue?.writingTabId;
-  const sourceInstanceId = newValue?.writingInstanceId;
-  const isFromCurrentTab = sourceTabId === currentBrowserTabId;
-
-  return {
-    newValue,
-    oldValue,
-    oldTabCount,
-    newTabCount,
-    sourceTabId,
-    sourceInstanceId,
-    isFromCurrentTab
-  };
-}
-
-/**
- * Log storage change event with comprehensive details
- * Issue #8: Unified logStorageEvent() format for sequence analysis
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
- * @private
- * @param {Object} context - Storage change context
- */
-function _logStorageChangeEvent(context) {
-  // Issue #8: Determine what changed (added/removed tab IDs)
-  const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
-  const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
-
-  // Issue #8: Unified format for storage event logging
-  console.log(
-    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${context.newTabCount - context.oldTabCount}), saveId: '${context.newValue?.saveId || 'none'}', source: tab-${context.sourceTabId || 'unknown'}`,
-    {
-      changes: {
-        added: addedIds,
-        removed: removedIds
-      },
-      oldTabCount: context.oldTabCount,
-      newTabCount: context.newTabCount,
-      delta: context.newTabCount - context.oldTabCount,
-      saveId: context.newValue?.saveId,
-      transactionId: context.newValue?.transactionId,
-      writingTabId: context.sourceTabId,
-      writingInstanceId: context.sourceInstanceId,
-      isFromCurrentTab: context.isFromCurrentTab,
-      currentBrowserTabId,
-      timestamp: context.newValue?.timestamp,
-      processedAt: Date.now()
-    }
-  );
-}
-
-/**
- * Log tab ID changes (added/removed)
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} context - Storage change context
- */
-function _logTabIdChanges(context) {
-  const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
-  const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
-
-  if (addedIds.length > 0 || removedIds.length > 0) {
-    console.log('[Manager] storage.onChanged tab changes:', {
-      addedIds,
-      removedIds,
-      addedCount: addedIds.length,
-      removedCount: removedIds.length
-    });
-  }
-}
-
-/**
- * Log position/size changes for tabs
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} context - Storage change context
- */
-function _logPositionSizeChanges(context) {
-  if (!context.newValue?.tabs || !context.oldValue?.tabs) {
-    return;
-  }
-
-  const changedTabs = _identifyChangedTabs(context.oldValue.tabs, context.newValue.tabs);
-  const hasChanges = changedTabs.positionChanged.length > 0 || changedTabs.sizeChanged.length > 0;
-
-  if (hasChanges) {
-    console.log('[Manager] 📐 POSITION_SIZE_UPDATE_RECEIVED:', {
-      positionChangedIds: changedTabs.positionChanged,
-      sizeChangedIds: changedTabs.sizeChanged,
-      sourceTabId: context.sourceTabId,
-      isFromCurrentTab: context.isFromCurrentTab
-    });
-  }
-}
-
-/**
- * Identify tabs that changed position or size
- * v1.6.3.7-v1 - FIX ISSUE #4: Track position/size updates
- * @param {Array} oldTabs - Previous tabs array
- * @param {Array} newTabs - New tabs array
- * @returns {Object} Object with positionChanged and sizeChanged arrays
- */
-/**
- * Identify tabs that have position or size changes
- * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
- * @param {Array} oldTabs - Previous tab array
- * @param {Array} newTabs - New tab array
- * @returns {{ positionChanged: Array, sizeChanged: Array }}
- */
-function _identifyChangedTabs(oldTabs, newTabs) {
-  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-  const positionChanged = [];
-  const sizeChanged = [];
-
-  for (const newTab of newTabs) {
-    const oldTab = oldTabMap.get(newTab.id);
-    if (!oldTab) continue;
-
-    if (_hasPositionDiff(oldTab, newTab)) {
-      positionChanged.push(newTab.id);
-    }
-
-    if (_hasSizeDiff(oldTab, newTab)) {
-      sizeChanged.push(newTab.id);
-    }
-  }
-
-  return { positionChanged, sizeChanged };
-}
-
-/**
- * Check if position has changed between tabs
- * @private
- */
-function _hasPositionDiff(oldTab, newTab) {
-  if (!newTab.position || !oldTab.position) return false;
-  return newTab.position.x !== oldTab.position.x || newTab.position.y !== oldTab.position.y;
-}
-
-/**
- * Check if size has changed between tabs
- * @private
- */
-function _hasSizeDiff(oldTab, newTab) {
-  if (!newTab.size || !oldTab.size) return false;
-  return newTab.size.width !== oldTab.size.width || newTab.size.height !== oldTab.size.height;
-}
-
-/**
- * Check if storage change is a suspicious drop (potential corruption)
- * v1.6.3.5-v2 - FIX Report 2 Issue #6: Better heuristics for corruption detection
- * v1.6.3.5-v11 - FIX Issue #6: Recognize single-tab deletions as legitimate (N→0 where N=1)
- *   A drop to 0 is only suspicious if:
- *   - More than 1 tab existed before (sudden multi-tab wipe)
- *   - It's not an explicit clear operation (reconciled/cleared saveId)
- * @param {number} oldTabCount - Previous tab count
- * @param {number} newTabCount - New tab count
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if suspicious
- */
-function _isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue) {
-  // Single tab deletion (1→0) is always legitimate - user closed last Quick Tab
-  if (_isSingleTabDeletion(oldTabCount, newTabCount)) {
-    console.log('[Manager] Single tab deletion detected (1→0) - legitimate operation');
-    return false;
-  }
-
-  // Multi-tab drop to 0 is suspicious unless explicitly cleared
-  const isMultiTabDrop = oldTabCount > 1 && newTabCount === 0;
-  return isMultiTabDrop && !_isExplicitClearOperation(newValue);
-}
-
-/**
- * Check if this is a single tab deletion (legitimate)
- * @private
- */
-function _isSingleTabDeletion(oldTabCount, newTabCount) {
-  return oldTabCount === 1 && newTabCount === 0;
-}
-
-/**
- * Check if this is an explicit clear operation
- * @private
- */
-function _isExplicitClearOperation(newValue) {
-  if (!newValue) return true;
-  const saveId = newValue.saveId || '';
-  return saveId.includes(SAVEID_RECONCILED) || saveId.includes(SAVEID_CLEARED);
 }
 
 /**

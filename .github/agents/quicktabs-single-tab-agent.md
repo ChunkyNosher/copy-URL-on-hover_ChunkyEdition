@@ -3,8 +3,8 @@ name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
   drag/resize, navigation, UICoordinator invariant checks, port messaging
-  (`quick-tabs-port`), per-tab scoping enforcement, v1.6.3.12-v7 Option 4 architecture,
-  memory-based state, QUICKTAB_REMOVED handler
+  (`quick-tabs-port`), per-tab scoping enforcement, v1.6.4-v2 Option 4 architecture,
+  memory-based state, QUICKTAB_REMOVED handler, UPDATE_QUICK_TAB title updates
 tools: ['*']
 ---
 
@@ -37,15 +37,21 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
-State)
+**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v12 Features (NEW):**
+**v1.6.4-v2 Bug Fixes (NEW):**
+
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events
+- **State Version Race Fix** - Fixed race condition in render tracking
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+
+**v1.6.3.12-v12 Features:**
 
 - **Button Operation Fix** - Manager buttons now work reliably
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
-    re-render
-  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
 **v1.6.3.12 Architecture (Option 4):**
@@ -80,6 +86,7 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 - `UPDATE_QUICK_TAB_POSITION` / `UPDATE_QUICK_TAB_SIZE` - Update geometry
 - `DELETE_QUICK_TAB` - Remove Quick Tab
 - `HYDRATE_ON_LOAD` - Get tab's Quick Tabs on page load
+- `UPDATE_QUICK_TAB` - Update title from iframe load
 
 **State Machine:** States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 
@@ -87,6 +94,9 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 
 ## Testing Requirements
 
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] HYDRATE_ON_LOAD / HYDRATE_ON_LOAD_RESPONSE works
 - [ ] QUICK_TABS_UPDATED received and rendered
@@ -104,5 +114,6 @@ port.postMessage({ type: 'HYDRATE_ON_LOAD' });
 
 ---
 
-**Your strength: Individual Quick Tab isolation with v1.6.3.12-v12 port
-messaging, button operation fix, memory-based state, per-tab scoping.**
+**Your strength: Individual Quick Tab isolation with v1.6.4-v2 title updates,
+forceEmpty fix, Open in New Tab close, port messaging, memory-based state,
+per-tab scoping.**

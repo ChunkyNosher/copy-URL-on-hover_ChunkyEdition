@@ -575,6 +575,10 @@ const DEFAULT_SETTINGS = {
   quickTabEnableResize: true,
   quickTabDuplicateModifier: 'shift',
 
+  // v1.6.4-v2 - FEATURE: Live metrics settings
+  quickTabsMetricsEnabled: true,
+  quickTabsMetricsIntervalMs: 1000,
+
   showNotification: true,
   notifDisplayMode: 'tooltip',
 
@@ -607,7 +611,7 @@ const DEFAULT_SETTINGS = {
 
 // Helper function to safely parse integer with fallback
 function safeParseInt(value, fallback) {
-  const parsed = parseInt(value);
+  const parsed = parseInt(value, 10);
   return isNaN(parsed) ? fallback : parsed;
 }
 
@@ -679,6 +683,12 @@ function loadSettings() {
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
     document.getElementById('quickTabDuplicateModifier').value = items.quickTabDuplicateModifier;
     toggleCustomPosition(items.quickTabPosition);
+
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    document.getElementById('quickTabsMetricsEnabled').checked = items.quickTabsMetricsEnabled;
+    document.getElementById('quickTabsMetricsInterval').value = String(
+      items.quickTabsMetricsIntervalMs
+    );
 
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifDisplayMode').value = items.notifDisplayMode;
@@ -812,7 +822,13 @@ function _gatherQuickTabSettings() {
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     quickTabDuplicateModifier: document.getElementById('quickTabDuplicateModifier').value || 'alt',
-    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
+    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked,
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    quickTabsMetricsEnabled: document.getElementById('quickTabsMetricsEnabled').checked,
+    quickTabsMetricsIntervalMs: safeParseInt(
+      document.getElementById('quickTabsMetricsInterval').value,
+      1000
+    )
   };
 }
 
@@ -1078,6 +1094,7 @@ function _updatePrimaryTabActiveState(primaryTab) {
 /**
  * Handle switching to the Settings primary tab
  * Shows secondary tabs and restores last active secondary tab
+ * Shows footer buttons (Save Settings, Reset to Defaults)
  * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
  * @param {HTMLElement|null} managerContent - The manager content element
  */
@@ -1090,6 +1107,12 @@ function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
     managerContent.classList.remove('active');
   }
 
+  // v1.6.4-v3 - FIX: Show footer buttons when on Settings tab
+  const footerButtons = document.querySelector('.footer-buttons');
+  if (footerButtons) {
+    footerButtons.style.display = 'flex';
+  }
+
   const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
   showSecondaryTab(lastSecondaryTab);
 }
@@ -1097,6 +1120,7 @@ function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
 /**
  * Handle switching to the Manager primary tab
  * Hides secondary tabs and shows manager content
+ * Hides footer buttons (Save Settings, Reset to Defaults)
  * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
  * @param {HTMLElement|null} managerContent - The manager content element
  */
@@ -1113,6 +1137,12 @@ function _switchToManagerTab(secondaryTabsContainer, managerContent) {
 
   if (managerContent) {
     managerContent.classList.add('active');
+  }
+
+  // v1.6.4-v3 - FIX: Hide footer buttons when on Manager tab (not relevant to Manager)
+  const footerButtons = document.querySelector('.footer-buttons');
+  if (footerButtons) {
+    footerButtons.style.display = 'none';
   }
 }
 
@@ -1316,6 +1346,17 @@ async function handleClearLogHistory() {
   const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
   console.log('[Settings] handleClearLogHistory:', statusMsg);
   showStatus(statusMsg, true);
+
+  // v1.6.4-v3 - FIX Task 1: Post message to iframe to reset metrics log action counts
+  const iframe = document.querySelector('iframe');
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
+      console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
+    } catch (err) {
+      console.warn('[Settings] handleClearLogHistory: Failed to send message to iframe:', err);
+    }
+  }
 }
 
 /**
@@ -1807,6 +1848,200 @@ async function refreshLiveConsoleFiltersInAllTabs() {
 }
 
 // ==================== END FILTER SETTINGS FUNCTIONS ====================
+
+// ==================== v1.6.4-v3: METRICS FOOTER COMMUNICATION ====================
+// Cached DOM element references for metrics footer (populated on first message)
+let _metricsFooterParent = null;
+let _metricQuickTabsEl = null;
+let _metricLogsPerSecondEl = null;
+let _metricTotalLogsEl = null;
+// v1.6.4-v3 - Task 2: Additional elements for expandable breakdown
+let _metricsToggleEl = null;
+let _metricsDetailsEl = null;
+let _metricsBreakdownEl = null;
+let _metricsExpandHintEl = null;
+// State for details expansion
+let _metricsDetailsExpanded = false;
+
+/**
+ * Initialize metrics DOM element cache
+ * v1.6.4-v3 - FEATURE: Cache element references to avoid repeated getElementById
+ * @private
+ */
+function _initMetricsElementCache() {
+  if (_metricsFooterParent) return; // Already initialized
+  _metricsFooterParent = document.getElementById('metricsFooterParent');
+  _metricQuickTabsEl = document.getElementById('metricQuickTabsParent');
+  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecondParent');
+  _metricTotalLogsEl = document.getElementById('metricTotalLogsParent');
+  // v1.6.4-v3 - Task 2: Additional elements
+  _metricsToggleEl = document.getElementById('metricsToggle');
+  _metricsDetailsEl = document.getElementById('metricsDetails');
+  _metricsBreakdownEl = document.getElementById('metricsBreakdown');
+  _metricsExpandHintEl = document.getElementById('metricsExpandHint');
+
+  // Set up toggle click handler
+  if (_metricsToggleEl) {
+    _metricsToggleEl.addEventListener('click', _toggleMetricsDetails);
+  }
+}
+
+/**
+ * Toggle the metrics details expansion
+ * v1.6.4-v3 - Task 2: Expandable category breakdown
+ * @private
+ */
+function _toggleMetricsDetails() {
+  _metricsDetailsExpanded = !_metricsDetailsExpanded;
+
+  if (_metricsDetailsEl) {
+    if (_metricsDetailsExpanded) {
+      _metricsDetailsEl.classList.add('expanded');
+    } else {
+      _metricsDetailsEl.classList.remove('expanded');
+    }
+  }
+
+  if (_metricsExpandHintEl) {
+    _metricsExpandHintEl.textContent = _metricsDetailsExpanded ? '▲' : '▼';
+  }
+}
+
+/**
+ * Check if a metrics message event is valid
+ * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
+ * @private
+ * @param {MessageEvent} event - Message event
+ * @returns {{valid: boolean, data: Object|null}} Validation result
+ */
+function _validateMetricsMessage(event) {
+  // Accept messages from same origin only
+  if (event.origin !== window.location.origin) return { valid: false, data: null };
+  const data = event.data || {};
+  if (data.type !== 'METRICS_UPDATE') return { valid: false, data: null };
+  return { valid: true, data };
+}
+
+// Category display names for the breakdown
+const CATEGORY_DISPLAY_NAMES = {
+  'url-detection': '🔍 URL Detection',
+  hover: '👆 Hover',
+  clipboard: '📋 Clipboard',
+  keyboard: '⌨️ Keyboard',
+  'quick-tabs': '🪟 Quick Tabs',
+  'quick-tab-manager': '📊 Manager',
+  'event-bus': '📡 Event Bus',
+  config: '⚙️ Config',
+  state: '💾 State',
+  storage: '💿 Storage',
+  messaging: '💬 Messaging',
+  webrequest: '🌐 WebRequest',
+  tabs: '📑 Tabs',
+  performance: '⏱️ Perf',
+  errors: '❌ Errors',
+  initialization: '🚀 Init',
+  uncategorized: '❓ Other'
+};
+
+/**
+ * Create a category breakdown item element safely
+ * v1.6.4-v3 - Task 2: Secure DOM element creation (avoid innerHTML XSS)
+ * @private
+ * @param {string} displayName - Category display name
+ * @param {number} count - Count value
+ * @returns {HTMLElement} The created element
+ */
+function _createBreakdownItem(displayName, count) {
+  const item = document.createElement('div');
+  item.className = 'metrics-breakdown-item';
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'cat-name';
+  nameSpan.textContent = displayName;
+
+  const countSpan = document.createElement('span');
+  countSpan.className = 'cat-count';
+  countSpan.textContent = String(count);
+
+  item.appendChild(nameSpan);
+  item.appendChild(countSpan);
+
+  return item;
+}
+
+/**
+ * Update the category breakdown display
+ * v1.6.4-v3 - Task 2: Expandable category breakdown
+ * @private
+ * @param {Object} categoryBreakdown - Object with category: count pairs
+ */
+function _updateCategoryBreakdown(categoryBreakdown) {
+  if (!_metricsBreakdownEl) return;
+
+  // Sort categories by count (descending) and filter out zeros
+  const sortedCategories = Object.entries(categoryBreakdown || {})
+    .filter(([_, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  // Clear existing content
+  _metricsBreakdownEl.textContent = '';
+
+  if (sortedCategories.length === 0) {
+    const emptyMsg = document.createElement('span');
+    emptyMsg.style.color = '#666';
+    emptyMsg.textContent = 'No log actions yet';
+    _metricsBreakdownEl.appendChild(emptyMsg);
+    return;
+  }
+
+  // Create breakdown items using safe DOM manipulation
+  sortedCategories.forEach(([category, count]) => {
+    const displayName = CATEGORY_DISPLAY_NAMES[category] || category;
+    const item = _createBreakdownItem(displayName, count);
+    _metricsBreakdownEl.appendChild(item);
+  });
+}
+
+/**
+ * Update metrics DOM elements using cached references
+ * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
+ * v1.6.4-v3 - Task 2: Also update category breakdown
+ * @private
+ * @param {Object} data - Metrics data
+ */
+function _updateMetricsDOM(data) {
+  if (_metricQuickTabsEl) _metricQuickTabsEl.textContent = String(data.quickTabCount || 0);
+  if (_metricLogsPerSecondEl) _metricLogsPerSecondEl.textContent = `${data.logsPerSecond || 0}/s`;
+  if (_metricTotalLogsEl) _metricTotalLogsEl.textContent = String(data.totalLogs || 0);
+
+  // v1.6.4-v3 - Task 2: Update category breakdown if provided
+  if (data.categoryBreakdown) {
+    _updateCategoryBreakdown(data.categoryBreakdown);
+  }
+}
+
+/**
+ * Handle metrics updates from the Quick Tabs Manager iframe
+ * v1.6.4-v3 - FEATURE: Metrics footer visible on all tabs
+ * @private
+ * @param {MessageEvent} event - Message event from iframe
+ */
+function _handleMetricsMessage(event) {
+  const { valid, data } = _validateMetricsMessage(event);
+  if (!valid) return;
+
+  // Initialize cache on first message
+  _initMetricsElementCache();
+  if (!_metricsFooterParent) return;
+
+  _metricsFooterParent.style.display = data.enabled ? 'flex' : 'none';
+  if (data.enabled) _updateMetricsDOM(data);
+}
+
+// Register message listener for iframe communication
+window.addEventListener('message', _handleMetricsMessage);
+
+// ==================== END METRICS FOOTER COMMUNICATION ====================
 
 // Load settings on popup open
 loadSettings();

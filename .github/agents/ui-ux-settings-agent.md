@@ -2,7 +2,8 @@
 name: ui-ux-settings-specialist
 description: |
   Specialist for settings page, appearance configuration, UI/UX patterns, dark
-  mode, notifications, and all user-facing interface elements outside Quick Tabs
+  mode, notifications, Live Metrics Footer (v1.6.4-v3), and all user-facing
+  interface elements outside Quick Tabs
 tools: ['*']
 ---
 
@@ -59,9 +60,21 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Two-Layer Sidebar Tab System ✅
+**Version:** 1.6.4-v3 - Two-Layer Sidebar Tab System ✅
 
-**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+**v1.6.4-v3 Features (NEW) - Live Metrics Footer:**
+
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, log
+  actions per second, total log actions. Configurable interval (500ms-30s)
+- **Expandable Category Breakdown** - Click metrics footer to expand/collapse,
+  shows log counts per category with `_logActionsByCategory` tracking
+- **Filter-Aware Log Counting** - `_loadLiveFilterSettings()` loads filter
+  settings, `_isCategoryFilterEnabled()` checks if category should be counted
+- **Bug #9d Total Logs Reset** - settings.js sends `CLEAR_LOG_ACTION_COUNTS`
+  postMessage to iframe to reset counters
+- **Default Interval** - `METRICS_DEFAULT_INTERVAL_MS` = 1000ms
+
+**v1.6.3.12-v12 Features - Button Operation Fix + Code Health:**
 
 - **Button Operation Fix** - Manager buttons now work reliably
   - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
@@ -94,9 +107,17 @@ quota monitoring, code health 9.0+, render queue priority, simplified init
   - **Quick Tab Manager** - Shows manager iframe (full-width)
 - **SECONDARY TABS (Layer 2, only visible under Settings):**
   - **Copy URL Tab** - Keyboard shortcuts (Y, X, O)
-  - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults
+  - **Quick Tabs Tab** - Quick Tab settings, max windows, defaults, Live Metrics
+    Footer toggle and interval, Live Console Output Filter categories
   - **Appearance Tab** - Dark mode, colors, borders, animations
   - **Advanced Tab** - Debug mode, storage management, logs, UID display
+
+**Key Settings Functions (v1.6.4-v3):**
+
+| Function                      | Purpose                               |
+| ----------------------------- | ------------------------------------- |
+| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters     |
+| Live Console Output Filter    | Checkboxes for enabled log categories |
 
 **v1.6.3.6 Fixes:**
 
@@ -230,6 +251,13 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 
 ## Testing Requirements
 
+- [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
+- [ ] Expandable category breakdown (click footer to expand/collapse)
+- [ ] Filter-aware log counting via \_loadLiveFilterSettings()
+- [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Live Metrics interval configurable (500ms-30s)
+- [ ] Live Metrics toggle works in settings
+- [ ] Live Console Output Filter checkboxes work
 - [ ] Options page async guard works (`_isPageActive`)
 - [ ] Settings save/load correctly
 - [ ] Dark mode applies across all UI
@@ -239,4 +267,6 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 
 ---
 
-**Your strength: Creating intuitive, accessible user interfaces.**
+**Your strength: Creating intuitive, accessible user interfaces with Live
+Metrics Footer configuration, expandable category breakdown, filter-aware log
+counting, and CLEAR_LOG_ACTION_COUNTS integration.**

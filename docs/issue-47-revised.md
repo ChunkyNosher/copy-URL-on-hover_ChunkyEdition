@@ -905,10 +905,233 @@ drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
 
 ---
 
+## v1.6.4-v2 Bug Fixes (January 2026)
+
+**Added from User Feedback:** January 1, 2026
+
+### Bug 1d: Quick Tab Title Shows Link Text Instead of Page Title (FIXED)
+
+**Issue:** When opening a Quick Tab of a link, the title shows the link text
+(e.g., "11th most populous country") instead of the actual page title (e.g.,
+"List of countries and dependencies by population - Wikipedia"). **Root Cause:**
+Title was set from `targetElement.textContent` in content.js line 3550 and never
+updated after iframe loaded. **Fix:** Modified
+`_notifyBackgroundOfStateChange()` in window.js to send UPDATE_QUICK_TAB message
+with both URL and title when iframe loads. Background updates session state and
+sends STATE_CHANGED to sidebar. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 2d: "Move to Current Tab" Quick Tab Doesn't Appear in Manager (FIXED)
+
+**Issue:** After pressing "Move to Current Tab" button in Manager, the Quick Tab
+transfers to the active tab and appears on screen, but doesn't appear in the
+Manager and doesn't respond to "Close All" button. **Root Cause:** State version
+race condition during render - when ACK triggers `_forceImmediateRender()`,
+STATE_CHANGED may arrive during render, but the render completion was setting
+`_lastRenderedStateVersion = _stateVersion` after it had already been
+incremented. **Fix:** Added `stateVersionAtRenderStart` capture at beginning of
+render, updated `_lastRenderedStateVersion` to use captured version. Extracted
+`_updateRenderTrackers()` helper. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 3d: Last Quick Tab Close Not Reflected in Manager (FIXED)
+
+**Issue:** When closing all Quick Tabs one by one via UI close button, the last
+Quick Tab closes on screen but still appears in Manager. **Root Cause:**
+VisibilityHandler's `_persistToStorage()` was calling `persistStateToStorage()`
+without `forceEmpty=true` when state had 0 tabs, causing the empty write to be
+blocked. **Fix:** Modified VisibilityHandler's `_persistToStorage()` to detect
+when `state.tabs.length === 0` and pass `forceEmpty=true` to allow empty state
+writes. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 4d: Manager Doesn't Update When Navigating Within Quick Tab (FIXED)
+
+**Issue:** When user clicks a different link inside a Quick Tab iframe
+(navigation), the Manager doesn't update to show the new page title. **Root
+Cause:** The iframe load handler in window.js updated local titlebar but didn't
+send UPDATE_QUICK_TAB message to background. **Fix:** Modified
+`setupIframeLoadHandler()` to capture previous title, compare with new title,
+and send UPDATE_QUICK_TAB message if either URL or title changed. **Status:** ✅
+FIXED in v1.6.4-v2
+
+### Bug 5d: "Open in New Tab" Button Doesn't Close Quick Tab (FIXED)
+
+**Issue:** Clicking "Open in New Tab" button in Manager opens the URL in a new
+browser tab correctly, but doesn't close the Quick Tab from the origin tab or
+remove it from Manager. **Root Cause:** `_handleOpenInNewTab()` only opened the
+URL but didn't trigger a close operation. **Fix:** Added
+`closeQuickTabViaPort(quickTabId)` call after successfully opening URL in new
+tab. Added logging for the close operation. **Status:** ✅ FIXED in v1.6.4-v2
+
+---
+
+## v1.6.4-v2 Code Health Refactoring (January 2026)
+
+### window.js Refactoring (Code Health: 8.28 → 9.38)
+
+- Extracted 8 helpers from `_createClickOverlay` (CC=12 → resolved)
+- Extracted 2 helpers from `_tryGetIframeUrl` (CC=10 → resolved)
+- Extracted 2 predicate helpers for complex conditionals
+
+### VisibilityHandler.js Refactoring (Code Health: 8.28 → 9.38)
+
+- Extracted 4 helpers from `_validateContainerForOperation` (CC=13 → resolved)
+- Extracted 2 helpers from `handleFocus` (CC=9 → resolved)
+
+### quick-tabs-manager.js Refactoring
+
+- Created `StorageChangeAnalyzer.js` module with 20 extracted functions
+- Reduced function count from 367 to 347
+
+### content.js Refactoring (v1.6.4-v2 update)
+
+- Extracted `_isValidQuickTabObject()` helper (CC=10 → resolved)
+- Extracted `_isAckMessage()` helper (CC=9 → resolved)
+- Code Health: 8.54 → 9.09
+
+---
+
+## v1.6.4-v2 Additional Bug Fixes (January 2026)
+
+**Added from User Feedback:** January 1, 2026
+
+### Bug 6d: Cross-Tab Transfer Duplicate Messages (FIXED)
+
+**Issue:** When dragging Quick Tab to another tab, duplicate
+`QUICK_TAB_TRANSFERRED_IN` messages caused UI desyncs where Quick Tab appeared
+on target tab but not in Manager. **Root Cause:** `_notifyNewTabOfTransfer()`
+and `_notifyTargetTabOfDuplicate()` always sent fallback
+`browser.tabs.sendMessage` even when port messaging succeeded, causing duplicate
+Quick Tab creation attempts. **Fix:** Added check `!portSucceeded` before
+sending fallback messages. Added deduplication guard in
+`_handleQuickTabTransferredIn()` using session cache. **Status:** ✅ FIXED in
+v1.6.4-v2
+
+### Bug 7d: "Open in New Tab" UI Flicker (FIXED)
+
+**Issue:** Clicking "Open in New Tab" button caused Quick Tab to flicker in
+Manager before disappearing (or sometimes persisting). **Root Cause:**
+`openInNewTab` action was missing from `_optimisticUIActionConfig` lookup table,
+so no immediate visual feedback was applied. **Fix:** Added
+`openInNewTab: { class: 'closing', title: 'Opening...' }` to config. Added CSS
+rules for `.operation-pending`, `.closing`, `.minimizing`, `.restoring` states
+with smooth transitions. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 8d: Cross-Tab Transfer STATE_CHANGED Race Condition (FIXED)
+
+**Issue:** After transferring Quick Tab via "Move to Current Tab" or drag
+transfer, the Quick Tab appeared on target tab but not in Manager. "Close All"
+couldn't close transferred Quick Tabs. **Root Cause:** `STATE_CHANGED` messages
+from background to sidebar were being dropped when
+`quickTabsSessionState.sidebarPort` was null or disconnected. The v1.6.4 fix
+removed `requestAllQuickTabsViaPort()` from ACK handlers to prevent race
+conditions, but left no fallback. **Fix:** Added
+`STATE_CHANGED_SAFETY_TIMEOUT_MS` (500ms) safety mechanism - after receiving
+`TRANSFER_QUICK_TAB_ACK` or `DUPLICATE_QUICK_TAB_ACK`, if no `STATE_CHANGED` is
+received within 500ms, sidebar requests full state via
+`requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety
+timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures
+state is always refreshed regardless of STATE_CHANGED broadcast success.
+**Status:** ✅ FIXED in v1.6.4-v3
+
+### Bug 9d: Total Logs Count Reset Fix (FIXED)
+
+**Issue:** Total logs count in metrics footer didn't reset when clicking "Clear
+Log History" button in Settings. **Root Cause:** settings.js cleared log history
+but didn't notify the quick-tabs-manager.js iframe to reset its counters.
+**Fix:** Added `CLEAR_LOG_ACTION_COUNTS` postMessage from settings.js to iframe.
+quick-tabs-manager.js handles message and resets `_totalLogActions`,
+`_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in
+v1.6.4-v3
+
+---
+
+## v1.6.4-v3 New Features (January 2026)
+
+### Feature 8: Live Log Action Metrics Footer in Quick Tab Manager
+
+**Description:** Quick Tab Manager sidebar footer now shows live updating
+metrics for log action tracking (changed from storage/memory tracking):
+
+- 📑 Quick Tab count
+- 📊 Log actions per second (real-time rate)
+- 📈 Total log actions since last clear
+
+**Settings:**
+
+- Toggle to enable/disable live metrics (default: enabled)
+- Update interval setting: 500ms to 30 seconds (default: 1 second)
+- When metrics are disabled, footer shows extension name only
+
+**Implementation:** Added console interceptors for `console.log`,
+`console.warn`, `console.error` to track log actions. Uses sliding window for
+accurate per-second rate calculation. Added `_trackLogAction()`,
+`_calculateLogsPerSecond()`, `_installConsoleInterceptors()`,
+`_clearLogActionCounts()` functions.
+
+### Feature 9: Footer Visibility Based on Active Tab
+
+**Description:** Save Settings and Reset to Defaults buttons in sidebar footer
+are now hidden when the Quick Tab Manager tab is active. They only appear when
+on the Settings tabs.
+
+**Implementation:** Added CSS display toggle in `_switchToManagerTab()` and
+`_switchToSettingsTab()` functions in settings.js.
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+### Feature 10: Metrics Footer on All Tabs (v1.6.4-v3)
+
+**Description:** Metrics footer is now visible on both Quick Tab Manager tab AND
+Settings tabs in the sidebar, not just when viewing the Manager.
+
+**Implementation:**
+
+- Added metrics footer HTML/CSS to settings.html parent window
+- Added postMessage communication from iframe (quick-tabs-manager.js) to parent
+  (settings.js)
+- Parent window receives METRICS_UPDATE messages and updates its own metrics
+  display
+- Both displays update simultaneously using same data source
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+### Feature 11: Expandable Category Breakdown (v1.6.4-v3)
+
+**Description:** Click on the metrics footer to expand/collapse a category
+breakdown showing log counts per category:
+
+- **User Actions:** URL Detection, Hover Events, Clipboard, Keyboard, Quick
+  Tabs, Quick Tab Manager
+- **System Operations:** Event Bus, Config, State, Storage, Messaging, Web
+  Requests, Tabs
+- **Diagnostics:** Performance, Errors, Initialization
+
+**Implementation:** Added `_categoryLogCounts` tracking object,
+`_metricsExpanded` toggle state, `_renderCategoryBreakdown()` function.
+Categories match the Advanced settings tab categorization for consistency.
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+### Feature 12: Filter-Aware Log Counting (v1.6.4-v3)
+
+**Description:** Metrics only count logs for categories enabled in Live Console
+Output Filters. If URL Detection or Hover Events are toggled OFF in settings,
+those logs won't be counted in the metrics.
+
+**Implementation:**
+
+- Added `_enabledLogFilters` object synced with storage.onChanged
+- Modified `_trackLogAction()` to check filter state before counting
+- Loads initial filter state from storage at startup
+- Real-time sync when user toggles filters in Settings
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Last
-Review Date:** December 31, 2025  
-**Behavior Model:** Tab-Scoped (v1.6.4)
+Review Date:** January 1, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v3)

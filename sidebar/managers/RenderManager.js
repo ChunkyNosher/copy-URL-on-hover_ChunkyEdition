@@ -19,10 +19,7 @@
  */
 
 // ==================== IMPORTS ====================
-import {
-  computeStateHash,
-  extractTabsFromState
-} from '../utils/render-helpers.js';
+import { computeStateHash, extractTabsFromState } from '../utils/render-helpers.js';
 import { isTabMinimizedHelper as isMinimized } from '../utils/tab-operations.js';
 
 // ==================== CONSTANTS ====================

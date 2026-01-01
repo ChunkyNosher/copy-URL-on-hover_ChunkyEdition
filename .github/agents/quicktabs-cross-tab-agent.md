@@ -3,8 +3,9 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.3.12-v12), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
-  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix
+  (v1.6.4-v3), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix,
+  UPDATE_QUICK_TAB title sync, state version race fix, STATE_CHANGED safety timeout (500ms)
 tools: ['*']
 ---
 
@@ -37,33 +38,38 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
-State)
+**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.3.12-v12 Features (NEW):**
+**v1.6.4-v3 Bug Fixes (NEW):**
+
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events and syncs across tabs
+- **State Version Race Fix** - Fixed race condition in render tracking by
+  properly synchronizing state versions
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+- **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
+  caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
+- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
+  smooth close animation
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
+  Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
+  STATE_CHANGED not received
+
+**New Module:**
+
+- `sidebar/managers/StorageChangeAnalyzer.js` - Storage change analysis
+
+**v1.6.3.12-v12 Features:**
 
 - **Button Operation Fix** - Manager buttons now work reliably
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
-    re-render
-  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
 - **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
-  state version before skipping render (port data update detection)
+  state version before skipping render
 - **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
   `browser.tabs.sendMessage` if port unavailable
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
-
-**v1.6.3.12-v11 Features:**
-
-- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` (Issue #1 fix)
-- **Tab Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12 fix)
-
-**v1.6.3.12-v10 Features:**
-
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
-- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- **Code Health** - background.js: 8.79 → 9.09
 
 **v1.6.3.12 Architecture (Option 4):**
 
@@ -90,6 +96,7 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
 | `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
 | `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
+| `STATE_CHANGED_SAFETY_TIMEOUT_MS`       | 500   | Transfer/Duplicate ACK fallback    |
 
 **Message Types:**
 
@@ -98,11 +105,19 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 - `QUICKTAB_MINIMIZED` - Forwarded to sidebar
 - `DELETE_QUICK_TAB` - Remove Quick Tab
 - `QUERY_MY_QUICK_TABS` / `HYDRATE_ON_LOAD` - Query state
+- `UPDATE_QUICK_TAB` - Update title/properties from iframe
 
 ---
 
 ## Testing Requirements
 
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] State version race condition fixed in render tracking
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
+- [ ] Cross-tab transfer no longer sends duplicate messages
+- [ ] Open in New Tab has smooth CSS transition (no UI flicker)
+- [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
 - [ ] Circuit breaker trips after 5 failures
 - [ ] Timeout backoff works (1s → 3s → 5s)
 - [ ] Port messaging works (`'quick-tabs-port'`)
@@ -120,6 +135,8 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.3.12-v12 button operation
-fix, cross-tab render fix, fallback messaging, state version tracking, port
-messaging, sequence tracking, and port circuit breaker.**
+**Your strength: Reliable cross-tab sync with v1.6.4-v3 title updates, state
+version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
+button operation fix, cross-tab render fix, fallback messaging, port messaging,
+and sequence tracking.**

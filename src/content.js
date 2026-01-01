@@ -1828,6 +1828,28 @@ function _isTransferMessage(type) {
 }
 
 /**
+ * Validate if a Quick Tab object has valid structure with required id
+ * v1.6.4-v2 - FIX Code Health: Extract complex conditional from _validateTransferredInMessage
+ * @private
+ * @param {*} quickTab - Object to validate
+ * @returns {boolean} - True if quickTab is a valid object with an id property
+ */
+function _isValidQuickTabObject(quickTab) {
+  return quickTab && typeof quickTab === 'object' && Boolean(quickTab.id);
+}
+
+/**
+ * Check if message is an acknowledgment (ACK) message
+ * v1.6.4-v2 - FIX Code Health: Extract predicate from handleQuickTabsPortResponse
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean} - True if type ends with '_ACK'
+ */
+function _isAckMessage(type) {
+  return type && type.endsWith('_ACK');
+}
+
+/**
  * Handle QUICK_TAB_TRANSFERRED_OUT message - remove Quick Tab from this tab
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * When a Quick Tab is transferred to another tab, the source tab receives this message
@@ -1890,6 +1912,7 @@ function _handleQuickTabTransferredOut(message) {
 /**
  * Validate QUICK_TAB_TRANSFERRED_IN message has required properties
  * v1.6.4 - FIX Code Health: Extract validation to reduce complexity
+ * v1.6.4-v2 - FIX Code Health: Use _isValidQuickTabObject helper for complex conditional
  * @private
  * @param {Object} message - Message to validate
  * @returns {{ valid: boolean, quickTab?: Object, oldOriginTabId?: number }}
@@ -1917,7 +1940,7 @@ function _validateTransferredInMessage(message) {
     return { valid: false };
   }
 
-  if (!quickTab || typeof quickTab !== 'object' || !quickTab.id) {
+  if (!_isValidQuickTabObject(quickTab)) {
     console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Invalid Quick Tab data:', quickTab);
     return { valid: false };
   }
@@ -1929,6 +1952,9 @@ function _validateTransferredInMessage(message) {
  * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+ * v1.6.4-v3 - FIX BUG #1: Add deduplication check to prevent duplicate creation
+ *   - Uses sessionQuickTabs Map to detect if Quick Tab already exists
+ *   - Guards against rare timing issues if both port and fallback messages arrive
  * When a Quick Tab is transferred to this tab, create it with the received properties.
  * @private
  * @param {Object} message - Transfer in message
@@ -1940,6 +1966,22 @@ function _handleQuickTabTransferredIn(message) {
   if (!validation.valid) return;
 
   const { quickTab } = validation;
+
+  // v1.6.4-v3 - FIX BUG #1: Deduplication check to prevent duplicate creation
+  // This guards against the rare case where the same Quick Tab is transferred multiple times
+  // or if both port message and fallback arrive before the first creation completes
+  const existingQuickTab = sessionQuickTabs.get(quickTab.id);
+  if (existingQuickTab) {
+    console.log(
+      '[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate - Quick Tab already exists:',
+      {
+        quickTabId: quickTab.id,
+        existingOriginTabId: existingQuickTab.originTabId,
+        timestamp: Date.now()
+      }
+    );
+    return;
+  }
 
   // Create the Quick Tab with received properties, updating originTabId to this tab
   // v1.6.4 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
@@ -1960,11 +2002,8 @@ function _handleQuickTabTransferredIn(message) {
   console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
 
   try {
-    quickTabsManager.createQuickTab(createOptions);
-    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
-
-    // Add to local session cache with updated originTabId
-    // Note: We intentionally overwrite originTabId because the Quick Tab now belongs to this tab
+    // v1.6.4-v3 - Add to session cache BEFORE creation to prevent race condition
+    // This ensures the deduplication check works even if another message arrives during creation
     const cachedQuickTab = {
       id: quickTab.id,
       url: quickTab.url,
@@ -1978,7 +2017,12 @@ function _handleQuickTabTransferredIn(message) {
       originTabId: quickTabsManager.currentTabId // New owner tab
     };
     sessionQuickTabs.set(quickTab.id, cachedQuickTab);
+
+    quickTabsManager.createQuickTab(createOptions);
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
   } catch (err) {
+    // v1.6.4-v3 - If creation fails, remove from session cache to allow retry
+    sessionQuickTabs.delete(quickTab.id);
     console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Failed to create Quick Tab:', {
       quickTabId: quickTab.id,
       error: err.message
@@ -2037,6 +2081,7 @@ function _handlePendingRequest(requestId, message) {
  * Handle response from background for pending requests
  * v1.6.3.12-v2 - FIX Code Health: Reduced complexity using helpers
  * v1.6.4 - FIX BUG #1: Add handler for cross-tab transfer messages
+ * v1.6.4-v2 - FIX Code Health: Use _isAckMessage helper for ACK detection
  * @param {Object} message - Response message from background
  */
 function handleQuickTabsPortResponse(message) {
@@ -2072,7 +2117,7 @@ function handleQuickTabsPortResponse(message) {
 
   if (_handlePendingRequest(requestId, message)) return;
 
-  if (type && type.endsWith('_ACK')) {
+  if (_isAckMessage(type)) {
     console.log(`[Content] Received ACK: ${type}`, message);
     return;
   }
