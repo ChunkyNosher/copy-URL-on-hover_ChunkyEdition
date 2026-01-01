@@ -375,7 +375,7 @@ function buildStorageChangeContext(change, currentBrowserTabId) {
   const sourceTabId = newValue?.writingTabId;
   const sourceInstanceId = newValue?.writingInstanceId;
   // v1.6.4-v2: Safe comparison - if currentBrowserTabId is null, never match
-  const isFromCurrentTab = currentBrowserTabId != null && sourceTabId === currentBrowserTabId;
+  const isFromCurrentTab = currentBrowserTabId !== null && sourceTabId === currentBrowserTabId;
 
   return {
     newValue,
