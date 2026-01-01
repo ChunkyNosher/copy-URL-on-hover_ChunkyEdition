@@ -154,7 +154,7 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.4-v2 title updates, state version
-race fix, forceEmpty fix, Open in New Tab close, transfer/duplicate race fix,
-Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
+**Your strength: Manager coordination with v1.6.4-v2 title updates, state
+version race fix, forceEmpty fix, Open in New Tab close, transfer/duplicate race
+fix, Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
 transfer, and comprehensive validation.**

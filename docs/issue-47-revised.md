@@ -915,10 +915,10 @@ drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
 (e.g., "11th most populous country") instead of the actual page title (e.g.,
 "List of countries and dependencies by population - Wikipedia"). **Root Cause:**
 Title was set from `targetElement.textContent` in content.js line 3550 and never
-updated after iframe loaded. **Fix:** Modified `_notifyBackgroundOfStateChange()`
-in window.js to send UPDATE_QUICK_TAB message with both URL and title when
-iframe loads. Background updates session state and sends STATE_CHANGED to
-sidebar. **Status:** ✅ FIXED in v1.6.4-v2
+updated after iframe loaded. **Fix:** Modified
+`_notifyBackgroundOfStateChange()` in window.js to send UPDATE_QUICK_TAB message
+with both URL and title when iframe loads. Background updates session state and
+sends STATE_CHANGED to sidebar. **Status:** ✅ FIXED in v1.6.4-v2
 
 ### Bug 2d: "Move to Current Tab" Quick Tab Doesn't Appear in Manager (FIXED)
 
@@ -927,9 +927,9 @@ transfers to the active tab and appears on screen, but doesn't appear in the
 Manager and doesn't respond to "Close All" button. **Root Cause:** State version
 race condition during render - when ACK triggers `_forceImmediateRender()`,
 STATE_CHANGED may arrive during render, but the render completion was setting
-`_lastRenderedStateVersion = _stateVersion` after it had already been incremented.
-**Fix:** Added `stateVersionAtRenderStart` capture at beginning of render,
-updated `_lastRenderedStateVersion` to use captured version. Extracted
+`_lastRenderedStateVersion = _stateVersion` after it had already been
+incremented. **Fix:** Added `stateVersionAtRenderStart` capture at beginning of
+render, updated `_lastRenderedStateVersion` to use captured version. Extracted
 `_updateRenderTrackers()` helper. **Status:** ✅ FIXED in v1.6.4-v2
 
 ### Bug 3d: Last Quick Tab Close Not Reflected in Manager (FIXED)
@@ -987,5 +987,6 @@ tab. Added logging for the close operation. **Status:** ✅ FIXED in v1.6.4-v2
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 1, 2026  
+**Last
+Review Date:** January 1, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v2)

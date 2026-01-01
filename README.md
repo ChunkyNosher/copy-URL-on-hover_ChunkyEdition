@@ -27,8 +27,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
   Tab
 - ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
-- ✅ **Code Health Improvements** - window.js and VisibilityHandler.js refactored
-  to 9.38 score
+- ✅ **Code Health Improvements** - window.js and VisibilityHandler.js
+  refactored to 9.38 score
 - ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
 
 ## 🎉 What's New in v1.6.4

@@ -65,7 +65,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **v1.6.4 Features:**
 
-- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()` calls
+- **Transfer/Duplicate Race Fix** - Removed redundant
+  `requestAllQuickTabsViaPort()` calls
 - **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map
 - **Empty State Handling** - `_handleEmptyStateTransition()` helper
 - **Drag-and-Drop Reordering** - Manager supports drag-and-drop

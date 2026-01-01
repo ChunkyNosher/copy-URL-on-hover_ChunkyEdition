@@ -126,4 +126,5 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 **Your strength: Reliable cross-tab sync with v1.6.4-v2 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, button operation fix,
-cross-tab render fix, fallback messaging, port messaging, and sequence tracking.**
+cross-tab render fix, fallback messaging, port messaging, and sequence
+tracking.**
