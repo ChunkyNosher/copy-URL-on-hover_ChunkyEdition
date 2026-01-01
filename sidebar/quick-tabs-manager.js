@@ -2,6 +2,19 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v2 MOVE TO CURRENT TAB STATE SYNC FIX ===
+ * v1.6.4-v2 - FIX BUG #2: "Move to Current Tab" Quick Tab not appearing in Manager
+ *   - ROOT CAUSE: State version race condition during render
+ *     When ACK triggers _forceImmediateRender(), STATE_CHANGED may arrive during render.
+ *     The render completion was setting _lastRenderedStateVersion = _stateVersion,
+ *     but _stateVersion had already been incremented by STATE_CHANGED. This caused
+ *     the STATE_CHANGED re-render to be skipped as version appeared already rendered.
+ *   - FIX: Capture state version at render START, not END
+ *     - Added stateVersionAtRenderStart in _executeRenderUIInternal()
+ *     - _lastRenderedStateVersion now uses captured version, not current version
+ *     - STATE_CHANGED render now proceeds since its version > captured version
+ *   - Added STATE_VERSION_DRIFT_DURING_RENDER logging for debugging
+ *
  * === v1.6.4 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
  * v1.6.4 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
  *   - ROOT CAUSE: Race condition between ACK and STATE_CHANGED messages
@@ -6919,6 +6932,10 @@ function _getAllQuickTabsForRender() {
  */
 async function _executeRenderUIInternal() {
   const renderStartTime = Date.now();
+  // v1.6.4-v2 - FIX BUG #2: Capture state version at render START to prevent
+  // race condition where STATE_CHANGED arrives during render and increments
+  // _stateVersion before we set _lastRenderedStateVersion
+  const stateVersionAtRenderStart = _stateVersion;
   // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
   const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
@@ -6938,6 +6955,9 @@ async function _executeRenderUIInternal() {
     _showEmptyState();
     // v1.6.3.6-v11 - FIX Issue #20: Clean up count tracking when empty
     previousGroupCounts.clear();
+
+    // v1.6.4-v2 - FIX BUG #2: Also update version tracker for empty state
+    _lastRenderedStateVersion = stateVersionAtRenderStart;
 
     // v1.6.3.12-v7 - FIX Area E: Log render performance even for empty state
     const emptyDuration = Date.now() - renderStartTime;
@@ -6979,11 +6999,8 @@ async function _executeRenderUIInternal() {
   _attachDragDropListeners(groupsContainer);
   const domDuration = Date.now() - domStartTime;
 
-  // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
-  lastRenderedHash = computeStateHash(quickTabsState);
-  lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
-  // v1.6.3.12-v12 - FIX Issue #48: Update state version tracker after successful render
-  _lastRenderedStateVersion = _stateVersion;
+  // v1.6.4-v2 - FIX BUG #2: Update trackers with captured version from render START
+  _updateRenderTrackers(stateVersionAtRenderStart);
 
   // v1.6.3.12-v7 - FIX Area E: Enhanced render performance logging
   const totalDuration = Date.now() - renderStartTime;
@@ -7008,6 +7025,33 @@ async function _executeRenderUIInternal() {
   });
 
   _logRenderComplete(allTabs, groups, renderStartTime);
+}
+
+/**
+ * Update render trackers after successful render
+ * v1.6.4-v2 - FIX BUG #2: Extracted to reduce _executeRenderUIInternal line count
+ * Updates hash and state version trackers using captured version from render START
+ * to prevent race condition when STATE_CHANGED arrives during render
+ * @private
+ * @param {number} stateVersionAtRenderStart - State version captured at render start
+ */
+function _updateRenderTrackers(stateVersionAtRenderStart) {
+  // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
+  lastRenderedHash = computeStateHash(quickTabsState);
+  lastRenderedStateHash = lastRenderedHash; // Keep both in sync for compatibility
+  // v1.6.3.12-v12 - FIX Issue #48: Update state version tracker after successful render
+  // v1.6.4-v2 - FIX BUG #2: Use captured version from render START, not current version
+  _lastRenderedStateVersion = stateVersionAtRenderStart;
+
+  // v1.6.4-v2 - FIX BUG #2: Log if state version changed during render
+  if (_stateVersion !== stateVersionAtRenderStart) {
+    console.log('[Manager] STATE_VERSION_DRIFT_DURING_RENDER:', {
+      versionAtStart: stateVersionAtRenderStart,
+      currentVersion: _stateVersion,
+      drift: _stateVersion - stateVersionAtRenderStart,
+      message: 'State was updated during render - next render will process newer state'
+    });
+  }
 }
 
 /**

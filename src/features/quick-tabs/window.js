@@ -1339,12 +1339,15 @@ export class QuickTabWindow {
    * Setup iframe load handler to update title and URL
    * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
    * v1.6.3.12-v13 - FIX Bug #1: Also send URL updates to background when iframe navigates
+   * v1.6.4-v2 - FIX Bug #1 & #4: Track title changes and notify background of state changes
    */
   setupIframeLoadHandler() {
     this.iframe.addEventListener('load', () => {
+      // v1.6.4-v2 - FIX Bug #1 & #4: Capture previous title before update
+      const previousTitle = this.title;
       this._updateTitleFromIframe();
-      // v1.6.3.12-v13 - FIX Bug #1: Notify background of URL changes for Manager update
-      this._notifyBackgroundOfUrlChange();
+      // v1.6.4-v2 - FIX Bug #1 & #4: Notify background of URL or title changes for Manager update
+      this._notifyBackgroundOfStateChange(previousTitle);
     });
   }
 
@@ -1410,36 +1413,52 @@ export class QuickTabWindow {
   }
 
   /**
-   * Notify background of URL change when iframe navigates
+   * Notify background of URL or title change when iframe navigates or loads
    * v1.6.3.12-v13 - FIX Bug #1: Send UPDATE_QUICK_TAB message to background
    * when iframe URL changes so Manager displays the current URL
+   * v1.6.4-v2 - FIX Bug #1 & #4: Also notify when title changes (even if URL unchanged)
    * @private
+   * @param {string} previousTitle - The title before _updateTitleFromIframe() was called
    */
-  async _notifyBackgroundOfUrlChange() {
+  async _notifyBackgroundOfStateChange(previousTitle) {
     // Get the current iframe URL
     const newUrl = this._tryGetIframeUrl();
     if (!newUrl) {
       return; // Cannot determine URL, skip update
     }
 
-    // Skip if URL hasn't actually changed
-    if (newUrl === this.url) {
+    // Get the new title (already updated by _updateTitleFromIframe)
+    const newTitle = this.title;
+
+    // Check what changed
+    const urlChanged = newUrl !== this.url;
+    const titleChanged = newTitle !== previousTitle;
+
+    // v1.6.4-v2 - FIX Bug #1 & #4: Skip only if BOTH URL and title are unchanged
+    if (!urlChanged && !titleChanged) {
+      console.debug('[QuickTabWindow] STATE_UNCHANGED: No changes to notify background:', {
+        id: this.id,
+        url: newUrl,
+        title: newTitle
+      });
       return;
     }
 
-    // Get the new title
-    const newTitle = this._tryGetIframeTitle() || this._tryGetHostname() || this.title;
-
-    console.log('[QuickTabWindow] URL_CHANGED: Notifying background:', {
+    console.log('[QuickTabWindow] STATE_CHANGED: Notifying background:', {
       id: this.id,
+      urlChanged,
+      titleChanged,
       oldUrl: this.url,
       newUrl,
+      oldTitle: previousTitle,
       newTitle,
       originTabId: this.originTabId
     });
 
-    // Update local state
-    this.url = newUrl;
+    // Update local URL state (title already updated by _updateTitleFromIframe)
+    if (urlChanged) {
+      this.url = newUrl;
+    }
 
     try {
       // Send UPDATE_QUICK_TAB message to background
@@ -1456,13 +1475,14 @@ export class QuickTabWindow {
         timestamp: Date.now()
       });
 
-      console.log('[QuickTabWindow] URL_CHANGED: Background notified successfully:', {
+      console.log('[QuickTabWindow] STATE_CHANGED: Background notified successfully:', {
         id: this.id,
-        newUrl
+        urlChanged,
+        titleChanged
       });
     } catch (err) {
       // Background may not be available - this is non-critical
-      console.debug('[QuickTabWindow] URL_CHANGED: Could not notify background:', {
+      console.debug('[QuickTabWindow] STATE_CHANGED: Could not notify background:', {
         id: this.id,
         error: err.message
       });
