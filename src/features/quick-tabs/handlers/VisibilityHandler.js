@@ -70,7 +70,13 @@
  * - Cross-tab ownership validation for all operations
  * - Container isolation validation for all operations
  *
- * @version 1.6.4
+ * v1.6.4-v3 - FIX Bug #3: Pass forceEmpty=true to persistStateToStorage when
+ *   state.tabs is empty. This fixes the issue where closing the last Quick Tab
+ *   via UI button would not update the Manager because visibility operations
+ *   (focus, minimize, restore) that fire after destruction would have their
+ *   empty state persist rejected with "Empty write rejected (forceEmpty required)".
+ *
+ * @version 1.6.4-v3
  */
 
 import {
@@ -2207,9 +2213,17 @@ export class VisibilityHandler {
       // by the individual tab validation in buildStateForStorage
     }
 
+    // v1.6.4-v3 - FIX Bug #3: Set forceEmpty=true when state.tabs is empty
+    // When visibility operations (focus, minimize, restore) complete after the last
+    // Quick Tab is destroyed, the persist may fire with 0 tabs. Without forceEmpty=true,
+    // this causes "Empty write rejected (forceEmpty required)" error.
+    // This mirrors the fix in DestroyHandler._debouncedPersistToStorage().
+    const forceEmpty = state.tabs.length === 0;
+
     // v1.6.3.4-v2 - FIX Bug #1: Log tab count and minimized states
     console.log(
-      `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`
+      `[VisibilityHandler] Persisting ${state.tabs.length} tabs (${minimizedCount} minimized)`,
+      { forceEmpty }
     );
 
     // v1.6.3.12 - FIX Issue #14: Use StorageCoordinator for serialized writes
@@ -2218,7 +2232,7 @@ export class VisibilityHandler {
     try {
       const success = await coordinator.queueWrite(
         'VisibilityHandler',
-        () => persistStateToStorage(state, '[VisibilityHandler]'),
+        () => persistStateToStorage(state, '[VisibilityHandler]', forceEmpty),
         QUEUE_PRIORITY.HIGH // State changes are high priority
       );
 
