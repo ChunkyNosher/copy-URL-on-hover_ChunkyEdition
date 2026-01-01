@@ -1828,6 +1828,28 @@ function _isTransferMessage(type) {
 }
 
 /**
+ * Validate if a Quick Tab object has valid structure with required id
+ * v1.6.4-v2 - FIX Code Health: Extract complex conditional from _validateTransferredInMessage
+ * @private
+ * @param {*} quickTab - Object to validate
+ * @returns {boolean} - True if quickTab is a valid object with an id property
+ */
+function _isValidQuickTabObject(quickTab) {
+  return quickTab && typeof quickTab === 'object' && Boolean(quickTab.id);
+}
+
+/**
+ * Check if message is an acknowledgment (ACK) message
+ * v1.6.4-v2 - FIX Code Health: Extract predicate from handleQuickTabsPortResponse
+ * @private
+ * @param {string} type - Message type
+ * @returns {boolean} - True if type ends with '_ACK'
+ */
+function _isAckMessage(type) {
+  return type && type.endsWith('_ACK');
+}
+
+/**
  * Handle QUICK_TAB_TRANSFERRED_OUT message - remove Quick Tab from this tab
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * When a Quick Tab is transferred to another tab, the source tab receives this message
@@ -1890,6 +1912,7 @@ function _handleQuickTabTransferredOut(message) {
 /**
  * Validate QUICK_TAB_TRANSFERRED_IN message has required properties
  * v1.6.4 - FIX Code Health: Extract validation to reduce complexity
+ * v1.6.4-v2 - FIX Code Health: Use _isValidQuickTabObject helper for complex conditional
  * @private
  * @param {Object} message - Message to validate
  * @returns {{ valid: boolean, quickTab?: Object, oldOriginTabId?: number }}
@@ -1917,7 +1940,7 @@ function _validateTransferredInMessage(message) {
     return { valid: false };
   }
 
-  if (!quickTab || typeof quickTab !== 'object' || !quickTab.id) {
+  if (!_isValidQuickTabObject(quickTab)) {
     console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Invalid Quick Tab data:', quickTab);
     return { valid: false };
   }
@@ -2055,6 +2078,7 @@ function _handlePendingRequest(requestId, message) {
  * Handle response from background for pending requests
  * v1.6.3.12-v2 - FIX Code Health: Reduced complexity using helpers
  * v1.6.4 - FIX BUG #1: Add handler for cross-tab transfer messages
+ * v1.6.4-v2 - FIX Code Health: Use _isAckMessage helper for ACK detection
  * @param {Object} message - Response message from background
  */
 function handleQuickTabsPortResponse(message) {
@@ -2090,7 +2114,7 @@ function handleQuickTabsPortResponse(message) {
 
   if (_handlePendingRequest(requestId, message)) return;
 
-  if (type && type.endsWith('_ACK')) {
+  if (_isAckMessage(type)) {
     console.log(`[Content] Received ACK: ${type}`, message);
     return;
   }
