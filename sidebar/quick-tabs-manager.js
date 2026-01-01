@@ -2,6 +2,22 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v3 STATE_CHANGED SAFETY TIMEOUT FIX ===
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Transfer/duplicate/Move to Current Tab not appearing in Manager
+ *   - ROOT CAUSE: STATE_CHANGED message not received by sidebar after transfer/duplicate
+ *     The background script calls notifySidebarOfStateChange() but if the sidebar port
+ *     is disconnected or null, the message is dropped (BROADCAST_DROPPED).
+ *     Without STATE_CHANGED, the sidebar never gets the updated Quick Tab state.
+ *   - FIX: Added safety timeout after transfer/duplicate ACK
+ *     - Added STATE_CHANGED_SAFETY_TIMEOUT_MS (500ms) constant
+ *     - Added _stateChangedSafetyTimeoutId tracking variable
+ *     - Added _scheduleStateChangedSafetyTimeout() helper function
+ *     - Added _clearStateChangedSafetyTimeout() to cancel on STATE_CHANGED receipt
+ *     - Modified _handleSuccessfulTransferAck() to schedule safety timeout
+ *     - Modified DUPLICATE_QUICK_TAB_ACK handler to schedule safety timeout
+ *     - Modified _handleQuickTabsStateUpdate() to clear safety timeout on STATE_CHANGED
+ *   - BEHAVIOR: If STATE_CHANGED doesn't arrive within 500ms, requests fresh state via port
+ *
  * === v1.6.4-v2 MOVE TO CURRENT TAB STATE SYNC FIX ===
  * v1.6.4-v2 - FIX BUG #2: "Move to Current Tab" Quick Tab not appearing in Manager
  *   - ROOT CAUSE: State version race condition during render
@@ -332,6 +348,11 @@ const LATENCY_SAMPLES_MAX = 50; // Maximum latency samples to track for 95th per
 // Browser tab info cache audit interval
 const BROWSER_TAB_CACHE_AUDIT_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+// ==================== v1.6.4-v3 FIX BUG #1/#2/#3 CONSTANTS ====================
+// Safety timeout for STATE_CHANGED after transfer/duplicate operations
+// If STATE_CHANGED doesn't arrive within this time, request fresh state
+const STATE_CHANGED_SAFETY_TIMEOUT_MS = 500;
+
 // ==================== v1.6.3.12-v7 FIX Issue #30 CONSTANTS ====================
 // Port reconnection circuit breaker for Quick Tabs port
 const QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS = 10; // Max attempts before giving up
@@ -531,6 +552,13 @@ let _quickTabsPortCircuitBreakerAutoResetTimerId = null;
  */
 let _lastReceivedSequence = 0;
 let _sequenceGapsDetected = 0;
+
+/**
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout for STATE_CHANGED
+ * Tracks pending safety timeout after transfer/duplicate operations
+ * Cleared when STATE_CHANGED arrives
+ */
+let _stateChangedSafetyTimeoutId = null;
 
 /**
  * Initialize Quick Tabs port connection
@@ -1001,6 +1029,9 @@ function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
 function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
   const receiveTime = Date.now();
 
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
+  _clearStateChangedSafetyTimeout();
+
   // v1.6.3.12 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
@@ -1329,6 +1360,7 @@ function _logPortMessageValidationError(type, msg, error) {
  * Handle successful transfer ACK - update local state and force render
  * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
  * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout to request fresh state if STATE_CHANGED doesn't arrive
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
@@ -1356,12 +1388,9 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
-  // STATE_CHANGED message is sent by background AFTER the transfer completes and
-  // contains the full updated state. Calling requestAllQuickTabsViaPort() here
-  // causes a race condition where the response may arrive before STATE_CHANGED,
-  // leading to inconsistent state display. The optimistic local update above
-  // combined with the incoming STATE_CHANGED is sufficient.
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+  // This handles the case where the sidebar port is disconnected or the background fails to send STATE_CHANGED
+  _scheduleStateChangedSafetyTimeout('transfer-ack', msg.quickTabId);
 }
 
 /**
@@ -1412,6 +1441,66 @@ function _updateQuickTabsStateOrigin(quickTabId, newOriginTabId) {
   if (stateIndex >= 0) {
     quickTabsState.tabs[stateIndex].originTabId = newOriginTabId;
     quickTabsState.tabs[stateIndex].transferredAt = Date.now();
+  }
+}
+
+/**
+ * Schedule safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Handles edge case where sidebar port is disconnected
+ * or background fails to send STATE_CHANGED after transfer/duplicate
+ *
+ * Note: Clearing existing timeout before setting new one is INTENTIONAL behavior.
+ * Rapid successive operations (e.g., multiple transfers) should only result in
+ * ONE fresh state request after the last operation, not multiple requests.
+ * The fresh state request will contain ALL Quick Tabs including all transferred ones.
+ *
+ * @private
+ * @param {string} source - Source of the operation ('transfer-ack' or 'duplicate-ack')
+ * @param {string} quickTabId - Quick Tab ID for logging
+ */
+function _scheduleStateChangedSafetyTimeout(source, quickTabId) {
+  // Clear any existing safety timeout - intentional for batching rapid operations
+  if (_stateChangedSafetyTimeoutId) {
+    clearTimeout(_stateChangedSafetyTimeoutId);
+  }
+
+  _stateChangedSafetyTimeoutId = setTimeout(() => {
+    console.warn('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT:', {
+      source,
+      quickTabId,
+      timeoutMs: STATE_CHANGED_SAFETY_TIMEOUT_MS,
+      timestamp: Date.now(),
+      message: 'STATE_CHANGED not received within timeout, requesting fresh state'
+    });
+
+    // Request fresh state from background
+    requestAllQuickTabsViaPort();
+
+    // Clear the timeout ID
+    _stateChangedSafetyTimeoutId = null;
+  }, STATE_CHANGED_SAFETY_TIMEOUT_MS);
+
+  console.log('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT_SCHEDULED:', {
+    source,
+    quickTabId,
+    timeoutMs: STATE_CHANGED_SAFETY_TIMEOUT_MS,
+    timestamp: Date.now()
+  });
+}
+
+/**
+ * Clear the STATE_CHANGED safety timeout
+ * v1.6.4-v3 - FIX BUG #1/#2/#3: Called when STATE_CHANGED is received to cancel pending request
+ * @private
+ */
+function _clearStateChangedSafetyTimeout() {
+  if (_stateChangedSafetyTimeoutId) {
+    clearTimeout(_stateChangedSafetyTimeoutId);
+    _stateChangedSafetyTimeoutId = null;
+    console.log('[Sidebar] STATE_CHANGED_SAFETY_TIMEOUT_CLEARED:', {
+      timestamp: Date.now(),
+      reason: 'STATE_CHANGED received'
+    });
   }
 }
 
@@ -1549,6 +1638,7 @@ const _portMessageHandlers = {
   // v1.6.4 - FIX BUG #3: Handle duplicate ACK
   // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
   // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout for STATE_CHANGED
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -1572,10 +1662,8 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
-      // STATE_CHANGED message is sent by background AFTER the duplicate completes.
-      // The optimistic state version increment triggers a render, and STATE_CHANGED
-      // will follow with the new Quick Tab included in the full state.
+      // v1.6.4-v3 - FIX BUG #1/#2/#3: Safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+      _scheduleStateChangedSafetyTimeout('duplicate-ack', msg.newQuickTabId);
     }
   }
 };
