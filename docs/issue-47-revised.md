@@ -905,10 +905,87 @@ drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
 
 ---
 
+## v1.6.4-v2 Bug Fixes (January 2026)
+
+**Added from User Feedback:** January 1, 2026
+
+### Bug 1d: Quick Tab Title Shows Link Text Instead of Page Title (FIXED)
+
+**Issue:** When opening a Quick Tab of a link, the title shows the link text
+(e.g., "11th most populous country") instead of the actual page title (e.g.,
+"List of countries and dependencies by population - Wikipedia"). **Root Cause:**
+Title was set from `targetElement.textContent` in content.js line 3550 and never
+updated after iframe loaded. **Fix:** Modified `_notifyBackgroundOfStateChange()`
+in window.js to send UPDATE_QUICK_TAB message with both URL and title when
+iframe loads. Background updates session state and sends STATE_CHANGED to
+sidebar. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 2d: "Move to Current Tab" Quick Tab Doesn't Appear in Manager (FIXED)
+
+**Issue:** After pressing "Move to Current Tab" button in Manager, the Quick Tab
+transfers to the active tab and appears on screen, but doesn't appear in the
+Manager and doesn't respond to "Close All" button. **Root Cause:** State version
+race condition during render - when ACK triggers `_forceImmediateRender()`,
+STATE_CHANGED may arrive during render, but the render completion was setting
+`_lastRenderedStateVersion = _stateVersion` after it had already been incremented.
+**Fix:** Added `stateVersionAtRenderStart` capture at beginning of render,
+updated `_lastRenderedStateVersion` to use captured version. Extracted
+`_updateRenderTrackers()` helper. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 3d: Last Quick Tab Close Not Reflected in Manager (FIXED)
+
+**Issue:** When closing all Quick Tabs one by one via UI close button, the last
+Quick Tab closes on screen but still appears in Manager. **Root Cause:**
+VisibilityHandler's `_persistToStorage()` was calling `persistStateToStorage()`
+without `forceEmpty=true` when state had 0 tabs, causing the empty write to be
+blocked. **Fix:** Modified VisibilityHandler's `_persistToStorage()` to detect
+when `state.tabs.length === 0` and pass `forceEmpty=true` to allow empty state
+writes. **Status:** ✅ FIXED in v1.6.4-v2
+
+### Bug 4d: Manager Doesn't Update When Navigating Within Quick Tab (FIXED)
+
+**Issue:** When user clicks a different link inside a Quick Tab iframe
+(navigation), the Manager doesn't update to show the new page title. **Root
+Cause:** The iframe load handler in window.js updated local titlebar but didn't
+send UPDATE_QUICK_TAB message to background. **Fix:** Modified
+`setupIframeLoadHandler()` to capture previous title, compare with new title,
+and send UPDATE_QUICK_TAB message if either URL or title changed. **Status:** ✅
+FIXED in v1.6.4-v2
+
+### Bug 5d: "Open in New Tab" Button Doesn't Close Quick Tab (FIXED)
+
+**Issue:** Clicking "Open in New Tab" button in Manager opens the URL in a new
+browser tab correctly, but doesn't close the Quick Tab from the origin tab or
+remove it from Manager. **Root Cause:** `_handleOpenInNewTab()` only opened the
+URL but didn't trigger a close operation. **Fix:** Added
+`closeQuickTabViaPort(quickTabId)` call after successfully opening URL in new
+tab. Added logging for the close operation. **Status:** ✅ FIXED in v1.6.4-v2
+
+---
+
+## v1.6.4-v2 Code Health Refactoring (January 2026)
+
+### window.js Refactoring (Code Health: 8.28 → 9.38)
+
+- Extracted 8 helpers from `_createClickOverlay` (CC=12 → resolved)
+- Extracted 2 helpers from `_tryGetIframeUrl` (CC=10 → resolved)
+- Extracted 2 predicate helpers for complex conditionals
+
+### VisibilityHandler.js Refactoring (Code Health: 8.28 → 9.38)
+
+- Extracted 4 helpers from `_validateContainerForOperation` (CC=13 → resolved)
+- Extracted 2 helpers from `handleFocus` (CC=9 → resolved)
+
+### quick-tabs-manager.js Refactoring
+
+- Created `StorageChangeAnalyzer.js` module with 20 extracted functions
+- Reduced function count from 367 to 347
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** December 31, 2025  
-**Behavior Model:** Tab-Scoped (v1.6.4)
+**Last Review Date:** January 1, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v2)
