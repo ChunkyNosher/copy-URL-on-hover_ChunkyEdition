@@ -362,6 +362,7 @@ function isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue) {
 /**
  * Build context object for storage change handling
  * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
+ * v1.6.4-v2 - Added null safety for currentBrowserTabId comparison
  * @param {Object} change - Storage change object
  * @param {number|null} currentBrowserTabId - Current browser tab ID for source comparison
  * @returns {Object} Context with parsed values
@@ -373,7 +374,8 @@ function buildStorageChangeContext(change, currentBrowserTabId) {
   const newTabCount = newValue?.tabs?.length ?? 0;
   const sourceTabId = newValue?.writingTabId;
   const sourceInstanceId = newValue?.writingInstanceId;
-  const isFromCurrentTab = sourceTabId === currentBrowserTabId;
+  // v1.6.4-v2: Safe comparison - if currentBrowserTabId is null, never match
+  const isFromCurrentTab = currentBrowserTabId != null && sourceTabId === currentBrowserTabId;
 
   return {
     newValue,
