@@ -8,7 +8,7 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4-v2 Status:** Title Sync ✅ | Move to Tab ✅ | Last Close Fix ✅
+**🔧 v1.6.4-v2 Status:** Transfer Fix ✅ | UI Flicker Fix ✅ | Code Health ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -27,8 +27,10 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
   Tab
 - ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
-- ✅ **Code Health Improvements** - window.js and VisibilityHandler.js
-  refactored to 9.38 score
+- ✅ **Cross-Tab Transfer Fix** - Fixed duplicate messages causing UI desyncs
+- ✅ **UI Flicker Fix** - Optimistic UI for smooth close animations
+- ✅ **Code Health Improvements** - window.js, VisibilityHandler.js, content.js
+  all above 9.0
 - ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
 
 ## 🎉 What's New in v1.6.4
