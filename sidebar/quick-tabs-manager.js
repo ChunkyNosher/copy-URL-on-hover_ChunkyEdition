@@ -1932,7 +1932,15 @@ function _handleSuccessfulTransferAck(msg) {
     newOriginTabId: msg.newOriginTabId,
     timestamp: Date.now()
   });
-  requestAllQuickTabsViaPort();
+  const portRequestSuccess = requestAllQuickTabsViaPort();
+  
+  // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
+  if (!portRequestSuccess) {
+    _pendingCriticalStateRefresh = false;
+    console.warn('[Sidebar] CRITICAL_STATE_REFRESH_CLEARED: Port request failed', {
+      quickTabId: msg.quickTabId
+    });
+  }
 }
 
 /**
@@ -2217,7 +2225,15 @@ const _portMessageHandlers = {
         newOriginTabId: msg.newOriginTabId,
         timestamp: Date.now()
       });
-      requestAllQuickTabsViaPort();
+      const portRequestSuccess = requestAllQuickTabsViaPort();
+      
+      // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
+      if (!portRequestSuccess) {
+        _pendingCriticalStateRefresh = false;
+        console.warn('[Sidebar] CRITICAL_STATE_REFRESH_CLEARED: Port request failed', {
+          newQuickTabId: msg.newQuickTabId
+        });
+      }
     }
   }
 };
