@@ -215,6 +215,31 @@ import {
   RENDER_DEBOUNCE_MAX_WAIT_MS as _RENDER_DEBOUNCE_MAX_WAIT_MS_FROM_RM,
   MAX_CONSECUTIVE_RERENDERS as _MAX_CONSECUTIVE_RERENDERS_FROM_RM
 } from './managers/RenderManager.js';
+// v1.6.4 - Import StorageChangeAnalyzer for storage change handling (extracted for code health)
+import {
+  SAVEID_RECONCILED as _SAVEID_RECONCILED_FROM_SCA,
+  SAVEID_CLEARED as _SAVEID_CLEARED_FROM_SCA,
+  buildAnalysisResult as _buildAnalysisResultFromSCA,
+  buildTabCountChangeResult as _buildTabCountChangeResultFromSCA,
+  buildMetadataOnlyResult as _buildMetadataOnlyResultFromSCA,
+  buildDataChangeResult as _buildDataChangeResultFromSCA,
+  buildNoChangesResult as _buildNoChangesResultFromSCA,
+  getTabsFromValue as _getTabsFromValueFromSCA,
+  checkSingleTabDataChanges as _checkSingleTabDataChangesFromSCA,
+  checkTabChanges as _checkTabChangesFromSCA,
+  buildResultFromChangeAnalysis as _buildResultFromChangeAnalysisFromSCA,
+  analyzeStorageChange as _analyzeStorageChangeFromSCA,
+  hasPositionDiff as _hasPositionDiffFromSCA,
+  hasSizeDiff as _hasSizeDiffFromSCA,
+  identifyChangedTabs as _identifyChangedTabsFromSCA,
+  isSingleTabDeletion as _isSingleTabDeletionFromSCA,
+  isExplicitClearOperation as _isExplicitClearOperationFromSCA,
+  isSuspiciousStorageDrop as _isSuspiciousStorageDropFromSCA,
+  buildStorageChangeContext as _buildStorageChangeContextFromSCA,
+  logStorageChangeEvent as _logStorageChangeEventFromSCA,
+  logTabIdChanges as _logTabIdChangesFromSCA,
+  logPositionSizeChanges as _logPositionSizeChangesFromSCA
+} from './managers/StorageChangeAnalyzer.js';
 import {
   computeStateHash,
   createFavicon,
@@ -256,8 +281,9 @@ const MANAGER_STATE_KEY = 'manager_state_v2';
 // v1.6.4 - FIX Issue #48/#7: Debounce delay for scroll position save (prevents excessive writes)
 const SCROLL_POSITION_SAVE_DEBOUNCE_MS = 200;
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
-const SAVEID_RECONCILED = 'reconciled';
-const SAVEID_CLEARED = 'cleared';
+// v1.6.4 - Note: SAVEID_RECONCILED and SAVEID_CLEARED now imported from StorageChangeAnalyzer.js
+const SAVEID_RECONCILED = _SAVEID_RECONCILED_FROM_SCA;
+const SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
@@ -8873,10 +8899,11 @@ function setupTabSwitchListener() {
  * v1.6.3.7 - FIX Issue #8: Enhanced storage synchronization logging
  * v1.6.3.7-v1 - FIX ISSUE #5: Added writingTabId source identification
  * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity from 23 to <9
+ * v1.6.4 - FIX Code Health: Use imported functions from StorageChangeAnalyzer
  * @param {Object} change - The storage change object
  */
 function _handleStorageChange(change) {
-  const context = _buildStorageChangeContext(change);
+  const context = _buildStorageChangeContextFromSCA(change, currentBrowserTabId);
 
   // v1.6.3.7 - FIX Issue #8: Log storage listener entry
   console.log('[Manager] STORAGE_LISTENER:', {
@@ -8887,22 +8914,22 @@ function _handleStorageChange(change) {
   });
 
   // Log the storage change
-  _logStorageChangeEvent(context);
+  _logStorageChangeEventFromSCA(context, currentBrowserTabId);
 
   // Log tab ID changes (added/removed)
-  _logTabIdChanges(context);
+  _logTabIdChangesFromSCA(context);
 
   // Log position/size updates
-  _logPositionSizeChanges(context);
+  _logPositionSizeChangesFromSCA(context);
 
   // Check for and handle suspicious drops
-  if (_isSuspiciousStorageDrop(context.oldTabCount, context.newTabCount, context.newValue)) {
+  if (_isSuspiciousStorageDropFromSCA(context.oldTabCount, context.newTabCount, context.newValue)) {
     _handleSuspiciousStorageDrop(context.oldValue);
     return;
   }
 
   // v1.6.3.7 - FIX Issue #3: Check if only metadata changed (z-index, etc.)
-  const changeAnalysis = _analyzeStorageChange(context.oldValue, context.newValue);
+  const changeAnalysis = _analyzeStorageChangeFromSCA(context.oldValue, context.newValue);
 
   // v1.6.3.7 - FIX Issue #4: Update lastLocalUpdateTime for ANY real data change
   if (changeAnalysis.hasDataChange) {
@@ -8927,240 +8954,12 @@ function _handleStorageChange(change) {
   _scheduleStorageUpdate();
 }
 
-/**
- * Build analysis result for storage change
- * v1.6.3.11-v3 - FIX CodeScene: Extract from _analyzeStorageChange
- * v1.6.3.11-v9 - FIX CodeScene: Use options object to reduce argument count
- * @private
- * @param {Object} options - Analysis result options
- * @param {boolean} options.requiresRender - Whether render is required
- * @param {boolean} options.hasDataChange - Whether data changed
- * @param {string} options.changeType - Type of change
- * @param {string} options.changeReason - Reason for change
- * @param {string} [options.skipReason] - Reason for skipping (optional)
- * @returns {Object} Analysis result
- */
-function _buildAnalysisResult(options) {
-  return {
-    requiresRender: options.requiresRender,
-    hasDataChange: options.hasDataChange,
-    changeType: options.changeType,
-    changeReason: options.changeReason,
-    skipReason: options.skipReason ?? null
-  };
-}
-
-/**
- * Create analysis result for tab count change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {number} oldCount - Previous tab count
- * @param {number} newCount - New tab count
- * @returns {Object} Analysis result
- */
-function _buildTabCountChangeResult(oldCount, newCount) {
-  return _buildAnalysisResult({
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'tab-count',
-    changeReason: `Tab count changed: ${oldCount} → ${newCount}`
-  });
-}
-
-/**
- * Create analysis result for metadata-only change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} zIndexChanges - Z-index change details
- * @returns {Object} Analysis result
- */
-function _buildMetadataOnlyResult(zIndexChanges) {
-  return _buildAnalysisResult({
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'metadata-only',
-    changeReason: 'z-index only',
-    skipReason: `Only z-index changed: ${JSON.stringify(zIndexChanges)}`
-  });
-}
-
-/**
- * Create analysis result for data change
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Array<string>} dataChangeReasons - Reasons for data change
- * @returns {Object} Analysis result
- */
-function _buildDataChangeResult(dataChangeReasons) {
-  return _buildAnalysisResult({
-    requiresRender: true,
-    hasDataChange: true,
-    changeType: 'data',
-    changeReason: dataChangeReasons.join('; ')
-  });
-}
-
-/**
- * Create analysis result for no changes
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @returns {Object} Analysis result
- */
-function _buildNoChangesResult() {
-  return _buildAnalysisResult({
-    requiresRender: false,
-    hasDataChange: false,
-    changeType: 'none',
-    changeReason: 'no changes',
-    skipReason: 'No detectable changes between old and new state'
-  });
-}
-
-/**
- * Get tabs array from storage value safely
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} value - Storage value object
- * @returns {Array} Tabs array or empty array
- */
-function _getTabsFromValue(value) {
-  return value?.tabs || [];
-}
-
-/**
- * Determine the appropriate result based on change analysis
- * v1.6.3.11-v9 - FIX CodeScene: Extracted to reduce _analyzeStorageChange complexity
- * @private
- * @param {Object} changeResults - Results from _checkTabChanges
- * @returns {Object} Analysis result
- */
-function _buildResultFromChangeAnalysis(changeResults) {
-  // If only z-index changed, skip render
-  if (!changeResults.hasDataChange && changeResults.hasMetadataOnlyChange) {
-    return _buildMetadataOnlyResult(changeResults.zIndexChanges);
-  }
-
-  // If there are data changes, render is required
-  if (changeResults.hasDataChange) {
-    return _buildDataChangeResult(changeResults.dataChangeReasons);
-  }
-
-  // No changes detected
-  return _buildNoChangesResult();
-}
-
-/**
- * Analyze storage change to determine if renderUI() is needed
- * v1.6.3.7 - FIX Issue #3: Differential update detection
- * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting result builder
- * v1.6.3.11-v9 - FIX CodeScene: Reduce complexity by extracting result factories and change analysis
- * @private
- * @param {Object} oldValue - Previous storage value
- * @param {Object} newValue - New storage value
- * @returns {{ requiresRender: boolean, hasDataChange: boolean, changeType: string, changeReason: string, skipReason: string }}
- */
-function _analyzeStorageChange(oldValue, newValue) {
-  const oldTabs = _getTabsFromValue(oldValue);
-  const newTabs = _getTabsFromValue(newValue);
-
-  // Tab count change always requires render
-  if (oldTabs.length !== newTabs.length) {
-    return _buildTabCountChangeResult(oldTabs.length, newTabs.length);
-  }
-
-  // Check for structural changes and determine result
-  const changeResults = _checkTabChanges(oldTabs, newTabs);
-  return _buildResultFromChangeAnalysis(changeResults);
-}
-
-/**
- * Check a single tab for data changes
- * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
- * v1.6.3.11-v3 - FIX CodeScene: Use data-driven approach to reduce complexity
- * @private
- * @param {Object} oldTab - Previous tab state
- * @param {Object} newTab - New tab state
- * @returns {{ hasDataChange: boolean, reasons: Array<string> }}
- */
-function _checkSingleTabDataChanges(oldTab, newTab) {
-  const reasons = [];
-  const tabId = newTab.id;
-
-  // Data-driven change checks
-  const checks = [
-    {
-      cond: oldTab.originTabId !== newTab.originTabId,
-      msg: `originTabId changed for ${tabId}: ${oldTab.originTabId} → ${newTab.originTabId}`
-    },
-    { cond: oldTab.minimized !== newTab.minimized, msg: `minimized changed for ${tabId}` },
-    {
-      cond: oldTab.left !== newTab.left || oldTab.top !== newTab.top,
-      msg: `position changed for ${tabId}`
-    },
-    {
-      cond: oldTab.width !== newTab.width || oldTab.height !== newTab.height,
-      msg: `size changed for ${tabId}`
-    },
-    {
-      cond: oldTab.title !== newTab.title || oldTab.url !== newTab.url,
-      msg: `title/url changed for ${tabId}`
-    }
-  ];
-
-  checks.forEach(check => {
-    if (check.cond) reasons.push(check.msg);
-  });
-
-  return { hasDataChange: reasons.length > 0, reasons };
-}
-
-/**
- * Check all tabs for data and metadata changes
- * v1.6.3.7 - FIX Issue #3: Helper to reduce _analyzeStorageChange complexity
- * @private
- * @param {Array} oldTabs - Previous tabs array
- * @param {Array} newTabs - New tabs array
- * @returns {{ hasDataChange: boolean, hasMetadataOnlyChange: boolean, zIndexChanges: Array, dataChangeReasons: Array }}
- */
-function _checkTabChanges(oldTabs, newTabs) {
-  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-
-  let hasDataChange = false;
-  let hasMetadataOnlyChange = false;
-  const zIndexChanges = [];
-  const dataChangeReasons = [];
-
-  for (const newTab of newTabs) {
-    const oldTab = oldTabMap.get(newTab.id);
-
-    if (!oldTab) {
-      // New tab ID - requires render
-      hasDataChange = true;
-      dataChangeReasons.push(`New tab: ${newTab.id}`);
-      continue;
-    }
-
-    // Check for data changes
-    const dataResult = _checkSingleTabDataChanges(oldTab, newTab);
-    if (dataResult.hasDataChange) {
-      hasDataChange = true;
-      dataChangeReasons.push(...dataResult.reasons);
-    }
-
-    // Check for metadata-only changes (z-index)
-    if (oldTab.zIndex !== newTab.zIndex) {
-      hasMetadataOnlyChange = true;
-      zIndexChanges.push({ id: newTab.id, old: oldTab.zIndex, new: newTab.zIndex });
-    }
-  }
-
-  return {
-    hasDataChange,
-    hasMetadataOnlyChange,
-    zIndexChanges,
-    dataChangeReasons
-  };
-}
+// v1.6.4 - Note: The following functions have been extracted to StorageChangeAnalyzer.js:
+// _buildAnalysisResult, _buildTabCountChangeResult, _buildMetadataOnlyResult, _buildDataChangeResult,
+// _buildNoChangesResult, _getTabsFromValue, _buildResultFromChangeAnalysis, _analyzeStorageChange,
+// _checkSingleTabDataChanges, _checkTabChanges, _buildStorageChangeContext, _logStorageChangeEvent,
+// _logTabIdChanges, _logPositionSizeChanges, _identifyChangedTabs, _hasPositionDiff, _hasSizeDiff,
+// _isSuspiciousStorageDrop, _isSingleTabDeletion, _isExplicitClearOperation
 
 /**
  * Update local state cache without triggering renderUI()
@@ -9176,212 +8975,6 @@ function _updateLocalStateCache(newValue) {
     // v1.6.4 - FIX Issue #21: Increment state version
     _incrementStateVersion('_updateLocalStateCache');
   }
-}
-
-/**
- * Build context object for storage change handling
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} change - Storage change object
- * @returns {Object} Context with parsed values
- */
-function _buildStorageChangeContext(change) {
-  const newValue = change.newValue;
-  const oldValue = change.oldValue;
-  const oldTabCount = oldValue?.tabs?.length ?? 0;
-  const newTabCount = newValue?.tabs?.length ?? 0;
-  const sourceTabId = newValue?.writingTabId;
-  const sourceInstanceId = newValue?.writingInstanceId;
-  const isFromCurrentTab = sourceTabId === currentBrowserTabId;
-
-  return {
-    newValue,
-    oldValue,
-    oldTabCount,
-    newTabCount,
-    sourceTabId,
-    sourceInstanceId,
-    isFromCurrentTab
-  };
-}
-
-/**
- * Log storage change event with comprehensive details
- * Issue #8: Unified logStorageEvent() format for sequence analysis
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * v1.6.3.6-v11 - FIX Issue #8: Unified storage event logging format
- * @private
- * @param {Object} context - Storage change context
- */
-function _logStorageChangeEvent(context) {
-  // Issue #8: Determine what changed (added/removed tab IDs)
-  const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
-  const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
-
-  // Issue #8: Unified format for storage event logging
-  console.log(
-    `[Manager] STORAGE_CHANGED: tabs ${context.oldTabCount}→${context.newTabCount} (delta: ${context.newTabCount - context.oldTabCount}), saveId: '${context.newValue?.saveId || 'none'}', source: tab-${context.sourceTabId || 'unknown'}`,
-    {
-      changes: {
-        added: addedIds,
-        removed: removedIds
-      },
-      oldTabCount: context.oldTabCount,
-      newTabCount: context.newTabCount,
-      delta: context.newTabCount - context.oldTabCount,
-      saveId: context.newValue?.saveId,
-      transactionId: context.newValue?.transactionId,
-      writingTabId: context.sourceTabId,
-      writingInstanceId: context.sourceInstanceId,
-      isFromCurrentTab: context.isFromCurrentTab,
-      currentBrowserTabId,
-      timestamp: context.newValue?.timestamp,
-      processedAt: Date.now()
-    }
-  );
-}
-
-/**
- * Log tab ID changes (added/removed)
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} context - Storage change context
- */
-function _logTabIdChanges(context) {
-  const oldIds = new Set((context.oldValue?.tabs || []).map(t => t.id));
-  const newIds = new Set((context.newValue?.tabs || []).map(t => t.id));
-  const addedIds = [...newIds].filter(id => !oldIds.has(id));
-  const removedIds = [...oldIds].filter(id => !newIds.has(id));
-
-  if (addedIds.length > 0 || removedIds.length > 0) {
-    console.log('[Manager] storage.onChanged tab changes:', {
-      addedIds,
-      removedIds,
-      addedCount: addedIds.length,
-      removedCount: removedIds.length
-    });
-  }
-}
-
-/**
- * Log position/size changes for tabs
- * v1.6.3.12-v7 - Extracted to reduce _handleStorageChange complexity
- * @private
- * @param {Object} context - Storage change context
- */
-function _logPositionSizeChanges(context) {
-  if (!context.newValue?.tabs || !context.oldValue?.tabs) {
-    return;
-  }
-
-  const changedTabs = _identifyChangedTabs(context.oldValue.tabs, context.newValue.tabs);
-  const hasChanges = changedTabs.positionChanged.length > 0 || changedTabs.sizeChanged.length > 0;
-
-  if (hasChanges) {
-    console.log('[Manager] 📐 POSITION_SIZE_UPDATE_RECEIVED:', {
-      positionChangedIds: changedTabs.positionChanged,
-      sizeChangedIds: changedTabs.sizeChanged,
-      sourceTabId: context.sourceTabId,
-      isFromCurrentTab: context.isFromCurrentTab
-    });
-  }
-}
-
-/**
- * Identify tabs that changed position or size
- * v1.6.3.7-v1 - FIX ISSUE #4: Track position/size updates
- * @param {Array} oldTabs - Previous tabs array
- * @param {Array} newTabs - New tabs array
- * @returns {Object} Object with positionChanged and sizeChanged arrays
- */
-/**
- * Identify tabs that have position or size changes
- * v1.6.3.12-v7 - Refactored to reduce bumpy road complexity
- * @param {Array} oldTabs - Previous tab array
- * @param {Array} newTabs - New tab array
- * @returns {{ positionChanged: Array, sizeChanged: Array }}
- */
-function _identifyChangedTabs(oldTabs, newTabs) {
-  const oldTabMap = new Map(oldTabs.map(t => [t.id, t]));
-  const positionChanged = [];
-  const sizeChanged = [];
-
-  for (const newTab of newTabs) {
-    const oldTab = oldTabMap.get(newTab.id);
-    if (!oldTab) continue;
-
-    if (_hasPositionDiff(oldTab, newTab)) {
-      positionChanged.push(newTab.id);
-    }
-
-    if (_hasSizeDiff(oldTab, newTab)) {
-      sizeChanged.push(newTab.id);
-    }
-  }
-
-  return { positionChanged, sizeChanged };
-}
-
-/**
- * Check if position has changed between tabs
- * @private
- */
-function _hasPositionDiff(oldTab, newTab) {
-  if (!newTab.position || !oldTab.position) return false;
-  return newTab.position.x !== oldTab.position.x || newTab.position.y !== oldTab.position.y;
-}
-
-/**
- * Check if size has changed between tabs
- * @private
- */
-function _hasSizeDiff(oldTab, newTab) {
-  if (!newTab.size || !oldTab.size) return false;
-  return newTab.size.width !== oldTab.size.width || newTab.size.height !== oldTab.size.height;
-}
-
-/**
- * Check if storage change is a suspicious drop (potential corruption)
- * v1.6.3.5-v2 - FIX Report 2 Issue #6: Better heuristics for corruption detection
- * v1.6.3.5-v11 - FIX Issue #6: Recognize single-tab deletions as legitimate (N→0 where N=1)
- *   A drop to 0 is only suspicious if:
- *   - More than 1 tab existed before (sudden multi-tab wipe)
- *   - It's not an explicit clear operation (reconciled/cleared saveId)
- * @param {number} oldTabCount - Previous tab count
- * @param {number} newTabCount - New tab count
- * @param {Object} newValue - New storage value
- * @returns {boolean} True if suspicious
- */
-function _isSuspiciousStorageDrop(oldTabCount, newTabCount, newValue) {
-  // Single tab deletion (1→0) is always legitimate - user closed last Quick Tab
-  if (_isSingleTabDeletion(oldTabCount, newTabCount)) {
-    console.log('[Manager] Single tab deletion detected (1→0) - legitimate operation');
-    return false;
-  }
-
-  // Multi-tab drop to 0 is suspicious unless explicitly cleared
-  const isMultiTabDrop = oldTabCount > 1 && newTabCount === 0;
-  return isMultiTabDrop && !_isExplicitClearOperation(newValue);
-}
-
-/**
- * Check if this is a single tab deletion (legitimate)
- * @private
- */
-function _isSingleTabDeletion(oldTabCount, newTabCount) {
-  return oldTabCount === 1 && newTabCount === 0;
-}
-
-/**
- * Check if this is an explicit clear operation
- * @private
- */
-function _isExplicitClearOperation(newValue) {
-  if (!newValue) return true;
-  const saveId = newValue.saveId || '';
-  return saveId.includes(SAVEID_RECONCILED) || saveId.includes(SAVEID_CLEARED);
 }
 
 /**
