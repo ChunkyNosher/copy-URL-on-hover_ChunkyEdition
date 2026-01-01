@@ -1929,6 +1929,9 @@ function _validateTransferredInMessage(message) {
  * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+ * v1.6.4-v3 - FIX BUG #1: Add deduplication check to prevent duplicate creation
+ *   - Uses sessionQuickTabs Map to detect if Quick Tab already exists
+ *   - Guards against rare timing issues if both port and fallback messages arrive
  * When a Quick Tab is transferred to this tab, create it with the received properties.
  * @private
  * @param {Object} message - Transfer in message
@@ -1940,6 +1943,19 @@ function _handleQuickTabTransferredIn(message) {
   if (!validation.valid) return;
 
   const { quickTab } = validation;
+
+  // v1.6.4-v3 - FIX BUG #1: Deduplication check to prevent duplicate creation
+  // This guards against the rare case where the same Quick Tab is transferred multiple times
+  // or if both port message and fallback arrive before the first creation completes
+  const existingQuickTab = sessionQuickTabs.get(quickTab.id);
+  if (existingQuickTab) {
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate - Quick Tab already exists:', {
+      quickTabId: quickTab.id,
+      existingOriginTabId: existingQuickTab.originTabId,
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   // Create the Quick Tab with received properties, updating originTabId to this tab
   // v1.6.4 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
@@ -1960,11 +1976,8 @@ function _handleQuickTabTransferredIn(message) {
   console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
 
   try {
-    quickTabsManager.createQuickTab(createOptions);
-    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
-
-    // Add to local session cache with updated originTabId
-    // Note: We intentionally overwrite originTabId because the Quick Tab now belongs to this tab
+    // v1.6.4-v3 - Add to session cache BEFORE creation to prevent race condition
+    // This ensures the deduplication check works even if another message arrives during creation
     const cachedQuickTab = {
       id: quickTab.id,
       url: quickTab.url,
@@ -1978,7 +1991,12 @@ function _handleQuickTabTransferredIn(message) {
       originTabId: quickTabsManager.currentTabId // New owner tab
     };
     sessionQuickTabs.set(quickTab.id, cachedQuickTab);
+
+    quickTabsManager.createQuickTab(createOptions);
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
   } catch (err) {
+    // v1.6.4-v3 - If creation fails, remove from session cache to allow retry
+    sessionQuickTabs.delete(quickTab.id);
     console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Failed to create Quick Tab:', {
       quickTabId: quickTab.id,
       error: err.message
