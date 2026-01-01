@@ -1346,6 +1346,17 @@ async function handleClearLogHistory() {
   const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
   console.log('[Settings] handleClearLogHistory:', statusMsg);
   showStatus(statusMsg, true);
+
+  // v1.6.4-v3 - FIX Task 1: Post message to iframe to reset metrics log action counts
+  const iframe = document.querySelector('iframe');
+  if (iframe && iframe.contentWindow) {
+    try {
+      iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
+      console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
+    } catch (err) {
+      console.warn('[Settings] handleClearLogHistory: Failed to send message to iframe:', err);
+    }
+  }
 }
 
 /**
@@ -1844,6 +1855,13 @@ let _metricsFooterParent = null;
 let _metricQuickTabsEl = null;
 let _metricLogsPerSecondEl = null;
 let _metricTotalLogsEl = null;
+// v1.6.4-v3 - Task 2: Additional elements for expandable breakdown
+let _metricsToggleEl = null;
+let _metricsDetailsEl = null;
+let _metricsBreakdownEl = null;
+let _metricsExpandHintEl = null;
+// State for details expansion
+let _metricsDetailsExpanded = false;
 
 /**
  * Initialize metrics DOM element cache
@@ -1856,6 +1874,37 @@ function _initMetricsElementCache() {
   _metricQuickTabsEl = document.getElementById('metricQuickTabsParent');
   _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecondParent');
   _metricTotalLogsEl = document.getElementById('metricTotalLogsParent');
+  // v1.6.4-v3 - Task 2: Additional elements
+  _metricsToggleEl = document.getElementById('metricsToggle');
+  _metricsDetailsEl = document.getElementById('metricsDetails');
+  _metricsBreakdownEl = document.getElementById('metricsBreakdown');
+  _metricsExpandHintEl = document.getElementById('metricsExpandHint');
+  
+  // Set up toggle click handler
+  if (_metricsToggleEl) {
+    _metricsToggleEl.addEventListener('click', _toggleMetricsDetails);
+  }
+}
+
+/**
+ * Toggle the metrics details expansion
+ * v1.6.4-v3 - Task 2: Expandable category breakdown
+ * @private
+ */
+function _toggleMetricsDetails() {
+  _metricsDetailsExpanded = !_metricsDetailsExpanded;
+  
+  if (_metricsDetailsEl) {
+    if (_metricsDetailsExpanded) {
+      _metricsDetailsEl.classList.add('expanded');
+    } else {
+      _metricsDetailsEl.classList.remove('expanded');
+    }
+  }
+  
+  if (_metricsExpandHintEl) {
+    _metricsExpandHintEl.textContent = _metricsDetailsExpanded ? '▲' : '▼';
+  }
 }
 
 /**
@@ -1873,9 +1922,90 @@ function _validateMetricsMessage(event) {
   return { valid: true, data };
 }
 
+// Category display names for the breakdown
+const CATEGORY_DISPLAY_NAMES = {
+  'url-detection': '🔍 URL Detection',
+  'hover': '👆 Hover',
+  'clipboard': '📋 Clipboard',
+  'keyboard': '⌨️ Keyboard',
+  'quick-tabs': '🪟 Quick Tabs',
+  'quick-tab-manager': '📊 Manager',
+  'event-bus': '📡 Event Bus',
+  'config': '⚙️ Config',
+  'state': '💾 State',
+  'storage': '💿 Storage',
+  'messaging': '💬 Messaging',
+  'webrequest': '🌐 WebRequest',
+  'tabs': '📑 Tabs',
+  'performance': '⏱️ Perf',
+  'errors': '❌ Errors',
+  'initialization': '🚀 Init',
+  'uncategorized': '❓ Other'
+};
+
+/**
+ * Create a category breakdown item element safely
+ * v1.6.4-v3 - Task 2: Secure DOM element creation (avoid innerHTML XSS)
+ * @private
+ * @param {string} displayName - Category display name
+ * @param {number} count - Count value
+ * @returns {HTMLElement} The created element
+ */
+function _createBreakdownItem(displayName, count) {
+  const item = document.createElement('div');
+  item.className = 'metrics-breakdown-item';
+  
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'cat-name';
+  nameSpan.textContent = displayName;
+  
+  const countSpan = document.createElement('span');
+  countSpan.className = 'cat-count';
+  countSpan.textContent = String(count);
+  
+  item.appendChild(nameSpan);
+  item.appendChild(countSpan);
+  
+  return item;
+}
+
+/**
+ * Update the category breakdown display
+ * v1.6.4-v3 - Task 2: Expandable category breakdown
+ * @private
+ * @param {Object} categoryBreakdown - Object with category: count pairs
+ */
+function _updateCategoryBreakdown(categoryBreakdown) {
+  if (!_metricsBreakdownEl) return;
+  
+  // Sort categories by count (descending) and filter out zeros
+  const sortedCategories = Object.entries(categoryBreakdown || {})
+    .filter(([_, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+  
+  // Clear existing content
+  _metricsBreakdownEl.textContent = '';
+  
+  if (sortedCategories.length === 0) {
+    const emptyMsg = document.createElement('span');
+    emptyMsg.style.color = '#666';
+    emptyMsg.textContent = 'No log actions yet';
+    _metricsBreakdownEl.appendChild(emptyMsg);
+    return;
+  }
+  
+  // Create breakdown items using safe DOM manipulation
+  sortedCategories.forEach(([category, count]) => {
+    const displayName = CATEGORY_DISPLAY_NAMES[category] || category;
+    const item = _createBreakdownItem(displayName, count);
+    _metricsBreakdownEl.appendChild(item);
+  });
+}
+
 /**
  * Update metrics DOM elements using cached references
  * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
+ * v1.6.4-v3 - Task 2: Also update category breakdown
  * @private
  * @param {Object} data - Metrics data
  */
@@ -1883,6 +2013,11 @@ function _updateMetricsDOM(data) {
   if (_metricQuickTabsEl) _metricQuickTabsEl.textContent = String(data.quickTabCount || 0);
   if (_metricLogsPerSecondEl) _metricLogsPerSecondEl.textContent = `${data.logsPerSecond || 0}/s`;
   if (_metricTotalLogsEl) _metricTotalLogsEl.textContent = String(data.totalLogs || 0);
+  
+  // v1.6.4-v3 - Task 2: Update category breakdown if provided
+  if (data.categoryBreakdown) {
+    _updateCategoryBreakdown(data.categoryBreakdown);
+  }
 }
 
 /**

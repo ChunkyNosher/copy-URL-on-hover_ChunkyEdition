@@ -496,6 +496,10 @@ let _totalLogActions = 0;
 let _logActionsWindow = [];
 // Window size in milliseconds for calculating logs per second
 const LOG_ACTIONS_WINDOW_MS = 5000; // 5 second sliding window
+// v1.6.4-v3 - Task 2: Track log actions per category for breakdown display
+let _logActionsByCategory = {};
+// v1.6.4-v3 - Task 3: Cache of live console filter settings (loaded from storage)
+let _liveFilterSettingsCache = null;
 
 /**
  * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
@@ -572,14 +576,126 @@ async function _loadMetricsSettings() {
 }
 
 /**
- * Track a log action (called when console.log, console.warn, console.error are invoked)
- * v1.6.4-v3 - FEATURE: Log action tracking
+ * Load live console filter settings from storage
+ * v1.6.4-v3 - Task 3: Filter-aware log counting
+ * Note: Uses standard console here since interceptors not yet installed during init
  * @private
+ * @returns {Promise<void>}
  */
-function _trackLogAction() {
+async function _loadLiveFilterSettings() {
+  try {
+    const result = await browser.storage.local.get('liveConsoleCategoriesEnabled');
+    _liveFilterSettingsCache = result.liveConsoleCategoriesEnabled || null;
+    
+    // Use regular console here - interceptors not yet installed during init
+    // This log will be counted once interceptors are installed (non-issue)
+    console.log('[Manager] METRICS: Live filter settings loaded', {
+      hasSettings: !!_liveFilterSettingsCache
+    });
+  } catch (err) {
+    // Use regular console for error - important to log even during init
+    console.warn('[Manager] METRICS: Failed to load filter settings', err.message);
+    _liveFilterSettingsCache = null; // Count all logs if settings unavailable
+  }
+}
+
+/**
+ * Detect log category from log message prefix
+ * v1.6.4-v3 - Task 2: Parse log prefix to determine category
+ * @private
+ * @param {Array} args - Arguments passed to console method
+ * @returns {string} Category ID or 'uncategorized'
+ */
+function _detectCategoryFromLog(args) {
+  if (!args || args.length === 0) return 'uncategorized';
+  
+  const firstArg = args[0];
+  if (typeof firstArg !== 'string') return 'uncategorized';
+  
+  // Match pattern: [emoji displayName] or [displayName] at start
+  const match = firstArg.match(/^\[([^\]]+)\]/);
+  if (!match) return 'uncategorized';
+  
+  const prefix = match[1].toLowerCase().replace(/[^\w\s-]/g, '').trim();
+  
+  // Category mapping based on common prefixes
+  const mapping = {
+    'url detection': 'url-detection',
+    'hover events': 'hover',
+    'hover': 'hover',
+    'clipboard operations': 'clipboard',
+    'clipboard': 'clipboard',
+    'keyboard shortcuts': 'keyboard',
+    'keyboard': 'keyboard',
+    'quick tab actions': 'quick-tabs',
+    'quick tabs': 'quick-tabs',
+    'quick tab manager': 'quick-tab-manager',
+    'manager': 'quick-tab-manager',
+    'event bus': 'event-bus',
+    'configuration': 'config',
+    'config': 'config',
+    'state management': 'state',
+    'state': 'state',
+    'browser storage': 'storage',
+    'storage': 'storage',
+    'message passing': 'messaging',
+    'messaging': 'messaging',
+    'web requests': 'webrequest',
+    'webrequest': 'webrequest',
+    'tab management': 'tabs',
+    'tabs': 'tabs',
+    'performance': 'performance',
+    'errors': 'errors',
+    'initialization': 'initialization',
+    'background': 'state',
+    'sidebar': 'quick-tab-manager',
+    'settings': 'config'
+  };
+  
+  return mapping[prefix] || 'uncategorized';
+}
+
+/**
+ * Check if a category is enabled in live console filters
+ * v1.6.4-v3 - Task 3: Filter-aware log counting
+ * @private
+ * @param {string} category - Category ID to check
+ * @returns {boolean} True if category is enabled
+ */
+function _isCategoryFilterEnabled(category) {
+  // If no filter settings cached, count all logs
+  if (!_liveFilterSettingsCache) return true;
+  
+  // 'uncategorized' always counted
+  if (category === 'uncategorized') return true;
+  
+  // Check if category exists in filter settings
+  if (!(category in _liveFilterSettingsCache)) return true;
+  
+  return _liveFilterSettingsCache[category] === true;
+}
+
+/**
+ * Track a log action (called when console.log, console.warn, console.error are invoked)
+ * v1.6.4-v3 - FEATURE: Log action tracking with category detection and filtering
+ * @private
+ * @param {Array} args - Arguments passed to the console method
+ */
+function _trackLogAction(args) {
+  // v1.6.4-v3 - Task 2: Detect category from log message
+  const category = _detectCategoryFromLog(args);
+  
+  // v1.6.4-v3 - Task 3: Only count if category is enabled in live filters
+  if (!_isCategoryFilterEnabled(category)) {
+    return; // Don't count filtered-out logs
+  }
+  
   const now = Date.now();
   _totalLogActions++;
   _logActionsWindow.push(now);
+  
+  // v1.6.4-v3 - Task 2: Increment category counter
+  _logActionsByCategory[category] = (_logActionsByCategory[category] || 0) + 1;
 
   // Remove old entries outside the window
   _pruneLogActionsWindow(now);
@@ -641,6 +757,8 @@ function _calculateLogsPerSecond() {
 function _clearLogActionCounts() {
   _totalLogActions = 0;
   _logActionsWindow = [];
+  // v1.6.4-v3 - Task 2: Also reset category breakdown
+  _logActionsByCategory = {};
   // Use original console to avoid incrementing counter during clear
   if (console._originalLog) {
     console._originalLog('[Manager] METRICS: Log action counts cleared');
@@ -649,7 +767,7 @@ function _clearLogActionCounts() {
 
 /**
  * Install console interceptors to track log actions
- * v1.6.4-v3 - FEATURE: Log action tracking
+ * v1.6.4-v3 - FEATURE: Log action tracking with category detection
  * @private
  */
 function _installConsoleInterceptors() {
@@ -658,17 +776,17 @@ function _installConsoleInterceptors() {
   const originalError = console.error;
 
   console.log = function (...args) {
-    _trackLogAction();
+    _trackLogAction(args);
     originalLog.apply(console, args);
   };
 
   console.warn = function (...args) {
-    _trackLogAction();
+    _trackLogAction(args);
     originalWarn.apply(console, args);
   };
 
   console.error = function (...args) {
-    _trackLogAction();
+    _trackLogAction(args);
     originalError.apply(console, args);
   };
 
@@ -701,6 +819,7 @@ function _updateMetricValue(element, newValue) {
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Changed to log action tracking
  * v1.6.4-v3 - Also send metrics to parent window for display in settings.html
+ * v1.6.4-v3 - Task 2: Include category breakdown in metrics update
  * @private
  */
 function _updateMetrics() {
@@ -708,6 +827,8 @@ function _updateMetrics() {
   const quickTabCount = _allQuickTabsFromPort.length;
   const logsPerSecond = _calculateLogsPerSecond();
   const totalLogs = _totalLogActions;
+  // v1.6.4-v3 - Task 2: Include category breakdown
+  const categoryBreakdown = { ..._logActionsByCategory };
 
   // v1.6.4-v3 - Send metrics to parent window (settings.html) for display
   // Uses window.location.origin for security instead of '*'
@@ -719,6 +840,7 @@ function _updateMetrics() {
           quickTabCount,
           logsPerSecond,
           totalLogs,
+          categoryBreakdown,
           enabled: _metricsEnabled
         },
         window.location.origin
@@ -803,10 +925,14 @@ function _stopMetricsInterval() {
  * Initialize live metrics feature
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Added console interceptors for log action tracking
+ * v1.6.4-v3 - Task 3: Load live filter settings for filtered log counting
  * Called on sidebar initialization
  */
 async function initializeMetrics() {
   console.log('[Manager] METRICS: Initializing...');
+
+  // v1.6.4-v3 - Task 3: Load live filter settings BEFORE installing interceptors
+  await _loadLiveFilterSettings();
 
   // v1.6.4-v3 - Install console interceptors FIRST (before any other logs)
   _installConsoleInterceptors();
@@ -829,12 +955,16 @@ async function initializeMetrics() {
   // Listen for settings changes
   browser.storage.onChanged.addListener(_handleMetricsSettingsChange);
 
+  // v1.6.4-v3 - FIX Task 1: Listen for CLEAR_LOG_ACTION_COUNTS from parent window (settings.js)
+  window.addEventListener('message', _handleParentWindowMessage);
+
   console.log('[Manager] METRICS: Initialization complete');
 }
 
 /**
  * Handle storage changes for metrics settings
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Task 3: Also refresh live filter settings when they change
  * @private
  * @param {Object} changes - Storage changes object
  * @param {string} areaName - Storage area name
@@ -863,9 +993,36 @@ function _handleMetricsSettingsChange(changes, areaName) {
     });
   }
 
+  // v1.6.4-v3 - Task 3: Update live filter settings cache when they change
+  if (changes.liveConsoleCategoriesEnabled !== undefined) {
+    _liveFilterSettingsCache = changes.liveConsoleCategoriesEnabled.newValue || null;
+    console.log('[Manager] METRICS: Live filter settings updated');
+  }
+
   if (settingsChanged) {
     _applyMetricsVisibility();
     _startMetricsInterval(); // Restart with new settings
+  }
+}
+
+/**
+ * Handle messages from parent window (settings.js)
+ * v1.6.4-v3 - FIX Task 1: Reset log action counts when Clear Log History clicked
+ * @private
+ * @param {MessageEvent} event - Message event from parent window
+ */
+function _handleParentWindowMessage(event) {
+  // Only accept messages from same origin
+  if (event.origin !== window.location.origin) return;
+  
+  const data = event.data || {};
+  
+  if (data.type === 'CLEAR_LOG_ACTION_COUNTS') {
+    _clearLogActionCounts();
+    // Use original console to avoid incrementing counter
+    if (console._originalLog) {
+      console._originalLog('[Manager] METRICS: Log action counts cleared via parent window message');
+    }
   }
 }
 
@@ -876,6 +1033,8 @@ function _handleMetricsSettingsChange(changes, areaName) {
 function cleanupMetrics() {
   _stopMetricsInterval();
   browser.storage.onChanged.removeListener(_handleMetricsSettingsChange);
+  // v1.6.4-v3 - Also remove parent window message listener
+  window.removeEventListener('message', _handleParentWindowMessage);
   console.log('[Manager] METRICS: Cleanup complete');
 }
 

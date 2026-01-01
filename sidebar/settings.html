@@ -271,13 +271,20 @@
       /* v1.6.4-v3: Metrics footer in parent window */
       .metrics-footer-parent {
         display: flex;
-        justify-content: space-around;
-        align-items: center;
-        gap: 12px;
+        flex-direction: column;
+        gap: 6px;
         padding: 8px;
         background: #1a1a1a;
         border-radius: 6px;
         border: 1px solid #333;
+      }
+
+      .metrics-footer-parent .metrics-main-row {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 12px;
+        cursor: pointer;
       }
 
       .metrics-footer-parent .metric-item {
@@ -299,6 +306,54 @@
         color: #4caf50;
         min-width: 40px;
         text-align: right;
+      }
+
+      /* v1.6.4-v3 - Task 2: Expandable metrics details */
+      .metrics-details {
+        display: none;
+        font-size: 10px;
+        background: #222;
+        padding: 6px;
+        border-radius: 4px;
+        margin-top: 4px;
+      }
+
+      .metrics-details.expanded {
+        display: block;
+      }
+
+      .metrics-details-header {
+        font-weight: bold;
+        margin-bottom: 4px;
+        color: #4caf50;
+      }
+
+      .metrics-breakdown {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 2px 8px;
+      }
+
+      .metrics-breakdown-item {
+        display: flex;
+        justify-content: space-between;
+        color: #888;
+      }
+
+      .metrics-breakdown-item .cat-name {
+        color: #aaa;
+      }
+
+      .metrics-breakdown-item .cat-count {
+        font-family: 'Consolas', 'Monaco', monospace;
+        color: #4caf50;
+      }
+
+      .metrics-expand-hint {
+        font-size: 10px;
+        color: #666;
+        text-align: center;
+        margin-left: 4px;
       }
 
       .footer-buttons {
@@ -1698,17 +1753,25 @@
       <div class="footer">
         <!-- v1.6.4-v3: Metrics footer visible on all tabs -->
         <div id="metricsFooterParent" class="metrics-footer-parent">
-          <div class="metric-item" title="Quick Tab count">
-            <span class="metric-icon">📑</span>
-            <span id="metricQuickTabsParent" class="metric-value">0</span>
+          <div class="metrics-main-row" id="metricsToggle" title="Click to expand/collapse category breakdown">
+            <div class="metric-item" title="Quick Tab count">
+              <span class="metric-icon">📑</span>
+              <span id="metricQuickTabsParent" class="metric-value">0</span>
+            </div>
+            <div class="metric-item" title="Log actions per second">
+              <span class="metric-icon">📊</span>
+              <span id="metricLogsPerSecondParent" class="metric-value">0/s</span>
+            </div>
+            <div class="metric-item" title="Total log actions since clear">
+              <span class="metric-icon">📈</span>
+              <span id="metricTotalLogsParent" class="metric-value">0</span>
+            </div>
+            <span class="metrics-expand-hint" id="metricsExpandHint">▼</span>
           </div>
-          <div class="metric-item" title="Log actions per second">
-            <span class="metric-icon">📊</span>
-            <span id="metricLogsPerSecondParent" class="metric-value">0/s</span>
-          </div>
-          <div class="metric-item" title="Total log actions since clear">
-            <span class="metric-icon">📈</span>
-            <span id="metricTotalLogsParent" class="metric-value">0</span>
+          <!-- v1.6.4-v3 - Task 2: Expandable details section -->
+          <div id="metricsDetails" class="metrics-details">
+            <div class="metrics-details-header">📊 Breakdown by Category:</div>
+            <div id="metricsBreakdown" class="metrics-breakdown"></div>
           </div>
         </div>
         <div class="footer-buttons">
