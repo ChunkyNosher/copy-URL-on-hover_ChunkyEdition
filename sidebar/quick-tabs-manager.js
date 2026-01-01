@@ -374,8 +374,7 @@ const METRICS_DEFAULT_ENABLED = true;
 const METRICS_DEFAULT_INTERVAL_MS = 1000; // 1 second
 const METRICS_MIN_INTERVAL_MS = 500; // Minimum 500ms
 const METRICS_MAX_INTERVAL_MS = 30000; // Maximum 30 seconds
-// Memory estimate per Quick Tab (bytes) - rough estimate based on iframe + state
-const ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES = 5 * 1024 * 1024; // 5MB estimate per Quick Tab
+// v1.6.4-v3 - Removed ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES (no longer using memory tracking)
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -487,8 +486,16 @@ let _metricsFooterEl = null;
 let _metricsContentEl = null;
 let _metricsDisabledEl = null;
 let _metricQuickTabsEl = null;
-let _metricStorageEl = null;
-let _metricMemoryEl = null;
+// v1.6.4-v3 - Changed from storage/memory to log action tracking
+let _metricLogsPerSecondEl = null;
+let _metricTotalLogsEl = null;
+
+// v1.6.4-v3 - Log action tracking state
+let _totalLogActions = 0;
+// Log actions in the current sliding window (for calculating actions per second)
+let _logActionsWindow = [];
+// Window size in milliseconds for calculating logs per second
+const LOG_ACTIONS_WINDOW_MS = 5000; // 5 second sliding window
 
 /**
  * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
@@ -511,6 +518,7 @@ function _incrementStateVersion(source) {
 /**
  * Initialize metrics footer DOM element references
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Changed to log action tracking elements
  * @private
  */
 function _initMetricsDOMReferences() {
@@ -518,8 +526,9 @@ function _initMetricsDOMReferences() {
   _metricsContentEl = document.getElementById('metricsContent');
   _metricsDisabledEl = document.getElementById('metricsDisabled');
   _metricQuickTabsEl = document.getElementById('metricQuickTabs');
-  _metricStorageEl = document.getElementById('metricStorage');
-  _metricMemoryEl = document.getElementById('metricMemory');
+  // v1.6.4-v3 - Changed from storage/memory to log action tracking
+  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecond');
+  _metricTotalLogsEl = document.getElementById('metricTotalLogs');
 
   if (!_metricsFooterEl) {
     console.warn('[Manager] METRICS: Footer element not found in DOM');
@@ -563,61 +572,110 @@ async function _loadMetricsSettings() {
 }
 
 /**
- * Format bytes into human-readable string
- * v1.6.4-v2 - FEATURE: Live metrics footer
+ * Track a log action (called when console.log, console.warn, console.error are invoked)
+ * v1.6.4-v3 - FEATURE: Log action tracking
  * @private
- * @param {number} bytes - Number of bytes
- * @returns {string} Formatted string (e.g., "1.5 KB", "2.3 MB")
  */
-function _formatBytes(bytes) {
-  if (bytes === 0) return '0 B';
-  if (bytes < 0 || !Number.isFinite(bytes)) return '--';
+function _trackLogAction() {
+  const now = Date.now();
+  _totalLogActions++;
+  _logActionsWindow.push(now);
 
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const k = 1024;
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  const unitIndex = Math.min(i, units.length - 1);
-
-  return parseFloat((bytes / Math.pow(k, unitIndex)).toFixed(1)) + ' ' + units[unitIndex];
+  // Remove old entries outside the window
+  _pruneLogActionsWindow(now);
 }
 
 /**
- * Get current storage usage
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * Note: getBytesInUse() is Chrome-specific; Firefox uses fallback estimation
+ * Remove log action timestamps outside the sliding window
+ * v1.6.4-v3 - FEATURE: Log action tracking
  * @private
- * @returns {Promise<number>} Storage usage in bytes
+ * @param {number} now - Current timestamp
  */
-async function _getStorageUsage() {
-  try {
-    // getBytesInUse() is available in Chrome but NOT in Firefox
-    // Check if it exists and use fallback if not
-    if (typeof browser.storage.local.getBytesInUse === 'function') {
-      return await browser.storage.local.getBytesInUse(null);
-    }
-
-    // Fallback for Firefox: estimate by serializing storage contents
-    const allStorage = await browser.storage.local.get(null);
-    const serialized = JSON.stringify(allStorage);
-    return new Blob([serialized]).size;
-  } catch (err) {
-    console.warn('[Manager] METRICS: Failed to get storage usage', err.message);
-    return 0;
+function _pruneLogActionsWindow(now) {
+  const windowStart = now - LOG_ACTIONS_WINDOW_MS;
+  while (_logActionsWindow.length > 0 && _logActionsWindow[0] < windowStart) {
+    _logActionsWindow.shift();
   }
 }
 
 /**
- * Estimate memory usage based on Quick Tab count
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * Note: performance.memory is not available in Firefox, so we estimate
+ * Calculate log actions per second based on sliding window
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * Uses actual time span of data in window for accurate rate calculation
  * @private
- * @param {number} quickTabCount - Number of Quick Tabs
- * @returns {number} Estimated memory in bytes
+ * @returns {number} Log actions per second (rounded to 1 decimal)
  */
-function _estimateMemoryUsage(quickTabCount) {
-  // Base memory for the extension + per-Quick-Tab estimate
-  const baseMemory = 10 * 1024 * 1024; // 10MB base
-  return baseMemory + quickTabCount * ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES;
+function _calculateLogsPerSecond() {
+  const now = Date.now();
+  _pruneLogActionsWindow(now);
+
+  const actionsInWindow = _logActionsWindow.length;
+
+  // If no actions or only one action, return 0 (can't calculate meaningful rate)
+  if (actionsInWindow <= 1) {
+    return 0;
+  }
+
+  // Calculate rate using actual time span between first and last action in window
+  // This provides accurate rate even when window isn't full
+  const oldestTimestamp = _logActionsWindow[0];
+  const actualTimeSpanMs = now - oldestTimestamp;
+
+  // Avoid division by zero; require at least 100ms of data
+  if (actualTimeSpanMs < 100) {
+    return 0;
+  }
+
+  const actualTimeSpanSeconds = actualTimeSpanMs / 1000;
+  const rate = actionsInWindow / actualTimeSpanSeconds;
+
+  return Math.round(rate * 10) / 10; // Round to 1 decimal
+}
+
+/**
+ * Clear log action counts (resets total and window)
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * Called on page refresh or via explicit reset
+ * Note: Uses original console to avoid triggering the interceptor
+ */
+function _clearLogActionCounts() {
+  _totalLogActions = 0;
+  _logActionsWindow = [];
+  // Use original console to avoid incrementing counter during clear
+  if (console._originalLog) {
+    console._originalLog('[Manager] METRICS: Log action counts cleared');
+  }
+}
+
+/**
+ * Install console interceptors to track log actions
+ * v1.6.4-v3 - FEATURE: Log action tracking
+ * @private
+ */
+function _installConsoleInterceptors() {
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+
+  console.log = function (...args) {
+    _trackLogAction();
+    originalLog.apply(console, args);
+  };
+
+  console.warn = function (...args) {
+    _trackLogAction();
+    originalWarn.apply(console, args);
+  };
+
+  console.error = function (...args) {
+    _trackLogAction();
+    originalError.apply(console, args);
+  };
+
+  // Store originals for potential restoration
+  console._originalLog = originalLog;
+  console._originalWarn = originalWarn;
+  console._originalError = originalError;
 }
 
 /**
@@ -641,27 +699,28 @@ function _updateMetricValue(element, newValue) {
 /**
  * Update all metrics display
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Changed to log action tracking
  * @private
  */
-async function _updateMetrics() {
+function _updateMetrics() {
   if (!_metricsEnabled || !_metricsFooterEl) return;
 
   try {
     // Get Quick Tab count
     const quickTabCount = _allQuickTabsFromPort.length;
 
-    // Get storage usage
-    const storageBytes = await _getStorageUsage();
-
-    // Estimate memory usage
-    const memoryBytes = _estimateMemoryUsage(quickTabCount);
+    // v1.6.4-v3 - Calculate log actions per second
+    const logsPerSecond = _calculateLogsPerSecond();
 
     // Update DOM
     _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
-    _updateMetricValue(_metricStorageEl, _formatBytes(storageBytes));
-    _updateMetricValue(_metricMemoryEl, _formatBytes(memoryBytes));
+    _updateMetricValue(_metricLogsPerSecondEl, `${logsPerSecond}/s`);
+    _updateMetricValue(_metricTotalLogsEl, String(_totalLogActions));
   } catch (err) {
-    console.warn('[Manager] METRICS: Update failed', err.message);
+    // Use original console to avoid infinite loop
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Update failed', err.message);
+    }
   }
 }
 
@@ -723,10 +782,14 @@ function _stopMetricsInterval() {
 /**
  * Initialize live metrics feature
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v3 - Added console interceptors for log action tracking
  * Called on sidebar initialization
  */
 async function initializeMetrics() {
   console.log('[Manager] METRICS: Initializing...');
+
+  // v1.6.4-v3 - Install console interceptors FIRST (before any other logs)
+  _installConsoleInterceptors();
 
   // Initialize DOM references
   if (!_initMetricsDOMReferences()) {

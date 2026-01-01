@@ -1094,6 +1094,7 @@ function _updatePrimaryTabActiveState(primaryTab) {
 /**
  * Handle switching to the Settings primary tab
  * Shows secondary tabs and restores last active secondary tab
+ * Shows footer buttons (Save Settings, Reset to Defaults)
  * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
  * @param {HTMLElement|null} managerContent - The manager content element
  */
@@ -1106,6 +1107,12 @@ function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
     managerContent.classList.remove('active');
   }
 
+  // v1.6.4-v3 - FIX: Show footer buttons when on Settings tab
+  const footerButtons = document.querySelector('.footer-buttons');
+  if (footerButtons) {
+    footerButtons.style.display = 'flex';
+  }
+
   const lastSecondaryTab = getStoredSecondaryTab() || 'copy-url';
   showSecondaryTab(lastSecondaryTab);
 }
@@ -1113,6 +1120,7 @@ function _switchToSettingsTab(secondaryTabsContainer, managerContent) {
 /**
  * Handle switching to the Manager primary tab
  * Hides secondary tabs and shows manager content
+ * Hides footer buttons (Save Settings, Reset to Defaults)
  * @param {HTMLElement|null} secondaryTabsContainer - The secondary tabs container
  * @param {HTMLElement|null} managerContent - The manager content element
  */
@@ -1129,6 +1137,12 @@ function _switchToManagerTab(secondaryTabsContainer, managerContent) {
 
   if (managerContent) {
     managerContent.classList.add('active');
+  }
+
+  // v1.6.4-v3 - FIX: Hide footer buttons when on Manager tab (not relevant to Manager)
+  const footerButtons = document.querySelector('.footer-buttons');
+  if (footerButtons) {
+    footerButtons.style.display = 'none';
   }
 }
 
