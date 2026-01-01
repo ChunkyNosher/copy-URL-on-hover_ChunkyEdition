@@ -72,6 +72,8 @@ const relevantMemories = await searchMemories({
   settings, `_isCategoryFilterEnabled()` checks if category should be counted
 - **Bug #9d Total Logs Reset** - settings.js sends `CLEAR_LOG_ACTION_COUNTS`
   postMessage to iframe to reset counters
+- **Bug #13d Single Metrics Footer** - Only settings.html has metrics footer,
+  quick-tabs-manager.js sends METRICS_UPDATE postMessage to parent
 - **Default Interval** - `METRICS_DEFAULT_INTERVAL_MS` = 1000ms
 
 **v1.6.3.12-v12 Features - Button Operation Fix + Code Health:**
@@ -255,6 +257,7 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 - [ ] Expandable category breakdown (click footer to expand/collapse)
 - [ ] Filter-aware log counting via \_loadLiveFilterSettings()
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Bug #13d: Single metrics footer only in settings.html
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Live Metrics toggle works in settings
 - [ ] Live Console Output Filter checkboxes work

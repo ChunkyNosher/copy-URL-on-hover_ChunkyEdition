@@ -62,6 +62,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Current Tab" and drag transfer
 - **Bug #9d Total Logs Count Reset Fix** - settings.js sends
   `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
+- **Bug #10d-#12d Transfer/Duplicate Not Appearing** - Removed setTimeout
+  wrapper around `requestAllQuickTabsViaPort()` in ACK handlers for immediate
+  synchronous state refresh
+- **Bug #13d Duplicate Metrics Footer** - Removed duplicate footer from
+  quick-tabs-manager.html (single footer in settings.html sends postMessage)
+- **Bug #14d Excessive Console Logging** - Removed verbose
+  DEBOUNCE[DRAG_EVENT_QUEUED] logs on every mouse move (kept completion logs)
 
 **v1.6.4-v3 Features (NEW):**
 
@@ -71,6 +78,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   shows log counts per category with `_logActionsByCategory` tracking
 - **Filter-Aware Log Counting** - `_loadLiveFilterSettings()` loads filter
   settings, `_isCategoryFilterEnabled()` checks if category should be counted
+- **Single Metrics Footer** - Only settings.html has metrics footer,
+  quick-tabs-manager.js sends METRICS_UPDATE postMessage to parent
 
 **New Module:**
 
@@ -166,6 +175,10 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
 - [ ] Bug #8d: Immediate requestAllQuickTabsViaPort() after ACK
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Bug #10d-#12d: Direct requestAllQuickTabsViaPort() after ACK (no
+      setTimeout)
+- [ ] Bug #13d: Single metrics footer in settings.html
+- [ ] Bug #14d: Reduced DEBOUNCE logging (no event-queuing logs)
 - [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
 - [ ] Expandable category breakdown (click footer to expand/collapse)
 - [ ] Filter-aware log counting via \_loadLiveFilterSettings()

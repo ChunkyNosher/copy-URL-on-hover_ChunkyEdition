@@ -35,6 +35,9 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
   transfer/duplicate ACK
 - ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
+- ✅ **Single Metrics Footer** - Metrics footer only in settings.html (no
+  duplicate in manager)
+- ✅ **Reduced Logging** - Removed verbose DEBOUNCE event-queuing logs
 
 ## 🎉 What's New in v1.6.4-v2
 
