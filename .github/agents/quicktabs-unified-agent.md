@@ -58,6 +58,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   last Quick Tab close scenarios
 - **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
   `closeQuickTabViaPort()`
+- **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
+  caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
+- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions
+  for smooth close animation
 
 **New Module:**
 
@@ -129,6 +133,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] State version race condition fixed in render tracking
 - [ ] forceEmpty works for last Quick Tab close
 - [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
+- [ ] Cross-tab transfer no longer sends duplicate messages
+- [ ] Open in New Tab has smooth CSS transition (no UI flicker)
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders
 - [ ] Cross-tab render fix works (hash AND version check)
@@ -149,5 +155,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 ---
 
 **Your strength: Complete Quick Tab system with v1.6.4-v2 title updates, state
-version race fix, forceEmpty fix, Open in New Tab close, button operation fix,
-cross-tab render fix, fallback messaging, and comprehensive validation.**
+version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
+duplicate fix, Open in New Tab UI flicker fix, button operation fix, cross-tab
+render fix, fallback messaging, and comprehensive validation.**

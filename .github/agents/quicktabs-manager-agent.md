@@ -50,6 +50,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   last Quick Tab close scenarios
 - **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
   `closeQuickTabViaPort()`
+- **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
+  caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
+- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions
+  for smooth close animation
 
 **New Module:**
 
@@ -130,6 +134,8 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] State version race condition fixed in render tracking
 - [ ] forceEmpty works for last Quick Tab close
 - [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
+- [ ] Cross-tab transfer no longer sends duplicate messages
+- [ ] Open in New Tab has smooth CSS transition (no UI flicker)
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
 - [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)
 - [ ] Empty state transition works (\_handleEmptyStateTransition)
@@ -155,6 +161,7 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 ---
 
 **Your strength: Manager coordination with v1.6.4-v2 title updates, state
-version race fix, forceEmpty fix, Open in New Tab close, transfer/duplicate race
-fix, Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
+version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
+duplicate fix, Open in New Tab UI flicker fix, transfer/duplicate race fix,
+Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
 transfer, and comprehensive validation.**
