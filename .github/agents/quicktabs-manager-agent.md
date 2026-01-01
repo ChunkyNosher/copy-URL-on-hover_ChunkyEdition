@@ -57,11 +57,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
   Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
   STATE_CHANGED not received
+- **Bug #8d Cross-Tab Transfer Race Fix** - Immediate
+  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for
+  "Move to Current Tab" and drag transfer
+- **Bug #9d Total Logs Count Reset Fix** - settings.js sends
+  `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
 
 **v1.6.4-v3 Features (NEW):**
 
-- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
-  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, log
+  actions per second, total log actions. Configurable interval (500ms-30s)
+- **Expandable Category Breakdown** - Click metrics footer to expand/collapse,
+  shows log counts per category with `_logActionsByCategory` tracking
+- **Filter-Aware Log Counting** - `_loadLiveFilterSettings()` loads filter
+  settings, `_isCategoryFilterEnabled()` checks if category should be counted
 
 **New Module:**
 
@@ -122,6 +131,16 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 | `sidebar/quick-tabs-manager.js`             | Manager UI and port handling |
 | `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis      |
 | `background.js`                             | Port handlers, state push    |
+| `options/settings.js`                       | CLEAR_LOG_ACTION_COUNTS msg  |
+
+**Key Functions (v1.6.4-v3):**
+
+| Function                     | Purpose                              |
+| ---------------------------- | ------------------------------------ |
+| `_logActionsByCategory`      | Per-category log tracking map        |
+| `_detectCategoryFromLog()`   | Extracts category from log prefix    |
+| `_loadLiveFilterSettings()`  | Loads Live Console Output Filter     |
+| `_isCategoryFilterEnabled()` | Checks if category should be counted |
 
 ---
 
@@ -145,7 +164,11 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] Cross-tab transfer no longer sends duplicate messages
 - [ ] Open in New Tab has smooth CSS transition (no UI flicker)
 - [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
-- [ ] Live Metrics Footer displays Quick Tab count, storage, memory
+- [ ] Bug #8d: Immediate requestAllQuickTabsViaPort() after ACK
+- [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
+- [ ] Expandable category breakdown (click footer to expand/collapse)
+- [ ] Filter-aware log counting via _loadLiveFilterSettings()
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
 - [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)
@@ -173,7 +196,6 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Your strength: Manager coordination with v1.6.4-v3 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
-Live Metrics Footer, transfer/duplicate race fix, Quick Tab order persistence,
-empty state handling, drag-and-drop, cross-tab transfer, and comprehensive
-validation.**
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED race fix (Bug #8d),
+total logs reset (Bug #9d), expandable category breakdown, filter-aware log
+counting, Live Metrics Footer, and comprehensive validation.**

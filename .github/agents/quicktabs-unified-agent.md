@@ -66,11 +66,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
   Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
   STATE_CHANGED not received
+- **Bug #8d Cross-Tab Transfer Race Fix** - Immediate
+  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for
+  "Move to Current Tab" and drag transfer
+- **Bug #9d Total Logs Count Reset Fix** - settings.js sends
+  `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
 
 **v1.6.4-v3 Features (NEW):**
 
-- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
-  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, log
+  actions per second, total log actions. Configurable interval (500ms-30s)
+- **Expandable Category Breakdown** - Click metrics footer to expand/collapse,
+  shows log counts per category with `_logActionsByCategory` tracking
+- **Filter-Aware Log Counting** - `_loadLiveFilterSettings()` loads filter
+  settings, `_isCategoryFilterEnabled()` checks if category should be counted
 
 **New Module:**
 
@@ -104,6 +113,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 | `MAX_CONSECUTIVE_RERENDERS`             | 3     | Prevent infinite render loops      |
 | `STATE_CHANGED_SAFETY_TIMEOUT_MS`       | 500   | Transfer/Duplicate ACK timeout     |
 | `METRICS_DEFAULT_INTERVAL_MS`           | 1000  | Live metrics update interval       |
+| `CLEAR_LOG_ACTION_COUNTS`               | msg   | Reset total/category log counters  |
 
 **Key Architecture Components:**
 
@@ -115,6 +125,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 | `notifySidebarOfStateChange()` | Push updates to sidebar          |
 | `_isRenderInProgress`          | Render lock flag                 |
 | `_stateVersion`                | State version for consistency    |
+| `_logActionsByCategory`        | Per-category log tracking        |
+| `_detectCategoryFromLog()`     | Extracts category from log prefix|
+| `_loadLiveFilterSettings()`    | Loads Live Console Output Filter |
+| `_isCategoryFilterEnabled()`   | Checks if category is enabled    |
 
 **Key Modules:**
 
@@ -147,7 +161,11 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Cross-tab transfer no longer sends duplicate messages
 - [ ] Open in New Tab has smooth CSS transition (no UI flicker)
 - [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
-- [ ] Live Metrics Footer displays Quick Tab count, storage, memory
+- [ ] Bug #8d: Immediate requestAllQuickTabsViaPort() after ACK
+- [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Live Metrics Footer displays Quick Tab count, log actions/sec, total
+- [ ] Expandable category breakdown (click footer to expand/collapse)
+- [ ] Filter-aware log counting via _loadLiveFilterSettings()
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders
@@ -170,6 +188,6 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Your strength: Complete Quick Tab system with v1.6.4-v3 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
-Live Metrics Footer, button operation fix, cross-tab render fix, fallback
-messaging, and comprehensive validation.**
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED race fix (Bug #8d),
+total logs reset (Bug #9d), expandable category breakdown, filter-aware log
+counting, Live Metrics Footer, and comprehensive validation.**
