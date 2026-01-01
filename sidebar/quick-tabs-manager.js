@@ -8268,12 +8268,14 @@ function _applyOptimisticClasses(options) {
 /**
  * Action-to-config lookup table for optimistic UI updates
  * v1.6.3.12-v12 - FIX Code Review: Moved outside function scope to avoid recreation
+ * v1.6.4-v3 - FIX: Added openInNewTab to prevent flicker when opening and closing Quick Tab
  * @private
  */
 const _optimisticUIActionConfig = {
   minimize: { class: 'minimizing', title: 'Minimizing...' },
   restore: { class: 'restoring', title: 'Restoring...' },
-  close: { class: 'closing', title: 'Closing...' }
+  close: { class: 'closing', title: 'Closing...' },
+  openInNewTab: { class: 'closing', title: 'Opening...' }
 };
 
 function _applyOptimisticUIUpdate(action, quickTabId, button) {

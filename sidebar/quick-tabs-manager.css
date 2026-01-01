@@ -1121,4 +1121,37 @@ html {
   cursor: not-allowed;
 }
 
+/* ========================================
+ * Optimistic UI States (v1.6.4-v3)
+ * FIX: "Open in New Tab" flicker - immediate visual feedback
+ * ======================================== */
+
+/* Operation pending state - reduces opacity to indicate processing */
+.quick-tab-item.operation-pending {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity 0.15s ease-out;
+}
+
+/* Closing state - fade out animation */
+.quick-tab-item.closing {
+  opacity: 0.3;
+  transform: translateX(-10px);
+  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+}
+
+/* Minimizing state - slight scale down */
+.quick-tab-item.minimizing {
+  opacity: 0.6;
+  transform: scale(0.98);
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
+/* Restoring state - slight scale up */
+.quick-tab-item.restoring {
+  opacity: 0.7;
+  transform: scale(1.01);
+  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+}
+
 /* ======================================== */
