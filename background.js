@@ -5502,6 +5502,15 @@ function notifySidebarOfStateChange() {
 
   const allTabs = getAllQuickTabsFromMemory();
   const correlationId = `broadcast-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  
+  // v1.6.4-v3 - DEBUG: Log all Quick Tab IDs being sent with their originTabIds
+  console.log('[Background] STATE_CHANGED_PAYLOAD_DEBUG:', {
+    correlationId,
+    totalQuickTabs: allTabs.length,
+    quickTabDetails: allTabs.map(qt => ({ id: qt.id, originTabId: qt.originTabId })),
+    timestamp: Date.now()
+  });
+  
   const message = {
     type: 'STATE_CHANGED',
     quickTabs: allTabs,
@@ -7419,6 +7428,14 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
     quickTabId,
     correlationId
   );
+
+  // v1.6.4-v3 - DEBUG: Log sidebar port state before notification
+  console.log('[Background] TRANSFER_PRE_NOTIFY:', {
+    quickTabId,
+    newOriginTabId,
+    sidebarPortConnected: !!quickTabsSessionState.sidebarPort,
+    timestamp: Date.now()
+  });
 
   // Notify sidebar and content scripts
   notifySidebarOfStateChange();
