@@ -746,6 +746,47 @@
             </small>
           </div>
 
+          <!-- v1.6.4-v2 FEATURE: Live Metrics Settings -->
+          <div class="setting-group">
+            <h4 style="margin-bottom: 8px; font-size: 13px; color: #4caf50">
+              📊 Manager Metrics
+            </h4>
+            <div class="checkbox-group">
+              <input type="checkbox" id="quickTabsMetricsEnabled" checked />
+              <label for="quickTabsMetricsEnabled">Show live metrics in Manager footer</label>
+            </div>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              Display Quick Tab count, storage usage, and memory estimates in the Manager sidebar
+              footer.
+            </small>
+          </div>
+
+          <div class="setting-group">
+            <label>Metrics update interval:</label>
+            <select
+              id="quickTabsMetricsInterval"
+              style="
+                width: 100%;
+                padding: 8px 10px;
+                background: #3a3a3a;
+                border: 1px solid #4a4a4a;
+                color: #e0e0e0;
+                border-radius: 4px;
+                font-size: 12px;
+              "
+            >
+              <option value="500">Fast (500ms)</option>
+              <option value="1000" selected>Normal (1 second)</option>
+              <option value="2000">Slow (2 seconds)</option>
+              <option value="5000">Very Slow (5 seconds)</option>
+              <option value="10000">Minimal (10 seconds)</option>
+              <option value="30000">Rare (30 seconds)</option>
+            </select>
+            <small style="display: block; margin-top: 4px; color: #888; font-size: 11px">
+              How often to update the live metrics. Slower intervals use less resources.
+            </small>
+          </div>
+
           <div class="info-box">
             <strong>Quick Tabs:</strong> Press Q (or your configured key) while hovering over a link
             to open it in a floating window. Use the navigation controls to browse, minimize to save

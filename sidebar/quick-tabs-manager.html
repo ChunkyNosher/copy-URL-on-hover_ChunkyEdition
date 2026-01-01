@@ -35,6 +35,27 @@
       <div class="empty-hint">Press Q while hovering over a link to create one</div>
     </div>
 
+    <!-- v1.6.4-v2 FEATURE: Live metrics footer -->
+    <div id="metricsFooter" class="metrics-footer">
+      <div id="metricsContent" class="metrics-content">
+        <div class="metric-item" title="Quick Tab count">
+          <span class="metric-icon">📑</span>
+          <span id="metricQuickTabs" class="metric-value">0</span>
+        </div>
+        <div class="metric-item" title="Storage usage">
+          <span class="metric-icon">💾</span>
+          <span id="metricStorage" class="metric-value">--</span>
+        </div>
+        <div class="metric-item" title="Estimated memory usage">
+          <span class="metric-icon">🧠</span>
+          <span id="metricMemory" class="metric-value">--</span>
+        </div>
+      </div>
+      <div id="metricsDisabled" class="metrics-disabled" style="display: none">
+        <span class="extension-name">Copy URL on Hover</span>
+      </div>
+    </div>
+
     <script type="module" src="quick-tabs-manager.js"></script>
   </body>
 </html>

@@ -575,6 +575,10 @@ const DEFAULT_SETTINGS = {
   quickTabEnableResize: true,
   quickTabDuplicateModifier: 'shift',
 
+  // v1.6.4-v2 - FEATURE: Live metrics settings
+  quickTabsMetricsEnabled: true,
+  quickTabsMetricsIntervalMs: 1000,
+
   showNotification: true,
   notifDisplayMode: 'tooltip',
 
@@ -607,7 +611,7 @@ const DEFAULT_SETTINGS = {
 
 // Helper function to safely parse integer with fallback
 function safeParseInt(value, fallback) {
-  const parsed = parseInt(value);
+  const parsed = parseInt(value, 10);
   return isNaN(parsed) ? fallback : parsed;
 }
 
@@ -679,6 +683,10 @@ function loadSettings() {
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
     document.getElementById('quickTabDuplicateModifier').value = items.quickTabDuplicateModifier;
     toggleCustomPosition(items.quickTabPosition);
+
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    document.getElementById('quickTabsMetricsEnabled').checked = items.quickTabsMetricsEnabled;
+    document.getElementById('quickTabsMetricsInterval').value = String(items.quickTabsMetricsIntervalMs);
 
     document.getElementById('showNotification').checked = items.showNotification;
     document.getElementById('notifDisplayMode').value = items.notifDisplayMode;
@@ -812,7 +820,13 @@ function _gatherQuickTabSettings() {
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
     quickTabDuplicateModifier: document.getElementById('quickTabDuplicateModifier').value || 'alt',
-    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
+    quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked,
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    quickTabsMetricsEnabled: document.getElementById('quickTabsMetricsEnabled').checked,
+    quickTabsMetricsIntervalMs: safeParseInt(
+      document.getElementById('quickTabsMetricsInterval').value,
+      1000
+    )
   };
 }
 

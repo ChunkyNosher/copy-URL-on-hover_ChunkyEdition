@@ -30,6 +30,18 @@ window.addEventListener('unload', () => {
   _isPageActive = false;
 });
 
+/**
+ * Safely parse integer with fallback
+ * v1.6.4-v2 - Added for consistent value validation
+ * @param {string} value - Value to parse
+ * @param {number} fallback - Fallback value if parsing fails
+ * @returns {number} Parsed integer or fallback
+ */
+function safeParseInt(value, fallback) {
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
 // Default settings
 const DEFAULT_SETTINGS = {
   enableQuickTabs: true,
@@ -39,7 +51,10 @@ const DEFAULT_SETTINGS = {
   syncAcrossTabs: true,
   persistAcrossSessions: true,
   enableDebugLogging: false,
-  quickTabShowDebugId: false
+  quickTabShowDebugId: false,
+  // v1.6.4-v2 - FEATURE: Live metrics settings
+  quickTabsMetricsEnabled: true,
+  quickTabsMetricsIntervalMs: 1000
 };
 
 // Load settings on page load
@@ -75,6 +90,12 @@ async function loadSettings() {
     document.getElementById('persistAcrossSessions').checked = settings.persistAcrossSessions;
     document.getElementById('enableDebugLogging').checked = settings.enableDebugLogging;
     document.getElementById('quickTabShowDebugId').checked = settings.quickTabShowDebugId ?? false;
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    document.getElementById('quickTabsMetricsEnabled').checked =
+      settings.quickTabsMetricsEnabled ?? true;
+    document.getElementById('quickTabsMetricsInterval').value = String(
+      settings.quickTabsMetricsIntervalMs ?? 1000
+    );
 
     console.log('Settings loaded:', settings);
   } catch (err) {
@@ -93,13 +114,19 @@ async function saveSettings() {
   try {
     const settings = {
       enableQuickTabs: document.getElementById('enableQuickTabs').checked,
-      maxQuickTabs: parseInt(document.getElementById('maxQuickTabs').value),
-      defaultWidth: parseInt(document.getElementById('defaultWidth').value),
-      defaultHeight: parseInt(document.getElementById('defaultHeight').value),
+      maxQuickTabs: safeParseInt(document.getElementById('maxQuickTabs').value, 5),
+      defaultWidth: safeParseInt(document.getElementById('defaultWidth').value, 600),
+      defaultHeight: safeParseInt(document.getElementById('defaultHeight').value, 400),
       syncAcrossTabs: document.getElementById('syncAcrossTabs').checked,
       persistAcrossSessions: document.getElementById('persistAcrossSessions').checked,
       enableDebugLogging: document.getElementById('enableDebugLogging').checked,
-      quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked
+      quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked,
+      // v1.6.4-v2 - FEATURE: Live metrics settings
+      quickTabsMetricsEnabled: document.getElementById('quickTabsMetricsEnabled').checked,
+      quickTabsMetricsIntervalMs: safeParseInt(
+        document.getElementById('quickTabsMetricsInterval').value,
+        1000
+      )
     };
 
     await browser.storage.sync.set({ [SETTINGS_KEY]: settings });

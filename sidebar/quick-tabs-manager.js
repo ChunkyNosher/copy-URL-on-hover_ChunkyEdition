@@ -365,6 +365,18 @@ const QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS = 60000; // 60 seconds befor
 // Port messaging FIFO ordering - sequence number tracking
 const SEQUENCE_GAP_WARNING_ENABLED = true; // Enable/disable out-of-order detection logging
 
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS CONSTANTS ====================
+// Settings keys for live metrics feature
+const METRICS_ENABLED_KEY = 'quickTabsMetricsEnabled';
+const METRICS_INTERVAL_KEY = 'quickTabsMetricsIntervalMs';
+// Default values for metrics settings
+const METRICS_DEFAULT_ENABLED = true;
+const METRICS_DEFAULT_INTERVAL_MS = 1000; // 1 second
+const METRICS_MIN_INTERVAL_MS = 500; // Minimum 500ms
+const METRICS_MAX_INTERVAL_MS = 30000; // Maximum 30 seconds
+// Memory estimate per Quick Tab (bytes) - rough estimate based on iframe + state
+const ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES = 5 * 1024 * 1024; // 5MB estimate per Quick Tab
+
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
 
@@ -464,6 +476,20 @@ const STALENESS_THRESHOLD_MS = 30000; // 30 seconds - warn if no events received
 // Browser tab info cache
 const browserTabInfoCache = new Map();
 
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS STATE ====================
+// Interval ID for metrics update timer
+let _metricsIntervalId = null;
+// Current metrics settings
+let _metricsEnabled = METRICS_DEFAULT_ENABLED;
+let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
+// DOM element references for metrics (cached for performance)
+let _metricsFooterEl = null;
+let _metricsContentEl = null;
+let _metricsDisabledEl = null;
+let _metricQuickTabsEl = null;
+let _metricStorageEl = null;
+let _metricMemoryEl = null;
+
 /**
  * v1.6.4 - FIX Issue #21: Increment state version when external state arrives
  * Call this when state is updated from external sources (port messages, storage.onChanged)
@@ -479,6 +505,293 @@ function _incrementStateVersion(source) {
     timestamp: Date.now()
   });
 }
+
+// ==================== v1.6.4-v2 FEATURE: LIVE METRICS FUNCTIONS ====================
+
+/**
+ * Initialize metrics footer DOM element references
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _initMetricsDOMReferences() {
+  _metricsFooterEl = document.getElementById('metricsFooter');
+  _metricsContentEl = document.getElementById('metricsContent');
+  _metricsDisabledEl = document.getElementById('metricsDisabled');
+  _metricQuickTabsEl = document.getElementById('metricQuickTabs');
+  _metricStorageEl = document.getElementById('metricStorage');
+  _metricMemoryEl = document.getElementById('metricMemory');
+
+  if (!_metricsFooterEl) {
+    console.warn('[Manager] METRICS: Footer element not found in DOM');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Load metrics settings from storage
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @returns {Promise<void>}
+ */
+async function _loadMetricsSettings() {
+  try {
+    const result = await browser.storage.local.get([METRICS_ENABLED_KEY, METRICS_INTERVAL_KEY]);
+
+    _metricsEnabled =
+      result[METRICS_ENABLED_KEY] !== undefined ? result[METRICS_ENABLED_KEY] : METRICS_DEFAULT_ENABLED;
+
+    _metricsIntervalMs =
+      result[METRICS_INTERVAL_KEY] !== undefined
+        ? Math.max(METRICS_MIN_INTERVAL_MS, Math.min(METRICS_MAX_INTERVAL_MS, result[METRICS_INTERVAL_KEY]))
+        : METRICS_DEFAULT_INTERVAL_MS;
+
+    console.log('[Manager] METRICS: Settings loaded', {
+      enabled: _metricsEnabled,
+      intervalMs: _metricsIntervalMs
+    });
+  } catch (err) {
+    console.warn('[Manager] METRICS: Failed to load settings, using defaults', err.message);
+    _metricsEnabled = METRICS_DEFAULT_ENABLED;
+    _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
+  }
+}
+
+/**
+ * Format bytes into human-readable string
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @param {number} bytes - Number of bytes
+ * @returns {string} Formatted string (e.g., "1.5 KB", "2.3 MB")
+ */
+function _formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  if (bytes < 0 || !Number.isFinite(bytes)) return '--';
+
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const k = 1024;
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  const unitIndex = Math.min(i, units.length - 1);
+
+  return parseFloat((bytes / Math.pow(k, unitIndex)).toFixed(1)) + ' ' + units[unitIndex];
+}
+
+/**
+ * Get current storage usage
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * Note: getBytesInUse() is Chrome-specific; Firefox uses fallback estimation
+ * @private
+ * @returns {Promise<number>} Storage usage in bytes
+ */
+async function _getStorageUsage() {
+  try {
+    // getBytesInUse() is available in Chrome but NOT in Firefox
+    // Check if it exists and use fallback if not
+    if (typeof browser.storage.local.getBytesInUse === 'function') {
+      return await browser.storage.local.getBytesInUse(null);
+    }
+
+    // Fallback for Firefox: estimate by serializing storage contents
+    const allStorage = await browser.storage.local.get(null);
+    const serialized = JSON.stringify(allStorage);
+    return new Blob([serialized]).size;
+  } catch (err) {
+    console.warn('[Manager] METRICS: Failed to get storage usage', err.message);
+    return 0;
+  }
+}
+
+/**
+ * Estimate memory usage based on Quick Tab count
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * Note: performance.memory is not available in Firefox, so we estimate
+ * @private
+ * @param {number} quickTabCount - Number of Quick Tabs
+ * @returns {number} Estimated memory in bytes
+ */
+function _estimateMemoryUsage(quickTabCount) {
+  // Base memory for the extension + per-Quick-Tab estimate
+  const baseMemory = 10 * 1024 * 1024; // 10MB base
+  return baseMemory + quickTabCount * ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES;
+}
+
+/**
+ * Update a metric value with animation if changed
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @param {HTMLElement} element - The metric value element
+ * @param {string} newValue - The new value to display
+ */
+function _updateMetricValue(element, newValue) {
+  if (!element) return;
+
+  const oldValue = element.textContent;
+  if (oldValue !== newValue) {
+    element.textContent = newValue;
+    element.classList.add('updated');
+    setTimeout(() => element.classList.remove('updated'), 300);
+  }
+}
+
+/**
+ * Update all metrics display
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+async function _updateMetrics() {
+  if (!_metricsEnabled || !_metricsFooterEl) return;
+
+  try {
+    // Get Quick Tab count
+    const quickTabCount = _allQuickTabsFromPort.length;
+
+    // Get storage usage
+    const storageBytes = await _getStorageUsage();
+
+    // Estimate memory usage
+    const memoryBytes = _estimateMemoryUsage(quickTabCount);
+
+    // Update DOM
+    _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
+    _updateMetricValue(_metricStorageEl, _formatBytes(storageBytes));
+    _updateMetricValue(_metricMemoryEl, _formatBytes(memoryBytes));
+  } catch (err) {
+    console.warn('[Manager] METRICS: Update failed', err.message);
+  }
+}
+
+/**
+ * Show/hide metrics based on enabled state
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _applyMetricsVisibility() {
+  if (!_metricsContentEl || !_metricsDisabledEl) return;
+
+  if (_metricsEnabled) {
+    _metricsContentEl.style.display = 'flex';
+    _metricsDisabledEl.style.display = 'none';
+  } else {
+    _metricsContentEl.style.display = 'none';
+    _metricsDisabledEl.style.display = 'block';
+  }
+}
+
+/**
+ * Start the metrics update interval
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _startMetricsInterval() {
+  // Clear any existing interval
+  _stopMetricsInterval();
+
+  if (!_metricsEnabled) {
+    console.log('[Manager] METRICS: Not starting interval - metrics disabled');
+    return;
+  }
+
+  console.log('[Manager] METRICS: Starting interval', {
+    intervalMs: _metricsIntervalMs
+  });
+
+  // Run immediately once
+  _updateMetrics();
+
+  // Set up recurring interval
+  _metricsIntervalId = setInterval(_updateMetrics, _metricsIntervalMs);
+}
+
+/**
+ * Stop the metrics update interval
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ */
+function _stopMetricsInterval() {
+  if (_metricsIntervalId !== null) {
+    clearInterval(_metricsIntervalId);
+    _metricsIntervalId = null;
+    console.log('[Manager] METRICS: Interval stopped');
+  }
+}
+
+/**
+ * Initialize live metrics feature
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * Called on sidebar initialization
+ */
+async function initializeMetrics() {
+  console.log('[Manager] METRICS: Initializing...');
+
+  // Initialize DOM references
+  if (!_initMetricsDOMReferences()) {
+    console.warn('[Manager] METRICS: Initialization failed - DOM elements not found');
+    return;
+  }
+
+  // Load settings from storage
+  await _loadMetricsSettings();
+
+  // Apply visibility based on settings
+  _applyMetricsVisibility();
+
+  // Start interval if enabled
+  _startMetricsInterval();
+
+  // Listen for settings changes
+  browser.storage.onChanged.addListener(_handleMetricsSettingsChange);
+
+  console.log('[Manager] METRICS: Initialization complete');
+}
+
+/**
+ * Handle storage changes for metrics settings
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ * @private
+ * @param {Object} changes - Storage changes object
+ * @param {string} areaName - Storage area name
+ */
+function _handleMetricsSettingsChange(changes, areaName) {
+  if (areaName !== 'local') return;
+
+  let settingsChanged = false;
+
+  if (changes[METRICS_ENABLED_KEY] !== undefined) {
+    _metricsEnabled = changes[METRICS_ENABLED_KEY].newValue;
+    settingsChanged = true;
+    console.log('[Manager] METRICS: Enabled setting changed', {
+      enabled: _metricsEnabled
+    });
+  }
+
+  if (changes[METRICS_INTERVAL_KEY] !== undefined) {
+    _metricsIntervalMs = Math.max(
+      METRICS_MIN_INTERVAL_MS,
+      Math.min(METRICS_MAX_INTERVAL_MS, changes[METRICS_INTERVAL_KEY].newValue)
+    );
+    settingsChanged = true;
+    console.log('[Manager] METRICS: Interval setting changed', {
+      intervalMs: _metricsIntervalMs
+    });
+  }
+
+  if (settingsChanged) {
+    _applyMetricsVisibility();
+    _startMetricsInterval(); // Restart with new settings
+  }
+}
+
+/**
+ * Cleanup metrics on sidebar close
+ * v1.6.4-v2 - FEATURE: Live metrics footer
+ */
+function cleanupMetrics() {
+  _stopMetricsInterval();
+  browser.storage.onChanged.removeListener(_handleMetricsSettingsChange);
+  console.log('[Manager] METRICS: Cleanup complete');
+}
+
+// ==================== END LIVE METRICS FUNCTIONS ====================
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -5886,6 +6199,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // v1.6.3.12-v4 - Gap #7: Start cache staleness monitoring
   _startCacheStalenessMonitor();
 
+  // v1.6.4-v2 - FEATURE: Initialize live metrics footer
+  await initializeMetrics();
+
   // Auto-refresh every 2 seconds
   // v1.6.3.11-v12 - FIX Issue #6: Enhanced with staleness detection
   setInterval(async () => {
@@ -6097,6 +6413,7 @@ function _markEventReceived() {
 // v1.6.3.12-v4 - Gap #7: Also stop cache staleness monitor on unload
 // v1.6.3.12-v7 - FIX Issue #11: Also disconnect quickTabsPort on unload
 // v1.6.3.12-v11 - FIX Issue #12: Also stop tab update listener on unload
+// v1.6.4-v2 - FEATURE: Also cleanup metrics on unload
 window.addEventListener('unload', () => {
   console.log('[Sidebar] PORT_CLEANUP: Sidebar unloading, closing ports and stopping timers', {
     timestamp: Date.now(),
@@ -6115,6 +6432,9 @@ window.addEventListener('unload', () => {
 
   // v1.6.3.12-v11 - FIX Issue #12: Stop tab update listener
   _stopTabUpdateListener();
+
+  // v1.6.4-v2 - FEATURE: Cleanup live metrics
+  cleanupMetrics();
 
   // v1.6.3.12-v7 - FIX Issue #11: Disconnect quickTabsPort on unload
   if (quickTabsPort) {

@@ -192,6 +192,33 @@
           Display the unique ID of each Quick Tab in the titlebar for debugging
         </div>
       </div>
+
+      <!-- v1.6.4-v2 FEATURE: Live Metrics Settings -->
+      <div class="setting">
+        <label>
+          <input type="checkbox" id="quickTabsMetricsEnabled" checked />
+          Show live metrics in Manager footer
+        </label>
+        <div class="description">
+          Display Quick Tab count, storage usage, and memory estimates in the Manager sidebar
+          footer
+        </div>
+      </div>
+
+      <div class="setting">
+        <label>
+          Metrics Update Interval:
+          <select id="quickTabsMetricsInterval">
+            <option value="500">Fast (500ms)</option>
+            <option value="1000" selected>Normal (1 second)</option>
+            <option value="2000">Slow (2 seconds)</option>
+            <option value="5000">Very Slow (5 seconds)</option>
+            <option value="10000">Minimal (10 seconds)</option>
+            <option value="30000">Rare (30 seconds)</option>
+          </select>
+        </label>
+        <div class="description">How often to update the live metrics. Slower intervals use less resources.</div>
+      </div>
     </div>
 
     <div class="section">
