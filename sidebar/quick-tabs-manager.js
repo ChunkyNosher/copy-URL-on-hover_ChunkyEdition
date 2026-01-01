@@ -3,6 +3,15 @@
  * Manages display and interaction with Quick Tabs across all containers
  *
  * === v1.6.4-v3 TRANSFER/DUPLICATE STATE SYNC FIX ===
+ * v1.6.4-v3 - FIX BUG #15d: Added _pendingCriticalStateRefresh flag to force immediate render
+ *            after transfer/duplicate operations to ensure Manager displays correct state
+ *   - ROOT CAUSE: GET_ALL_QUICK_TABS_RESPONSE used debounced rendering, which could skip
+ *     or delay render after transfer/duplicate operations due to hash check
+ *   - FIX: Added _pendingCriticalStateRefresh flag set before requestAllQuickTabsViaPort()
+ *     in _handleSuccessfulTransferAck() and DUPLICATE_QUICK_TAB_ACK handlers
+ *   - When flag is set, _handleQuickTabsStateUpdate() bypasses scheduleRender() and calls
+ *     _forceImmediateRender('critical-state-refresh') instead
+ *
  * v1.6.4-v3 - FIX BUG #1/#2: Transfer/duplicate Quick Tabs not appearing in Manager
  *   - ROOT CAUSE: setTimeout(0) wrapper around requestAllQuickTabsViaPort() caused
  *     inconsistent state sync. The event loop deferral meant the request could be
@@ -1065,6 +1074,13 @@ let _sequenceGapsDetected = 0;
 let _stateChangedSafetyTimeoutId = null;
 
 /**
+ * v1.6.4-v3 - FIX BUG #15d: Flag to force immediate render after transfer/duplicate response
+ * When set, GET_ALL_QUICK_TABS_RESPONSE will bypass debounced scheduling and force immediate render
+ * This ensures Manager displays correct state after transfer/duplicate operations
+ */
+let _pendingCriticalStateRefresh = false;
+
+/**
  * Initialize Quick Tabs port connection
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
@@ -1590,8 +1606,19 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
   _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
-  // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
-  scheduleRender(renderReason, correlationId);
+  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
+  if (_pendingCriticalStateRefresh) {
+    _pendingCriticalStateRefresh = false;
+    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
+      renderReason,
+      tabCount: quickTabs.length,
+      timestamp: Date.now()
+    });
+    _forceImmediateRender('critical-state-refresh');
+  } else {
+    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
+    scheduleRender(renderReason, correlationId);
+  }
 }
 
 /**
@@ -1891,6 +1918,12 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
+  // v1.6.4-v3 - FIX BUG #15d: Set flag to force immediate render when response arrives
+  _pendingCriticalStateRefresh = true;
+  console.log('[Sidebar] CRITICAL_STATE_REFRESH_PENDING: Transfer ACK', {
+    quickTabId: msg.quickTabId
+  });
+
   // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after transfer ACK
   // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
   // Removed setTimeout(0) wrapper as it was causing inconsistent state sync.
@@ -2169,6 +2202,12 @@ const _portMessageHandlers = {
       // v1.6.4 - FIX BUG #2: Increment state version and force immediate render
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
+
+      // v1.6.4-v3 - FIX BUG #15d: Set flag to force immediate render when response arrives
+      _pendingCriticalStateRefresh = true;
+      console.log('[Sidebar] CRITICAL_STATE_REFRESH_PENDING: Duplicate ACK', {
+        newQuickTabId: msg.newQuickTabId
+      });
 
       // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after duplicate ACK
       // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
