@@ -8619,6 +8619,16 @@ async function _handleOpenInNewTab(url, quickTabId) {
       url,
       tabId: response?.tabId
     });
+
+    // v1.6.4-v2 - FIX BUG #5: Close the Quick Tab after successfully opening in new tab
+    // This ensures the Quick Tab is removed from both the origin tab and the Manager
+    if (quickTabId) {
+      console.log('[Manager] OPEN_IN_NEW_TAB_CLOSING_QUICK_TAB:', {
+        quickTabId,
+        reason: 'URL opened in new tab successfully'
+      });
+      closeQuickTabViaPort(quickTabId);
+    }
   } catch (err) {
     console.error('[Manager] OPEN_IN_NEW_TAB_FAILED:', {
       quickTabId,
