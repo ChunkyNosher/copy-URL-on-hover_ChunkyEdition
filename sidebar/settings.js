@@ -1838,5 +1838,58 @@ async function refreshLiveConsoleFiltersInAllTabs() {
 
 // ==================== END FILTER SETTINGS FUNCTIONS ====================
 
+// ==================== v1.6.4-v3: METRICS FOOTER COMMUNICATION ====================
+/**
+ * Check if a metrics message event is valid
+ * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
+ * @private
+ * @param {MessageEvent} event - Message event
+ * @returns {{valid: boolean, data: Object|null}} Validation result
+ */
+function _validateMetricsMessage(event) {
+  if (event.origin !== window.location.origin) return { valid: false, data: null };
+  const data = event.data || {};
+  if (data.type !== 'METRICS_UPDATE') return { valid: false, data: null };
+  return { valid: true, data };
+}
+
+/**
+ * Update metrics DOM elements
+ * v1.6.4-v3 - FEATURE: Extracted to reduce complexity
+ * @private
+ * @param {Object} data - Metrics data
+ */
+function _updateMetricsDOM(data) {
+  const qtEl = document.getElementById('metricQuickTabsParent');
+  const lpsEl = document.getElementById('metricLogsPerSecondParent');
+  const tlEl = document.getElementById('metricTotalLogsParent');
+
+  if (qtEl) qtEl.textContent = String(data.quickTabCount || 0);
+  if (lpsEl) lpsEl.textContent = `${data.logsPerSecond || 0}/s`;
+  if (tlEl) tlEl.textContent = String(data.totalLogs || 0);
+}
+
+/**
+ * Handle metrics updates from the Quick Tabs Manager iframe
+ * v1.6.4-v3 - FEATURE: Metrics footer visible on all tabs
+ * @private
+ * @param {MessageEvent} event - Message event from iframe
+ */
+function _handleMetricsMessage(event) {
+  const { valid, data } = _validateMetricsMessage(event);
+  if (!valid) return;
+
+  const metricsFooter = document.getElementById('metricsFooterParent');
+  if (!metricsFooter) return;
+
+  metricsFooter.style.display = data.enabled ? 'flex' : 'none';
+  if (data.enabled) _updateMetricsDOM(data);
+}
+
+// Register message listener for iframe communication
+window.addEventListener('message', _handleMetricsMessage);
+
+// ==================== END METRICS FOOTER COMMUNICATION ====================
+
 // Load settings on popup open
 loadSettings();

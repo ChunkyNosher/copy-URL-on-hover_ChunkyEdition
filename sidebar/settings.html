@@ -268,6 +268,39 @@
         flex-shrink: 0;
       }
 
+      /* v1.6.4-v3: Metrics footer in parent window */
+      .metrics-footer-parent {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 12px;
+        padding: 8px;
+        background: #1a1a1a;
+        border-radius: 6px;
+        border: 1px solid #333;
+      }
+
+      .metrics-footer-parent .metric-item {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 12px;
+        color: #aaa;
+      }
+
+      .metrics-footer-parent .metric-icon {
+        font-size: 14px;
+      }
+
+      .metrics-footer-parent .metric-value {
+        font-family: 'Consolas', 'Monaco', monospace;
+        font-size: 13px;
+        font-weight: 600;
+        color: #4caf50;
+        min-width: 40px;
+        text-align: right;
+      }
+
       .footer-buttons {
         display: flex;
         gap: 8px;
@@ -1663,6 +1696,21 @@
 
       <!-- Footer -->
       <div class="footer">
+        <!-- v1.6.4-v3: Metrics footer visible on all tabs -->
+        <div id="metricsFooterParent" class="metrics-footer-parent">
+          <div class="metric-item" title="Quick Tab count">
+            <span class="metric-icon">📑</span>
+            <span id="metricQuickTabsParent" class="metric-value">0</span>
+          </div>
+          <div class="metric-item" title="Log actions per second">
+            <span class="metric-icon">📊</span>
+            <span id="metricLogsPerSecondParent" class="metric-value">0/s</span>
+          </div>
+          <div class="metric-item" title="Total log actions since clear">
+            <span class="metric-icon">📈</span>
+            <span id="metricTotalLogsParent" class="metric-value">0</span>
+          </div>
+        </div>
         <div class="footer-buttons">
           <button id="saveBtn" class="save-btn">✓ Save Settings</button>
           <button id="resetBtn" class="reset-btn">↻ Reset to Defaults</button>

@@ -700,22 +700,41 @@ function _updateMetricValue(element, newValue) {
  * Update all metrics display
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Changed to log action tracking
+ * v1.6.4-v3 - Also send metrics to parent window for display in settings.html
  * @private
  */
 function _updateMetrics() {
+  // Get metrics data even if local display is disabled (parent might show it)
+  const quickTabCount = _allQuickTabsFromPort.length;
+  const logsPerSecond = _calculateLogsPerSecond();
+  const totalLogs = _totalLogActions;
+
+  // v1.6.4-v3 - Send metrics to parent window (settings.html) for display
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage(
+        {
+          type: 'METRICS_UPDATE',
+          quickTabCount,
+          logsPerSecond,
+          totalLogs,
+          enabled: _metricsEnabled
+        },
+        '*'
+      );
+    }
+  } catch {
+    // Ignore cross-origin errors - parent might not be available
+  }
+
+  // Skip local update if metrics disabled or footer not available
   if (!_metricsEnabled || !_metricsFooterEl) return;
 
   try {
-    // Get Quick Tab count
-    const quickTabCount = _allQuickTabsFromPort.length;
-
-    // v1.6.4-v3 - Calculate log actions per second
-    const logsPerSecond = _calculateLogsPerSecond();
-
     // Update DOM
     _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
     _updateMetricValue(_metricLogsPerSecondEl, `${logsPerSecond}/s`);
-    _updateMetricValue(_metricTotalLogsEl, String(_totalLogActions));
+    _updateMetricValue(_metricTotalLogsEl, String(totalLogs));
   } catch (err) {
     // Use original console to avoid infinite loop
     if (console._originalWarn) {
