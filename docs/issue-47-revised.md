@@ -725,6 +725,142 @@ and storage remains bounded.
 
 ---
 
+## Scenario 22: Move to Current Tab with Manager Update (v1.6.4-v3)
+
+**Purpose:** Verify "Move to Current Tab" button properly transfers Quick Tab
+and updates Manager.
+
+### Steps:
+
+1. **Setup: Create Quick Tab in Tab A**
+   - Action: Open WP 1, press Q to create QT 1
+   - Expected: QT 1 visible in WP 1
+
+2. **Open second tab and switch to it**
+   - Action: Open YT 1 (new tab), switch to YT 1
+   - Expected: YT 1 is active, no Quick Tabs visible
+
+3. **Open Manager from YT 1**
+   - Action: Press Ctrl+Alt+Z in YT 1
+   - Expected: Manager opens, shows QT 1 under "Wikipedia Tab 1"
+
+4. **Click "Move to Current Tab" on QT 1**
+   - Action: Find QT 1 in Manager, click "Move to Current Tab" button (⟵ icon)
+   - Expected: QT 1 appears visually in YT 1 viewport
+
+5. **Verify Manager updates immediately**
+   - Action: Observe Manager UI
+   - Expected: QT 1 now appears under "YouTube Tab 1" (not "Wikipedia Tab 1")
+
+6. **Verify "Close All" works on transferred Quick Tab**
+   - Action: Click "Close All" button in Manager
+   - Expected: QT 1 closes from YT 1, Manager shows empty state
+
+---
+
+## Scenario 23: Drag Transfer with Manager Update (v1.6.4-v3)
+
+**Purpose:** Verify dragging Quick Tab between tab groups updates Manager
+correctly.
+
+### Steps:
+
+1. **Setup: Create Quick Tab in Tab A**
+   - Action: Open WP 1, press Q to create QT 1
+   - Expected: QT 1 visible in WP 1
+
+2. **Open second tab**
+   - Action: Open YT 1 (new tab)
+   - Expected: YT 1 loads, two browser tabs exist
+
+3. **Open Manager**
+   - Action: Press Ctrl+Alt+Z
+   - Expected: Manager shows QT 1 under "Wikipedia Tab 1" and "YouTube Tab 1"
+     group header (may be empty)
+
+4. **Drag QT 1 from WP 1 group to YT 1 group (without Shift)**
+   - Action: Drag QT 1 item from "Wikipedia Tab 1" section to "YouTube Tab 1"
+     section header (drop zone)
+   - Expected: QT 1 transfers to YT 1
+
+5. **Verify Manager shows transfer immediately**
+   - Action: Observe Manager UI
+   - Expected: QT 1 now appears under "YouTube Tab 1", "Wikipedia Tab 1" section
+     shows empty or is removed
+
+6. **Verify Quick Tab appears in YT 1 viewport**
+   - Action: Switch to YT 1 tab
+   - Expected: QT 1 visible in YT 1 viewport
+
+7. **Verify "Close All" closes transferred Quick Tab**
+   - Action: Click "Close All" in Manager
+   - Expected: QT 1 closes, Manager shows empty state
+
+---
+
+## Scenario 24: Single Metrics Footer Display (v1.6.4-v3)
+
+**Purpose:** Verify only one metrics footer is displayed (the expandable one in
+parent window).
+
+### Steps:
+
+1. **Open Manager sidebar**
+   - Action: Press Ctrl+Alt+Z
+   - Expected: Manager sidebar opens
+
+2. **Count metrics footers**
+   - Action: Visually count how many metrics footer rows appear at the bottom
+   - Expected: Only ONE metrics footer visible (📑 count, 📊 logs/s, 📈 total)
+
+3. **Verify footer is expandable**
+   - Action: Click on the metrics footer row
+   - Expected: Category breakdown section expands/collapses showing per-category
+     log counts
+
+4. **Switch to Settings tab**
+   - Action: Click "Settings" primary tab
+   - Expected: Same metrics footer remains visible at bottom
+
+5. **Verify footer updates across tabs**
+   - Action: Observe metrics values change over time
+   - Expected: Values update regardless of which tab (Settings or Manager) is
+     active
+
+---
+
+## Scenario 25: Reduced Logging During Drag Operations (v1.6.4-v3)
+
+**Purpose:** Verify excessive DEBOUNCE logging is eliminated during drag
+operations.
+
+### Steps:
+
+1. **Open browser console (F12)**
+   - Action: Press F12, go to Console tab
+   - Expected: Console visible
+
+2. **Clear console**
+   - Action: Click clear/trash icon or run `console.clear()`
+   - Expected: Console cleared
+
+3. **Create Quick Tab and drag it**
+   - Action: Press Q to create QT 1, then drag it around for 3-5 seconds
+   - Expected: Quick Tab moves smoothly
+
+4. **Count debounce logs during drag**
+   - Action: Filter console for "DEBOUNCE"
+   - Expected: Only see `[DEBOUNCE][DRAG_TRIGGERED]` at start and
+     `[DEBOUNCE][DRAG_COMPLETE]` at end (NOT hundreds of
+     `[DEBOUNCE][DRAG_EVENT_QUEUED]` logs)
+
+5. **Verify drag complete log shows prevented writes count**
+   - Action: Look at `[DEBOUNCE][DRAG_COMPLETE]` log
+   - Expected: Shows `preventedWrites: X` where X is the number of events that
+     were coalesced
+
+---
+
 ## Implementation Notes for Testing
 
 ### Test Bridge API Usage
@@ -1041,6 +1177,97 @@ but didn't notify the quick-tabs-manager.js iframe to reset its counters.
 quick-tabs-manager.js handles message and resets `_totalLogActions`,
 `_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in
 v1.6.4-v3
+
+---
+
+## v1.6.4-v3 Bug Fixes (January 2026)
+
+### Bug Fix #10d: "Move to Current Tab" Quick Tab Not Appearing in Manager
+
+**Description:** When clicking the "Move to Current Tab" button on a Quick Tab
+in the Manager, the Quick Tab would transfer to the active browser tab and
+appear visually, but it would NOT appear in the Manager's list. Additionally,
+the transferred Quick Tab couldn't be closed via "Close All" button.
+
+**Root Cause:** The `_handleSuccessfulTransferAck()` function wrapped
+`requestAllQuickTabsViaPort()` in a `setTimeout(0)` which caused a race
+condition. The ACK handler would complete before the fresh state request, and
+the subsequent STATE_CHANGED broadcast could be dropped if the sidebar port was
+in a transitional state.
+
+**Fix:** Removed the `setTimeout(0)` wrapper and made
+`requestAllQuickTabsViaPort()` a direct synchronous call after the ACK
+processing. This ensures the Manager immediately requests and receives the
+updated Quick Tab list.
+
+**Files Changed:** `sidebar/quick-tabs-manager.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
+
+### Bug Fix #11d: Dragged Quick Tab (Transfer) Not Appearing in Manager
+
+**Description:** When dragging a Quick Tab from one browser tab group to another
+(transfer without duplicate), the Quick Tab would appear on the target tab but
+disappear from the Manager. The transferred Quick Tab also couldn't be closed
+via "Close All" button.
+
+**Root Cause:** Same as Bug Fix #10d - the `setTimeout(0)` wrapper caused
+inconsistent state refresh timing.
+
+**Fix:** Same as Bug Fix #10d - direct call to `requestAllQuickTabsViaPort()`
+after ACK processing.
+
+**Files Changed:** `sidebar/quick-tabs-manager.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
+
+### Bug Fix #12d: Duplicate Quick Tab (Duplicate) Handler Race Condition
+
+**Description:** The DUPLICATE_QUICK_TAB_ACK handler had the same issue as the
+transfer handler, causing duplicated Quick Tabs to not appear properly in the
+Manager.
+
+**Root Cause:** Same `setTimeout(0)` pattern issue.
+
+**Fix:** Removed `setTimeout(0)` wrapper from duplicate ACK handler as well.
+
+**Files Changed:** `sidebar/quick-tabs-manager.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
+
+### Bug Fix #13d: Duplicate Metrics Footer in Quick Tab Manager
+
+**Description:** Two metrics footers were displayed when viewing the Quick Tab
+Manager - one in the iframe (`quick-tabs-manager.html`) and one in the parent
+window (`settings.html`). This caused visual redundancy and confusion.
+
+**Fix:** Removed the metrics footer HTML, CSS, and associated DOM update logic
+from `quick-tabs-manager.html/css/js`. Kept only the expandable metrics footer
+in `settings.html` parent window. The `_updateMetrics()` function still sends
+metrics data to the parent via postMessage.
+
+**Files Changed:** `sidebar/quick-tabs-manager.html`,
+`sidebar/quick-tabs-manager.css`, `sidebar/quick-tabs-manager.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
+
+### Bug Fix #14d: Excessive Console Logging During Drag Operations
+
+**Description:** When dragging a Quick Tab (move or resize), up to 60-150
+console logs were generated per second. The `[DEBOUNCE][DRAG_EVENT_QUEUED]` and
+`[DEBOUNCE][MAIN_EVENT_QUEUED]` logs fired on every mouse move event, causing
+excessive noise and resource consumption.
+
+**Root Cause:** The debounce mechanism logged EVERY queued event, not just the
+final result.
+
+**Fix:** Removed the verbose event-queuing logs while keeping the debounce
+summary logs (`[DEBOUNCE][DRAG_COMPLETE]` and `[DEBOUNCE][MAIN_COMPLETE]`) that
+report how many write operations were prevented.
+
+**Files Changed:** `src/features/quick-tabs/handlers/UpdateHandler.js`
+
+**Status:** ✅ FIXED in v1.6.4-v3
 
 ---
 
