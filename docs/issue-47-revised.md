@@ -1015,12 +1015,44 @@ so no immediate visual feedback was applied. **Fix:** Added
 rules for `.operation-pending`, `.closing`, `.minimizing`, `.restoring` states
 with smooth transitions. **Status:** ✅ FIXED in v1.6.4-v2
 
+### Bug 8d: Cross-Tab Transfer STATE_CHANGED Race Condition (FIXED)
+
+**Issue:** After transferring Quick Tab via "Move to Current Tab" or drag transfer,
+the Quick Tab appeared on target tab but not in Manager. "Close All" couldn't close
+transferred Quick Tabs. **Root Cause:** `STATE_CHANGED` messages from background
+to sidebar were being dropped when `quickTabsSessionState.sidebarPort` was null or
+disconnected. The v1.6.4 fix removed `requestAllQuickTabsViaPort()` from ACK handlers
+to prevent race conditions, but left no fallback. **Fix:** Added
+`STATE_CHANGED_SAFETY_TIMEOUT_MS` (500ms) safety mechanism - after receiving
+`TRANSFER_QUICK_TAB_ACK` or `DUPLICATE_QUICK_TAB_ACK`, if no `STATE_CHANGED` is
+received within 500ms, sidebar requests full state via `requestAllQuickTabsViaPort()`.
+**Status:** ✅ FIXED in v1.6.4-v3
+
+---
+
+## v1.6.4-v3 New Features (January 2026)
+
+### Feature 8: Live Metrics Footer in Quick Tab Manager
+
+**Description:** Quick Tab Manager sidebar footer now shows live updating metrics:
+- 📑 Quick Tab count
+- 💾 Storage usage (from browser.storage.local)
+- 🧠 Memory usage (estimated based on Quick Tab count)
+
+**Settings:**
+- Toggle to enable/disable live metrics (default: enabled)
+- Update interval setting: 500ms to 30 seconds (default: 1 second)
+
+**Implementation:** Added `initializeMetrics()`, `_updateMetrics()`, 
+`_startMetricsInterval()`, `_stopMetricsInterval()` functions with cleanup on
+sidebar close. Settings stored via `quickTabsMetricsEnabled` and
+`quickTabsMetricsIntervalMs` keys. **Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
 ---
 
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 1, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v2)
+**Last Review Date:** January 1, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v3)

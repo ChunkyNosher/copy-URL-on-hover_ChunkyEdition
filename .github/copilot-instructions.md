@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v2  
+**Version:** 1.6.4-v3  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,7 +20,7 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4-v2 Bug Fixes (NEW):**
+**v1.6.4-v3 Bug Fixes (NEW):**
 
 - **BUG FIX #1d** - Quick Tab title updates from link text to actual page title
   after iframe loads
@@ -34,8 +34,15 @@
 - **BUG FIX #6d** - Cross-Tab Transfer duplicate messages fix (duplicate
   QUICK_TAB_TRANSFERRED_IN causing UI desyncs)
 - **BUG FIX #7d** - Open in New Tab UI flicker fix (added optimistic UI)
+- **BUG FIX #8d** - Cross-Tab Transfer STATE_CHANGED race fix (500ms safety
+  timeout triggers requestAllQuickTabsViaPort)
 
-**v1.6.4-v2 Code Health:**
+**v1.6.4-v3 Features (NEW):**
+
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
+  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
+
+**v1.6.4-v3 Code Health:**
 
 - **window.js** - Code Health: 8.28 → 9.38 (10+ helpers extracted)
 - **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers extracted)
@@ -129,7 +136,7 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v2 Patterns (Current)
+### v1.6.4-v3 Patterns (Current)
 
 - **Title Update Fix** - Quick Tab title updates from link text to page title
   after iframe loads
@@ -139,6 +146,8 @@ const quickTabsSessionState = {
 - **Navigation Update** - Manager updates when navigating within Quick Tab
   iframe
 - **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
+- **STATE_CHANGED Safety Timeout** - 500ms fallback after Transfer/Duplicate ACK
+- **Live Metrics Footer** - Configurable sidebar metrics display
 
 ### v1.6.4 Patterns
 
@@ -152,30 +161,19 @@ const quickTabsSessionState = {
 - **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX`
 - **Fallback Messaging** - `browser.tabs.sendMessage` fallback
 
-### v1.6.3.12-v13 Patterns
-
-- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session
-  tabs
-- **Helper Extraction** - `_findInHintTab()`, `_findInAllSessionTabs()`,
-  `_findInGlobalState()`
-- **UI Flicker Fix** - `replaceChildren()` for atomic DOM swap in Manager
-
 ### v1.6.3.12 Patterns (Consolidated)
 
-- **v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging, State
-  Version Tracking
+- **v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction
+- **v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging
 - **v11:** Cross-Tab Display, Options Page Guard, Tab Cache Invalidation
 - **v10:** Port Routing Fix, Manager Button Operations
-- **v8-v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close, Circuit Breaker
-  Auto-Reset
-- **v5-v7:** Circuit Breaker, Priority Queue, Sequence Tracking, Defensive
-  Handlers
+- **v8-v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close
+- **v5-v7:** Circuit Breaker, Priority Queue, Sequence Tracking
 
 ### Previous Version Patterns
 
 - **v1.6.3.12:** Option 4 Architecture, Port Messaging, storage.local Only
 - **v1.6.3.11-v12:** Solo/Mute REMOVED
-- **v1.6.3.11-v7:** Orphan Quick Tabs fix
 
 ### Key Timing Constants
 
@@ -188,6 +186,8 @@ const quickTabsSessionState = {
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
 | `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
 | `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
+| `STATE_CHANGED_SAFETY_TIMEOUT_MS`               | 500                             | Transfer/Duplicate ACK timeout  |
+| `METRICS_DEFAULT_INTERVAL_MS`                   | 1000                            | Live metrics update interval    |
 
 ---
 
