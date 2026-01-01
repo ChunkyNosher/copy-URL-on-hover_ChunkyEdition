@@ -22,37 +22,27 @@
 
 **v1.6.4-v3 Bug Fixes (NEW):**
 
-- **BUG FIX #1d** - Quick Tab title updates from link text to actual page title
-  after iframe loads
-- **BUG FIX #2d** - "Move to Current Tab" properly appears in Manager (state
-  version race fix)
-- **BUG FIX #3d** - Last Quick Tab close reflected in Manager (forceEmpty fix in
-  VisibilityHandler)
-- **BUG FIX #4d** - Manager updates when navigating to different URL within
-  iframe
-- **BUG FIX #5d** - "Open in New Tab" closes Quick Tab after opening URL
-- **BUG FIX #6d** - Cross-Tab Transfer duplicate messages fix (duplicate
-  QUICK_TAB_TRANSFERRED_IN causing UI desyncs)
-- **BUG FIX #7d** - Open in New Tab UI flicker fix (added optimistic UI)
+- **BUG FIX #1d-#7d** - Title updates, state sync, forceEmpty, navigation,
+  open-and-close, duplicate messages, UI flicker
 - **BUG FIX #8d** - Cross-Tab Transfer STATE_CHANGED race fix (immediate
-  requestAllQuickTabsViaPort after ACK replaces safety timeout)
+  requestAllQuickTabsViaPort after ACK)
+- **BUG FIX #9d** - Total logs count resets on "Clear Log History" click
+  (CLEAR_LOG_ACTION_COUNTS postMessage)
 
 **v1.6.4-v3 Features (NEW):**
 
-- **Live Log Action Metrics Footer** - Sidebar footer shows live Quick Tab count,
-  log actions per second, total log actions. Configurable interval (500ms-30s),
-  toggle in settings.
-- **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown only
-  on Settings tabs.
+- **Live Log Action Metrics Footer** - Quick Tab count, logs/sec, total logs.
+  Configurable interval (500ms-30s), toggle in settings.
+- **Expandable Category Breakdown** - Click metrics to expand/collapse per-category counts
+- **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
+- **Footer Visibility** - Save/Reset buttons hidden on Manager tab
 
 **v1.6.4-v3 Code Health:**
 
-- **window.js** - Code Health: 8.28 → 9.38 (10+ helpers extracted)
-- **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers extracted)
-- **StorageChangeAnalyzer.js** - New module (20 functions from
-  quick-tabs-manager.js)
-- **content.js** - Code Health: 8.54 → 9.09 (extracted \_isValidQuickTabObject,
-  \_isAckMessage helpers)
+- **window.js** - Code Health: 8.28 → 9.38 (10+ helpers)
+- **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers)
+- **StorageChangeAnalyzer.js** - New module (20 functions)
+- **content.js** - Code Health: 8.54 → 9.09
 
 **v1.6.4 Bug Fixes:**
 
@@ -142,15 +132,13 @@ const quickTabsSessionState = {
 ### v1.6.4-v3 Patterns (Current)
 
 - **Title Update Fix** - Quick Tab title updates from link text to page title
-  after iframe loads
-- **State Version Race Fix** - "Move to Current Tab" properly reflects in
-  Manager
-- **forceEmpty Fix** - VisibilityHandler correctly handles last Quick Tab close
-- **Navigation Update** - Manager updates when navigating within Quick Tab
-  iframe
+- **State Version Race Fix** - "Move to Current Tab" properly reflects in Manager
+- **forceEmpty Fix** - VisibilityHandler handles last Quick Tab close
+- **Navigation Update** - Manager updates when navigating within Quick Tab iframe
 - **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
-- **STATE_CHANGED Safety Timeout** - 500ms fallback after Transfer/Duplicate ACK
-- **Live Metrics Footer** - Configurable sidebar metrics display
+- **Immediate State Refresh** - `requestAllQuickTabsViaPort()` after Transfer/Duplicate ACK
+- **Live Metrics Footer** - Configurable sidebar metrics with category breakdown
+- **Filter-Aware Counting** - Log metrics sync with Live Console Output Filters
 
 ### v1.6.4 Patterns
 
@@ -189,7 +177,6 @@ const quickTabsSessionState = {
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
 | `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
 | `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
-| `STATE_CHANGED_SAFETY_TIMEOUT_MS`               | 500                             | Transfer/Duplicate ACK timeout  |
 | `METRICS_DEFAULT_INTERVAL_MS`                   | 1000                            | Live metrics update interval    |
 
 ---

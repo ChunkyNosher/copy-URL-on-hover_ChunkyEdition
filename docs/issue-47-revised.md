@@ -1029,6 +1029,15 @@ conditions, but left no fallback. **Fix:** Added
 received within 500ms, sidebar requests full state via
 `requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures state is always refreshed regardless of STATE_CHANGED broadcast success. **Status:** ✅ FIXED in v1.6.4-v3
 
+### Bug 9d: Total Logs Count Reset Fix (FIXED)
+
+**Issue:** Total logs count in metrics footer didn't reset when clicking "Clear
+Log History" button in Settings. **Root Cause:** settings.js cleared log history
+but didn't notify the quick-tabs-manager.js iframe to reset its counters.
+**Fix:** Added `CLEAR_LOG_ACTION_COUNTS` postMessage from settings.js to iframe.
+quick-tabs-manager.js handles message and resets `_totalLogActions`,
+`_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in v1.6.4-v3
+
 ---
 
 ## v1.6.4-v3 New Features (January 2026)
@@ -1074,6 +1083,35 @@ Settings tabs in the sidebar, not just when viewing the Manager.
 - Added postMessage communication from iframe (quick-tabs-manager.js) to parent (settings.js)
 - Parent window receives METRICS_UPDATE messages and updates its own metrics display
 - Both displays update simultaneously using same data source
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+### Feature 11: Expandable Category Breakdown (v1.6.4-v3)
+
+**Description:** Click on the metrics footer to expand/collapse a category
+breakdown showing log counts per category:
+
+- **User Actions:** URL Detection, Hover Events, Clipboard, Keyboard, Quick Tabs, Quick Tab Manager
+- **System Operations:** Event Bus, Config, State, Storage, Messaging, Web Requests, Tabs
+- **Diagnostics:** Performance, Errors, Initialization
+
+**Implementation:** Added `_categoryLogCounts` tracking object, `_metricsExpanded`
+toggle state, `_renderCategoryBreakdown()` function. Categories match the
+Advanced settings tab categorization for consistency.
+
+**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+
+### Feature 12: Filter-Aware Log Counting (v1.6.4-v3)
+
+**Description:** Metrics only count logs for categories enabled in Live Console
+Output Filters. If URL Detection or Hover Events are toggled OFF in settings,
+those logs won't be counted in the metrics.
+
+**Implementation:**
+- Added `_enabledLogFilters` object synced with storage.onChanged
+- Modified `_trackLogAction()` to check filter state before counting
+- Loads initial filter state from storage at startup
+- Real-time sync when user toggles filters in Settings
 
 **Status:** ✅ IMPLEMENTED in v1.6.4-v3
 

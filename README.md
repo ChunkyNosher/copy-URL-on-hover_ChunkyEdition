@@ -20,14 +20,19 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 - ✅ **Live Log Action Metrics** - Quick Tab Manager shows Quick Tab count, log
   actions per second, and total log actions
+- ✅ **Expandable Category Breakdown** - Click metrics to expand/collapse
+  per-category log counts (User Actions, System Ops, Diagnostics)
+- ✅ **Filter-Aware Log Counting** - Metrics only count logs for enabled filter
+  categories in Live Console Output Filters
 - ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30
   seconds
 - ✅ **Metrics Toggle** - Enable/disable live metrics in settings
 - ✅ **Metrics on All Tabs** - Metrics footer visible on both Manager and Settings tabs
 - ✅ **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown
   only on Settings tabs
-- ✅ **Cross-Tab Transfer Final Fix** - setTimeout(0) ensures proper message
-  ordering after transfer/duplicate ACK
+- ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
+  transfer/duplicate ACK
+- ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
 
 ## 🎉 What's New in v1.6.4-v2
 
