@@ -3,9 +3,9 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.3.12-v12), memory-based state (`quickTabsSessionState`),
+  sync with Single Writer Authority (v1.6.4-v2), memory-based state (`quickTabsSessionState`),
   circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock,
-  button operation fix, state version tracking
+  button operation fix, state version tracking, UPDATE_QUICK_TAB title updates
 tools: ['*']
 ---
 
@@ -37,8 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Option 4 Architecture (Port Messaging + Memory
-State)
+**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -49,47 +48,36 @@ State)
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.3.12-v12 Features (NEW):**
+**v1.6.4-v2 Bug Fixes (NEW):**
 
-- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
-  Restore, Close All, Close Minimized)
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
-    trigger re-render
-  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
-  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
-  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
-- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
-  state version before skipping render (port data update detection)
-- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
-  `browser.tabs.sendMessage` if port unavailable
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events
+- **State Version Race Fix** - Fixed race condition in render tracking by
+  properly synchronizing state versions
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+
+**New Module:**
+
+- `sidebar/managers/StorageChangeAnalyzer.js` - Storage change analysis
+
+**v1.6.4 Features:**
+
+- **Transfer/Duplicate Race Fix** - Removed redundant `requestAllQuickTabsViaPort()` calls
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper
+- **Drag-and-Drop Reordering** - Manager supports drag-and-drop
+- **Cross-Tab Transfer** - Drag Quick Tab to another tab group
+- **Duplicate via Shift+Drag** - Hold Shift while dragging
+
+**v1.6.3.12-v12 Features:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+- **Cross-Tab Render Fix** - Hash AND state version check
+- **Fallback Messaging** - Falls back to `browser.tabs.sendMessage`
 - **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
-  - Options object pattern (5 args → 1)
-  - Lookup table refactoring (72 LoC → 42 LoC)
-  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
-
-**v1.6.3.12-v11 Features:**
-
-- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` helper prioritizes
-  port data for all-tabs visibility (Issue #1 fix)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
-  `browserTabInfoCache` on navigation/updates (Issue #12 fix)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` confirms
-  heartbeat started after port reconnection (Issue #20 fix)
-
-**v1.6.3.12-v10 Features:**
-
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()` (Issue #48 fix)
-- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- **Code Health** - background.js: 8.79 → 9.09
-
-**v1.6.3.12-v9 Features:**
-
-- **Button Click Logging** - `[Manager] BUTTON_CLICKED:` prefix for all buttons
-- **Optimistic UI Updates** - `_applyOptimisticUIUpdate()` for instant feedback
-- **Orphan Quick Tab UI** - Orange background + badge for orphaned tabs
-- **Render Lock** - `_isRenderInProgress`, max 3 consecutive re-renders
 
 **Key Timing Constants:**
 
@@ -114,11 +102,12 @@ State)
 
 **Key Modules:**
 
-| Module                          | Purpose                        |
-| ------------------------------- | ------------------------------ |
-| `background.js`                 | Port handlers, memory state    |
-| `src/content.js`                | Content script port connection |
-| `sidebar/quick-tabs-manager.js` | Sidebar port connection        |
+| Module                                      | Purpose                        |
+| ------------------------------------------- | ------------------------------ |
+| `background.js`                             | Port handlers, memory state    |
+| `src/content.js`                            | Content script port connection |
+| `sidebar/quick-tabs-manager.js`             | Sidebar port connection        |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis        |
 
 ---
 
@@ -135,16 +124,17 @@ State)
 
 ## Testing Requirements
 
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] State version race condition fixed in render tracking
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders
 - [ ] Cross-tab render fix works (hash AND version check)
 - [ ] Fallback messaging works (port → sendMessage)
 - [ ] Cross-tab display works (Quick Tabs from all tabs shown)
-- [ ] Tab cache invalidation on navigation
-- [ ] Heartbeat restart logging visible
 - [ ] Optimistic UI updates work
 - [ ] Render lock prevents concurrent renders (max 3)
-- [ ] Orphan Quick Tab UI displays correctly
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] Memory state works (`quickTabsSessionState`)
 - [ ] ESLint passes ⭐
@@ -157,6 +147,6 @@ State)
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.3.12-v12 button operation
-fix, cross-tab render fix, fallback messaging, state version tracking,
-optimistic UI timeout, render lock, and comprehensive validation.**
+**Your strength: Complete Quick Tab system with v1.6.4-v2 title updates, state
+version race fix, forceEmpty fix, Open in New Tab close, button operation fix,
+cross-tab render fix, fallback messaging, and comprehensive validation.**

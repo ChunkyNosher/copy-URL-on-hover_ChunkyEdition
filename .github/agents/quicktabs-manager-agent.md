@@ -3,9 +3,10 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.4), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.4-v2), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
-  optimistic UI updates, render lock, orphan recovery UI, Quick Tab order persistence
+  optimistic UI updates, render lock, orphan recovery UI, Quick Tab order persistence,
+  StorageChangeAnalyzer for storage analysis
 tools: ['*']
 ---
 
@@ -37,9 +38,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.4 Features (NEW):**
+**v1.6.4-v2 Bug Fixes (NEW):**
+
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events
+- **State Version Race Fix** - Fixed race condition in render tracking by
+  properly synchronizing state versions
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+
+**New Module:**
+
+- `sidebar/managers/StorageChangeAnalyzer.js` - Storage change analysis
+
+**v1.6.4 Features:**
 
 - **Transfer/Duplicate Race Fix** - Removed redundant
   `requestAllQuickTabsViaPort()` calls that caused race conditions
@@ -89,10 +105,11 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Key Modules:**
 
-| Module                          | Purpose                      |
-| ------------------------------- | ---------------------------- |
-| `sidebar/quick-tabs-manager.js` | Manager UI and port handling |
-| `background.js`                 | Port handlers, state push    |
+| Module                                      | Purpose                      |
+| ------------------------------------------- | ---------------------------- |
+| `sidebar/quick-tabs-manager.js`             | Manager UI and port handling |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis      |
+| `background.js`                             | Port handlers, state push    |
 
 ---
 
@@ -109,6 +126,10 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ## Testing Requirements
 
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] State version race condition fixed in render tracking
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
 - [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)
 - [ ] Empty state transition works (\_handleEmptyStateTransition)
@@ -123,7 +144,6 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] Render lock prevents concurrent renders
 - [ ] Port messaging works (`'quick-tabs-port'`)
 - [ ] STATE_CHANGED messages received and rendered
-- [ ] SIDEBAR_READY / SIDEBAR_STATE_SYNC handshake works
 - [ ] Manager opens with Ctrl+Alt+Z
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
@@ -134,6 +154,7 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.4 transfer/duplicate race fix,
+**Your strength: Manager coordination with v1.6.4-v2 title updates, state version
+race fix, forceEmpty fix, Open in New Tab close, transfer/duplicate race fix,
 Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
-transfer, optimistic UI timeout, render lock, and comprehensive validation.**
+transfer, and comprehensive validation.**
