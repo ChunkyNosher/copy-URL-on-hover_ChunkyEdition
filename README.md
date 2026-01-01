@@ -1,49 +1,53 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.3.12-v12** - A feature-rich **Firefox/Chrome/Chromium** extension
-for quick URL copying and advanced Quick Tab management with **Per-Tab
-Isolation**, **Container Isolation**, and Session-Only Quick Tabs.
+**Version 1.6.4** - A feature-rich **Firefox/Chrome/Chromium** extension for
+quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
+**Container Isolation**, and Session-Only Quick Tabs.
 
 **🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.3.12-v12 Status:** Button Fix ✅ | State Version Tracking ✅ | Code
-Health 8.54 ✅
+**🔧 v1.6.4 Status:** Drag-and-Drop ✅ | Cross-Tab Transfer ✅ | Click-to-Front
+✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
-## 🎉 What's New in v1.6.3.12-v12
+## 🎉 What's New in v1.6.4
 
-**🔧 Button Operation Fix + Cross-Tab Display + Code Health ✅**
+**🔧 Drag-and-Drop Manager + Cross-Tab Transfer + Bug Fixes ✅**
 
-- ✅ **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
-  All, Close Minimized) now work reliably
-- ✅ **Cross-Tab Render Fix** - `_executeDebounceRender()` checks hash AND
-  version
-- ✅ **Fallback Messaging** - Port → sendMessage fallback in background
-- ✅ **Optimistic UI Safety Timeout** - Reverts UI if no response received
-- ✅ **State Version Tracking** - `_lastRenderedStateVersion` in
-  scheduleRender()
-- ✅ **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
-  - Options object pattern (5 args → 1)
-  - Lookup table refactoring (72 LoC → 42 LoC)
-  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
+- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs in Manager via
+  drag-and-drop
+- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another to transfer
+  it
+- ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
+  instead of move
+- ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items
+- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" buttons per
+  group
+- ✅ **Open in New Tab Button** - Per Quick Tab (↗️) in Manager
+- ✅ **Click-to-Front** - Quick Tabs come to front on click (not just drag)
+- ✅ **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
+- ✅ **Manager Reordering Persistence** - Tab group order now persists
+- ✅ **Smaller count indicator** - Bigger number in smaller container
+
+**Settings Changes:**
+
+- New "Duplicate Modifier Key" dropdown: Shift (default), Ctrl, None
+- Alt option removed (doesn't work reliably)
 
 ---
 
 ## 🎉 Previous Releases
 
-**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard, Tab Cache
-Invalidation, Heartbeat Restart Logging  
-**v1.6.3.12-v10:** Issue #48 Port Routing Fix, Manager Button Operations, Code
-Health 9.09  
-**v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI, Code
-Health 8.54  
-**v1.6.3.12-v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Code Health
-10.0
+**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
+**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
+**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
+**v1.6.3.12-v10:** Port Routing Fix, Manager Button Operations  
+**v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -156,6 +160,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.3.12-v12** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

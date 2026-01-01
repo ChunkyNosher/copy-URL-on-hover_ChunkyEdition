@@ -47,6 +47,12 @@ export const VALID_MESSAGE_ACTIONS = new Set([
   // Tab management
   'GET_TABS',
   'SWITCH_TAB',
+  // v1.6.4 - FIX BUG #2b: Add openTab to allowlist (was missing, causing "Open in New Tab" to fail)
+  'openTab',
+  'saveQuickTabState',
+  'getQuickTabState',
+  'clearQuickTabState',
+  'createQuickTab',
   // Storage operations
   'COORDINATED_CLEAR_ALL_QUICK_TABS',
   'RESET_GLOBAL_QUICK_TAB_STATE',

@@ -17,6 +17,9 @@ export class TabHandler {
 
   /**
    * Open URL in new tab
+   * v1.6.4 - FIX BUG #2: Support both 'active' and 'switchFocus' parameters
+   *   - Content script sends `switchFocus: true` from Quick Tab UI
+   *   - This handler now maps `switchFocus` to `active` for browser.tabs.create
    */
   async handleOpenTab(message, _sender) {
     if (!message.url) {
@@ -27,9 +30,19 @@ export class TabHandler {
       url: message.url
     };
 
+    // v1.6.4 - FIX BUG #2: Support both 'active' and 'switchFocus' parameter names
+    // Content scripts may send 'switchFocus' while this API expects 'active'
     if (typeof message.active !== 'undefined') {
       createProperties.active = message.active;
+    } else if (typeof message.switchFocus !== 'undefined') {
+      createProperties.active = message.switchFocus;
     }
+
+    console.log('[TabHandler] handleOpenTab: Creating new tab', {
+      url: message.url,
+      active: createProperties.active,
+      timestamp: Date.now()
+    });
 
     const tab = await this.browserAPI.tabs.create(createProperties);
     return { success: true, tabId: tab.id };

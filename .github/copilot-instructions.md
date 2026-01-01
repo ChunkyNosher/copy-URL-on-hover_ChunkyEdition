@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.3.12-v13  
+**Version:** 1.6.4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,68 +20,50 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.3.12-v13 Features (NEW) - Resize/Move Sync + UI Flicker Fix:**
+**v1.6.4 Bug Fixes (NEW):**
 
-- **Resize/Move Sync Fix** - `_updateQuickTabProperty()` now searches ALL tabs
-  in session state, not just the sender tab
-  - ROOT CAUSE: Quick Tab might be stored under different tab than message
-    sender
-  - FIX: Extracted helpers (`_findInHintTab()`, `_findInAllSessionTabs()`,
-    `_findInGlobalState()`) for comprehensive search
-  - Added diagnostic logging for position/size update tracking
-- **UI Flicker Fix** - Manager no longer flickers during operations
-  - ROOT CAUSE: `_showContentState()` cleared innerHTML before new content ready
-  - FIX: Use `replaceChildren()` for atomic DOM swap in
-    `_executeRenderUIInternal()`
-- **Code Health** - Extracted helpers reduce complexity in background.js
+- **BUG FIX #1 & #2** - Transfer/Duplicate Quick Tabs not appearing in Manager:
+  Removed redundant `requestAllQuickTabsViaPort()` calls that caused race
+  conditions (STATE_CHANGED already contains correct state)
+- **BUG FIX #3** - Quick Tab reordering within groups resets: Added
+  `_userQuickTabOrderByGroup` map for per-group ordering with persistence
+- **BUG FIX #4** - Last Quick Tab close not reflected: Added
+  `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()`
+  monitoring
 
-**v1.6.3.12-v12 Features - Button Operation Fix + Cross-Tab Display + Code
-Health:**
+**v1.6.4 Code Health Refactoring:**
 
-- **Button Operation Fix** - Manager buttons (Close, Minimize, Restore, Close
-  All, Close Minimized) now work reliably
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
-    trigger re-render
-  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI if no
-    response
-  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
-  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
-- **Cross-Tab Display Fix** - `_executeDebounceRender()` checks BOTH hash AND
-  state version before skipping render (port data update detection)
-- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
-  `browser.tabs.sendMessage` if port unavailable
-- **Code Health Improvements** - quick-tabs-manager.js: 7.48 → 8.54
-  - Refactored `_revertOptimisticUI` to use options object (5 args → 1)
-  - Refactored `_applyOptimisticClasses` to use options object (5 args → 1)
-  - Refactored `_applyOptimisticUIUpdate` to use lookup table (72 LoC → 42 LoC)
-  - Extracted `_isTabsOnUpdatedAvailable()` predicate
+- **PortManager.js** - Extracted port connection, circuit breaker, validation
+  (Code Health: 9.68)
+- **RenderManager.js** - Extracted render scheduling, UI state helpers (Code
+  Health: 9.17)
+- Both modules imported into quick-tabs-manager.js for gradual migration
 
-**v1.6.3.12-v11 Features - Cross-Tab Display + Robustness:**
+**v1.6.4 Features - Drag-and-Drop Manager:**
 
-- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` prioritizes port
-  data for all-tabs visibility (Issue #1)
-- **Options Page Async Guard** - `_isPageActive` + `isPageActive()` async safety
-  (Issue #10)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue
-  #12)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue
-  #20)
+- **BUG FIX #1** - Click-to-Front: Quick Tabs come to front on click
+- **BUG FIX #2** - Open in New Tab: Added `openTab` to MessageRouter allowlist
+- **BUG FIX #3** - Cross-tab Transfer/Duplicate: Fixed via drag-and-drop
+- **BUG FIX #4** - Manager Reordering Persistence: Tab group order now persists
+- **BUG FIX #5** - Alt Key Modifier: Removed, default changed to Shift
+- **FEATURE #1** - Drag-and-Drop Reordering: Reorder tabs and Quick Tabs
+- **FEATURE #2** - Cross-Tab Transfer: Drag Quick Tab to another tab group
+- **FEATURE #3** - Duplicate via Shift+Drag: Hold Shift while dragging
+- **FEATURE #4** - Move to Current Tab Button: Replaces "Go to Tab" for items
+- **FEATURE #5** - Tab Group Actions: "Go to Tab" and "Close All in Tab"
+- **FEATURE #6** - Open in New Tab Button: Per Quick Tab (↗️) in Manager
+- **FEATURE #7** - Smaller count indicator with bigger number
 
-**v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
+**Settings Changes:**
 
-- **Port Routing Fix** - Sidebar detection prioritized in
-  `handleQuickTabsPortConnect()` (Issue #48 fix)
-- **Code Health** - background.js: 8.79 → 9.09
+- New "Duplicate Modifier Key" dropdown: Shift (default), Ctrl, None
+- Alt option removed (doesn't work reliably)
 
-**v1.6.3.12-v8 to v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Render
-Lock, Orphan UI, Bulk Close Operations, Circuit Breaker Auto-Reset
-
-- **Code Health** - background.js: 9.09, quick-tabs-manager.js: 9.09,
-  settings.js: 10.0
-
-**v1.6.3.12-v5 to v1.6.3.12-v9:** Circuit breaker, priority queue, sequence
-tracking, port circuit breaker, defensive handlers, QUICKTAB_REMOVED handler,
-comprehensive logging, optimistic UI updates, render lock, orphan recovery UI  
+**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
+**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
+**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
+**v1.6.3.12-v10:** Port Routing Fix (Issue #48), Code Health 9.09  
+**v1.6.3.12-v8 to v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close  
 **v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
 **v1.6.3.11-v12:** Solo/Mute REMOVED
 
@@ -144,70 +126,72 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.3.12-v13 Patterns (Current)
+### v1.6.4 Patterns (Current)
+
+- **Transfer/Duplicate Race Fix** - Removed redundant
+  `requestAllQuickTabsViaPort()` calls (STATE_CHANGED already contains correct
+  state)
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for
+  per-group ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last
+  Quick Tab close scenarios with `_logLowQuickTabCount()` monitoring
+- **Order Application** - `_applyUserQuickTabOrder()` preserves order during
+  renders
+- **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
+
+### v1.6.4 Patterns
+
+- **Drag-and-Drop Reordering** - Manager supports drag-and-drop for tabs and
+  Quick Tabs
+- **Cross-Tab Transfer** - Drag Quick Tab to another tab group to transfer
+- **Duplicate via Modifier** - Hold Shift (configurable) while dragging to
+  duplicate
+- **Move to Current Tab** - `_handleMoveToCurrentTab()` replaces "Go to Tab" for
+  items
+- **Tab Group Actions** - `_createGroupActions()` adds "Go to Tab", "Close All"
+- **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
+- **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX` constant
+- **Fallback Messaging** - `browser.tabs.sendMessage` fallback when port
+  unavailable
+- **Group Order Validation** - `_applyUserGroupOrder()` with stricter type
+  checks
+
+### v1.6.3.12-v13 Patterns
 
 - **Resize/Move Sync Fix** - `_updateQuickTabProperty()` searches ALL session
   tabs
 - **Helper Extraction** - `_findInHintTab()`, `_findInAllSessionTabs()`,
-  `_findInGlobalState()` for modular search
+  `_findInGlobalState()`
 - **UI Flicker Fix** - `replaceChildren()` for atomic DOM swap in Manager
-- **Enhanced Logging** - Before/after state logging in `handleUpdateQuickTab()`
 
-### v1.6.3.12-v12 Patterns
+### v1.6.3.12 Patterns (Consolidated)
 
-- **Button Operation Fix** - Safety timeout + state version tracking for
-  reliable button operations
-- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks hash AND version
-- **Fallback Messaging** - `_notifyContentScriptOfCommand()` port → sendMessage
-- **Optimistic UI Timeout** - `_applyOptimisticUIUpdate()` reverts if no
-  response
-- **State Version Tracking** - `_lastRenderedStateVersion` in `scheduleRender()`
-- **Code Health** - Options object pattern, lookup tables, predicate extraction
-
-### v1.6.3.12-v11 Patterns
-
-- **Cross-Tab Display** - `_getAllQuickTabsForRender()` prioritizes port data
-  for all-tabs visibility (Issue #1 fix)
-- **Options Page Guard** - `_isPageActive` + `isPageActive()` async safety
-  (Issue #10 fix)
-- **Tab Cache Invalidation** - `browser.tabs.onUpdated` listener (Issue #12 fix)
-- **Heartbeat Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20 fix)
-
-### v1.6.3.12-v8 to v1.6.3.12-v10 Patterns (Consolidated)
-
-- **v10:** Port Routing Fix (Issue #48), Manager Button Operations, Code Health
-  9.09
-- **v9:** Button Click Logging, Optimistic UI, Render Lock, Orphan UI
-- **v8:** Bulk Close Operations, Circuit Breaker Auto-Reset, Settings Timeout
-
-### v1.6.3.12-v5 to v1.6.3.12-v7 Patterns (Consolidated)
-
-- **Circuit Breaker** - Trips after 5 failures, recovers via test write (30s)
-- **Priority Queue** - QUEUE_PRIORITY enum (HIGH/MEDIUM/LOW)
-- **Sequence Tracking** - `_lastReceivedSequence` for FIFO resilience
-- **Port Circuit Breaker** - Max 10 reconnect attempts with backoff
-- **Defensive Handlers** - Input validation in all port message handlers
-- **QUICKTAB_REMOVED Handler** - Background notifies Manager when closed
-
-### v1.6.3.12-v2 to v1.6.3.12-v4 Patterns (Consolidated)
-
-- **Option 4 Architecture** - Background in-memory storage (v1.6.3.12)
-- **Port Messaging** - `'quick-tabs-port'` replaces runtime.sendMessage
-- **storage.local Only** - `browser.storage.session` REMOVED (v4)
+- **v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging, State
+  Version Tracking
+- **v11:** Cross-Tab Display, Options Page Guard, Tab Cache Invalidation
+- **v10:** Port Routing Fix, Manager Button Operations
+- **v8-v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close, Circuit Breaker
+  Auto-Reset
+- **v5-v7:** Circuit Breaker, Priority Queue, Sequence Tracking, Defensive
+  Handlers
 
 ### Previous Version Patterns
 
+- **v1.6.3.12:** Option 4 Architecture, Port Messaging, storage.local Only
 - **v1.6.3.11-v12:** Solo/Mute REMOVED
 - **v1.6.3.11-v7:** Orphan Quick Tabs fix
 
 ### Key Timing Constants
 
-| Constant                                        | Value | Purpose                       |
-| ----------------------------------------------- | ----- | ----------------------------- |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5     | Failures before circuit trips |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000 | Test write interval           |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000 | Auto-reset circuit breaker    |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10    | Max reconnection attempts     |
+| Constant                                        | Value                           | Purpose                         |
+| ----------------------------------------------- | ------------------------------- | ------------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
+| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
+| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
 
 ---
 
@@ -245,27 +229,18 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.3.12-v13 (NEW):** `[Background] _updateQuickTabProperty: Found in`,
-`[Background] UPDATE_QUICK_TAB applied:`
+**v1.6.4:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
+`[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
 
-**v1.6.3.12-v12:** `[Manager] OPTIMISTIC_TIMEOUT:`,
-`[Manager] STATE_VERSION_RENDER:`, `[Background] FALLBACK_SEND_MESSAGE:`
+**v1.6.4:** `[Manager] DRAG_DROP:`, `[Manager] TRANSFER_QUICK_TAB:`,
+`[Manager] DUPLICATE_QUICK_TAB:`, `[Manager] MOVE_TO_CURRENT_TAB:`
 
-**v1.6.3.12-v11:** `[Manager] RENDER_DATA_SOURCE:`,
-`HEARTBEAT_CONFIRMED_ACTIVE`, `[Options] PAGE_ACTIVE_CHECK:`
+**v1.6.3.12:** `[Background] _updateQuickTabProperty:`,
+`[Manager] OPTIMISTIC_TIMEOUT:`, `[Manager] RENDER_DATA_SOURCE:`,
+`[Background] QUICK_TABS_PORT_CONNECT:`, `[Manager] BUTTON_CLICKED:`
 
-**v1.6.3.12-v10:** `[Background] QUICK_TABS_PORT_CONNECT:`,
-`[Background] SIDEBAR_MESSAGE_RECEIVED:`,
-`[Background] QUICK_TABS_PORT_UNHANDLED:`
-
-**v1.6.3.12-v9:** `[Manager] BUTTON_CLICKED:`, `[Manager] OPTIMISTIC_UI_*:`,
-`[Manager] VALIDATE_QUICK_TAB:`, `[Manager] ORPHAN_DETECTED:`,
-`[Manager] RENDER_LOCK:`, `[Manager] STATE_VERSION:`, `[Settings][INIT]`
-
-**v1.6.3.12-v5 to v8:** `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`,
-`[SEQUENCE_TRACKING]`, `[TIMEOUT_BACKOFF_*]`, `[FALLBACK_*]`
-
-**Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`
+**Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`,
+`[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`
 
 ---
 
@@ -342,17 +317,21 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                              | Features                             |
-| --------------------------------- | ------------------------------------ |
-| `src/constants.js`                | Centralized constants                |
-| `src/utils/shadow-dom.js`         | Shadow DOM link detection            |
-| `src/utils/storage-utils.js`      | Storage utilities                    |
-| `src/background/tab-events.js`    | Tabs API listeners                   |
-| `src/utils/structured-logger.js`  | StructuredLogger class with contexts |
-| `src/messaging/message-router.js` | ACTION-based routing                 |
-| `background.js`                   | In-memory state, port handlers       |
-| `sidebar/quick-tabs-manager.js`   | Port-based queries to background     |
-| `src/content.js`                  | Port messaging for Quick Tabs        |
+| File                                  | Features                                   |
+| ------------------------------------- | ------------------------------------------ |
+| `src/constants.js`                    | Centralized constants                      |
+| `src/utils/shadow-dom.js`             | Shadow DOM link detection                  |
+| `src/utils/storage-utils.js`          | Storage utilities                          |
+| `src/background/tab-events.js`        | Tabs API listeners                         |
+| `src/utils/structured-logger.js`      | StructuredLogger class with contexts       |
+| `src/messaging/message-router.js`     | ACTION-based routing                       |
+| `background.js`                       | In-memory state, port handlers             |
+| `sidebar/quick-tabs-manager.js`       | Port-based queries to background           |
+| `sidebar/managers/PortManager.js`     | Port connection, circuit breaker (v1.6.4)  |
+| `sidebar/managers/RenderManager.js`   | Render scheduling, UI helpers (v1.6.4)     |
+| `sidebar/managers/DragDropManager.js` | Drag-and-drop reordering (v1.6.4)          |
+| `sidebar/managers/OrderManager.js`    | Group/Quick Tab order persistence (v1.6.4) |
+| `src/content.js`                      | Port messaging for Quick Tabs              |
 
 ### Storage (v1.6.3.12-v8+)
 
@@ -366,7 +345,7 @@ bypasses storage
 **Note:** `browser.storage.session` COMPLETELY REMOVED - uses `storage.local` +
 startup cleanup for session-only behavior.
 
-### Port Messages (v1.6.3.12+)
+### Port Messages (v1.6.4+)
 
 **Content → Background:** `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`,
 `RESTORE_QUICK_TAB`, `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`,
@@ -375,7 +354,8 @@ startup cleanup for session-only behavior.
 **Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
 `SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`,
 `SIDEBAR_RESTORE_QUICK_TAB`, `CLOSE_ALL_QUICK_TABS`,
-`CLOSE_MINIMIZED_QUICK_TABS`
+`CLOSE_MINIMIZED_QUICK_TABS`, `TRANSFER_QUICK_TAB`, `DUPLICATE_QUICK_TAB`,
+`MOVE_QUICK_TAB_TO_CURRENT_TAB`
 
 **Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`,
 `ORIGIN_TAB_CLOSED`, `CLOSE_MINIMIZED_QUICK_TABS_ACK`

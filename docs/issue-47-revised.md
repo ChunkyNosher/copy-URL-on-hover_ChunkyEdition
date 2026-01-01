@@ -777,10 +777,138 @@ Before marking scenario as PASS:
 
 ---
 
+## v1.6.4 User Feedback Bugs (December 2025)
+
+**Added from User Feedback:** December 30, 2025
+
+### Bug 1b: Click to Bring Quick Tab to Front (FIXED)
+
+**Issue:** Clicking inside a Quick Tab's content area didn't bring it to front.
+**Fix:** Added transparent click overlay with `MAX_OVERLAY_Z_INDEX` constant
+(2147483646) and `OVERLAY_REACTIVATION_DELAY_MS` (500ms) for pointer-events
+toggling. The overlay captures mousedown events, brings window to front via
+`onFocus()`, and temporarily disables pointer-events to allow click
+pass-through. **Status:** ✅ FIXED in v1.6.4
+
+### Bug 2b: "Open in New Tab" Button Broken (FIXED)
+
+**Issue:** Both Quick Tab UI button and Manager button didn't work. **Root
+Cause:** `openTab` action was missing from `VALID_MESSAGE_ACTIONS` allowlist in
+MessageRouter.js. **Fix:** Added `openTab`, `saveQuickTabState`,
+`getQuickTabState`, `clearQuickTabState`, `createQuickTab` to allowlist.
+**Status:** ✅ FIXED in v1.6.4
+
+### Bug 3b: Cross-Tab Transfer/Duplicate Not Working (FIXED)
+
+**Issue:** Dragging Quick Tabs between tabs didn't trigger transfer/duplicate.
+**Root Cause:** Target tabs without Quick Tabs may not have a port connection.
+**Fix:** Added fallback messaging via `browser.tabs.sendMessage` when port is
+unavailable. Added `_sendTransferInMessageFallback()` and
+`_sendDuplicateMessageFallback()` in background.js. Added handlers for
+`QUICK_TAB_TRANSFERRED_IN`, `QUICK_TAB_TRANSFERRED_OUT`, and
+`CREATE_QUICK_TAB_FROM_DUPLICATE` in content.js TYPE_HANDLERS. **Status:** ✅
+FIXED in v1.6.4
+
+### Bug 4b: Manager Reordering Resets (FIXED)
+
+**Issue:** Reordering tabs/Quick Tabs in Manager reverted after operations.
+**Fix:** Added `_userGroupOrder` persistence and enhanced
+`_applyUserGroupOrder()` with stricter numeric type validation. Extracted
+`_findMatchingGroupKey()` helper. **Status:** ✅ FIXED in v1.6.4
+
+### Bug 5b: Alt Key Modifier Not Working (FIXED)
+
+**Issue:** Alt key for duplicate on drag didn't work. **Fix:** Removed Alt from
+options, changed default to Shift key. **Status:** ✅ FIXED in v1.6.4
+
+---
+
+## v1.6.4 New Features (December 2025)
+
+### Feature 1: Drag-and-Drop Reordering
+
+**Description:** Users can reorder tabs and Quick Tabs in Manager via
+drag-and-drop. **Implementation:** Added `attachDragDropEventListeners()` with
+tab group and Quick Tab item handlers. **Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 2: Cross-Tab Quick Tab Transfer
+
+**Description:** Drag Quick Tab from one tab group to another to transfer it.
+**Implementation:** `TRANSFER_QUICK_TAB` message type handled by background.js.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 3: Duplicate via Shift+Drag
+
+**Description:** Hold Shift key while dragging to duplicate instead of move.
+**Implementation:** `DUPLICATE_QUICK_TAB` message type with configurable
+modifier key. **Settings:** Duplicate Modifier Key dropdown (Shift default,
+Ctrl, None). **Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 4: Move to Current Tab Button
+
+**Description:** Replaces "Go to Tab" button for Quick Tab items - moves Quick
+Tab to current active browser tab. **Implementation:** `moveToCurrentTab` action
+with `_dispatchMoveToCurrentTab()` handler. **Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 5: Tab Group Actions
+
+**Description:** Added "Go to Tab" and "Close All in Tab" buttons for each tab
+group header. **Implementation:** `_createGroupActions()` function with button
+handlers. **Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 6: Open in New Tab Button (Manager)
+
+**Description:** Added "Open in New Tab" button per Quick Tab in Manager.
+**Implementation:** `_handleOpenInNewTab()` function using `openTab` action.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+### Feature 7: Count Indicator Styling
+
+**Description:** Smaller container with bigger number for Quick Tab count
+indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 6px.
+**Status:** ✅ IMPLEMENTED in v1.6.4
+
+---
+
+## v1.6.4 Bug Fixes (December 2025)
+
+**Added from User Feedback:** December 31, 2025
+
+### Bug 1c & 2c: Transferred/Duplicated Quick Tabs Not Appearing (FIXED)
+
+**Issue:** Quick Tabs transferred or duplicated via drag-and-drop didn't appear
+in Manager. **Root Cause:** Redundant `requestAllQuickTabsViaPort()` calls
+caused race conditions - STATE_CHANGED message already contains the correct
+updated state. **Fix:** Removed redundant `requestAllQuickTabsViaPort()` calls
+after transfer/duplicate operations. STATE_CHANGED push notification from
+background is sufficient. **Status:** ✅ FIXED in v1.6.4
+
+### Bug 3c: Quick Tab Reordering Within Groups Resets (FIXED)
+
+**Issue:** Reordering Quick Tabs within a tab group via drag-and-drop would
+reset when state changes occurred. **Root Cause:** No persistence of user's
+Quick Tab order within groups. **Fix:** Added `_userQuickTabOrderByGroup` map
+(originTabId → quickTabId array) for per-group ordering. Added
+`QUICK_TAB_ORDER_STORAGE_KEY` ('quickTabsManagerQuickTabOrder') for persistence.
+Added `_applyUserQuickTabOrder()` to preserve order during renders. Added
+`_saveUserQuickTabOrder()` to capture DOM order after reorder. **Status:** ✅
+FIXED in v1.6.4
+
+### Bug 4c: Last Quick Tab Close Not Reflected in Manager (FIXED)
+
+**Issue:** Closing the last Quick Tab in a tab group didn't properly update the
+Manager UI to show empty state. **Root Cause:** Edge case handling for
+transitioning to empty state was missing. **Fix:** Extracted
+`_handleEmptyStateTransition()` helper for handling last Quick Tab close
+scenarios. Added `_logLowQuickTabCount()` for monitoring when Quick Tab count
+drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Last
-Review Date:** December 12, 2025  
-**Behavior Model:** Tab-Scoped (v1.6.3+)
+Review Date:** December 31, 2025  
+**Behavior Model:** Tab-Scoped (v1.6.4)

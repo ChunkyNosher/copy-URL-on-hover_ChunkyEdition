@@ -2118,34 +2118,27 @@ messageRouter.register('BATCH_QUICK_TAB_UPDATE', (msg, sender) =>
 );
 
 /**
- * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
- * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
- * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * Resolve origin tab ID from message or sender
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
  * @private
  * @param {Object} msg - CREATE_QUICK_TAB message
  * @param {Object} sender - Message sender info
+ * @returns {number|null} Origin tab ID or null if not available
  */
-function _addQuickTabToSessionState(msg, sender) {
-  const originTabId = msg.originTabId ?? sender?.tab?.id;
-  if (!originTabId) {
-    console.warn(
-      '[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
-      {
-        quickTabId: msg.id,
-        senderTabId: sender?.tab?.id
-      }
-    );
-    return;
-  }
+function _resolveOriginTabId(msg, sender) {
+  return msg.originTabId ?? sender?.tab?.id ?? null;
+}
 
-  // Initialize tab's Quick Tab array if needed
-  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
-    quickTabsSessionState.quickTabsByTab[originTabId] = [];
-  }
-
-  // Build Quick Tab data (matching format from handleCreateQuickTab)
-  // v1.6.3.12-v12 - FIX Bug #2: Include title field for Manager display
-  const quickTabData = {
+/**
+ * Build Quick Tab data object from message
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {number} originTabId - Resolved origin tab ID
+ * @returns {Object} Quick Tab data object
+ */
+function _buildQuickTabData(msg, originTabId) {
+  return {
     id: msg.id,
     url: msg.url,
     title: msg.title,
@@ -2158,21 +2151,61 @@ function _addQuickTabToSessionState(msg, sender) {
     minimized: msg.minimized || false,
     timestamp: msg.timestamp || Date.now()
   };
+}
 
-  // Check for duplicate and add/update
-  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
-  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === msg.id);
+/**
+ * Insert or update Quick Tab in the tab's array
+ * v1.6.3.12-v14 - FIX Code Health: Extracted from _addQuickTabToSessionState
+ * @private
+ * @param {Array} tabQuickTabs - Array of Quick Tabs for a tab
+ * @param {Object} quickTabData - Quick Tab data to insert or update
+ * @param {number} originTabId - Origin tab ID (for logging)
+ */
+function _insertOrUpdateQuickTab(tabQuickTabs, quickTabData, originTabId) {
+  const existingIndex = tabQuickTabs.findIndex(qt => qt.id === quickTabData.id);
   if (existingIndex >= 0) {
     tabQuickTabs[existingIndex] = quickTabData;
-    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Updated in session state:', msg.id);
+    console.log(
+      '[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Updated in session state:',
+      quickTabData.id
+    );
   } else {
     tabQuickTabs.push(quickTabData);
-    console.log('[Background] v1.6.3.12-v13 CREATE_QUICK_TAB: Added to session state:', {
-      quickTabId: msg.id,
+    console.log('[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: Added to session state:', {
+      quickTabId: quickTabData.id,
       originTabId,
       sessionStateTabCount: tabQuickTabs.length
     });
   }
+}
+
+/**
+ * Add Quick Tab to session state from runtime.sendMessage CREATE_QUICK_TAB
+ * v1.6.3.12-v13 - FIX Issue #47: Ensure Quick Tabs created via runtime.sendMessage
+ * are also stored in quickTabsSessionState.quickTabsByTab so sidebar operations work.
+ * v1.6.3.12-v14 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+ * @private
+ * @param {Object} msg - CREATE_QUICK_TAB message
+ * @param {Object} sender - Message sender info
+ */
+function _addQuickTabToSessionState(msg, sender) {
+  const originTabId = _resolveOriginTabId(msg, sender);
+  if (!originTabId) {
+    console.warn(
+      '[Background] v1.6.3.12-v14 CREATE_QUICK_TAB: No originTabId, cannot add to session state:',
+      { quickTabId: msg.id, senderTabId: sender?.tab?.id }
+    );
+    return;
+  }
+
+  // Initialize tab's Quick Tab array if needed
+  if (!quickTabsSessionState.quickTabsByTab[originTabId]) {
+    quickTabsSessionState.quickTabsByTab[originTabId] = [];
+  }
+
+  const quickTabData = _buildQuickTabData(msg, originTabId);
+  const tabQuickTabs = quickTabsSessionState.quickTabsByTab[originTabId];
+  _insertOrUpdateQuickTab(tabQuickTabs, quickTabData, originTabId);
 }
 
 // v1.6.3.12-v3 - FIX Issue F: Notify sidebar after Quick Tab creation via runtime.sendMessage
@@ -5601,9 +5634,11 @@ function handleQuickTabRemovedMessage(message, sender) {
 
   // Also remove from globalQuickTabState for backward compatibility
   const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  let foundInGlobal = false;
   if (globalIndex >= 0) {
     globalQuickTabState.tabs.splice(globalIndex, 1);
     globalQuickTabState.lastUpdate = Date.now();
+    foundInGlobal = true;
   }
 
   if (found) {
@@ -5621,52 +5656,76 @@ function handleQuickTabRemovedMessage(message, sender) {
     console.warn('[Background] v1.6.3.12-v7 Quick Tab not found for QUICKTAB_REMOVED:', {
       quickTabId,
       senderTabId,
+      foundInGlobal,
       availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
     });
+
+    // v1.6.3.12-v13 - FIX Bug #3: ALWAYS notify sidebar even if Quick Tab not found
+    // This handles the case where the Quick Tab was already removed from session state
+    // (e.g., via storage.onChanged or a previous close operation) but the Manager UI
+    // still shows it. Notifying ensures the Manager gets the latest state.
+    console.log('[Background] v1.6.3.12-v13 Notifying sidebar anyway for UI sync:', {
+      quickTabId,
+      reason: 'ensure_manager_ui_sync',
+      foundInGlobal
+    });
+    notifySidebarOfStateChange();
   }
 }
 
 /**
- * Handle QUICKTAB_MOVED message from content script UpdateHandler
- * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
- * When a Quick Tab is dragged, UpdateHandler sends this message to update
- * the background's in-memory state and notify the sidebar.
- *
- * @param {Object} message - Message containing quickTabId, left, top, originTabId
- * @param {browser.runtime.MessageSender} sender - Message sender info
+ * Generic handler for Quick Tab property update messages (moved/resized)
+ * v1.6.4 - FIX Code Health: Eliminate duplication between moved/resized handlers
+ * @private
+ * @param {Object} options - Handler options
+ * @param {Object} options.message - Message from content script
+ * @param {browser.runtime.MessageSender} options.sender - Message sender info
+ * @param {string} options.messageType - Message type for logging (QUICKTAB_MOVED, QUICKTAB_RESIZED)
+ * @param {Function} options.propertyExtractor - Function to extract properties from message
+ * @param {Function} options.updateFn - Function to update Quick Tab properties
+ * @param {Function} options.successLogFn - Function to generate success log data
+ * @returns {{ success: boolean, quickTabId: string, error?: string }}
  */
-function handleQuickTabMovedMessage(message, sender) {
-  const { quickTabId, left, top, originTabId, source, timestamp } = message;
+function _handleQuickTabPropertyUpdate({
+  message,
+  sender,
+  messageType,
+  propertyExtractor,
+  updateFn,
+  successLogFn
+}) {
+  const { quickTabId, originTabId, source, timestamp } = message;
   const senderTabId = sender?.tab?.id ?? originTabId;
+  const extractedProps = propertyExtractor(message);
 
-  console.log('[Background] v1.6.3.12-v12 QUICKTAB_MOVED received:', {
+  console.log(`[Background] v1.6.4 ${messageType} received:`, {
     quickTabId,
-    left,
-    top,
+    ...extractedProps,
     originTabId,
     senderTabId,
     source,
     timestamp: timestamp || Date.now()
   });
 
-  // Update the Quick Tab's position in both session and global state
+  // Update the Quick Tab's properties in both session and global state
   const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
-    qt.left = Math.round(left);
-    qt.top = Math.round(top);
+    updateFn(qt, extractedProps);
     qt.lastUpdate = Date.now();
   });
 
   if (found) {
-    console.log('[Background] v1.6.3.12-v12 Quick Tab position updated:', {
-      quickTabId,
-      left: Math.round(left),
-      top: Math.round(top)
-    });
+    console.log(
+      `[Background] v1.6.4 Quick Tab ${messageType.replace('QUICKTAB_', '').toLowerCase()} updated:`,
+      {
+        quickTabId,
+        ...successLogFn(extractedProps)
+      }
+    );
     notifySidebarOfStateChange();
     return { success: true, quickTabId };
   }
 
-  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_MOVED:', {
+  console.warn(`[Background] v1.6.4 Quick Tab not found for ${messageType}:`, {
     quickTabId,
     senderTabId,
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
@@ -5676,8 +5735,33 @@ function handleQuickTabMovedMessage(message, sender) {
 }
 
 /**
+ * Handle QUICKTAB_MOVED message from content script UpdateHandler
+ * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for position updates
+ * v1.6.4 - Refactored to use generic _handleQuickTabPropertyUpdate
+ * When a Quick Tab is dragged, UpdateHandler sends this message to update
+ * the background's in-memory state and notify the sidebar.
+ *
+ * @param {Object} message - Message containing quickTabId, left, top, originTabId
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ */
+function handleQuickTabMovedMessage(message, sender) {
+  return _handleQuickTabPropertyUpdate({
+    message,
+    sender,
+    messageType: 'QUICKTAB_MOVED',
+    propertyExtractor: msg => ({ left: msg.left, top: msg.top }),
+    updateFn: (qt, props) => {
+      qt.left = Math.round(props.left);
+      qt.top = Math.round(props.top);
+    },
+    successLogFn: props => ({ left: Math.round(props.left), top: Math.round(props.top) })
+  });
+}
+
+/**
  * Handle QUICKTAB_RESIZED message from content script UpdateHandler
  * v1.6.3.12-v12 - FIX Bug #1: Add missing handler for size updates
+ * v1.6.4 - Refactored to use generic _handleQuickTabPropertyUpdate
  * When a Quick Tab is resized, UpdateHandler sends this message to update
  * the background's in-memory state and notify the sidebar.
  *
@@ -5685,37 +5769,83 @@ function handleQuickTabMovedMessage(message, sender) {
  * @param {browser.runtime.MessageSender} sender - Message sender info
  */
 function handleQuickTabResizedMessage(message, sender) {
-  const { quickTabId, width, height, originTabId, source, timestamp } = message;
+  return _handleQuickTabPropertyUpdate({
+    message,
+    sender,
+    messageType: 'QUICKTAB_RESIZED',
+    propertyExtractor: msg => ({ width: msg.width, height: msg.height }),
+    updateFn: (qt, props) => {
+      qt.width = Math.round(props.width);
+      qt.height = Math.round(props.height);
+    },
+    successLogFn: props => ({ width: Math.round(props.width), height: Math.round(props.height) })
+  });
+}
+
+/**
+ * Handle UPDATE_QUICK_TAB message from content script (via runtime.sendMessage)
+ * v1.6.3.12-v13 - FIX Bug #1: Handle URL/title updates when Quick Tab iframe navigates
+ * This is different from the port-based handleUpdateQuickTab which handles position/size updates.
+ *
+ * @param {Object} message - Message containing quickTabId and updates
+ * @param {browser.runtime.MessageSender} sender - Message sender info
+ * @returns {{ success: boolean, quickTabId: string, error?: string }}
+ */
+function handleUpdateQuickTabMessage(message, sender) {
+  const { quickTabId, updates, originTabId, source, timestamp } = message;
   const senderTabId = sender?.tab?.id ?? originTabId;
 
-  console.log('[Background] v1.6.3.12-v12 QUICKTAB_RESIZED received:', {
+  // Identify what's being updated for logging
+  const updateKeys = updates ? Object.keys(updates) : [];
+  const hasUrlUpdate = updateKeys.includes('url');
+  const hasTitleUpdate = updateKeys.includes('title');
+
+  console.log('[Background] v1.6.3.12-v13 UPDATE_QUICK_TAB received:', {
     quickTabId,
-    width,
-    height,
     originTabId,
     senderTabId,
     source,
-    timestamp: timestamp || Date.now()
+    timestamp: timestamp || Date.now(),
+    updateKeys,
+    hasUrlUpdate,
+    hasTitleUpdate
   });
 
-  // Update the Quick Tab's size in both session and global state
+  // Update the Quick Tab in both session and global state
   const found = _updateQuickTabProperty(senderTabId, quickTabId, qt => {
-    qt.width = Math.round(width);
-    qt.height = Math.round(height);
+    // Log before state for debugging
+    const before = {
+      url: qt.url,
+      title: qt.title
+    };
+
+    // Apply updates
+    Object.assign(qt, updates);
     qt.lastUpdate = Date.now();
+
+    console.log('[Background] v1.6.3.12-v13 UPDATE_QUICK_TAB applied:', {
+      quickTabId,
+      before,
+      after: {
+        url: qt.url,
+        title: qt.title
+      },
+      updateKeys
+    });
   });
 
   if (found) {
-    console.log('[Background] v1.6.3.12-v12 Quick Tab size updated:', {
+    console.log('[Background] v1.6.3.12-v13 Quick Tab updated:', {
       quickTabId,
-      width: Math.round(width),
-      height: Math.round(height)
+      updateKeys,
+      hasUrlUpdate,
+      hasTitleUpdate
     });
     notifySidebarOfStateChange();
     return { success: true, quickTabId };
   }
 
-  console.warn('[Background] v1.6.3.12-v12 Quick Tab not found for QUICKTAB_RESIZED:', {
+  console.warn('[Background] v1.6.3.12-v13 Quick Tab not found for UPDATE_QUICK_TAB:', {
     quickTabId,
     senderTabId,
     availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
@@ -5731,18 +5861,6 @@ function handleQuickTabResizedMessage(message, sender) {
  * @param {number} tabId - Tab ID to notify
  */
 function notifyContentScriptOfStateChange(tabId) {
-  const port = quickTabsSessionState.contentScriptPorts[tabId];
-  if (!port) {
-    // v1.6.3.12 - J5: Log when message dropped due to missing port
-    console.log('[Background] BROADCAST_DROPPED: No content script port for tab', {
-      tabId,
-      timestamp: Date.now(),
-      reason: 'port_not_found',
-      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
-    });
-    return;
-  }
-
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {
@@ -5753,24 +5871,72 @@ function notifyContentScriptOfStateChange(tabId) {
     correlationId // v1.6.3.12 - Gap #8: Add correlation ID
   };
 
-  try {
-    port.postMessage(message);
-    // v1.6.3.12 - J5: Log successful broadcast
-    console.log('[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script', {
+  const port = quickTabsSessionState.contentScriptPorts[tabId];
+  let portSendSucceeded = false;
+
+  // v1.6.4 - ADD fallback messaging: Try port first
+  if (port) {
+    try {
+      port.postMessage(message);
+      portSendSucceeded = true;
+      // v1.6.3.12 - J5: Log successful broadcast
+      console.log(
+        '[Background] BROADCAST_SUCCESS: QUICK_TABS_UPDATED sent to content script via port',
+        {
+          tabId,
+          correlationId,
+          tabCount: quickTabs.length,
+          method: 'port'
+        }
+      );
+    } catch (err) {
+      // v1.6.3.12 - J5: Log failure and remove dead port
+      console.warn('[Background] BROADCAST_FAILED: Port error sending to content script', {
+        tabId,
+        correlationId,
+        error: err.message,
+        action: 'trying_sendMessage_fallback'
+      });
+      delete quickTabsSessionState.contentScriptPorts[tabId];
+    }
+  } else {
+    // v1.6.4 - ADD fallback messaging: Log when port not found
+    console.log('[Background] BROADCAST_NO_PORT: No content script port for tab, trying fallback', {
       tabId,
-      correlationId,
-      tabCount: quickTabs.length
+      timestamp: Date.now(),
+      reason: 'port_not_found',
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
     });
-  } catch (err) {
-    // v1.6.3.12 - J5: Log failure and remove dead port
-    console.error('[Background] BROADCAST_FAILED: Error sending to content script', {
-      tabId,
-      correlationId,
-      error: err.message,
-      action: 'removing_dead_port'
-    });
-    delete quickTabsSessionState.contentScriptPorts[tabId];
   }
+
+  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
+  if (portSendSucceeded) {
+    // Port succeeded, no fallback needed
+    return;
+  }
+
+  // Port failed or unavailable, try fallback
+  browser.tabs
+    .sendMessage(tabId, {
+      ...message,
+      source: 'sendMessage_fallback'
+    })
+    .then(() => {
+      console.log(
+        '[Background] BROADCAST_FALLBACK_SUCCESS: QUICK_TABS_UPDATED sent via sendMessage fallback',
+        {
+          tabId,
+          correlationId
+        }
+      );
+    })
+    .catch(err => {
+      console.warn('[Background] BROADCAST_FALLBACK_FAILED: Both port and sendMessage failed', {
+        tabId,
+        correlationId,
+        sendMessageError: err.message
+      });
+    });
 }
 
 /**
@@ -5817,13 +5983,34 @@ function handleCreateQuickTab(tabId, quickTab, port) {
   }
   globalQuickTabState.lastUpdate = Date.now();
 
-  // Send ACK to content script
-  port.postMessage({
+  // v1.6.4 - ADD fallback messaging: Send ACK to content script with fallback
+  const ackMessage = {
     type: 'CREATE_QUICK_TAB_ACK',
     success: true,
     quickTabId: quickTab.id,
     timestamp: Date.now()
-  });
+  };
+
+  try {
+    port.postMessage(ackMessage);
+    console.log('[Background] CREATE_QUICK_TAB_ACK sent via port:', {
+      quickTabId: quickTab.id,
+      tabId
+    });
+  } catch (err) {
+    console.warn('[Background] CREATE_QUICK_TAB_ACK port failed, trying fallback:', err.message);
+    // v1.6.4 - ADD fallback messaging: Use browser.tabs.sendMessage as fallback
+    browser.tabs
+      .sendMessage(tabId, { ...ackMessage, source: 'sendMessage_fallback' })
+      .catch(sendErr => {
+        console.error('[Background] CREATE_QUICK_TAB_ACK both methods failed:', {
+          tabId,
+          quickTabId: quickTab.id,
+          portError: err.message,
+          sendMessageError: sendErr.message
+        });
+      });
+  }
 
   // Notify sidebar
   notifySidebarOfStateChange();
@@ -5955,6 +6142,7 @@ function _updateQuickTabProperty(tabId, quickTabId, updater) {
 /**
  * Send acknowledgment response via port
  * v1.6.3.12-v2 - FIX Code Health: Unified ACK sender
+ * v1.6.4 - ADD fallback messaging: Try port first, then fallback to runtime messaging
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} ackType - Type of acknowledgment (e.g., 'MINIMIZE_QUICK_TAB_ACK')
@@ -5962,12 +6150,26 @@ function _updateQuickTabProperty(tabId, quickTabId, updater) {
  * @param {string} quickTabId - Quick Tab ID
  */
 function _sendQuickTabAck(port, ackType, success, quickTabId) {
-  port.postMessage({
+  const ackMessage = {
     type: ackType,
     success,
     quickTabId,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
+  try {
+    port.postMessage(ackMessage);
+    console.log(`[Background] ${ackType} sent via port:`, { quickTabId, success });
+  } catch (err) {
+    console.warn(`[Background] ${ackType} port failed:`, {
+      quickTabId,
+      error: err.message,
+      note: 'ACK may be lost if sidebar disconnected'
+    });
+    // Note: Cannot fallback to browser.tabs.sendMessage here since this is for sidebar port
+    // The sidebar would need to request state refresh if ACK is lost
+  }
 }
 
 /**
@@ -6202,6 +6404,7 @@ function handleUpdateQuickTab(tabId, msg, port) {
 /**
  * Send Quick Tabs list response via port
  * v1.6.3.12-v2 - FIX Code Health: Shared response builder
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
  * @private
  * @param {browser.runtime.Port} port - Port to send response on
  * @param {string} responseType - Type of response message
@@ -6221,7 +6424,21 @@ function _sendQuickTabsListResponse(port, responseType, quickTabs, includeSessio
     response.sessionStartTime = quickTabsSessionState.sessionStartTime;
   }
 
-  port.postMessage(response);
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    port.postMessage(response);
+    console.log(`[Background] ${responseType} sent via port:`, {
+      tabCount: quickTabs.length,
+      includeSessionInfo
+    });
+  } catch (err) {
+    console.warn(`[Background] ${responseType} port failed:`, {
+      error: err.message,
+      tabCount: quickTabs.length,
+      note: 'Sidebar may need to reconnect'
+    });
+    // Note: Cannot fallback for sidebar port - sidebar handles reconnection
+  }
 }
 
 /**
@@ -6306,21 +6523,39 @@ const _sidebarMessageHandlers = {
   // v1.6.3.12-v7 - FIX Issue #15: Add Close All Quick Tabs handler
   CLOSE_ALL_QUICK_TABS: (msg, port) => handleSidebarCloseAllQuickTabs(msg, port),
   // v1.6.4 - FIX Issue #12: Add Close Minimized Quick Tabs handler
-  CLOSE_MINIMIZED_QUICK_TABS: (msg, port) => handleSidebarCloseMinimizedQuickTabs(msg, port)
+  CLOSE_MINIMIZED_QUICK_TABS: (msg, port) => handleSidebarCloseMinimizedQuickTabs(msg, port),
+  // v1.6.4 - FEATURE #3: Transfer Quick Tab to different browser tab
+  TRANSFER_QUICK_TAB: (msg, port) => handleSidebarTransferQuickTab(msg, port),
+  // v1.6.4 - FEATURE #5: Duplicate Quick Tab to different browser tab
+  DUPLICATE_QUICK_TAB: (msg, port) => handleSidebarDuplicateQuickTab(msg, port)
 };
 
 /**
  * Send error response for unknown message type
  * v1.6.3.12-v2 - FIX Code Health: Extracted helper
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch with logging
  * @private
  */
 function _sendUnknownMessageError(port, source, msgType) {
   console.warn(`[Background] Unknown message type from ${source}:`, msgType);
-  port.postMessage({
+
+  const errorMessage = {
     type: 'ERROR',
     error: `Unknown message type: ${msgType}`,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    port.postMessage(errorMessage);
+  } catch (err) {
+    console.warn('[Background] Error response port failed:', {
+      source,
+      msgType,
+      error: err.message
+    });
+    // Cannot fallback - port is disconnected, error response is lost
+  }
 }
 
 /**
@@ -6656,15 +6891,18 @@ function _logPortLookup(ownerTabId, contentPort) {
 /**
  * Try sending command via port
  * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * v1.6.3.12-v14 - FIX Code Health: Use options object pattern (5 args → 3)
  * @private
  * @param {browser.runtime.Port|null} contentPort - Content script port
  * @param {Object} message - Message to send
- * @param {string} commandType - Command type for logging
- * @param {number} ownerTabId - Tab ID for logging
- * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {Object} logContext - Logging context
+ * @param {string} logContext.commandType - Command type for logging
+ * @param {number} logContext.ownerTabId - Tab ID for logging
+ * @param {string} logContext.quickTabId - Quick Tab ID for logging
  * @returns {boolean} True if send succeeded
  */
-function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, quickTabId) {
+function _trySendCommandViaPort(contentPort, message, logContext) {
+  const { commandType, ownerTabId, quickTabId } = logContext;
   if (!contentPort) return false;
 
   try {
@@ -6680,22 +6918,18 @@ function _trySendCommandViaPort(contentPort, message, commandType, ownerTabId, q
 /**
  * Send command via tabs.sendMessage (backup/fallback)
  * v1.6.3.12-v13 - FIX Code Health: Extracted from _notifyContentScriptOfCommand
+ * v1.6.3.12-v14 - FIX Code Health: Use options object pattern (6 args → 1)
  * @private
- * @param {number} ownerTabId - Tab ID to send message to
- * @param {string} action - Action name (e.g., CLOSE_QUICK_TAB)
- * @param {string} quickTabId - Quick Tab ID
- * @param {boolean} portSendSucceeded - Whether port send succeeded (for logging)
- * @param {browser.runtime.Port|null} contentPort - Content port (for logging reason)
- * @param {string} commandType - Command type (for logging)
+ * @param {Object} options - Send message options
+ * @param {number} options.ownerTabId - Tab ID to send message to
+ * @param {string} options.action - Action name (e.g., CLOSE_QUICK_TAB)
+ * @param {string} options.quickTabId - Quick Tab ID
+ * @param {boolean} options.portSendSucceeded - Whether port send succeeded (for logging)
+ * @param {browser.runtime.Port|null} options.contentPort - Content port (for logging reason)
+ * @param {string} options.commandType - Command type (for logging)
  */
-function _sendCommandViaSendMessage(
-  ownerTabId,
-  action,
-  quickTabId,
-  portSendSucceeded,
-  contentPort,
-  commandType
-) {
+function _sendCommandViaSendMessage(options) {
+  const { ownerTabId, action, quickTabId, portSendSucceeded, contentPort, commandType } = options;
   console.log(
     `[Background] Using tabs.sendMessage ${portSendSucceeded ? 'backup' : 'fallback'} for: ${commandType}`,
     {
@@ -6718,6 +6952,7 @@ function _sendCommandViaSendMessage(
  * v1.6.3.12 - Helper to reduce nesting depth
  * v1.6.4 - FIX Issue #48: Add fallback to browser.tabs.sendMessage when port unavailable
  * v1.6.3.12-v13 - FIX Code Health: Extracted helpers to reduce complexity
+ * v1.6.3.12-v14 - FIX Code Health: Updated to use options object pattern for helpers
  * @private
  * @param {number|null} ownerTabId - Tab ID that owns the Quick Tab
  * @param {boolean} found - Whether the Quick Tab was found
@@ -6737,13 +6972,9 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
 
   _logPortLookup(ownerTabId, contentPort);
 
-  const portSendSucceeded = _trySendCommandViaPort(
-    contentPort,
-    message,
-    commandType,
-    ownerTabId,
-    quickTabId
-  );
+  // v1.6.3.12-v14 - FIX Code Health: Use options object pattern
+  const logContext = { commandType, ownerTabId, quickTabId };
+  const portSendSucceeded = _trySendCommandViaPort(contentPort, message, logContext);
 
   // v1.6.3.12-v13 - FIX Issue #48: ALWAYS try tabs.sendMessage as a backup
   // Port.postMessage() doesn't throw when port is disconnected in Firefox,
@@ -6758,14 +6989,15 @@ function _notifyContentScriptOfCommand(ownerTabId, found, commandType, quickTabI
     return;
   }
 
-  _sendCommandViaSendMessage(
+  // v1.6.3.12-v14 - FIX Code Health: Use options object pattern
+  _sendCommandViaSendMessage({
     ownerTabId,
     action,
     quickTabId,
     portSendSucceeded,
     contentPort,
     commandType
-  );
+  });
 }
 
 /**
@@ -6876,15 +7108,29 @@ function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   quickTabHostTabs.clear();
 
   // Send ACK to sidebar
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
   if (sidebarPort) {
-    sidebarPort.postMessage({
+    const ackMessage = {
       type: 'CLOSE_ALL_QUICK_TABS_ACK',
       success: true,
       closedCount,
       quickTabIds,
       correlationId,
       timestamp: Date.now()
-    });
+    };
+    try {
+      sidebarPort.postMessage(ackMessage);
+      console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', {
+        correlationId,
+        closedCount
+      });
+    } catch (err) {
+      console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
+        error: err.message,
+        correlationId,
+        closedCount
+      });
+    }
   }
 
   // Notify sidebar of state change (empty state)
@@ -6949,6 +7195,7 @@ function _updateGlobalStateAfterClose(idSet) {
 /**
  * Send ACK for close minimized operation
  * v1.6.3.12-v8 - FIX Code Health: Extracted from handleSidebarCloseMinimizedQuickTabs
+ * v1.6.4 - ADD fallback messaging: Wrap in try-catch
  * @private
  * @param {browser.runtime.Port} sidebarPort - Sidebar port
  * @param {number} closedCount - Number of Quick Tabs closed
@@ -6958,14 +7205,29 @@ function _updateGlobalStateAfterClose(idSet) {
 function _sendCloseMinimizedAck(sidebarPort, closedCount, quickTabIds, correlationId) {
   if (!sidebarPort) return;
 
-  sidebarPort.postMessage({
+  const ackMessage = {
     type: 'CLOSE_MINIMIZED_QUICK_TABS_ACK',
     success: true,
     closedCount,
     quickTabIds,
     correlationId,
     timestamp: Date.now()
-  });
+  };
+
+  // v1.6.4 - ADD fallback messaging: Wrap port.postMessage in try-catch
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] CLOSE_MINIMIZED_QUICK_TABS_ACK sent via port:', {
+      correlationId,
+      closedCount
+    });
+  } catch (err) {
+    console.warn('[Background] CLOSE_MINIMIZED_QUICK_TABS_ACK port failed:', {
+      error: err.message,
+      correlationId,
+      closedCount
+    });
+  }
 }
 
 function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
@@ -7013,6 +7275,493 @@ function handleSidebarCloseMinimizedQuickTabs(msg, sidebarPort) {
     globalTabsRemaining: globalQuickTabState.tabs.length
   });
 }
+
+// ==================== v1.6.4 DRAG AND DROP HANDLERS ====================
+// FEATURE #3, #5: Cross-Tab Transfer and Duplicate
+
+/**
+ * Find and remove Quick Tab from session state for transfer
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {{ quickTabData: Object|null, oldOriginTabId: number|null }}
+ */
+function _findAndRemoveQuickTabForTransfer(quickTabId) {
+  for (const tabId in quickTabsSessionState.quickTabsByTab) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    const index = tabQuickTabs.findIndex(qt => qt.id === quickTabId);
+    if (index >= 0) {
+      const quickTabData = tabQuickTabs[index];
+      tabQuickTabs.splice(index, 1);
+      return { quickTabData, oldOriginTabId: parseInt(tabId, 10) };
+    }
+  }
+  return { quickTabData: null, oldOriginTabId: null };
+}
+
+/**
+ * Send transfer ACK to sidebar with try-catch
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port
+ * @param {Object} ackMessage - ACK message to send
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @param {string} correlationId - Correlation ID for logging
+ */
+function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
+  try {
+    sidebarPort.postMessage(ackMessage);
+    if (ackMessage.success) {
+      console.log('[Background] TRANSFER_QUICK_TAB_ACK sent via port:', {
+        quickTabId,
+        correlationId
+      });
+    }
+  } catch (err) {
+    if (ackMessage.success) {
+      console.warn('[Background] TRANSFER_QUICK_TAB_ACK port failed:', {
+        error: err.message,
+        quickTabId,
+        correlationId
+      });
+    } else {
+      console.warn('[Background] TRANSFER_QUICK_TAB_ACK (error) port failed:', err.message);
+    }
+  }
+}
+
+/**
+ * Update session and global state for Quick Tab transfer
+ * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * @private
+ * @param {Object} quickTabData - Quick Tab data to transfer
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ * @param {number} oldOriginTabId - Old origin tab ID
+ */
+function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId) {
+  // Update the Quick Tab's origin tab ID
+  quickTabData.originTabId = newOriginTabId;
+  quickTabData.transferredAt = Date.now();
+  quickTabData.transferredFrom = oldOriginTabId;
+
+  // Add to new tab's Quick Tabs array
+  if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
+    quickTabsSessionState.quickTabsByTab[newOriginTabId] = [];
+  }
+  quickTabsSessionState.quickTabsByTab[newOriginTabId].push(quickTabData);
+
+  // Update global state
+  const globalIndex = globalQuickTabState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (globalIndex >= 0) {
+    globalQuickTabState.tabs[globalIndex].originTabId = newOriginTabId;
+    globalQuickTabState.tabs[globalIndex].transferredAt = Date.now();
+  }
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  quickTabHostTabs.set(quickTabId, newOriginTabId);
+}
+
+/**
+ * Handle sidebar request to transfer a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (85 -> ~40)
+ * @param {Object} msg - Message with quickTabId and newOriginTabId
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarTransferQuickTab(msg, sidebarPort) {
+  const { quickTabId, newOriginTabId } = msg;
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
+
+  console.log('[Background] TRANSFER_QUICK_TAB_ENTRY:', {
+    quickTabId,
+    newOriginTabId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Find and remove the Quick Tab from its current tab
+  const { quickTabData, oldOriginTabId } = _findAndRemoveQuickTabForTransfer(quickTabId);
+
+  if (!quickTabData) {
+    console.warn('[Background] TRANSFER_QUICK_TAB: Quick Tab not found:', quickTabId);
+    _sendTransferAck(
+      sidebarPort,
+      {
+        type: 'TRANSFER_QUICK_TAB_ACK',
+        success: false,
+        error: 'Quick Tab not found',
+        quickTabId,
+        correlationId
+      },
+      quickTabId,
+      correlationId
+    );
+    return;
+  }
+
+  // Update all state
+  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId);
+
+  // Send success ACK to sidebar
+  _sendTransferAck(
+    sidebarPort,
+    {
+      type: 'TRANSFER_QUICK_TAB_ACK',
+      success: true,
+      quickTabId,
+      oldOriginTabId,
+      newOriginTabId,
+      correlationId
+    },
+    quickTabId,
+    correlationId
+  );
+
+  // Notify sidebar and content scripts
+  notifySidebarOfStateChange();
+  _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData);
+
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] TRANSFER_QUICK_TAB_EXIT:', {
+    quickTabId,
+    oldOriginTabId,
+    newOriginTabId,
+    success: true,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
+}
+
+/**
+ * Try to send message via port, returns success status
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ * @param {browser.runtime.Port|null} port - Port to send message on
+ * @param {Object} message - Message to send
+ * @param {string} logLabel - Label for logging (e.g., 'old tab', 'new tab')
+ * @param {number} tabId - Tab ID for logging
+ * @returns {boolean} True if send succeeded
+ */
+function _tryPortSend(port, message, logLabel, tabId) {
+  if (!port) {
+    console.log(`[Background] No port for ${logLabel}:`, tabId);
+    return false;
+  }
+  try {
+    port.postMessage(message);
+    console.log(`[Background] Notified ${logLabel} via port:`, tabId);
+    return true;
+  } catch (err) {
+    console.warn(`[Background] Failed to notify ${logLabel} via port:`, err.message);
+    return false;
+  }
+}
+
+/**
+ * Send TRANSFER_OUT message to old tab (via port with fallback)
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ */
+function _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId) {
+  const oldPort = quickTabsSessionState.contentScriptPorts[oldOriginTabId];
+  const message = {
+    type: 'QUICK_TAB_TRANSFERRED_OUT',
+    quickTabId,
+    newOriginTabId,
+    timestamp: Date.now()
+  };
+
+  const portSucceeded = _tryPortSend(oldPort, message, 'old tab of transfer out', oldOriginTabId);
+
+  // Only use fallback when port fails or is unavailable
+  if (!portSucceeded) {
+    browser.tabs
+      .sendMessage(oldOriginTabId, { ...message, source: 'sendMessage_fallback' })
+      .then(() =>
+        console.log('[Background] TRANSFER_OUT_FALLBACK_SUCCESS:', { oldOriginTabId, quickTabId })
+      )
+      .catch(err =>
+        console.warn('[Background] TRANSFER_OUT_FALLBACK_FAILED:', {
+          oldOriginTabId,
+          quickTabId,
+          sendMessageError: err.message
+        })
+      );
+  }
+}
+
+/**
+ * Send TRANSFER_IN message to new tab (via port + always fallback)
+ * v1.6.4 - Extracted to reduce _notifyContentScriptOfTransfer complexity
+ * @private
+ */
+function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
+  const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+  const message = {
+    type: 'QUICK_TAB_TRANSFERRED_IN',
+    quickTab: quickTabData,
+    oldOriginTabId,
+    timestamp: Date.now()
+  };
+
+  const portSucceeded = _tryPortSend(newPort, message, 'new tab of transfer in', newOriginTabId);
+
+  // ALWAYS send fallback for TRANSFER_IN as it's critical (target tab may not have port)
+  _sendContentMessageFallback({
+    tabId: newOriginTabId,
+    messageType: 'QUICK_TAB_TRANSFERRED_IN',
+    payload: { quickTab: quickTabData, oldOriginTabId },
+    operationName: 'TRANSFER_IN',
+    quickTabId: quickTabData?.id
+  });
+
+  console.log('[Background] TRANSFER_IN sent via fallback for reliability:', {
+    newOriginTabId,
+    quickTabId: quickTabData?.id,
+    portAlsoUsed: portSucceeded
+  });
+}
+
+/**
+ * Notify content scripts of Quick Tab transfer
+ * v1.6.4 - FEATURE #3: Send removal to old tab, creation to new tab
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (77 -> ~20)
+ * @private
+ * @param {number} oldOriginTabId - Previous origin tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {Object} quickTabData - Quick Tab data
+ */
+function _notifyContentScriptOfTransfer(oldOriginTabId, newOriginTabId, quickTabId, quickTabData) {
+  console.log('[Background] _notifyContentScriptOfTransfer: Starting', {
+    oldOriginTabId,
+    newOriginTabId,
+    quickTabId,
+    hasOldPort: !!quickTabsSessionState.contentScriptPorts[oldOriginTabId],
+    hasNewPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
+    allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+
+  _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId);
+  _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId);
+}
+
+/**
+ * Generic content message fallback sender via browser.tabs.sendMessage
+ * v1.6.4 - FIX Code Health: Eliminate duplication between transfer/duplicate fallbacks
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
+ * @private
+ * @param {Object} opts - Options object
+ * @param {number} opts.tabId - Target tab ID
+ * @param {string} opts.messageType - Message type to send
+ * @param {Object} opts.payload - Additional message payload
+ * @param {string} opts.operationName - Operation name for logging
+ * @param {string} opts.quickTabId - Quick Tab ID for logging
+ */
+async function _sendContentMessageFallback(opts) {
+  const { tabId, messageType, payload, operationName, quickTabId } = opts;
+  try {
+    await browser.tabs.sendMessage(tabId, {
+      type: messageType,
+      ...payload,
+      timestamp: Date.now(),
+      source: 'sendMessage_fallback'
+    });
+    console.log(`[Background] ${operationName}_FALLBACK_SUCCESS: Notified tab via sendMessage:`, {
+      tabId,
+      quickTabId
+    });
+  } catch (err) {
+    console.error(`[Background] ${operationName}_FALLBACK_FAILED: Could not notify target tab:`, {
+      tabId,
+      quickTabId,
+      error: err.message,
+      hint: 'Target tab may not have content script loaded. User should refresh the tab.'
+    });
+  }
+}
+
+/**
+ * Generate a unique ID for a new Quick Tab
+ * v1.6.4 - FEATURE #5: Helper for duplicate operation
+ * @private
+ * @returns {string} Unique Quick Tab ID
+ */
+function _generateQuickTabId() {
+  return `qt-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+/**
+ * Create Quick Tab object for duplication
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * @private
+ * @param {Object} msg - Message with Quick Tab properties
+ * @param {string} newQuickTabId - New Quick Tab ID
+ * @returns {Object} New Quick Tab object
+ */
+function _createDuplicateQuickTab(msg, newQuickTabId) {
+  const { url, title, left, top, width, height, minimized, newOriginTabId } = msg;
+  return {
+    id: newQuickTabId,
+    url,
+    title: title || 'Duplicated Quick Tab',
+    left: left ?? 100,
+    top: top ?? 100,
+    width: width ?? 400,
+    height: height ?? 300,
+    minimized: minimized ?? false,
+    originTabId: newOriginTabId,
+    createdAt: Date.now(),
+    duplicatedFrom: msg.sourceQuickTabId || null
+  };
+}
+
+/**
+ * Add Quick Tab to session and global state
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * @private
+ * @param {Object} newQuickTab - Quick Tab to add
+ * @param {number} newOriginTabId - Origin tab ID
+ */
+function _addQuickTabToState(newQuickTab, newOriginTabId) {
+  // Add to session state
+  if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
+    quickTabsSessionState.quickTabsByTab[newOriginTabId] = [];
+  }
+  quickTabsSessionState.quickTabsByTab[newOriginTabId].push(newQuickTab);
+
+  // Add to global state
+  globalQuickTabState.tabs.push(newQuickTab);
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  quickTabHostTabs.set(newQuickTab.id, newOriginTabId);
+}
+
+/**
+ * Notify target tab of duplicated Quick Tab
+ * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * v1.6.4 - FIX BUG #2: Add browser.tabs.sendMessage fallback
+ * v1.6.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE (critical message)
+ * @private
+ * @param {number} newOriginTabId - Target tab ID
+ * @param {Object} newQuickTab - New Quick Tab data
+ */
+function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
+  // v1.6.4 - FIX BUG #6/#8: Enhanced logging for debugging duplicate issues
+  console.log('[Background] _notifyTargetTabOfDuplicate: Starting', {
+    newOriginTabId,
+    quickTabId: newQuickTab?.id,
+    hasPort: !!quickTabsSessionState.contentScriptPorts[newOriginTabId],
+    allPortTabIds: Object.keys(quickTabsSessionState.contentScriptPorts),
+    timestamp: Date.now()
+  });
+
+  const targetPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+  let portSendSucceeded = false;
+
+  if (targetPort) {
+    try {
+      targetPort.postMessage({
+        type: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
+        quickTab: newQuickTab,
+        timestamp: Date.now()
+      });
+      portSendSucceeded = true;
+      console.log('[Background] Notified target tab of duplicate via port:', newOriginTabId);
+    } catch (err) {
+      console.warn('[Background] Failed to notify target tab via port:', err.message);
+    }
+  } else {
+    console.log('[Background] No port for duplicate target tab:', {
+      newOriginTabId,
+      availablePorts: Object.keys(quickTabsSessionState.contentScriptPorts)
+    });
+  }
+
+  // v1.6.4 - FIX BUG #4: ALWAYS send fallback for DUPLICATE as it's critical
+  // Even if port send succeeded, the target tab may not have processed it
+  _sendContentMessageFallback({
+    tabId: newOriginTabId,
+    messageType: 'CREATE_QUICK_TAB_FROM_DUPLICATE',
+    payload: { quickTab: newQuickTab },
+    operationName: 'DUPLICATE',
+    quickTabId: newQuickTab?.id
+  });
+  console.log('[Background] DUPLICATE sent via fallback for reliability:', {
+    newOriginTabId,
+    quickTabId: newQuickTab?.id,
+    portAlsoUsed: portSendSucceeded
+  });
+}
+
+/**
+ * Handle sidebar request to duplicate a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #5: Alt+drag duplicate
+ * @param {Object} msg - Message with Quick Tab properties and newOriginTabId
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
+ */
+function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
+  const { newOriginTabId } = msg;
+  const handlerStartTime = performance.now();
+  const correlationId = sidebarPort._lastCorrelationId || `duplicate-${Date.now()}`;
+
+  console.log('[Background] DUPLICATE_QUICK_TAB_ENTRY:', {
+    url: msg.url,
+    newOriginTabId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Create new Quick Tab with unique ID
+  const newQuickTabId = _generateQuickTabId();
+  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId);
+
+  // Add to state
+  _addQuickTabToState(newQuickTab, newOriginTabId);
+
+  // Send ACK to sidebar
+  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+  const ackMessage = {
+    type: 'DUPLICATE_QUICK_TAB_ACK',
+    success: true,
+    newQuickTabId,
+    newOriginTabId,
+    correlationId
+  };
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] DUPLICATE_QUICK_TAB_ACK sent via port:', {
+      newQuickTabId,
+      correlationId
+    });
+  } catch (err) {
+    console.warn('[Background] DUPLICATE_QUICK_TAB_ACK port failed:', {
+      error: err.message,
+      newQuickTabId,
+      correlationId
+    });
+  }
+
+  // Notify sidebar and target tab
+  notifySidebarOfStateChange();
+  _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab);
+
+  const durationMs = performance.now() - handlerStartTime;
+  console.log('[Background] DUPLICATE_QUICK_TAB_EXIT:', {
+    newQuickTabId,
+    newOriginTabId,
+    success: true,
+    durationMs: durationMs.toFixed(2),
+    correlationId
+  });
+}
+
+// ==================== END DRAG AND DROP HANDLERS ====================
 
 /**
  * Update Quick Tab minimized state in session state
@@ -8464,6 +9213,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // to update background state and notify sidebar for Manager UI update
   if (message.type === 'QUICKTAB_RESIZED') {
     const result = handleQuickTabResizedMessage(message, sender);
+    sendResponse(result);
+    return false; // Synchronous response
+  }
+
+  // v1.6.3.12-v13 - FIX Bug #1: Handle UPDATE_QUICK_TAB message from content script
+  // When Quick Tab iframe navigates, window.js sends this message to update URL/title
+  // in background state and notify sidebar for Manager UI update
+  if (message.type === 'UPDATE_QUICK_TAB') {
+    const result = handleUpdateQuickTabMessage(message, sender);
     sendResponse(result);
     return false; // Synchronous response
   }

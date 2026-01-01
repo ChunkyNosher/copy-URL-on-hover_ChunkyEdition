@@ -2,6 +2,25 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4 TRANSFER/DUPLICATE STATE SYNC & QUICK TAB ORDERING ===
+ * v1.6.4 - FIX BUG #1/#2: Transferred/duplicated Quick Tabs not appearing in Manager
+ *   - ROOT CAUSE: Race condition between ACK and STATE_CHANGED messages
+ *   - FIX: Removed redundant requestAllQuickTabsViaPort() calls from ACK handlers
+ *   - STATE_CHANGED message already contains complete updated state
+ *   - Enhanced logging to trace message ordering for debugging
+ *
+ * v1.6.4 - FIX BUG #3: Quick Tab reordering within groups resets
+ *   - ROOT CAUSE: No persistence mechanism for Quick Tab order within groups
+ *   - FIX: Added _userQuickTabOrderByGroup storage similar to tab group order
+ *   - Added _saveUserQuickTabOrder(), _persistQuickTabOrderToStorage()
+ *   - Added _loadQuickTabOrderFromStorage(), _applyUserQuickTabOrder()
+ *   - Modified _handleQuickTabDrop() and _handleTabGroupDrop() to save order
+ *   - Modified _createGroupContent() to apply user's Quick Tab order
+ *
+ * v1.6.4 - FIX BUG #4: Last Quick Tab close not reflected in Manager
+ *   - Enhanced logging for empty state transitions
+ *   - Added low-count monitoring for debugging last-close scenarios
+ *
  * === v1.6.3.12-v12 BUTTON OPERATION FIX & STATE VERSION TRACKING ===
  * v1.6.3.12-v12 - FIX Issue #48: Manager buttons not working (Close, Minimize, Restore, Close All, Close Minimized)
  *   - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always trigger re-render
@@ -138,6 +157,51 @@
  */
 
 // ==================== IMPORTS ====================
+// v1.6.4 - Code Health: Import extracted manager modules first
+import {
+  initialize as initializeDragDrop,
+  attachDragDropEventListeners,
+  getDragState as _getDragState,
+  resetDragState as _resetDragState,
+  getCachedModifierKey as _getCachedModifierKey
+} from './managers/DragDropManager.js';
+import {
+  GROUP_ORDER_STORAGE_KEY as _GROUP_ORDER_STORAGE_KEY,
+  QUICK_TAB_ORDER_STORAGE_KEY as _QUICK_TAB_ORDER_STORAGE_KEY,
+  saveUserGroupOrder,
+  loadGroupOrderFromStorage,
+  applyUserGroupOrder as _applyUserGroupOrder,
+  saveUserQuickTabOrder,
+  loadQuickTabOrderFromStorage,
+  applyUserQuickTabOrder as _applyUserQuickTabOrder,
+  getUserGroupOrder as _getUserGroupOrder
+} from './managers/OrderManager.js';
+// v1.6.4 - Import PortManager for port-related functionality (extracted for code health)
+import {
+  isValidMessageObject as _isValidMessageObjectFromPM,
+  isValidQuickTabsField as _isValidQuickTabsFieldFromPM,
+  isValidSequenceNumber as _isValidSequenceNumberFromPM,
+  validateStateUpdateMessage as _validateStateUpdateMessageFromPM,
+  validateAckMessage as _validateAckMessageFromPM,
+  logValidationError as _logPortMessageValidationErrorFromPM,
+  checkMessageSequence as _checkMessageSequenceFromPM,
+  buildAckLogData as _buildAckLogDataFromPM,
+  SEQUENCE_GAP_WARNING_ENABLED as _SEQUENCE_GAP_WARNING_ENABLED_FROM_PM
+} from './managers/PortManager.js';
+// v1.6.4 - Import RenderManager for render-related functionality (extracted for code health)
+import {
+  incrementStateVersion as _incrementStateVersionFromRM,
+  forceImmediateRender as _forceImmediateRenderFromRM,
+  logRenderStart as _logRenderStartFromRM,
+  logRenderComplete as _logRenderCompleteFromRM,
+  logGroupRendering as _logGroupRenderingFromRM,
+  logRenderPerformance as _logRenderPerformanceFromRM,
+  showEmptyState as _showEmptyStateFromRM,
+  showContentState as _showContentStateFromRM,
+  RENDER_DEBOUNCE_MS as _RENDER_DEBOUNCE_MS_FROM_RM,
+  RENDER_DEBOUNCE_MAX_WAIT_MS as _RENDER_DEBOUNCE_MAX_WAIT_MS_FROM_RM,
+  MAX_CONSECUTIVE_RERENDERS as _MAX_CONSECUTIVE_RERENDERS_FROM_RM
+} from './managers/RenderManager.js';
 import {
   computeStateHash,
   createFavicon,
@@ -183,6 +247,7 @@ const SAVEID_RECONCILED = 'reconciled';
 const SAVEID_CLEARED = 'cleared';
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
+// v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
 
 // ==================== v1.6.3.7 CONSTANTS ====================
 // FIX Issue #3: UI Flicker Prevention - Debounce renderUI()
@@ -400,6 +465,9 @@ let quickTabsPort = null;
  */
 let _allQuickTabsFromPort = [];
 
+// v1.6.4 - Note: _userGroupOrder and _userQuickTabOrderByGroup now managed by OrderManager.js
+// These module-level variables have been removed to reduce code duplication
+
 /**
  * Track sent Quick Tab port operations for roundtrip time calculation
  * v1.6.3.12-v2 - FIX Issue #16-17: Port messaging roundtrip time tracking
@@ -430,19 +498,94 @@ let _sequenceGapsDetected = 0;
  * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
  * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
  */
-function initializeQuickTabsPort() {
-  // v1.6.3.12-v7 - FIX Issue #30: Check circuit breaker state
-  if (_quickTabsPortCircuitBreakerTripped) {
-    console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
-      timestamp: Date.now(),
-      attempts: _quickTabsPortReconnectAttempts,
-      maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
-      message: 'Connection attempts exhausted. Use manual reconnect button.'
-    });
-    return;
-  }
+/**
+ * Check if circuit breaker is tripped and log if so
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ * @returns {boolean} True if circuit breaker is tripped and execution should be aborted
+ */
+function _checkCircuitBreakerTripped() {
+  if (!_quickTabsPortCircuitBreakerTripped) return false;
 
-  // v1.6.3.12 - Gap #1: Log port connection attempt
+  console.warn('[Sidebar] QUICK_TABS_PORT_CIRCUIT_BREAKER_OPEN:', {
+    timestamp: Date.now(),
+    attempts: _quickTabsPortReconnectAttempts,
+    maxAttempts: QUICK_TABS_PORT_MAX_RECONNECT_ATTEMPTS,
+    message: 'Connection attempts exhausted. Use manual reconnect button.'
+  });
+  return true;
+}
+
+/**
+ * Reset circuit breaker state on successful connection
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _resetCircuitBreakerOnSuccess() {
+  _quickTabsPortReconnectAttempts = 0;
+  _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
+  _quickTabsPortCircuitBreakerTripped = false;
+  _clearCircuitBreakerAutoResetTimer();
+}
+
+/**
+ * Handle port disconnect event
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _handleQuickTabsPortDisconnect() {
+  // CRITICAL: Capture browser.runtime.lastError IMMEDIATELY - browser clears it after callback
+  const lastError = browser.runtime?.lastError;
+  const disconnectTimestamp = Date.now();
+
+  console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
+    reason: lastError?.message || 'unknown',
+    errorCaptured: !!lastError,
+    timestamp: disconnectTimestamp,
+    pendingOperations: _quickTabPortOperationTimestamps.size,
+    portWasConnected: !!quickTabsPort,
+    cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage,
+    reconnectAttempts: _quickTabsPortReconnectAttempts
+  });
+
+  quickTabsPort = null;
+  _quickTabPortOperationTimestamps.clear();
+  _scheduleQuickTabsPortReconnect(disconnectTimestamp);
+}
+
+/**
+ * Send SIDEBAR_READY message with fallback
+ * v1.6.4 - FIX Code Health: Extracted to reduce initializeQuickTabsPort line count
+ * @private
+ */
+function _sendSidebarReadyMessage() {
+  const message = { type: 'SIDEBAR_READY', timestamp: Date.now() };
+  try {
+    quickTabsPort.postMessage(message);
+    console.log('[Sidebar] SIDEBAR_READY sent to background via port');
+  } catch (err) {
+    console.warn('[Sidebar] SIDEBAR_READY port failed, trying fallback:', err.message);
+    browser.runtime
+      .sendMessage({ ...message, source: 'sendMessage_fallback' })
+      .then(() => console.log('[Sidebar] SIDEBAR_READY sent via runtime.sendMessage fallback'))
+      .catch(sendErr =>
+        console.error('[Sidebar] SIDEBAR_READY both methods failed:', {
+          portError: err.message,
+          sendMessageError: sendErr.message
+        })
+      );
+  }
+}
+
+/**
+ * Initialize Quick Tabs port connection
+ * v1.6.3.12 - Option 4: Connect to background via 'quick-tabs-port'
+ * v1.6.3.12-v7 - FIX Issue #30: Add circuit breaker with max reconnection attempts
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (84 -> ~35)
+ */
+function initializeQuickTabsPort() {
+  if (_checkCircuitBreakerTripped()) return;
+
   console.log('[Sidebar] PORT_LIFECYCLE: Connection attempt starting', {
     timestamp: Date.now(),
     portName: 'quick-tabs-port',
@@ -452,16 +595,8 @@ function initializeQuickTabsPort() {
 
   try {
     quickTabsPort = browser.runtime.connect({ name: 'quick-tabs-port' });
+    _resetCircuitBreakerOnSuccess();
 
-    // v1.6.3.12-v7 - FIX Issue #30: Reset circuit breaker on successful connection
-    _quickTabsPortReconnectAttempts = 0;
-    _quickTabsPortReconnectBackoffMs = QUICK_TABS_PORT_RECONNECT_BACKOFF_INITIAL_MS;
-    _quickTabsPortCircuitBreakerTripped = false;
-
-    // v1.6.4 - FIX Issue #20: Clear any pending auto-reset timer on successful connection
-    _clearCircuitBreakerAutoResetTimer();
-
-    // v1.6.3.12 - Gap #1: Log port connection success
     console.log('[Sidebar] PORT_LIFECYCLE: Connection established', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
@@ -471,52 +606,16 @@ function initializeQuickTabsPort() {
     });
 
     quickTabsPort.onMessage.addListener(handleQuickTabsPortMessage);
+    quickTabsPort.onDisconnect.addListener(_handleQuickTabsPortDisconnect);
 
-    quickTabsPort.onDisconnect.addListener(() => {
-      // v1.6.3.12-v4 - Gap #4 CRITICAL FIX: Capture browser.runtime.lastError IMMEDIATELY
-      // This MUST be the very first line in the callback - any delay can clear the error context
-      // The browser clears lastError after the callback returns or after any async operation
-      const lastError = browser.runtime?.lastError;
-      const lastErrorMessage = lastError?.message || 'unknown';
-      const disconnectTimestamp = Date.now();
+    _sendSidebarReadyMessage();
 
-      // v1.6.3.12-v4 - Gap #4: Enhanced disconnect logging with captured error
-      console.warn('[Sidebar] QUICK_TABS_PORT_DISCONNECTED:', {
-        reason: lastErrorMessage,
-        errorCaptured: !!lastError,
-        timestamp: disconnectTimestamp,
-        pendingOperations: _quickTabPortOperationTimestamps.size,
-        portWasConnected: !!quickTabsPort,
-        cacheStalenessMs: disconnectTimestamp - lastCacheSyncFromStorage,
-        reconnectAttempts: _quickTabsPortReconnectAttempts
-      });
-
-      quickTabsPort = null;
-
-      // Clear pending operation timestamps on disconnect
-      _quickTabPortOperationTimestamps.clear();
-
-      // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker
-      _scheduleQuickTabsPortReconnect(disconnectTimestamp);
-    });
-
-    // Send SIDEBAR_READY to get initial state
-    quickTabsPort.postMessage({
-      type: 'SIDEBAR_READY',
-      timestamp: Date.now()
-    });
-    console.log('[Sidebar] SIDEBAR_READY sent to background');
-
-    // v1.6.3.12-v7 - FIX Issue #10: Explicitly request initial state after port connection
-    // Background sends SIDEBAR_STATE_SYNC after SIDEBAR_READY, but this ensures we have state
-    // even if that message is delayed, lost, or the port was reconnected
     console.log('[Sidebar] Sidebar requesting initial state after port connection', {
       timestamp: Date.now(),
       portConnected: !!quickTabsPort
     });
     requestAllQuickTabsViaPort();
   } catch (err) {
-    // v1.6.3.12 - Gap #1: Log port connection failure
     console.error('[Sidebar] PORT_LIFECYCLE: Connection failed', {
       timestamp: Date.now(),
       portName: 'quick-tabs-port',
@@ -524,8 +623,6 @@ function initializeQuickTabsPort() {
       success: false,
       reconnectAttempt: _quickTabsPortReconnectAttempts
     });
-
-    // v1.6.3.12-v7 - FIX Issue #30: Schedule reconnection with circuit breaker on failure
     _scheduleQuickTabsPortReconnect(Date.now());
   }
 }
@@ -801,11 +898,62 @@ function _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlati
 }
 
 /**
+ * Handle empty state transition for Quick Tabs
+ * v1.6.4 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {boolean} wasNotEmpty - Whether state was non-empty before
+ * @param {boolean} isNowEmpty - Whether state is now empty
+ * @param {string|null} correlationId - Correlation ID for async tracing
+ * @returns {boolean} True if immediate render was forced, false otherwise
+ */
+function _handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId) {
+  if (!wasNotEmpty || !isNowEmpty) {
+    return false;
+  }
+
+  console.log('[Sidebar] STATE_SYNC_PATH_EMPTY_TRANSITION: Forcing immediate render', {
+    previousCount: _allQuickTabsFromPort.length,
+    newCount: 0,
+    wasNotEmpty,
+    isNowEmpty,
+    correlationId: correlationId || null,
+    reason: 'Last Quick Tab closed - forcing immediate render',
+    timestamp: Date.now()
+  });
+  _forceImmediateRender('empty-state-transition');
+  return true;
+}
+
+/**
+ * Log low Quick Tab count for debugging last-close issues
+ * v1.6.4 - Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {boolean} wasNotEmpty - Whether state was non-empty before
+ * @param {string|null} correlationId - Correlation ID for async tracing
+ */
+function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
+  if (quickTabs.length > 1) {
+    return;
+  }
+
+  console.log('[Sidebar] STATE_SYNC_PATH_LOW_COUNT:', {
+    previousCount: wasNotEmpty ? '>0' : '0',
+    newCount: quickTabs.length,
+    correlationId: correlationId || null,
+    quickTabIds: quickTabs.map(qt => qt.id),
+    timestamp: Date.now(),
+    message: 'Low Quick Tab count - monitoring for last-close issue'
+  });
+}
+
+/**
  * Handle Quick Tabs state update from background
  * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
  * v1.6.3.12 - Gap #7: End-to-end state sync path logging
  * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
  * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
+ * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
  * @private
  * @param {Array} quickTabs - Quick Tabs array
  * @param {string} renderReason - Reason for render scheduling
@@ -838,6 +986,10 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX Issue #11/#14: Log per-origin-tab breakdown for cross-tab visibility
   _logCrossTabAggregation(quickTabs, receiveTime, renderReason, correlationId);
 
+  // v1.6.4 - FIX BUG #4: Track if transitioning to empty state for forced render
+  const wasNotEmpty = _allQuickTabsFromPort.length > 0;
+  const isNowEmpty = quickTabs.length === 0;
+
   _allQuickTabsFromPort = quickTabs;
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
@@ -855,6 +1007,14 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
     tabCount: quickTabs.length,
     latencyMs: Date.now() - receiveTime
   });
+
+  // v1.6.4 - FIX BUG #4: Handle empty state transition with extracted helper
+  if (_handleEmptyStateTransition(wasNotEmpty, isNowEmpty, correlationId)) {
+    return;
+  }
+
+  // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
+  _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
   // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
   scheduleRender(renderReason, correlationId);
@@ -958,6 +1118,7 @@ function _validateQuickTabObject(qt) {
 /**
  * Filter and validate Quick Tab objects array, logging invalid entries
  * v1.6.4 - FIX Issue #15: Filter out invalid Quick Tab objects before processing
+ * v1.6.4.1 - FIX: Add critical warning when ALL Quick Tabs fail validation
  * @private
  * @param {Array} quickTabs - Quick Tabs array to validate
  * @param {string} messageType - Message type for logging
@@ -965,6 +1126,21 @@ function _validateQuickTabObject(qt) {
  */
 function _filterValidQuickTabs(quickTabs, messageType) {
   if (!Array.isArray(quickTabs)) {
+    // Use console.error for unexpected non-array input (likely a bug)
+    console.error('[Manager] _filterValidQuickTabs: Input is not an array (unexpected)', {
+      messageType,
+      receivedType: typeof quickTabs,
+      timestamp: Date.now()
+    });
+    return [];
+  }
+
+  // v1.6.4.1 - FIX: Handle empty array case explicitly
+  if (quickTabs.length === 0) {
+    console.log('[Manager] _filterValidQuickTabs: Empty array received (valid)', {
+      messageType,
+      timestamp: Date.now()
+    });
     return [];
   }
 
@@ -986,6 +1162,21 @@ function _filterValidQuickTabs(quickTabs, messageType) {
   // Log validation failures for debugging
   if (invalidCount.total > 0) {
     _logQuickTabValidationFailures(quickTabs.length, validTabs.length, invalidCount, messageType);
+  }
+
+  // v1.6.4.1 - FIX: Critical warning when ALL Quick Tabs fail validation
+  if (quickTabs.length > 0 && validTabs.length === 0) {
+    // Generate dynamic hint based on actual validation errors
+    const errorTypes = Object.keys(invalidCount.reasons);
+    console.error('[Manager] CRITICAL_VALIDATION_FAILURE: ALL Quick Tabs failed validation!', {
+      messageType,
+      inputCount: quickTabs.length,
+      validCount: 0,
+      invalidReasons: invalidCount.reasons,
+      firstQuickTab: quickTabs[0],
+      timestamp: Date.now(),
+      hint: `Check Quick Tab object structure. Validation errors: ${errorTypes.join(', ')}`
+    });
   }
 
   return validTabs;
@@ -1093,6 +1284,96 @@ function _logPortMessageValidationError(type, msg, error) {
     correlationId: msg?.correlationId || null,
     error
   });
+}
+
+/**
+ * Handle successful transfer ACK - update local state and force render
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
+ * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+ * @private
+ * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
+ */
+function _handleSuccessfulTransferAck(msg) {
+  // v1.6.4 - FIX BUG #1/#2: Add logging to trace message ordering
+  console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updating local state and forcing render', {
+    quickTabId: msg.quickTabId,
+    oldOriginTabId: msg.oldOriginTabId,
+    newOriginTabId: msg.newOriginTabId,
+    currentPortDataCount: _allQuickTabsFromPort.length,
+    timestamp: Date.now(),
+    message: 'STATE_CHANGED should follow with complete updated state'
+  });
+
+  // Clear cache for both old and new origin tabs
+  _clearTabCacheForTransfer(msg.oldOriginTabId, msg.newOriginTabId);
+
+  // Update _allQuickTabsFromPort optimistically
+  _updateLocalQuickTabOrigin(msg.quickTabId, msg.newOriginTabId);
+
+  // Also update quickTabsState for hash consistency
+  _updateQuickTabsStateOrigin(msg.quickTabId, msg.newOriginTabId);
+
+  // Increment state version and force immediate render
+  _incrementStateVersion('transfer-ack');
+  _forceImmediateRender('transfer-ack-success');
+
+  // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+  // STATE_CHANGED message is sent by background AFTER the transfer completes and
+  // contains the full updated state. Calling requestAllQuickTabsViaPort() here
+  // causes a race condition where the response may arrive before STATE_CHANGED,
+  // leading to inconsistent state display. The optimistic local update above
+  // combined with the incoming STATE_CHANGED is sufficient.
+}
+
+/**
+ * Clear browser tab cache for transfer operation
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {number} oldOriginTabId - Old origin tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _clearTabCacheForTransfer(oldOriginTabId, newOriginTabId) {
+  if (oldOriginTabId) browserTabInfoCache.delete(oldOriginTabId);
+  if (newOriginTabId) browserTabInfoCache.delete(newOriginTabId);
+}
+
+/**
+ * Update Quick Tab's originTabId in _allQuickTabsFromPort
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _updateLocalQuickTabOrigin(quickTabId, newOriginTabId) {
+  const quickTabIndex = _allQuickTabsFromPort.findIndex(qt => qt.id === quickTabId);
+  if (quickTabIndex >= 0) {
+    _allQuickTabsFromPort[quickTabIndex].originTabId = newOriginTabId;
+    _allQuickTabsFromPort[quickTabIndex].transferredAt = Date.now();
+    console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK: Updated local Quick Tab originTabId', {
+      quickTabId,
+      newOriginTabId
+    });
+  } else {
+    console.warn('[Sidebar] TRANSFER_QUICK_TAB_ACK: Quick Tab not found in local state', {
+      quickTabId
+    });
+  }
+}
+
+/**
+ * Update Quick Tab's originTabId in quickTabsState for hash consistency
+ * v1.6.4 - FIX BUG #1: Extracted to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _updateQuickTabsStateOrigin(quickTabId, newOriginTabId) {
+  if (!quickTabsState?.tabs) return;
+  const stateIndex = quickTabsState.tabs.findIndex(qt => qt.id === quickTabId);
+  if (stateIndex >= 0) {
+    quickTabsState.tabs[stateIndex].originTabId = newOriginTabId;
+    quickTabsState.tabs[stateIndex].transferredAt = Date.now();
+  }
 }
 
 /**
@@ -1207,6 +1488,56 @@ const _portMessageHandlers = {
   // This allows the Manager to detect orphaned Quick Tabs and update its UI accordingly
   ORIGIN_TAB_CLOSED: msg => {
     _handleOriginTabClosed(msg);
+  },
+  // v1.6.4 - FIX BUG #3: Add ACK handlers for transfer/duplicate operations
+  // These ensure proper logging and prevent "unknown_type" warnings in the port handler
+  // v1.6.4 - FIX BUG #1: Request fresh state after successful transfer to ensure Manager displays transferred Quick Tab
+  TRANSFER_QUICK_TAB_ACK: msg => {
+    console.log('[Sidebar] TRANSFER_QUICK_TAB_ACK received:', {
+      success: msg.success,
+      quickTabId: msg.quickTabId || null,
+      oldOriginTabId: msg.oldOriginTabId || null,
+      newOriginTabId: msg.newOriginTabId || null,
+      error: msg.error || null,
+      correlationId: msg.correlationId || null,
+      timestamp: Date.now()
+    });
+    // v1.6.4 - FIX BUG #1: Use extracted helper to handle successful transfer
+    if (msg.success && msg.quickTabId) {
+      _handleSuccessfulTransferAck(msg);
+    }
+  },
+  // v1.6.4 - FIX BUG #3: Handle duplicate ACK
+  // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
+  // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
+  DUPLICATE_QUICK_TAB_ACK: msg => {
+    console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
+      success: msg.success,
+      newQuickTabId: msg.newQuickTabId || null,
+      newOriginTabId: msg.newOriginTabId || null,
+      error: msg.error || null,
+      correlationId: msg.correlationId || null,
+      currentPortDataCount: _allQuickTabsFromPort.length,
+      timestamp: Date.now(),
+      message: 'STATE_CHANGED should follow with complete updated state'
+    });
+    // v1.6.4 - FIX BUG #2: If duplicate succeeded, increment version and force render
+    if (msg.success) {
+      console.log(
+        '[Sidebar] DUPLICATE_QUICK_TAB_ACK: Updating state and forcing render after successful duplicate'
+      );
+      // Clear cache for the new origin tab
+      if (msg.newOriginTabId) browserTabInfoCache.delete(msg.newOriginTabId);
+
+      // v1.6.4 - FIX BUG #2: Increment state version and force immediate render
+      _incrementStateVersion('duplicate-ack');
+      _forceImmediateRender('duplicate-ack-success');
+
+      // v1.6.4 - FIX BUG #1/#2: REMOVED requestAllQuickTabsViaPort() call
+      // STATE_CHANGED message is sent by background AFTER the duplicate completes.
+      // The optimistic state version increment triggers a render, and STATE_CHANGED
+      // will follow with the new Quick Tab included in the full state.
+    }
   }
 };
 
@@ -1606,51 +1937,79 @@ function _generatePortCorrelationId() {
  * v1.6.3.12-v2 - FIX Code Health: Generic port operation wrapper
  * v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamps for roundtrip calculation
  * v1.6.3.12 - Gap #8: Add correlation IDs to port messages
+ * v1.6.4 - ADD fallback messaging: Add browser.runtime.sendMessage fallback
  * @private
  * @param {string} messageType - Type of message to send
  * @param {Object} [payload={}] - Optional message payload
- * @returns {boolean} Success status
+ * @returns {boolean} Success status (true if port send succeeded, fallback is fire-and-forget)
  */
 function _executeSidebarPortOperation(messageType, payload = {}) {
-  if (!quickTabsPort) {
-    console.warn(`[Sidebar] Cannot ${messageType} - port not connected`);
-    return false;
-  }
-
   const sentAt = Date.now();
   // v1.6.3.12 - Gap #8: Generate correlation ID for tracking
   const correlationId = _generatePortCorrelationId();
 
-  try {
-    // v1.6.3.12 - Gap #8: Include correlationId in message
-    quickTabsPort.postMessage({
-      type: messageType,
-      ...payload,
-      timestamp: sentAt,
-      correlationId
-    });
+  const message = {
+    type: messageType,
+    ...payload,
+    timestamp: sentAt,
+    correlationId
+  };
 
-    // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
-    // Only track operations that have a quickTabId (for ACK correlation)
-    const quickTabId = payload.quickTabId || null;
-    if (quickTabId) {
-      _quickTabPortOperationTimestamps.set(quickTabId, {
-        sentAt,
-        messageType,
-        correlationId // v1.6.3.12 - Gap #8: Store correlationId for matching
-      });
-    }
-
-    console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
-      quickTabId,
-      timestamp: sentAt,
-      hasRoundtripTracking: !!quickTabId // v1.6.3.12-v2 - Indicate if ACK will be tracked
+  // v1.6.3.12-v2 - FIX Issue #16-17: Track sent timestamp for ACK roundtrip calculation
+  const quickTabId = payload.quickTabId || null;
+  if (quickTabId) {
+    _quickTabPortOperationTimestamps.set(quickTabId, {
+      sentAt,
+      messageType,
+      correlationId // v1.6.3.12 - Gap #8: Store correlationId for matching
     });
-    return true;
-  } catch (err) {
-    console.error(`[Sidebar] Failed to ${messageType} via port:`, err.message);
-    return false;
   }
+
+  let portSucceeded = false;
+
+  // v1.6.4 - ADD fallback messaging: Try port first if available
+  if (quickTabsPort) {
+    try {
+      quickTabsPort.postMessage(message);
+      portSucceeded = true;
+      console.log(`[Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: ${messageType}`, {
+        quickTabId,
+        timestamp: sentAt,
+        method: 'port',
+        hasRoundtripTracking: !!quickTabId
+      });
+    } catch (err) {
+      console.warn(`[Sidebar] Port send failed for ${messageType}, trying fallback:`, err.message);
+    }
+  } else {
+    console.warn(`[Sidebar] Cannot ${messageType} via port - not connected, trying fallback`);
+  }
+
+  // v1.6.4 - FIX BUG #1: Only use fallback when port fails or is unavailable
+  if (portSucceeded) {
+    // Port succeeded, no fallback needed
+    return true;
+  }
+
+  // Port failed or unavailable, try fallback
+  browser.runtime
+    .sendMessage({
+      ...message,
+      source: 'sendMessage_fallback'
+    })
+    .then(() => {
+      console.log(`[Sidebar] ${messageType} sent via runtime.sendMessage fallback`, {
+        quickTabId
+      });
+    })
+    .catch(sendErr => {
+      console.error(`[Sidebar] ${messageType} both port and fallback failed:`, {
+        quickTabId,
+        error: sendErr.message
+      });
+    });
+
+  return false;
 }
 
 /**
@@ -2579,6 +2938,83 @@ async function sendHeartbeat() {
  * @param {number} timeoutMs - Timeout in milliseconds (defaults to PORT_MESSAGE_TIMEOUT_MS)
  * @returns {Promise<Object>} Response from background
  */
+/**
+ * Create timeout handler for port message
+ * v1.6.4 - FIX Code Health: Extracted to reduce sendPortMessageWithTimeout line count
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
+ * @private
+ * @param {Object} opts - Options object
+ * @param {string} opts.correlationId - Correlation ID for tracking
+ * @param {number} opts.sentAt - Timestamp when message was sent
+ * @param {number} opts.timeoutMs - Timeout duration in milliseconds
+ * @param {string} opts.messageType - Type of message being sent
+ * @param {Function} opts.reject - Promise reject function
+ * @returns {number} Timeout ID
+ */
+function _createPortMessageTimeout(opts) {
+  const { correlationId, sentAt, timeoutMs, messageType, reject } = opts;
+  return setTimeout(() => {
+    pendingAcks.delete(correlationId);
+    logPortLifecycle('MESSAGE_TIMEOUT', {
+      messageType,
+      correlationId,
+      waitedMs: Date.now() - sentAt,
+      timeoutMs,
+      recoveryAction: 'treating as zombie port'
+    });
+    reject(new Error('Port message timeout'));
+  }, timeoutMs);
+}
+
+/**
+ * Handle port message send failure with fallback
+ * v1.6.4 - FIX Code Health: Extracted to reduce sendPortMessageWithTimeout line count
+ * v1.6.4 - FIX Code Health: Use options object to reduce argument count
+ * @private
+ * @param {Object} opts - Options object
+ * @param {Error} opts.err - Original port send error
+ * @param {Object} opts.messageWithCorrelation - Message with correlation ID
+ * @param {number} opts.timeout - Timeout ID to clear
+ * @param {string} opts.correlationId - Correlation ID for tracking
+ * @param {string} opts.messageType - Type of message being sent
+ * @param {Function} opts.resolve - Promise resolve function
+ * @param {Function} opts.reject - Promise reject function
+ */
+function _handlePortSendFailure(opts) {
+  const { err, messageWithCorrelation, timeout, correlationId, messageType, resolve, reject } =
+    opts;
+  logPortLifecycle('MESSAGE_SEND_FAILED', {
+    messageType,
+    correlationId,
+    error: err.message,
+    recoveryAction: 'trying runtime.sendMessage fallback'
+  });
+
+  browser.runtime
+    .sendMessage({ ...messageWithCorrelation, source: 'sendMessage_fallback' })
+    .then(response => {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      logPortLifecycle('MESSAGE_FALLBACK_SUCCESS', { messageType, correlationId });
+      resolve(response);
+    })
+    .catch(sendErr => {
+      clearTimeout(timeout);
+      pendingAcks.delete(correlationId);
+      logPortLifecycle('MESSAGE_FALLBACK_FAILED', {
+        messageType,
+        correlationId,
+        portError: err.message,
+        sendMessageError: sendErr.message
+      });
+      reject(err);
+    });
+}
+
+/**
+ * Send message via port with timeout and fallback
+ * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (70 -> ~30)
+ */
 function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     if (!backgroundPort) {
@@ -2590,30 +3026,20 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
     const messageWithCorrelation = { ...message, correlationId };
     const sentAt = Date.now();
 
-    // v1.6.3.10-v1 - FIX Issue #6: Log message send with context
     logPortLifecycle('MESSAGE_ACK_PENDING', {
       messageType: message.type,
       correlationId,
       timeoutMs
     });
 
-    // Set up timeout
-    const timeout = setTimeout(() => {
-      pendingAcks.delete(correlationId);
+    const timeout = _createPortMessageTimeout({
+      correlationId,
+      sentAt,
+      timeoutMs,
+      messageType: message.type,
+      reject
+    });
 
-      // v1.6.3.10-v1 - FIX Issue #6: Log timeout with context
-      logPortLifecycle('MESSAGE_TIMEOUT', {
-        messageType: message.type,
-        correlationId,
-        waitedMs: Date.now() - sentAt,
-        timeoutMs,
-        recoveryAction: 'treating as zombie port'
-      });
-
-      reject(new Error('Port message timeout'));
-    }, timeoutMs);
-
-    // Track pending ack
     pendingAcks.set(correlationId, {
       resolve,
       reject,
@@ -2622,22 +3048,18 @@ function sendPortMessageWithTimeout(message, timeoutMs = PORT_MESSAGE_TIMEOUT_MS
       messageType: message.type
     });
 
-    // Send message
     try {
       backgroundPort.postMessage(messageWithCorrelation);
     } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-
-      // v1.6.3.10-v1 - FIX Issue #6: Log send failure
-      logPortLifecycle('MESSAGE_SEND_FAILED', {
-        messageType: message.type,
+      _handlePortSendFailure({
+        err,
+        messageWithCorrelation,
+        timeout,
         correlationId,
-        error: err.message,
-        recoveryAction: 'treating as zombie port'
+        messageType: message.type,
+        resolve,
+        reject
       });
-
-      reject(err);
     }
   });
 }
@@ -4012,17 +4434,43 @@ function sendWithAck(message) {
     });
 
     // Send message
+    // v1.6.4 - ADD fallback messaging: Wrap port.postMessage and try runtime.sendMessage on failure
     try {
       backgroundPort.postMessage(messageWithCorrelation);
-      console.log('[Manager] Sent message with ack request:', {
+      console.log('[Manager] Sent message with ack request via port:', {
         type: message.type,
         action: message.action,
         correlationId
       });
     } catch (err) {
-      clearTimeout(timeout);
-      pendingAcks.delete(correlationId);
-      reject(err);
+      console.warn('[Manager] Port send failed, trying runtime.sendMessage fallback:', err.message);
+
+      // v1.6.4 - ADD fallback messaging: Try browser.runtime.sendMessage as fallback
+      browser.runtime
+        .sendMessage({
+          ...messageWithCorrelation,
+          source: 'sendMessage_fallback'
+        })
+        .then(response => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          console.log('[Manager] Fallback sendMessage succeeded:', {
+            type: message.type,
+            correlationId
+          });
+          resolve(response || { success: true, method: 'sendMessage_fallback', correlationId });
+        })
+        .catch(sendErr => {
+          clearTimeout(timeout);
+          pendingAcks.delete(correlationId);
+          console.error('[Manager] Both port and sendMessage failed:', {
+            type: message.type,
+            portError: err.message,
+            sendMessageError: sendErr.message
+          });
+          reject(err); // Reject with original port error
+        });
+      return; // Don't reject here - let the fallback handle it
     }
   });
 }
@@ -5245,6 +5693,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   totalTabsEl = document.getElementById('totalTabs');
   lastSyncEl = document.getElementById('lastSync');
 
+  // v1.6.4 - FIX BUG #4: Load saved group order before first render (delegated to OrderManager)
+  await loadGroupOrderFromStorage();
+
+  // v1.6.4 - FIX BUG #3: Load saved Quick Tab order within groups before first render (delegated to OrderManager)
+  await loadQuickTabOrderFromStorage();
+
   // v1.6.3.5-v2 - FIX Report 1 Issue #2: Get current tab ID for origin filtering
   try {
     const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -5348,6 +5802,44 @@ function _checkStaleness() {
 }
 
 /**
+ * Request cache sync with port fallback to runtime.sendMessage
+ * v1.6.4 - ADD fallback messaging: Extracted from _checkCacheStaleness to reduce nesting
+ * @private
+ * @param {number} timestamp - Current timestamp
+ */
+function _requestCacheSyncWithFallback(timestamp) {
+  const syncMessage = {
+    type: 'GET_ALL_QUICK_TABS',
+    reason: 'cache-staleness-auto-sync',
+    timestamp,
+    correlationId: _generatePortCorrelationId()
+  };
+
+  let portSucceeded = false;
+  if (quickTabsPort) {
+    try {
+      quickTabsPort.postMessage(syncMessage);
+      portSucceeded = true;
+      console.log('[Manager] Cache sync request sent via port');
+    } catch (err) {
+      console.warn('[Manager] Cache sync port failed, trying fallback:', err.message);
+    }
+  }
+
+  // v1.6.4 - ADD fallback messaging: Always try browser.runtime.sendMessage as fallback/backup
+  if (!portSucceeded) {
+    browser.runtime
+      .sendMessage({ ...syncMessage, source: 'sendMessage_fallback' })
+      .then(() => {
+        console.log('[Manager] Cache sync request sent via runtime.sendMessage fallback');
+      })
+      .catch(sendErr => {
+        console.error('[Manager] Cache sync request both methods failed:', sendErr.message);
+      });
+  }
+}
+
+/**
  * Check cache staleness and request sync if needed
  * v1.6.3.12-v4 - Gap #7: Dedicated cache staleness monitor
  *   - Warns if cache stale for >30 seconds (CACHE_STALENESS_ALERT_MS)
@@ -5385,15 +5877,8 @@ function _checkCacheStaleness() {
       recoveryAction: 'requesting full state sync from background'
     });
 
-    // Request state sync via Quick Tabs port
-    if (quickTabsPort) {
-      quickTabsPort.postMessage({
-        type: 'GET_ALL_QUICK_TABS',
-        reason: 'cache-staleness-auto-sync',
-        timestamp: now,
-        correlationId: _generatePortCorrelationId()
-      });
-    }
+    // v1.6.4 - ADD fallback messaging: Extracted to helper to reduce nesting
+    _requestCacheSyncWithFallback(now);
     return;
   }
 
@@ -6113,6 +6598,10 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * v1.6.3.10-v2 - FIX Issue #1: Always fetch CURRENT storage state, not just on hash mismatch
  * v1.6.3.11-v3 - FIX CodeScene: Reduce complexity by extracting helpers
  * v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+ * v1.6.4 - FIX BUG #1/#2: Skip storage reload when fresh port data exists
+ *   - Port data is the source of truth for Option 4 architecture
+ *   - Storage may not reflect transfer/duplicate operations immediately
+ *   - Only reload from storage if port data is stale or empty
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
@@ -6120,18 +6609,105 @@ async function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
+  // v1.6.4 - FIX BUG #1/#2: Skip storage reload when port data is fresh
+  if (_isPortDataFresh()) {
+    return _handleFreshPortData(inMemoryHash, debounceWaitTime);
+  }
+
+  return _checkStorageForStaleState(inMemoryHash, debounceWaitTime);
+}
+
+/**
+ * Check if port data is fresh (received after debounce was set)
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4.1 - FIX BUG: Port data should ALWAYS be considered fresh if it exists
+ *   The timing comparison (lastEventReceivedTime > debounceSetTimestamp) was flawed because
+ *   requestAnimationFrame callbacks can run AFTER the port message handler completes,
+ *   making debounceSetTimestamp newer than lastEventReceivedTime even though port data is valid.
+ *   In Option 4 architecture, port data is the source of truth - if it exists, use it.
+ *
+ * @private
+ * @returns {boolean} True if port data exists (source of truth in Option 4 architecture)
+ */
+function _isPortDataFresh() {
+  const hasPortData = _allQuickTabsFromPort?.length > 0;
+
+  // v1.6.4.1 - FIX: Simplified check - if we have port data, it's authoritative
+  // The previous timing comparison was flawed due to requestAnimationFrame timing
+  if (hasPortData) {
+    console.log('[Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh', {
+      portTabCount: _allQuickTabsFromPort.length,
+      lastEventReceivedTime,
+      debounceSetTimestamp,
+      note: 'Port data is source of truth in Option 4 architecture'
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Handle case when port data is fresh - skip storage reload
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * v1.6.4.1 - Updated logging to reflect simplified freshness check
+ * @private
+ */
+function _handleFreshPortData(inMemoryHash, debounceWaitTime) {
+  console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth', {
+    portTabCount: _allQuickTabsFromPort.length,
+    lastEventReceivedTime,
+    debounceSetTimestamp,
+    note: 'Option 4 architecture: port data is authoritative'
+  });
+  return _buildStaleCheckResult(false, inMemoryHash, inMemoryHash, debounceWaitTime);
+}
+
+/**
+ * Check storage for stale state and reload if needed
+ * v1.6.4 - FIX BUG #1/#2: Extracted to reduce _checkAndReloadStaleState complexity
+ * @private
+ */
+/**
+ * Check if port data takes precedence over storage
+ * v1.6.4 - FIX Code Health: Extracted to reduce _checkStorageForStaleState complexity
+ * @private
+ * @param {Object} storageState - Storage state
+ * @param {number} inMemoryHash - In-memory state hash
+ * @param {number} storageHash - Storage state hash
+ * @returns {boolean} True if port data should be used instead
+ */
+function _shouldSkipStorageOverwrite(storageState, inMemoryHash, storageHash) {
+  if (!_allQuickTabsFromPort || _allQuickTabsFromPort.length === 0) {
+    return false;
+  }
+
+  console.log('[Manager] STALE_CHECK_SKIPPED: Port data exists, not overwriting with storage', {
+    portTabCount: _allQuickTabsFromPort.length,
+    storageTabCount: storageState?.tabs?.length ?? 0,
+    inMemoryHash,
+    storageHash
+  });
+  return true;
+}
+
+async function _checkStorageForStaleState(inMemoryHash, debounceWaitTime) {
   try {
-    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
     const freshResult = await browser.storage.local.get(STATE_KEY);
     const storageState = freshResult?.[STATE_KEY];
     const storageHash = computeStateHash(storageState || {});
 
-    // Compare in-memory state against storage state
+    // State matches - no stale check needed
     if (storageHash === inMemoryHash) {
       return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
     }
 
-    // Storage has different state - reload it
+    // Port data is authoritative - don't overwrite
+    if (_shouldSkipStorageOverwrite(storageState, inMemoryHash, storageHash)) {
+      return _buildStaleCheckResult(false, inMemoryHash, storageHash, debounceWaitTime);
+    }
+
+    // Reload from storage (fallback mode)
     _applyFreshStorageState(storageState, inMemoryHash, storageHash);
     return _buildStaleCheckResult(true, inMemoryHash, storageHash, debounceWaitTime);
   } catch (err) {
@@ -6198,6 +6774,35 @@ function _renderUIImmediate_force() {
     clearTimeout(renderDebounceTimer);
     renderDebounceTimer = null;
   }
+  requestAnimationFrame(() => {
+    _renderUIImmediate();
+  });
+}
+
+/**
+ * Force immediate render with reason logging (bypasses debounce)
+ * v1.6.4 - FIX BUG #1: Used for critical updates like transfer operations
+ * @private
+ * @param {string} reason - Reason for forcing render (for logging)
+ */
+function _forceImmediateRender(reason) {
+  console.log('[Manager] FORCE_IMMEDIATE_RENDER:', {
+    reason,
+    timestamp: Date.now(),
+    previousPendingRender: pendingRenderUI,
+    previousDebounceTimer: !!renderDebounceTimer
+  });
+
+  // Clear any pending debounced render
+  pendingRenderUI = false;
+  if (renderDebounceTimer) {
+    clearTimeout(renderDebounceTimer);
+    renderDebounceTimer = null;
+  }
+  debounceStartTimestamp = 0;
+  debounceExtensionCount = 0;
+
+  // Force immediate render
   requestAnimationFrame(() => {
     _renderUIImmediate();
   });
@@ -6347,27 +6952,31 @@ async function _executeRenderUIInternal() {
   _showContentState();
   const groupStartTime = Date.now();
   const groups = groupQuickTabsByOriginTab(allTabs);
+  // v1.6.4 - FIX BUG #4: Apply user's preferred group order
+  const orderedGroups = _applyUserGroupOrder(groups);
   const groupDuration = Date.now() - groupStartTime;
 
   const collapseStateStartTime = Date.now();
   const collapseState = await loadCollapseState();
   const collapseStateDuration = Date.now() - collapseStateStartTime;
 
-  _logGroupRendering(groups);
+  _logGroupRendering(orderedGroups);
 
   // v1.6.3.6-v11 - FIX Issue #20: Clean up stale count tracking
-  const currentGroupKeys = new Set([...groups.keys()].map(String));
+  const currentGroupKeys = new Set([...orderedGroups.keys()].map(String));
   cleanupPreviousGroupCounts(currentGroupKeys);
 
   const domStartTime = Date.now();
-  const groupsContainer = await _buildGroupsContainer(groups, collapseState);
-  checkAndRemoveEmptyGroups(groupsContainer, groups);
+  const groupsContainer = await _buildGroupsContainer(orderedGroups, collapseState);
+  checkAndRemoveEmptyGroups(groupsContainer, orderedGroups);
 
   // v1.6.3.12-v13 - FIX Bug #2: Use replaceChildren() for atomic DOM swap
   // replaceChildren() removes all children AND appends new ones in a single operation,
   // eliminating the visual gap/flicker that occurs with innerHTML='' followed by appendChild()
   containersList.replaceChildren(groupsContainer);
   attachCollapseEventListeners(groupsContainer, collapseState);
+  // v1.6.4 - FEATURE #2/#3/#5: Attach drag-and-drop event listeners (delegated to DragDropManager)
+  _attachDragDropListeners(groupsContainer);
   const domDuration = Date.now() - domStartTime;
 
   // v1.6.3.7 - FIX Issue #3: Update hash tracker after successful render
@@ -6493,9 +7102,24 @@ async function _buildGroupsContainer(groups, collapseState) {
 
 /**
  * Get sorted group keys (orphaned last, closed before orphaned)
+ * v1.6.4 - FIX BUG #4: Respect user-defined order from orderedGroups Map
+ * If _userGroupOrder is set, preserve Map iteration order (which _applyUserGroupOrder set)
+ * Only apply the orphaned/closed sorting for NEW groups not in user order
+ * v1.6.4 - Code Health: Uses _getUserGroupOrder() from OrderManager
  * @private
  */
 function _getSortedGroupKeys(groups) {
+  // v1.6.4 - FIX BUG #4: If user has defined an order, preserve Map iteration order
+  // The Map was already ordered by _applyUserGroupOrder() - we only need to move orphaned to end
+  const userOrder = _getUserGroupOrder();
+  if (userOrder && userOrder.length > 0) {
+    const keys = [...groups.keys()];
+    // v1.6.4 - FIX Code Review: Use filter for cleaner partition
+    const regular = keys.filter(k => k !== 'orphaned');
+    const orphaned = keys.filter(k => k === 'orphaned');
+    return regular.concat(orphaned);
+  }
+  // Default behavior when no user order is set
   return [...groups.keys()].sort((a, b) => _compareGroupKeys(a, b, groups));
 }
 
@@ -6533,9 +7157,18 @@ async function _fetchMissingTabInfo(sortedGroupKeys, groups) {
 
 /**
  * Re-sort group keys after fetching tab info
+ * v1.6.4 - FIX BUG #3: Only re-sort if user hasn't defined a custom order
+ * v1.6.4 - Code Health: Uses _getUserGroupOrder() from OrderManager
  * @private
  */
 function _resortGroupKeys(sortedGroupKeys, groups) {
+  // v1.6.4 - FIX BUG #3: Don't re-sort if user has defined a custom order
+  // The user's order should be preserved - only move orphaned groups to end
+  const userOrder = _getUserGroupOrder();
+  if (userOrder && userOrder.length > 0) {
+    console.log('[Manager] RESORT_SKIPPED: User group order is defined, preserving user order');
+    return;
+  }
   sortedGroupKeys.sort((a, b) => _compareGroupKeys(a, b, groups));
 }
 
@@ -6606,8 +7239,9 @@ function renderTabGroup(groupKey, group, collapseState) {
   details.open = collapseState[groupKey] !== true;
 
   // Build header and content
+  // v1.6.4 - FIX BUG #3: Pass groupKey to apply user's Quick Tab order
   const summary = _createGroupHeader(groupKey, group, isOrphaned, isClosedTab);
-  const content = _createGroupContent(group.quickTabs, details.open);
+  const content = _createGroupContent(group.quickTabs, details.open, groupKey);
 
   details.appendChild(summary);
   details.appendChild(content);
@@ -6674,7 +7308,118 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
   animateCountBadgeIfChanged(groupKey, group.quickTabs.length, count);
   summary.appendChild(count);
 
+  // v1.6.4 - FEATURE #4: Add group action buttons (Go to Tab, Close All in Tab)
+  const groupActions = _createGroupActions(groupKey, isOrphaned);
+  summary.appendChild(groupActions);
+
   return summary;
+}
+
+/**
+ * Create group action buttons (Go to Tab, Close All in Tab)
+ * v1.6.4 - FEATURE #4: New tab buttons for each group header
+ * @private
+ * @param {number|string} groupKey - Group key (origin tab ID)
+ * @param {boolean} isOrphaned - Whether this is the orphaned group
+ * @returns {HTMLElement} Container with action buttons
+ */
+function _createGroupActions(groupKey, isOrphaned) {
+  const actionsContainer = document.createElement('div');
+  actionsContainer.className = 'tab-group-actions';
+
+  // Don't add actions for orphaned group
+  if (isOrphaned) {
+    return actionsContainer;
+  }
+
+  // Go to Tab button - switches to this browser tab
+  const goToTabBtn = document.createElement('button');
+  goToTabBtn.className = 'btn-icon btn-go-to-tab';
+  goToTabBtn.textContent = '🔗';
+  goToTabBtn.title = `Go to Tab ${groupKey}`;
+  goToTabBtn.dataset.action = 'goToTab';
+  goToTabBtn.dataset.tabId = String(groupKey);
+  goToTabBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleGoToTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(goToTabBtn);
+
+  // Close All in Tab button - closes all Quick Tabs in this group
+  const closeAllBtn = document.createElement('button');
+  closeAllBtn.className = 'btn-icon btn-close-all-in-tab';
+  closeAllBtn.textContent = '🗑️';
+  closeAllBtn.title = `Close all Quick Tabs in Tab ${groupKey}`;
+  closeAllBtn.dataset.action = 'closeAllInTab';
+  closeAllBtn.dataset.tabId = String(groupKey);
+  closeAllBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleCloseAllInTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(closeAllBtn);
+
+  return actionsContainer;
+}
+
+/**
+ * Handle "Go to Tab" button click - switches to the browser tab
+ * v1.6.4 - FEATURE #4: Navigate to browser tab
+ * @private
+ * @param {number|string} tabId - The browser tab ID to switch to
+ */
+async function _handleGoToTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] GO_TO_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    await browser.tabs.update(numTabId, { active: true });
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId });
+  } catch (err) {
+    console.error('[Manager] GO_TO_TAB_FAILED:', {
+      tabId: numTabId,
+      error: err.message
+    });
+    // Tab might have been closed
+    _showErrorNotification(`Cannot switch to tab: ${err.message}`);
+  }
+}
+
+/**
+ * Handle "Close All in Tab" button click - closes all Quick Tabs in this group
+ * v1.6.4 - FEATURE #4: Close all Quick Tabs in a specific tab group
+ * @private
+ * @param {number|string} tabId - The browser tab ID whose Quick Tabs to close
+ */
+function _handleCloseAllInTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] CLOSE_ALL_IN_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  // Get all Quick Tabs for this origin tab
+  const quickTabsInGroup = _allQuickTabsFromPort.filter(qt => qt.originTabId === numTabId);
+
+  if (quickTabsInGroup.length === 0) {
+    console.log('[Manager] CLOSE_ALL_IN_TAB_NO_TABS:', { tabId: numTabId });
+    return;
+  }
+
+  console.log('[Manager] CLOSE_ALL_IN_TAB_SENDING:', {
+    tabId: numTabId,
+    count: quickTabsInGroup.length,
+    quickTabIds: quickTabsInGroup.map(qt => qt.id)
+  });
+
+  // Close each Quick Tab via port
+  for (const qt of quickTabsInGroup) {
+    closeQuickTabViaPort(qt.id);
+  }
 }
 
 /**
@@ -6705,22 +7450,23 @@ function _createGroupTitle(groupKey, group, isOrphaned, _isClosedTab) {
  * Create group content element with Quick Tab items
  * Issue #2: Removed inline maxHeight initialization - CSS handles initial state
  * Issue #6: Added logging for section header creation
+ * v1.6.4 - FIX BUG #3: Apply user's preferred Quick Tab order before rendering
  * @private
  * @param {Array} quickTabs - Array of Quick Tab objects
  * @param {boolean} isOpen - Whether group starts open
+ * @param {string|number} originTabId - Origin tab ID for applying user ordering
  * @returns {HTMLElement}
  */
-function _createGroupContent(quickTabs, isOpen) {
+function _createGroupContent(quickTabs, isOpen, originTabId) {
   const content = document.createElement('div');
   content.className = 'tab-group-content';
 
-  // Sort: active first, then minimized
-  const sortedTabs = [...quickTabs].sort((a, b) => {
-    return (isTabMinimizedHelper(a) ? 1 : 0) - (isTabMinimizedHelper(b) ? 1 : 0);
-  });
+  // v1.6.4 - FIX BUG #3: Apply user's preferred Quick Tab order first
+  const orderedTabs = _applyUserQuickTabOrder(quickTabs, originTabId);
 
-  const activeTabs = sortedTabs.filter(t => !isTabMinimizedHelper(t));
-  const minimizedTabs = sortedTabs.filter(t => isTabMinimizedHelper(t));
+  // Sort: active first, then minimized (preserving user order within each category)
+  const activeTabs = orderedTabs.filter(t => !isTabMinimizedHelper(t));
+  const minimizedTabs = orderedTabs.filter(t => isTabMinimizedHelper(t));
   const hasBothSections = activeTabs.length > 0 && minimizedTabs.length > 0;
 
   // Issue #6: Log section creation with counts before DOM insertion
@@ -6860,6 +7606,123 @@ function attachCollapseEventListeners(container, collapseState) {
     });
   }
 }
+
+// ==================== v1.6.4 DRAG AND DROP ====================
+// FEATURE #2, #3, #5: Drag-and-Drop Reordering and Cross-Tab Transfer
+// v1.6.4 - Code Health: Delegated to DragDropManager.js module
+
+/**
+ * Initialize drag-and-drop functionality
+ * v1.6.4 - Delegates to DragDropManager module
+ * @private
+ */
+async function _initDragDrop() {
+  await initializeDragDrop();
+}
+
+// Initialize drag-drop on module load
+_initDragDrop();
+
+/**
+ * Wrapper to attach drag-and-drop event listeners using DragDropManager
+ * v1.6.4 - Code Health: Delegates to DragDropManager module with callbacks
+ * @param {HTMLElement} container - Container with tab groups
+ */
+function _attachDragDropListeners(container) {
+  attachDragDropEventListeners(container, {
+    // Callback to get Quick Tab data by ID
+    getQuickTabData: quickTabId => {
+      return _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
+    },
+    // Callback to save group order after reorder
+    saveGroupOrder: containerEl => {
+      saveUserGroupOrder(containerEl);
+    },
+    // Callback to save Quick Tab order after reorder within group
+    saveQuickTabOrder: (originTabId, groupElement) => {
+      saveUserQuickTabOrder(originTabId, groupElement);
+    },
+    // Callback to transfer Quick Tab to another tab
+    transferQuickTab: (quickTabId, newOriginTabId) => {
+      _transferQuickTabToTab(quickTabId, newOriginTabId);
+    },
+    // Callback to duplicate Quick Tab to another tab
+    duplicateQuickTab: (quickTabData, newOriginTabId) => {
+      _duplicateQuickTabToTab(quickTabData, newOriginTabId);
+    }
+  });
+}
+
+/**
+ * Transfer a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #3: Cross-tab transfer via port message
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to transfer
+ * @param {number} newOriginTabId - New origin tab ID
+ */
+function _transferQuickTabToTab(quickTabId, newOriginTabId) {
+  console.log('[Manager] TRANSFER_QUICK_TAB: Sending port message', {
+    quickTabId,
+    newOriginTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    const success = _executeSidebarPortOperation('TRANSFER_QUICK_TAB', {
+      quickTabId,
+      newOriginTabId
+    });
+
+    if (success) {
+      console.log('[Manager] TRANSFER_QUICK_TAB: Message sent successfully');
+    } else {
+      console.error('[Manager] TRANSFER_QUICK_TAB: Failed to send message');
+    }
+  } catch (err) {
+    console.error('[Manager] TRANSFER_QUICK_TAB: Error:', err.message);
+  }
+}
+
+/**
+ * Duplicate a Quick Tab to a different browser tab
+ * v1.6.4 - FEATURE #5: Shift+drag duplicate via port message
+ * @private
+ * @param {Object} quickTabData - Quick Tab data to duplicate
+ * @param {number} newOriginTabId - Target origin tab ID
+ */
+function _duplicateQuickTabToTab(quickTabData, newOriginTabId) {
+  console.log('[Manager] DUPLICATE_QUICK_TAB: Sending port message', {
+    sourceQuickTabId: quickTabData.id,
+    newOriginTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Create a new Quick Tab with same properties but new ID and origin
+    const duplicateData = {
+      url: quickTabData.url,
+      title: quickTabData.title,
+      left: quickTabData.left,
+      top: quickTabData.top,
+      width: quickTabData.width,
+      height: quickTabData.height,
+      minimized: quickTabData.minimized,
+      newOriginTabId
+    };
+
+    const success = _executeSidebarPortOperation('DUPLICATE_QUICK_TAB', duplicateData);
+
+    if (success) {
+      console.log('[Manager] DUPLICATE_QUICK_TAB: Message sent successfully');
+    } else {
+      console.error('[Manager] DUPLICATE_QUICK_TAB: Failed to send message');
+    }
+  } catch (err) {
+    console.error('[Manager] DUPLICATE_QUICK_TAB: Error:', err.message);
+  }
+}
+
+// ==================== END DRAG AND DROP ====================
 
 /**
  * Render a single Quick Tab item
@@ -7032,16 +7895,33 @@ function _buildTabActionContext(tab, isMinimized) {
 
 /**
  * Append action buttons for active (non-minimized) tabs
+ * v1.6.4 - FEATURE #6: Added "Open in New Tab" button
+ * v1.6.4 - FIX: Replaced "Go to Tab" with "Move to Current Tab" per user request
  * @private
  */
 function _appendActiveTabActions(actions, tab, context) {
-  // Go to Tab button
-  if (tab.activeTabId) {
-    const goToTabBtn = _createActionButton('🔗', `Go to Tab ${tab.activeTabId}`, {
-      action: 'goToTab',
-      tabId: tab.activeTabId
+  // v1.6.4 - FEATURE #6: Open in New Tab button
+  const openInTabBtn = _createActionButton('↗️', 'Open in New Tab', {
+    action: 'openInNewTab',
+    quickTabId: tab.id,
+    url: tab.url
+  });
+  openInTabBtn.classList.add('btn-open-in-tab');
+  actions.appendChild(openInTabBtn);
+
+  // v1.6.4 - FIX: Replaced "Go to Tab" with "Move to Current Tab" button
+  // This moves the Quick Tab to the current active browser tab
+  // If modifier key is held, it duplicates instead of moving
+  if (tab.originTabId) {
+    const moveToCurrentTabBtn = _createActionButton('📥', 'Move to Current Tab', {
+      action: 'moveToCurrentTab',
+      quickTabId: tab.id,
+      originTabId: tab.originTabId,
+      url: tab.url,
+      title: tab.title
     });
-    actions.appendChild(goToTabBtn);
+    moveToCurrentTabBtn.classList.add('btn-move-to-current-tab');
+    actions.appendChild(moveToCurrentTabBtn);
   }
 
   // Minimize button
@@ -7060,9 +7940,19 @@ function _appendActiveTabActions(actions, tab, context) {
 
 /**
  * Append action buttons for minimized tabs
+ * v1.6.4 - FEATURE #6: Added "Open in New Tab" button
  * @private
  */
 function _appendMinimizedTabActions(actions, tab, context) {
+  // v1.6.4 - FEATURE #6: Open in New Tab button (also available for minimized tabs)
+  const openInTabBtn = _createActionButton('↗️', 'Open in New Tab', {
+    action: 'openInNewTab',
+    quickTabId: tab.id,
+    url: tab.url
+  });
+  openInTabBtn.classList.add('btn-open-in-tab');
+  actions.appendChild(openInTabBtn);
+
   const restoreBtn = _createActionButton('↑', 'Restore', {
     action: 'restore',
     quickTabId: tab.id
@@ -7503,67 +8393,195 @@ async function _dispatchQuickTabAction(options) {
     return;
   }
 
-  switch (action) {
-    case 'goToTab':
-      console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
-      await goToTab(parseInt(tabId));
-      console.log('[Manager] ACTION_COMPLETE: goToTab', {
-        tabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'minimize':
-      console.log('[Manager] ACTION_DISPATCH: minimize via port', {
+  // v1.6.4 - Refactored to dispatch table for reduced line count
+  const dispatcher = _getActionDispatcher(action);
+  if (dispatcher) {
+    await dispatcher({ quickTabId, tabId, button, clickTimestamp });
+  } else {
+    console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
+  }
+}
+
+/**
+ * Get action dispatcher function for a given action type
+ * v1.6.4 - Extracted from _dispatchQuickTabAction to reduce function length
+ * v1.6.4 - Added moveToCurrentTab action
+ * @private
+ */
+function _getActionDispatcher(action) {
+  const dispatchers = {
+    goToTab: _dispatchGoToTab,
+    openInNewTab: _dispatchOpenInNewTab,
+    minimize: _dispatchMinimize,
+    restore: _dispatchRestore,
+    close: _dispatchClose,
+    adoptToCurrentTab: _dispatchAdoptToCurrentTab,
+    moveToCurrentTab: _dispatchMoveToCurrentTab
+  };
+  return dispatchers[action];
+}
+
+async function _dispatchGoToTab({ tabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
+  await goToTab(parseInt(tabId));
+  console.log('[Manager] ACTION_COMPLETE: goToTab', {
+    tabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+async function _dispatchOpenInNewTab({ quickTabId, button, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: openInNewTab', {
+    quickTabId,
+    url: button.dataset.url,
+    timestamp: Date.now()
+  });
+  await _handleOpenInNewTab(button.dataset.url, quickTabId);
+  console.log('[Manager] ACTION_COMPLETE: openInNewTab', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+function _dispatchMinimize({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: minimize via port', {
+    quickTabId,
+    timestamp: Date.now()
+  });
+  minimizeQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: minimize', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+function _dispatchRestore({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: restore via port', { quickTabId, timestamp: Date.now() });
+  restoreQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: restore', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+function _dispatchClose({ quickTabId, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: close via port', { quickTabId, timestamp: Date.now() });
+  closeQuickTabViaPort(quickTabId);
+  console.log('[Manager] ACTION_SENT: close', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }) {
+  console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
+    quickTabId,
+    targetTabId: button.dataset.targetTabId,
+    timestamp: Date.now()
+  });
+  await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
+  console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
+    quickTabId,
+    durationMs: Date.now() - clickTimestamp
+  });
+}
+
+/**
+ * Dispatch "Move to Current Tab" action
+ * v1.6.4 - FIX: Replacement for "Go to Tab" - moves Quick Tab to current active tab
+ * NOTE: Button click always moves. Use drag-and-drop with Shift key to duplicate.
+ * @private
+ */
+async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp }) {
+  const originTabId = parseInt(button.dataset.originTabId, 10);
+
+  console.log('[Manager] ACTION_DISPATCH: moveToCurrentTab', {
+    quickTabId,
+    originTabId,
+    timestamp: Date.now()
+  });
+
+  try {
+    // Get the current active browser tab
+    const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
+
+    if (!activeTab) {
+      console.error('[Manager] MOVE_TO_CURRENT_TAB: No active tab found');
+      _showErrorNotification('Cannot move: No active tab found');
+      return;
+    }
+
+    const currentTabId = activeTab.id;
+
+    // Don't move if already on the same tab
+    if (originTabId === currentTabId) {
+      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab, no action needed', {
         quickTabId,
-        timestamp: Date.now()
+        tabId: currentTabId
       });
-      minimizeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: minimize', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'restore':
-      console.log('[Manager] ACTION_DISPATCH: restore via port', {
-        quickTabId,
-        timestamp: Date.now()
-      });
-      restoreQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: restore', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'close':
-      console.log('[Manager] ACTION_DISPATCH: close via port', {
-        quickTabId,
-        timestamp: Date.now()
-      });
-      closeQuickTabViaPort(quickTabId);
-      console.log('[Manager] ACTION_SENT: close', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    case 'adoptToCurrentTab':
-      console.log('[Manager] ACTION_DISPATCH: adoptToCurrentTab', {
-        quickTabId,
-        targetTabId: button.dataset.targetTabId,
-        timestamp: Date.now()
-      });
-      await adoptQuickTabToCurrentTab(quickTabId, parseInt(button.dataset.targetTabId));
-      console.log('[Manager] ACTION_COMPLETE: adoptToCurrentTab', {
-        quickTabId,
-        durationMs: Date.now() - clickTimestamp
-      });
-      break;
-    default:
-      console.warn('[Manager] UNKNOWN_ACTION:', {
-        action,
-        quickTabId,
-        tabId,
-        timestamp: Date.now()
-      });
+      return;
+    }
+
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Operation', {
+      quickTabId,
+      fromTabId: originTabId,
+      toTabId: currentTabId
+    });
+
+    // Button click always moves (use drag-and-drop with modifier key to duplicate)
+    _transferQuickTabToTab(quickTabId, currentTabId);
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
+      quickTabId,
+      toTabId: currentTabId
+    });
+
+    console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
+      quickTabId,
+      durationMs: Date.now() - clickTimestamp
+    });
+  } catch (err) {
+    console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', {
+      quickTabId,
+      error: err.message
+    });
+    _showErrorNotification(`Failed to move Quick Tab: ${err.message}`);
+  }
+}
+
+/**
+ * Handle "Open in New Tab" action from Manager
+ * v1.6.4 - FEATURE #6: Open Quick Tab URL in new browser tab via Manager
+ * @private
+ * @param {string} url - URL to open
+ * @param {string} quickTabId - Quick Tab ID for logging
+ */
+async function _handleOpenInNewTab(url, quickTabId) {
+  if (!url) {
+    console.error('[Manager] OPEN_IN_NEW_TAB_NO_URL:', { quickTabId });
+    _showErrorNotification('Cannot open: URL not available');
+    return;
+  }
+
+  try {
+    // Use the same mechanism as the Quick Tab UI button
+    const response = await browser.runtime.sendMessage({
+      action: 'openTab',
+      url: url,
+      switchFocus: true
+    });
+
+    console.log('[Manager] OPEN_IN_NEW_TAB_SUCCESS:', {
+      quickTabId,
+      url,
+      tabId: response?.tabId
+    });
+  } catch (err) {
+    console.error('[Manager] OPEN_IN_NEW_TAB_FAILED:', {
+      quickTabId,
+      url,
+      error: err.message
+    });
+    _showErrorNotification(`Failed to open URL: ${err.message}`);
   }
 }
 

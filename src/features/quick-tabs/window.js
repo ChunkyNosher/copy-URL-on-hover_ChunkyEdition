@@ -42,6 +42,16 @@ const DEFAULT_HEIGHT = 300;
 const DEFAULT_LEFT = 100;
 const DEFAULT_TOP = 100;
 
+// v1.6.4 - FIX Code Review: Extract magic numbers into named constants
+// Maximum z-index value to ensure overlay is always on top of iframe content
+const MAX_OVERLAY_Z_INDEX = 2147483646;
+// v1.6.4 - FIX BUG #2: OVERLAY_REACTIVATION_DELAY_MS removed (no longer used)
+// The overlay is now re-enabled via focusout and mouseleave events instead of a fixed timeout
+
+// v1.6.4 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
+// This avoids polluting the DOM API by not adding properties to document objects
+const _iframeDocsWithFocusListeners = new WeakSet();
+
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
  */
@@ -97,12 +107,16 @@ export class QuickTabWindow {
    * Initialize visibility-related properties (minimized state)
    * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
    * v1.6.3.12 - Removed Solo/Mute functionality
+   * v1.6.4 - FIX BUG #2: Added skipInitialOverlay option for transferred Quick Tabs
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
     // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
     // This removes tight coupling to window.quickTabsManager.currentTabId
     this.currentTabId = options.currentTabId ?? null;
+    // v1.6.4 - FIX BUG #2: Flag to skip initial overlay for transferred Quick Tabs
+    // When a Quick Tab is transferred, it should be immediately interactive without requiring a click first
+    this.skipInitialOverlay = options.skipInitialOverlay ?? false;
   }
 
   /**
@@ -320,6 +334,11 @@ export class QuickTabWindow {
     this.titlebarBuilder.config.iframe = this.iframe;
     this.setupIframeLoadHandler();
 
+    // v1.6.4 - FIX BUG #1: Add click overlay for cross-origin iframe click detection
+    if (this.clickOverlay) {
+      this.container.appendChild(this.clickOverlay);
+    }
+
     // Step 5: Add to document and mark as rendered
     document.body.appendChild(this.container);
     this.rendered = true;
@@ -506,14 +525,34 @@ export class QuickTabWindow {
         onMinimize: () => this.minimize(),
         onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-          await browser.runtime.sendMessage({
-            action: 'openTab',
+          console.log('[QuickTabWindow] onOpenInTab: Opening URL in new tab', {
+            id: this.id,
             url: currentSrc,
-            switchFocus: true
+            timestamp: Date.now()
           });
-          const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
-          if (settings.quickTabCloseOnOpen) {
-            this.destroy();
+
+          try {
+            const response = await browser.runtime.sendMessage({
+              action: 'openTab',
+              url: currentSrc,
+              switchFocus: true
+            });
+            console.log('[QuickTabWindow] onOpenInTab: Tab opened successfully', {
+              id: this.id,
+              response,
+              timestamp: Date.now()
+            });
+
+            const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
+            if (settings.quickTabCloseOnOpen) {
+              this.destroy();
+            }
+          } catch (err) {
+            console.error('[QuickTabWindow] onOpenInTab: Failed to open tab', {
+              id: this.id,
+              url: currentSrc,
+              error: err.message
+            });
           }
         }
       }
@@ -541,6 +580,125 @@ export class QuickTabWindow {
       sandbox:
         'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
       allow: 'picture-in-picture; fullscreen'
+    });
+
+    // v1.6.4 - FIX BUG #1: Add click overlay that brings window to front on first click
+    // The overlay captures clicks until the window is focused, then becomes transparent to pointer events
+    this._createClickOverlay();
+  }
+
+  /**
+   * Create a transparent click overlay for iframe click detection
+   * v1.6.4 - FIX BUG #1: Click to bring Quick Tab to front
+   * v1.6.4 - IMPROVED: Enhanced overlay positioning and z-index
+   * v1.6.4 - FIX BUG #2: Keep overlay disabled while window is focused
+   * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+   * This overlay captures clicks on the iframe area and brings the window to front.
+   * After the window is focused, subsequent clicks pass through to the iframe.
+   * The overlay is re-enabled when the window loses focus (focusout or mouseleave).
+   * @private
+   */
+  _createClickOverlay() {
+    // v1.6.4 - FIX BUG #2: Transferred Quick Tabs start with overlay disabled
+    // so they're immediately interactive without requiring a click first
+    const initialPointerEvents = this.skipInitialOverlay ? 'none' : 'auto';
+
+    this.clickOverlay = createElement('div', {
+      className: 'quick-tab-click-overlay',
+      style: {
+        position: 'absolute',
+        top: '40px', // Below titlebar
+        left: '0',
+        right: '0',
+        bottom: '0',
+        // v1.6.4 - FIX BUG #1: Higher z-index to ensure overlay is above iframe
+        zIndex: String(MAX_OVERLAY_Z_INDEX), // Use named constant for clarity
+        cursor: 'pointer',
+        backgroundColor: 'transparent',
+        // v1.6.4 - FIX BUG #2: Use computed initial pointer-events
+        pointerEvents: initialPointerEvents
+      }
+    });
+
+    // v1.6.4 - FIX Code Review: Remove debug log for production
+    // skipInitialOverlay flag is checked silently
+
+    // On mousedown, bring window to front and hide overlay temporarily
+    this.clickOverlay.addEventListener('mousedown', e => {
+      console.log('[QuickTabWindow] Click overlay mousedown - bringing to front:', this.id);
+
+      // v1.6.4 - FIX BUG #1: Call onFocus to bring to front
+      if (typeof this.onFocus === 'function') {
+        this.onFocus(this.id);
+      }
+
+      // After bringing to front, let the click pass through to iframe
+      // v1.6.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
+      this.clickOverlay.style.pointerEvents = 'none';
+
+      // v1.6.4 - FIX BUG #1: Re-dispatch the event to the iframe underneath
+      // Store event coordinates for pass-through
+      const x = e.clientX;
+      const y = e.clientY;
+
+      // Use setTimeout to allow the pointer-events change to take effect
+      setTimeout(() => {
+        // Get element at point now that overlay has pointer-events: none
+        const elementBelow = document.elementFromPoint(x, y);
+        if (elementBelow && elementBelow !== this.clickOverlay) {
+          // Dispatch a synthetic click to the element below with all relevant properties
+          const syntheticEvent = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: e.button,
+            // v1.6.4 - FIX Code Review: Copy additional mouse event properties
+            buttons: e.buttons,
+            ctrlKey: e.ctrlKey,
+            shiftKey: e.shiftKey,
+            altKey: e.altKey,
+            metaKey: e.metaKey
+          });
+          elementBelow.dispatchEvent(syntheticEvent);
+        }
+      }, 0);
+
+      // v1.6.4 - FIX BUG #2: Removed the 500ms setTimeout that re-enabled pointer-events
+      // The overlay is now re-enabled via focusout and mouseleave listeners below
+    });
+
+    // Also handle pointerdown for touch devices
+    this.clickOverlay.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') {
+        console.log('[QuickTabWindow] Click overlay touch - bringing to front:', this.id);
+        if (typeof this.onFocus === 'function') {
+          this.onFocus(this.id);
+        }
+        // v1.6.4 - FIX BUG #2: Keep pointer-events: none while focused (no setTimeout re-enable)
+        this.clickOverlay.style.pointerEvents = 'none';
+        // v1.6.4 - FIX BUG #2: Removed the 500ms setTimeout
+        // The overlay is now re-enabled via focusout and mouseleave listeners below
+      }
+    });
+
+    // v1.6.4 - FIX BUG #2: Re-enable overlay when focus leaves the Quick Tab window
+    // This ensures the overlay captures clicks when user returns to this window
+    this.container.addEventListener('focusout', e => {
+      // Only re-enable if focus is leaving the container entirely (not moving within it)
+      if (this.clickOverlay && !this.destroyed && !this.container.contains(e.relatedTarget)) {
+        console.log('[QuickTabWindow] Focus left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
+      }
+    });
+
+    // v1.6.4 - FIX BUG #2: Also re-enable when mouse leaves the container
+    // This handles the case where user moves mouse out without clicking elsewhere
+    this.container.addEventListener('mouseleave', () => {
+      if (this.clickOverlay && !this.destroyed) {
+        console.log('[QuickTabWindow] Mouse left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
+      }
     });
   }
 
@@ -729,11 +887,65 @@ export class QuickTabWindow {
 
   /**
    * Setup focus handlers
+   * v1.6.4 - FIX BUG #2: Use capture phase AND transparent overlay for iframe clicks
+   * The mousedown event on container can be intercepted by iframe content in cross-origin scenarios.
+   * Using capture: true helps, but for cross-origin iframes we need an additional overlay approach.
+   * The overlay captures the first click to bring the window to front, then allows interaction.
    */
   setupFocusHandlers() {
-    this.container.addEventListener('mousedown', () => {
-      this.onFocus(this.id);
-    });
+    // Use capture phase to intercept before iframe steals the event
+    this.container.addEventListener(
+      'mousedown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
+
+    // Also bring to front on any pointer event (for touch devices and better coverage)
+    this.container.addEventListener(
+      'pointerdown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
+
+    // v1.6.4 - FIX BUG #2: Add focus event on iframe to detect when user clicks inside
+    // When iframe gets focus, it means user clicked inside it - bring window to front
+    if (this.iframe) {
+      this.iframe.addEventListener('focus', () => {
+        console.log('[QuickTabWindow] Iframe focused - bringing to front:', this.id);
+        this.onFocus(this.id);
+      });
+
+      // v1.6.4 - FIX Code Review: Use flag to prevent duplicate load listeners
+      // This ensures the load event handler only adds mousedown listener once
+      if (!this._iframeLoadListenerAdded) {
+        this._iframeLoadListenerAdded = true;
+        this.iframe.addEventListener('load', () => {
+          // After iframe loads, add a listener for when it becomes active
+          try {
+            // Try to detect focus inside iframe for same-origin content
+            const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+            // v1.6.4 - FIX Code Review: Use WeakSet instead of polluting DOM
+            if (iframeDoc && !_iframeDocsWithFocusListeners.has(iframeDoc)) {
+              _iframeDocsWithFocusListeners.add(iframeDoc);
+              iframeDoc.addEventListener(
+                'mousedown',
+                () => {
+                  this.onFocus(this.id);
+                },
+                { capture: true }
+              );
+            }
+          } catch (_e) {
+            // Cross-origin - cannot access iframe content, which is expected
+            // The focus event handler above will still work for cross-origin
+          }
+        });
+      }
+    }
   }
 
   /**
@@ -1124,12 +1336,15 @@ export class QuickTabWindow {
   }
 
   /**
-   * Setup iframe load handler to update title
+   * Setup iframe load handler to update title and URL
    * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
+   * v1.6.3.12-v13 - FIX Bug #1: Also send URL updates to background when iframe navigates
    */
   setupIframeLoadHandler() {
     this.iframe.addEventListener('load', () => {
       this._updateTitleFromIframe();
+      // v1.6.3.12-v13 - FIX Bug #1: Notify background of URL changes for Manager update
+      this._notifyBackgroundOfUrlChange();
     });
   }
 
@@ -1191,6 +1406,86 @@ export class QuickTabWindow {
       if (this.titlebarBuilder.titleElement) {
         this.titlebarBuilder.titleElement.title = tooltip;
       }
+    }
+  }
+
+  /**
+   * Notify background of URL change when iframe navigates
+   * v1.6.3.12-v13 - FIX Bug #1: Send UPDATE_QUICK_TAB message to background
+   * when iframe URL changes so Manager displays the current URL
+   * @private
+   */
+  async _notifyBackgroundOfUrlChange() {
+    // Get the current iframe URL
+    const newUrl = this._tryGetIframeUrl();
+    if (!newUrl) {
+      return; // Cannot determine URL, skip update
+    }
+
+    // Skip if URL hasn't actually changed
+    if (newUrl === this.url) {
+      return;
+    }
+
+    // Get the new title
+    const newTitle = this._tryGetIframeTitle() || this._tryGetHostname() || this.title;
+
+    console.log('[QuickTabWindow] URL_CHANGED: Notifying background:', {
+      id: this.id,
+      oldUrl: this.url,
+      newUrl,
+      newTitle,
+      originTabId: this.originTabId
+    });
+
+    // Update local state
+    this.url = newUrl;
+
+    try {
+      // Send UPDATE_QUICK_TAB message to background
+      await browser.runtime.sendMessage({
+        type: 'UPDATE_QUICK_TAB',
+        quickTabId: this.id,
+        updates: {
+          url: newUrl,
+          title: newTitle,
+          lastUpdate: Date.now()
+        },
+        originTabId: this.originTabId,
+        source: 'QuickTabWindow.iframeLoad',
+        timestamp: Date.now()
+      });
+
+      console.log('[QuickTabWindow] URL_CHANGED: Background notified successfully:', {
+        id: this.id,
+        newUrl
+      });
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug('[QuickTabWindow] URL_CHANGED: Could not notify background:', {
+        id: this.id,
+        error: err.message
+      });
+    }
+  }
+
+  /**
+   * Try to get the current iframe URL
+   * v1.6.3.12-v13 - FIX Bug #1: Helper to safely get iframe URL
+   * @private
+   * @returns {string|null} The iframe URL or null if unavailable
+   */
+  _tryGetIframeUrl() {
+    try {
+      // Try to get URL from iframe.src first (always available)
+      if (this.iframe?.src) {
+        return this.iframe.src;
+      }
+      // Try contentWindow.location for same-origin iframes
+      return this.iframe?.contentWindow?.location?.href || null;
+    } catch (_e) {
+      // SecurityError thrown for cross-origin iframes - fall back to src attribute
+      return this.iframe?.src || null;
     }
   }
 
@@ -1425,6 +1720,8 @@ export class QuickTabWindow {
       this.container.remove();
       this.container = null;
       this.iframe = null;
+      // v1.6.4 - FIX BUG #1: Cleanup click overlay reference
+      this.clickOverlay = null;
       this.rendered = false; // v1.5.9.10 - Reset rendering state
       console.log('[QuickTabWindow] Removed DOM element');
     }
