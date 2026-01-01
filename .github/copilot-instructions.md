@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4  
+**Version:** 1.6.4-v2  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -20,44 +20,42 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4 Bug Fixes (NEW):**
+**v1.6.4-v2 Bug Fixes (NEW):**
 
-- **BUG FIX #1 & #2** - Transfer/Duplicate Quick Tabs not appearing in Manager:
-  Removed redundant `requestAllQuickTabsViaPort()` calls that caused race
-  conditions (STATE_CHANGED already contains correct state)
-- **BUG FIX #3** - Quick Tab reordering within groups resets: Added
-  `_userQuickTabOrderByGroup` map for per-group ordering with persistence
-- **BUG FIX #4** - Last Quick Tab close not reflected: Added
-  `_handleEmptyStateTransition()` helper with `_logLowQuickTabCount()`
-  monitoring
+- **BUG FIX #1d** - Quick Tab title updates from link text to actual page title
+  after iframe loads
+- **BUG FIX #2d** - "Move to Current Tab" properly appears in Manager (state
+  version race fix)
+- **BUG FIX #3d** - Last Quick Tab close reflected in Manager (forceEmpty fix in
+  VisibilityHandler)
+- **BUG FIX #4d** - Manager updates when navigating to different URL within
+  iframe
+- **BUG FIX #5d** - "Open in New Tab" closes Quick Tab after opening URL
 
-**v1.6.4 Code Health Refactoring:**
+**v1.6.4-v2 Code Health:**
 
-- **PortManager.js** - Extracted port connection, circuit breaker, validation
-  (Code Health: 9.68)
-- **RenderManager.js** - Extracted render scheduling, UI state helpers (Code
-  Health: 9.17)
-- Both modules imported into quick-tabs-manager.js for gradual migration
+- **window.js** - Code Health: 8.28 → 9.38 (10+ helpers extracted)
+- **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers extracted)
+- **StorageChangeAnalyzer.js** - New module (20 functions from
+  quick-tabs-manager.js)
 
-**v1.6.4 Features - Drag-and-Drop Manager:**
+**v1.6.4 Bug Fixes:**
 
-- **BUG FIX #1** - Click-to-Front: Quick Tabs come to front on click
-- **BUG FIX #2** - Open in New Tab: Added `openTab` to MessageRouter allowlist
-- **BUG FIX #3** - Cross-tab Transfer/Duplicate: Fixed via drag-and-drop
-- **BUG FIX #4** - Manager Reordering Persistence: Tab group order now persists
-- **BUG FIX #5** - Alt Key Modifier: Removed, default changed to Shift
-- **FEATURE #1** - Drag-and-Drop Reordering: Reorder tabs and Quick Tabs
-- **FEATURE #2** - Cross-Tab Transfer: Drag Quick Tab to another tab group
-- **FEATURE #3** - Duplicate via Shift+Drag: Hold Shift while dragging
-- **FEATURE #4** - Move to Current Tab Button: Replaces "Go to Tab" for items
-- **FEATURE #5** - Tab Group Actions: "Go to Tab" and "Close All in Tab"
-- **FEATURE #6** - Open in New Tab Button: Per Quick Tab (↗️) in Manager
-- **FEATURE #7** - Smaller count indicator with bigger number
+- **BUG FIX #1-2** - Transfer/Duplicate race fix (removed redundant port calls)
+- **BUG FIX #3** - Quick Tab reordering persistence
+  (`_userQuickTabOrderByGroup`)
+- **BUG FIX #4** - Last Quick Tab close fix (`_handleEmptyStateTransition()`)
 
-**Settings Changes:**
+**v1.6.4 Code Health:**
 
-- New "Duplicate Modifier Key" dropdown: Shift (default), Ctrl, None
-- Alt option removed (doesn't work reliably)
+- **PortManager.js** - Port connection, circuit breaker (9.68)
+- **RenderManager.js** - Render scheduling, UI helpers (9.17)
+
+**v1.6.4 Features:**
+
+- Drag-and-Drop reordering, Cross-Tab Transfer, Duplicate via Shift+Drag
+- Click-to-Front, Move to Current Tab, Tab Group Actions, Open in New Tab
+- Duplicate Modifier Key setting: Shift (default), Ctrl, None
 
 **v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
 **v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
@@ -126,35 +124,28 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4 Patterns (Current)
+### v1.6.4-v2 Patterns (Current)
 
-- **Transfer/Duplicate Race Fix** - Removed redundant
-  `requestAllQuickTabsViaPort()` calls (STATE_CHANGED already contains correct
-  state)
-- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map for
-  per-group ordering with `QUICK_TAB_ORDER_STORAGE_KEY` persistence
-- **Empty State Handling** - `_handleEmptyStateTransition()` helper for last
-  Quick Tab close scenarios with `_logLowQuickTabCount()` monitoring
-- **Order Application** - `_applyUserQuickTabOrder()` preserves order during
-  renders
-- **Order Saving** - `_saveUserQuickTabOrder()` captures DOM order after reorder
+- **Title Update Fix** - Quick Tab title updates from link text to page title
+  after iframe loads
+- **State Version Race Fix** - "Move to Current Tab" properly reflects in
+  Manager
+- **forceEmpty Fix** - VisibilityHandler correctly handles last Quick Tab close
+- **Navigation Update** - Manager updates when navigating within Quick Tab
+  iframe
+- **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
 
 ### v1.6.4 Patterns
 
-- **Drag-and-Drop Reordering** - Manager supports drag-and-drop for tabs and
-  Quick Tabs
-- **Cross-Tab Transfer** - Drag Quick Tab to another tab group to transfer
-- **Duplicate via Modifier** - Hold Shift (configurable) while dragging to
-  duplicate
-- **Move to Current Tab** - `_handleMoveToCurrentTab()` replaces "Go to Tab" for
-  items
-- **Tab Group Actions** - `_createGroupActions()` adds "Go to Tab", "Close All"
-- **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
-- **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX` constant
-- **Fallback Messaging** - `browser.tabs.sendMessage` fallback when port
-  unavailable
-- **Group Order Validation** - `_applyUserGroupOrder()` with stricter type
-  checks
+- **Transfer/Duplicate Race Fix** - Removed redundant
+  `requestAllQuickTabsViaPort()` calls
+- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map
+- **Empty State Handling** - `_handleEmptyStateTransition()` helper
+- **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via drag
+- **Cross-Tab Transfer** - Drag Quick Tab to another tab group
+- **Duplicate via Modifier** - Hold Shift while dragging
+- **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX`
+- **Fallback Messaging** - `browser.tabs.sendMessage` fallback
 
 ### v1.6.3.12-v13 Patterns
 
@@ -329,9 +320,10 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/quick-tabs-manager.js`       | Port-based queries to background           |
 | `sidebar/managers/PortManager.js`     | Port connection, circuit breaker (v1.6.4)  |
 | `sidebar/managers/RenderManager.js`   | Render scheduling, UI helpers (v1.6.4)     |
-| `sidebar/managers/DragDropManager.js` | Drag-and-drop reordering (v1.6.4)          |
-| `sidebar/managers/OrderManager.js`    | Group/Quick Tab order persistence (v1.6.4) |
-| `src/content.js`                      | Port messaging for Quick Tabs              |
+| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)            |
+| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)   |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)  |
+| `src/content.js`                            | Port messaging for Quick Tabs                |
 
 ### Storage (v1.6.3.12-v8+)
 
