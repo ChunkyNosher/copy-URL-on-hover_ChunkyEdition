@@ -1,0 +1,510 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.4-v2
+Export Date: 2026-01-01T15:59:38.146Z
+Export Date (Local): 1/1/2026, 10:59:38 AM
+First Log: 2026-01-01T15:59:32.702Z
+First Log (Local): 1/1/2026, 10:59:32 AM
+Total Logs: 172
+
+================================================================================
+[2026-01-01T15:59:32.702Z] [LOG  ] [Content] ✓ Content script loaded, starting initialization
+[2026-01-01T15:59:32.702Z] [LOG  ] [IDENTITY_INIT] SCRIPT_LOAD: Content script loaded, identity not yet initialized {
+  "timestamp": "2026-01-01T15:59:32.702Z",
+  "phase": "SCRIPT_LOAD"
+}
+[2026-01-01T15:59:32.702Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2026-01-01T15:59:32.702Z
+[2026-01-01T15:59:32.702Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2026-01-01T15:59:32.702Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2026-01-01T15:59:32.702Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2026-01-01T15:59:32.703Z] [LOG  ] [EventBus] Instance created: eventbus-1-1767283172703
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2026-01-01T15:59:32.703Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2026-01-01T15:59:32.703Z] [LOG  ] [Content] v1.6.3.12 Quick Tabs port API initialized
+[2026-01-01T15:59:32.703Z] [LOG  ] [Content] ✓ Message listener registered
+[2026-01-01T15:59:32.729Z] [LOG  ] [Copy-URL-on-Hover] ✓ Filter settings loaded (source: storage)
+[2026-01-01T15:59:32.729Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2026-01-01T15:59:32.729Z] [LOG  ] [ContentScript][Init] Page loaded: {
+  "url": "https://en.wikipedia.org/wiki/Upper_Paleolithic",
+  "tabId": "pending",
+  "container": "firefox-default"
+}
+[2026-01-01T15:59:32.729Z] [LOG  ] [Copy-URL-on-Hover] Content Script Identity: tab ID unavailable (running in background context?)
+[2026-01-01T15:59:32.730Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2026-01-01T15:59:32.730Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2026-01-01T15:59:32.730Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2026-01-01T15:59:32.741Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2026-01-01T15:59:32.741Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2026-01-01T15:59:32.741Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 38
+}
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2026-01-01T15:59:32.741Z] [LOG  ] [DEBUG] Debug mode enabled
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2026-01-01T15:59:32.741Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2026-01-01T15:59:32.741Z] [DEBUG] Debug mode enabled
+[2026-01-01T15:59:32.742Z] [LOG  ] [INIT][Content] PHASE_START: Quick Tabs initialization beginning {
+  "timestamp": "2026-01-01T15:59:32.742Z",
+  "isWritingTabIdInitialized": false
+}
+[2026-01-01T15:59:32.742Z] [LOG  ] [ContentScript][Init] Sending GET_QUICK_TABS_STATE
+[2026-01-01T15:59:32.742Z] [LOG  ] [INIT][Content] TAB_ID_ACQUISITION_START: {
+  "isWritingTabIdInitialized": false,
+  "timestamp": "2026-01-01T15:59:32.742Z"
+}
+[2026-01-01T15:59:32.742Z] [LOG  ] [IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background {
+  "timestamp": "2026-01-01T15:59:32.742Z",
+  "phase": "TAB_ID_REQUEST"
+}
+[2026-01-01T15:59:32.742Z] [LOG  ] [Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry {
+  "maxRetries": 4,
+  "retryDelays": [
+    200,
+    500,
+    1500,
+    5000
+  ],
+  "timestamp": "2026-01-01T15:59:32.742Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Content][TabID][INIT] ATTEMPT_SUCCESS: {
+  "attempt": 1,
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "responseFormat": "v2 (data.currentTabId)",
+  "durationMs": 98
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received on first attempt {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "durationMs": 98,
+  "timestamp": "2026-01-01T15:59:32.840Z",
+  "phase": "TAB_ID_RESPONSE"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "totalDurationMs": 98
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [ContentScript][Init] Received response: {
+  "success": true,
+  "cookieStoreId": "firefox-container-9",
+  "tabCountStatus": "awaiting-hydration"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [INIT][Content] TAB_ID_ACQUISITION_COMPLETE: {
+  "currentTabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "durationMs": 99,
+  "success": true,
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_RESULT: Tab ID acquired {
+  "currentTabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "source": "background messaging (GET_CURRENT_TAB_ID)",
+  "success": true
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Identity] State transitioning: INITIALIZING → READY
+[2026-01-01T15:59:32.840Z] [LOG  ] [Storage-Init] setWritingTabId CALLED: {
+  "tabId": 2218,
+  "callerContext": "content-script",
+  "previousTabId": null,
+  "previousIdentityMode": "INITIALIZING",
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Storage-Init] setWritingTabId COMPLETE: {
+  "oldTabId": "NONE",
+  "newTabId": 2218,
+  "source": "setWritingTabId()",
+  "callerContext": "content-script",
+  "isValidContext": true,
+  "durationMs": 0,
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Storage-Init] setWritingContainerId CALLED: {
+  "containerId": "firefox-container-9",
+  "previousContainerId": null,
+  "previousIdentityMode": "INITIALIZING",
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Storage-Init] setWritingContainerId COMPLETE: {
+  "oldContainerId": "NONE",
+  "newContainerId": "firefox-container-9",
+  "source": "setWritingContainerId()",
+  "durationMs": 0,
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [IDENTITY_ACQUIRED] Container ID acquired: firefox-container-9 {
+  "previousValue": "NONE",
+  "currentTabId": 2218,
+  "identityStateMode": "INITIALIZING",
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Identity] Container ID set: firefox-container-9
+[2026-01-01T15:59:32.840Z] [LOG  ] [Identity] Initialization duration: 0ms
+[2026-01-01T15:59:32.840Z] [LOG  ] [Identity] Tab ID acquired: 2218
+[2026-01-01T15:59:32.840Z] [LOG  ] [Identity] Container ID acquired: firefox-container-9
+[2026-01-01T15:59:32.840Z] [LOG  ] [IDENTITY_INIT] IDENTITY_READY: Tab identity fully initialized {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "phase": "IDENTITY_READY",
+  "timestamp": "2026-01-01T15:59:32.840Z"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "isWritingTabIdInitializedAfter": true
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [IDENTITY_STATE] Ready state transitioned: false → true, tabId=2218, cookieStoreId=firefox-container-9
+[2026-01-01T15:59:32.840Z] [LOG  ] [INIT][Content] PORT_CONNECTION_START: {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Content] PORT_STATE_TRANSITION: {
+  "from": "DISCONNECTED",
+  "to": "CONNECTING",
+  "reason": "connect-attempt",
+  "attempts": 0,
+  "timestamp": 1767283172840
+}
+[2026-01-01T15:59:32.840Z] [LOG  ] [Content] PORT_LIFECYCLE [content-tab-2218] [open]: {
+  "tabId": 2218,
+  "timestamp": 1767283172840,
+  "portName": "quicktabs-content-2218"
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [Content] PORT_STATE_TRANSITION: {
+  "from": "CONNECTING",
+  "to": "CONNECTED",
+  "reason": "connection-established",
+  "attempts": 0,
+  "timestamp": 1767283172840
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [Content] Port connection established
+[2026-01-01T15:59:32.841Z] [LOG  ] [INIT][Content] PORT_CONNECTION_INITIATED: {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [INIT][Content] QUICK_TABS_PORT_START: {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [Content] Initializing Quick Tabs port connection
+[2026-01-01T15:59:32.841Z] [LOG  ] [Content] Connected to background via quick-tabs-port
+[2026-01-01T15:59:32.841Z] [LOG  ] [Content] Sending message to background: HYDRATE_ON_LOAD {
+  "requestId": 1
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [INIT][Content] QUICKTABS_MANAGER_INIT_START: {
+  "currentTabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "timestamp": "2026-01-01T15:59:32.841Z"
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [ContentScript][Hydration] Filtering by originTabId: 2218
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabs] Options received: {
+  "currentTabId": 2218,
+  "cookieStoreId": "firefox-container-9",
+  "hasWindowFactory": false
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabs] Creating new QuickTabsManager instance with options: {
+  "currentTabId": 2218,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] Using pre-fetched currentTabId: 2218
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] Using pre-fetched cookieStoreId: firefox-container-9
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] STEP 1: Container ID already set (from options): firefox-container-9
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] STEP 1: Tab ID already set (from options): 2218
+[2026-01-01T15:59:32.841Z] [LOG  ] [ZINDEX_RESTORE] No stored value found, using default: 1000000
+[2026-01-01T15:59:32.841Z] [LOG  ] [QuickTabsManager] STEP 1: Z-index counter restored: 1000000
+[2026-01-01T15:59:32.842Z] [LOG  ] [STORAGE_LISTENER] Registered: {
+  "listenerAddress": "listener-1767283172842",
+  "timestamp": "2026-01-01T15:59:32.842Z"
+}
+[2026-01-01T15:59:32.842Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2026-01-01T15:59:32.842Z"
+}
+[2026-01-01T15:59:32.842Z] [LOG  ] [QuickTabsManager] STEP 1: Storage health monitor: started
+[2026-01-01T15:59:32.842Z] [LOG  ] [QuickTabsManager] STEP 1 Complete - currentTabId: 2218
+[2026-01-01T15:59:32.842Z] [LOG  ] [QuickTabsManager] STEP 2: Initializing managers...
+[2026-01-01T15:59:32.842Z] [LOG  ] [QuickTabsManager] STEP 2 Complete
+[2026-01-01T15:59:32.842Z] [LOG  ] [QuickTabsManager] STEP 3: Initializing handlers...
+[2026-01-01T15:59:32.842Z] [LOG  ] [CreateHandler] Received eventBus instances: {
+  "externalEventBus": "eventbus-1-1767283172703",
+  "internalEventBus": "a",
+  "hasInternalBus": true
+}
+[2026-01-01T15:59:32.850Z] [LOG  ] [CreateHandler] Loaded showDebugId from storage.local: true
+[2026-01-01T15:59:32.850Z] [LOG  ] [CreateHandler] Storage listener setup complete
+[2026-01-01T15:59:32.850Z] [LOG  ] [QuickTabsManager] STEP 3 Complete
+[2026-01-01T15:59:32.850Z] [LOG  ] [QuickTabsManager] STEP 4: Initializing coordinators...
+[2026-01-01T15:59:32.850Z] [LOG  ] [MapTransactionManager] Initialized for renderedTabs
+[2026-01-01T15:59:32.850Z] [LOG  ] [UICoordinator][Tab 2218] Received eventBus: {
+  "busType": "a",
+  "hasOn": true,
+  "hasEmit": true
+}
+[2026-01-01T15:59:32.850Z] [LOG  ] [UICoordinator][Tab 2218] Handlers set: {
+  "hasUpdateHandler": true,
+  "hasVisibilityHandler": true,
+  "hasDestroyHandler": true
+}
+[2026-01-01T15:59:32.850Z] [LOG  ] [QuickTabsManager] STEP 4 Complete
+[2026-01-01T15:59:32.850Z] [LOG  ] [QuickTabsManager] STEP 5: Setting up components...
+[2026-01-01T15:59:32.850Z] [LOG  ] [QuickTabsManager] _setupComponents starting...
+[2026-01-01T15:59:32.850Z] [LOG  ] [EventManager] Emergency save handlers attached
+[2026-01-01T15:59:32.850Z] [LOG  ] [UICoordinator] Initializing...
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] Loaded showDebugId from storage.local: true
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] Setting up state listeners
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] ✓ State listeners setup complete
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] Rendering all visible tabs
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] Rendered 0 tabs
+[2026-01-01T15:59:32.851Z] [LOG  ] [UICoordinator] Initialized
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] ✓ Event bridge setup complete
+[2026-01-01T15:59:32.851Z] [WARN ] [MemoryGuard] performance.memory not available, monitoring disabled
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] MemoryGuard monitoring started
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] ✓ _setupComponents complete
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] STEP 5 Complete
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] STEP 6: Attempting to hydrate state from storage...
+[2026-01-01T15:59:32.851Z] [LOG  ] [HYDRATION_DOMAIN_CHECK] Current page domain: {
+  "domain": "en.wikipedia.org",
+  "url": "https://en.wikipedia.org/wiki/Upper_Paleolithic",
+  "currentTabId": 2218
+}
+[2026-01-01T15:59:32.851Z] [LOG  ] [HYDRATION][INITIATION] Page load trigger detected, starting hydration {
+  "currentTabId": 2218,
+  "currentDomain": "en.wikipedia.org",
+  "cookieStoreId": "firefox-container-9",
+  "trigger": "page_load",
+  "timestamp": "2026-01-01T15:59:32.851Z"
+}
+[2026-01-01T15:59:32.851Z] [LOG  ] [Content][Hydration] START: Beginning Quick Tab hydration process {
+  "currentTabId": 2218,
+  "currentDomain": "en.wikipedia.org",
+  "timestamp": 1767283172851
+}
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability {
+  "storageLocalAvailable": true,
+  "hydrationMethod": "port-based (Option 4 architecture)",
+  "note": "Quick Tabs state is stored in background memory and storage.local (session-scoped)"
+}
+[2026-01-01T15:59:32.851Z] [LOG  ] [QuickTabsManager] storage.local available, attempting read
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] Storage read result: {
+  "found": true,
+  "tabCount": 1,
+  "saveId": "1767283168955-ayaar95d8",
+  "transactionId": "tx-1767283168978-vgojbrd"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [HYDRATION][STORAGE_FETCH] Fetch completed {
+  "tabCount": 1,
+  "fetchDurationMs": 1,
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [HYDRATION] START: Retrieving 1 tabs from storage {
+  "tabIds": [
+    "qt-2217-1767283168955-rxzc251d1m2ja"
+  ],
+  "currentTabId": 2218,
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] Found 1 Quick Tab(s) in storage to hydrate
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] Skipping hydration - tab originated from different tab: {
+  "id": "qt-2217-1767283168955-rxzc251d1m2ja",
+  "originTabId": 2217,
+  "currentTabId": 2218
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [HYDRATION][FILTER] Tab qt-2217-1767283168955-rxzc251d1m2ja: originTabId=2217, currentTabId=2218, match=FALSE, ACTION=SKIP {
+  "tabId": "qt-2217-1767283168955-rxzc251d1m2ja",
+  "status": "failed",
+  "reason": "differentTab",
+  "originTabId": 2217,
+  "currentTabId": 2218,
+  "match": false,
+  "action": "SKIP",
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [Content][Hydration] FILTER: Evaluating Quick Tab for hydration {
+  "id": "qt-2217-1767283168955-rxzc251d1m2ja",
+  "originTabId": 2217,
+  "currentTabId": 2218,
+  "result": "REJECT",
+  "reason": "differentTab"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] TAB SCOPE ISOLATION VALIDATION: {
+  "total": 1,
+  "passed": 0,
+  "filtered": 1,
+  "currentTabId": 2218,
+  "filterReasons": {
+    "invalidData": 0,
+    "noOriginTabId": 0,
+    "noCurrentTabId": 0,
+    "differentTab": 1,
+    "alreadyExists": 0,
+    "noHandler": 0,
+    "error": 0
+  }
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [Content][Hydration] COMPLETE: Hydration finished {
+  "totalInStorage": 1,
+  "hydratedCount": 0,
+  "filteredOutCount": 1,
+  "currentTabId": 2218
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [HYDRATION][RESTORATION_COMPLETE] All tabs processed {
+  "totalFromStorage": 1,
+  "successfullyRestored": 0,
+  "filteredOrFailed": 1,
+  "currentTabId": 2218,
+  "timing": {
+    "totalDurationMs": 1,
+    "fetchDurationMs": 1,
+    "filterDurationMs": 0,
+    "restorationDurationMs": 0
+  },
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [HYDRATION] COMPLETE: total=1, success=0, failed=1 {
+  "totalFromStorage": 1,
+  "successfullyHydrated": 0,
+  "failedOrFiltered": 1,
+  "currentTabId": 2218,
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] STEP 6: Hydrated 0 Quick Tab(s) from storage
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] STEP 6 Complete
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] STEP 7: Exposing manager globally...
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] Manager exposed globally as window.quickTabsManager
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] Current tab ID available: 2218
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] STEP 7 Complete
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓
+[2026-01-01T15:59:32.852Z] [LOG  ] [QuickTabs] Quick Tabs feature module initialized
+[2026-01-01T15:59:32.852Z] [LOG  ] [ContentScript][Hydration] Rendering Quick Tabs: 0
+[2026-01-01T15:59:32.852Z] [LOG  ] [INIT][Content] PHASE_COMPLETE: {
+  "success": true,
+  "currentTabId": 2218,
+  "totalDurationMs": 111,
+  "hasManager": true,
+  "timestamp": "2026-01-01T15:59:32.852Z"
+}
+[2026-01-01T15:59:32.852Z] [LOG  ] [Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully
+[2026-01-01T15:59:32.852Z] [LOG  ] [Copy-URL-on-Hover] Manager has createQuickTab: function
+[2026-01-01T15:59:32.852Z] [LOG  ] [Copy-URL-on-Hover] Manager currentTabId: 2218
+[2026-01-01T15:59:32.852Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2026-01-01T15:59:32.852Z] [LOG  ] [NotificationManager] Initializing...
+[2026-01-01T15:59:32.853Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2026-01-01T15:59:32.853Z] [LOG  ] [NotificationManager] Initialized successfully
+[2026-01-01T15:59:32.853Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2026-01-01T15:59:32.853Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2026-01-01T15:59:32.853Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2026-01-01T15:59:32.853Z] [DEBUG] Extension initialized successfully
+[2026-01-01T15:59:32.854Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2026-01-01T15:59:32.854Z] [LOG  ] [DEBUG] Loading main features...
+[2026-01-01T15:59:32.854Z] [LOG  ] [ContentScript][Ready] Hydration complete, listeners attached
+[2026-01-01T15:59:32.854Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2026-01-01T15:59:32.854Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2026-01-01T15:59:32.854Z] [DEBUG] Loading main features...
+[2026-01-01T15:59:32.884Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 1,
+  "timestamp": "2026-01-01T15:59:32.884Z"
+}
+[2026-01-01T15:59:32.884Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 42,
+  "windowSize": 1,
+  "timestamp": "2026-01-01T15:59:32.884Z"
+}
+[2026-01-01T15:59:32.911Z] [LOG  ] [Content] PORT_LIFECYCLE [content-tab-2218] [message]: {
+  "tabId": 2218,
+  "timestamp": 1767283172911,
+  "type": "BACKGROUND_HANDSHAKE"
+}
+[2026-01-01T15:59:32.911Z] [LOG  ] [Content] v1.6.3.10-v4 Background startup time recorded: 1767282726469
+[2026-01-01T15:59:32.912Z] [LOG  ] [Content] v1.6.3.10-v7 Background handshake received: {
+  "startupTime": 1767282726469,
+  "uptime": 446412,
+  "portId": "port-1767283172881-93",
+  "isReadyForCommands": true,
+  "latencyMs": 72,
+  "previousReadyState": false
+}
+[2026-01-01T15:59:32.912Z] [LOG  ] [Content] BACKGROUND_READY: Transitioned from INITIALIZING to READY: {
+  "latencyMs": 72,
+  "timestamp": 1767283172912
+}
+[2026-01-01T15:59:32.912Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "BACKGROUND_HANDSHAKE",
+  "requestId": "none",
+  "hasQuickTabId": false,
+  "quickTabId": "none",
+  "isCommand": false,
+  "isStateUpdate": false,
+  "isTransfer": false,
+  "timestamp": 1767283172912
+}
+[2026-01-01T15:59:32.912Z] [LOG  ] [Content] Received Quick Tabs message: BACKGROUND_HANDSHAKE {
+  "type": "BACKGROUND_HANDSHAKE",
+  "startupTime": 1767282726469,
+  "restartCount": 0,
+  "uptime": 446412,
+  "isInitialized": true,
+  "isReadyForCommands": true,
+  "portId": "port-1767283172881-94",
+  "tabId": null,
+  "timestamp": 1767283172881
+}
+[2026-01-01T15:59:32.962Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "HYDRATE_ON_LOAD_RESPONSE",
+  "requestId": "none",
+  "hasQuickTabId": false,
+  "quickTabId": "none",
+  "isCommand": false,
+  "isStateUpdate": false,
+  "isTransfer": false,
+  "timestamp": 1767283172962
+}
+[2026-01-01T15:59:32.962Z] [LOG  ] [Content] Received Quick Tabs message: HYDRATE_ON_LOAD_RESPONSE {
+  "type": "HYDRATE_ON_LOAD_RESPONSE",
+  "quickTabs": [],
+  "tabCount": 0,
+  "timestamp": 1767283172920,
+  "sessionId": "9ff83c9f-cec9-4588-affc-60bac7980aa0",
+  "sessionStartTime": 1767282726469
+}
+[2026-01-01T15:59:37.848Z] [WARN ] [Content] Quick Tabs hydration failed: Quick Tabs request timeout: HYDRATE_ON_LOAD
+[2026-01-01T15:59:37.849Z] [LOG  ] [INIT][Content] QUICK_TABS_PORT_CONNECTED: {
+  "tabId": 2218,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-01T15:59:38.137Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 2,
+  "timestamp": "2026-01-01T15:59:38.137Z"
+}
+[2026-01-01T15:59:38.137Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 42,
+  "windowSize": 2,
+  "timestamp": "2026-01-01T15:59:38.137Z"
+}
+[2026-01-01T15:59:38.143Z] [LOG  ] [Content] Message received: {
+  "action": "GET_CONTENT_LOGS",
+  "type": "none",
+  "hasData": false
+}
+[2026-01-01T15:59:38.143Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: GET_CONTENT_LOGS
+[2026-01-01T15:59:38.143Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
