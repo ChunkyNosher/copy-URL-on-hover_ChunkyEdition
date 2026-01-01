@@ -1972,11 +1972,14 @@ function _handleQuickTabTransferredIn(message) {
   // or if both port message and fallback arrive before the first creation completes
   const existingQuickTab = sessionQuickTabs.get(quickTab.id);
   if (existingQuickTab) {
-    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate - Quick Tab already exists:', {
-      quickTabId: quickTab.id,
-      existingOriginTabId: existingQuickTab.originTabId,
-      timestamp: Date.now()
-    });
+    console.log(
+      '[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate - Quick Tab already exists:',
+      {
+        quickTabId: quickTab.id,
+        existingOriginTabId: existingQuickTab.originTabId,
+        timestamp: Date.now()
+      }
+    );
     return;
   }
 

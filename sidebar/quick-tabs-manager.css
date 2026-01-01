@@ -1137,21 +1137,27 @@ html {
 .quick-tab-item.closing {
   opacity: 0.3;
   transform: translateX(-10px);
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out;
+  transition:
+    opacity 0.2s ease-out,
+    transform 0.2s ease-out;
 }
 
 /* Minimizing state - slight scale down */
 .quick-tab-item.minimizing {
   opacity: 0.6;
   transform: scale(0.98);
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
 }
 
 /* Restoring state - slight scale up */
 .quick-tab-item.restoring {
   opacity: 0.7;
   transform: scale(1.01);
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out;
 }
 
 /* ======================================== */

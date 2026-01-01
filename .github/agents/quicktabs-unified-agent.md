@@ -60,8 +60,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   `closeQuickTabViaPort()`
 - **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
   caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
-- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions
-  for smooth close animation
+- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
+  smooth close animation
 
 **New Module:**
 

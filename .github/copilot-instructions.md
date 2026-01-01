@@ -41,8 +41,8 @@
 - **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers extracted)
 - **StorageChangeAnalyzer.js** - New module (20 functions from
   quick-tabs-manager.js)
-- **content.js** - Code Health: 8.54 → 9.09 (extracted _isValidQuickTabObject,
-  _isAckMessage helpers)
+- **content.js** - Code Health: 8.54 → 9.09 (extracted \_isValidQuickTabObject,
+  \_isAckMessage helpers)
 
 **v1.6.4 Bug Fixes:**
 
