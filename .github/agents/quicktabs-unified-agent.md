@@ -3,9 +3,10 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.4-v2), memory-based state (`quickTabsSessionState`),
+  sync with Single Writer Authority (v1.6.4-v3), memory-based state (`quickTabsSessionState`),
   circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock,
-  button operation fix, state version tracking, UPDATE_QUICK_TAB title updates
+  button operation fix, state version tracking, UPDATE_QUICK_TAB title updates,
+  STATE_CHANGED safety timeout (500ms), Live Metrics Footer
 tools: ['*']
 ---
 
@@ -37,7 +38,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -48,7 +49,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
 
-**v1.6.4-v2 Bug Fixes (NEW):**
+**v1.6.4-v3 Bug Fixes (NEW):**
 
 - **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
   iframe load events
@@ -62,6 +63,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
 - **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
   smooth close animation
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after Transfer/Duplicate
+  ACK triggers `requestAllQuickTabsViaPort()` if STATE_CHANGED not received
+
+**v1.6.4-v3 Features (NEW):**
+
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
+  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
 
 **New Module:**
 
@@ -93,6 +101,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 | `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
 | `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
 | `MAX_CONSECUTIVE_RERENDERS`             | 3     | Prevent infinite render loops      |
+| `STATE_CHANGED_SAFETY_TIMEOUT_MS`       | 500   | Transfer/Duplicate ACK timeout     |
+| `METRICS_DEFAULT_INTERVAL_MS`           | 1000  | Live metrics update interval       |
 
 **Key Architecture Components:**
 
@@ -135,6 +145,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Cross-tab transfer no longer sends duplicate messages
 - [ ] Open in New Tab has smooth CSS transition (no UI flicker)
+- [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
+- [ ] Live Metrics Footer displays Quick Tab count, storage, memory
+- [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Button operation fix works (buttons re-enable after timeout)
 - [ ] State version tracking prevents stale renders
 - [ ] Cross-tab render fix works (hash AND version check)
@@ -154,7 +167,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.4-v2 title updates, state
+**Your strength: Complete Quick Tab system with v1.6.4-v3 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, button operation fix, cross-tab
-render fix, fallback messaging, and comprehensive validation.**
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
+Live Metrics Footer, button operation fix, cross-tab render fix, fallback
+messaging, and comprehensive validation.**

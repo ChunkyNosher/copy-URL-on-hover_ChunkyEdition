@@ -3,10 +3,10 @@ name: quicktabs-manager-specialist
 description: |
   Specialist for Quick Tabs Manager panel (Ctrl+Alt+Z) - handles manager UI,
   port messaging (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.4-v2), scheduleRender() with revision dedup, memory-based state,
+  (v1.6.4-v3), scheduleRender() with revision dedup, memory-based state,
   circuit breaker recovery, priority queue, container validation, MANAGER pattern actions,
   optimistic UI updates, render lock, orphan recovery UI, Quick Tab order persistence,
-  StorageChangeAnalyzer for storage analysis
+  StorageChangeAnalyzer for storage analysis, Live Metrics Footer
 tools: ['*']
 ---
 
@@ -38,9 +38,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.4-v2 Bug Fixes (NEW):**
+**v1.6.4-v3 Bug Fixes (NEW):**
 
 - **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
   iframe load events
@@ -54,6 +54,13 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
 - **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
   smooth close animation
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after Transfer/Duplicate
+  ACK triggers `requestAllQuickTabsViaPort()` if STATE_CHANGED not received
+
+**v1.6.4-v3 Features (NEW):**
+
+- **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, storage
+  usage, memory usage. Configurable interval (500ms-30s), toggle in settings.
 
 **New Module:**
 
@@ -136,6 +143,9 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 - [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Cross-tab transfer no longer sends duplicate messages
 - [ ] Open in New Tab has smooth CSS transition (no UI flicker)
+- [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
+- [ ] Live Metrics Footer displays Quick Tab count, storage, memory
+- [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Transfer/duplicate race fix works (no redundant port calls)
 - [ ] Quick Tab order persistence works (\_userQuickTabOrderByGroup)
 - [ ] Empty state transition works (\_handleEmptyStateTransition)
@@ -160,8 +170,9 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 ---
 
-**Your strength: Manager coordination with v1.6.4-v2 title updates, state
+**Your strength: Manager coordination with v1.6.4-v3 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, transfer/duplicate race fix,
-Quick Tab order persistence, empty state handling, drag-and-drop, cross-tab
-transfer, and comprehensive validation.**
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
+Live Metrics Footer, transfer/duplicate race fix, Quick Tab order persistence,
+empty state handling, drag-and-drop, cross-tab transfer, and comprehensive
+validation.**

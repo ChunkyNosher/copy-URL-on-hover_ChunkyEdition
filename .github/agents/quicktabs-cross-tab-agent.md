@@ -3,9 +3,9 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.4-v2), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  (v1.6.4-v3), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
   QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix,
-  UPDATE_QUICK_TAB title sync, state version race fix
+  UPDATE_QUICK_TAB title sync, state version race fix, STATE_CHANGED safety timeout (500ms)
 tools: ['*']
 ---
 
@@ -38,9 +38,9 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.4-v2 Bug Fixes (NEW):**
+**v1.6.4-v3 Bug Fixes (NEW):**
 
 - **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
   iframe load events and syncs across tabs
@@ -54,6 +54,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
 - **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
   smooth close animation
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after Transfer/Duplicate
+  ACK triggers `requestAllQuickTabsViaPort()` if STATE_CHANGED not received
 
 **New Module:**
 
@@ -93,6 +95,7 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
 | `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
 | `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
+| `STATE_CHANGED_SAFETY_TIMEOUT_MS`       | 500   | Transfer/Duplicate ACK fallback    |
 
 **Message Types:**
 
@@ -113,6 +116,7 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 - [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
 - [ ] Cross-tab transfer no longer sends duplicate messages
 - [ ] Open in New Tab has smooth CSS transition (no UI flicker)
+- [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
 - [ ] Circuit breaker trips after 5 failures
 - [ ] Timeout backoff works (1s → 3s → 5s)
 - [ ] Port messaging works (`'quick-tabs-port'`)
@@ -130,7 +134,8 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.4-v2 title updates, state
+**Your strength: Reliable cross-tab sync with v1.6.4-v3 title updates, state
 version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, button operation fix, cross-tab
-render fix, fallback messaging, port messaging, and sequence tracking.**
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
+button operation fix, cross-tab render fix, fallback messaging, port messaging,
+and sequence tracking.**
