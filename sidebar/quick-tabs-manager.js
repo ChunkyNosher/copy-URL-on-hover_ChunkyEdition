@@ -1772,12 +1772,16 @@ function _handleSuccessfulTransferAck(msg) {
   // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after transfer to ensure consistency
   // Previous approach relied on STATE_CHANGED broadcast which may be dropped if sidebarPort is null.
   // This direct request ensures we get the updated state even if the broadcast fails.
-  console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
-    quickTabId: msg.quickTabId,
-    newOriginTabId: msg.newOriginTabId,
-    timestamp: Date.now()
-  });
-  requestAllQuickTabsViaPort();
+  // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
+  // messages before we request fresh state, ensuring proper ordering
+  setTimeout(() => {
+    console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
+      quickTabId: msg.quickTabId,
+      newOriginTabId: msg.newOriginTabId,
+      timestamp: Date.now()
+    });
+    requestAllQuickTabsViaPort();
+  }, 0);
 }
 
 /**
@@ -2050,12 +2054,15 @@ const _portMessageHandlers = {
       _forceImmediateRender('duplicate-ack-success');
 
       // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after duplicate to ensure consistency
-      console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
-        newQuickTabId: msg.newQuickTabId,
-        newOriginTabId: msg.newOriginTabId,
-        timestamp: Date.now()
-      });
-      requestAllQuickTabsViaPort();
+      // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
+      setTimeout(() => {
+        console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
+          newQuickTabId: msg.newQuickTabId,
+          newOriginTabId: msg.newOriginTabId,
+          timestamp: Date.now()
+        });
+        requestAllQuickTabsViaPort();
+      }, 0);
     }
   }
 };
