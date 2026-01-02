@@ -141,7 +141,7 @@ in the sidebar!
 ✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
 ✓ **Container Isolation** - Firefox Container support with originContainerId +
-  Container Filter dropdown  
+Container Filter dropdown  
 ✓ **Session-Only Quick Tabs** - Start fresh each browser session (v1.6.3.12)  
 ✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok  
 ✓ **Port Messaging** - `'quick-tabs-port'` for reliable Quick Tabs sync

@@ -75,7 +75,8 @@ nothing.
 
 - **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
   Manager header
-- **Container Name Resolution** - Shows actual names via contextualIdentities API
+- **Container Name Resolution** - Shows actual names via contextualIdentities
+  API
 - **Dynamic Container Indicator** - Updates when switching tabs
 - **Filter Persistence** - `quickTabsContainerFilter` storage key
 
@@ -106,14 +107,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                     | Fix                                |
-| ------------------------- | ---------------------------------- |
-| v1.6.4-v3 or earlier      | Update to 1.6.4-v4                 |
-| "Solo/Mute" references    | REMOVE - Feature DELETED in v12    |
-| "Pin to Page"             | REMOVE - Feature DELETED in v12    |
-| Cross-session persist     | REMOVE - Session-only in v12       |
-| Direct storage writes     | Use Single Writer Authority        |
-| BroadcastChannel refs     | REMOVE - BC DELETED in v6          |
+| Error                  | Fix                             |
+| ---------------------- | ------------------------------- |
+| v1.6.4-v3 or earlier   | Update to 1.6.4-v4              |
+| "Solo/Mute" references | REMOVE - Feature DELETED in v12 |
+| "Pin to Page"          | REMOVE - Feature DELETED in v12 |
+| Cross-session persist  | REMOVE - Session-only in v12    |
+| Direct storage writes  | Use Single Writer Authority     |
+| BroadcastChannel refs  | REMOVE - BC DELETED in v6       |
 
 ---
 

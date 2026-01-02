@@ -133,19 +133,19 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Key Functions (v1.6.4-v4):**
 
-| Function                         | Purpose                              |
-| -------------------------------- | ------------------------------------ |
+| Function                         | Purpose                                 |
+| -------------------------------- | --------------------------------------- |
 | `_filterQuickTabsByContainer()`  | Filters Quick Tabs by originContainerId |
-| `_getContainerNameByIdAsync()`   | Async container name resolution      |
-| `_getContainerNameSync()`        | Sync cache lookup for container name |
-| `_populateContainerDropdown()`   | Populates dropdown with options      |
-| `_handleContainerFilterChange()` | Handles dropdown selection changes   |
-| `initializeContainerIsolation()` | Initializes container filter feature |
-| `_onContainerContextChanged()`   | Updates UI when container changes    |
-| `_logActionsByCategory`          | Per-category log tracking map        |
-| `_detectCategoryFromLog()`       | Extracts category from log prefix    |
-| `_loadLiveFilterSettings()`      | Loads Live Console Output Filter     |
-| `_isCategoryFilterEnabled()`     | Checks if category should be counted |
+| `_getContainerNameByIdAsync()`   | Async container name resolution         |
+| `_getContainerNameSync()`        | Sync cache lookup for container name    |
+| `_populateContainerDropdown()`   | Populates dropdown with options         |
+| `_handleContainerFilterChange()` | Handles dropdown selection changes      |
+| `initializeContainerIsolation()` | Initializes container filter feature    |
+| `_onContainerContextChanged()`   | Updates UI when container changes       |
+| `_logActionsByCategory`          | Per-category log tracking map           |
+| `_detectCategoryFromLog()`       | Extracts category from log prefix       |
+| `_loadLiveFilterSettings()`      | Loads Live Console Output Filter        |
+| `_isCategoryFilterEnabled()`     | Checks if category should be counted    |
 
 ---
 

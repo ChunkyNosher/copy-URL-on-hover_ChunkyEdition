@@ -114,20 +114,20 @@ critical state refresh, stale QUICKTAB_REMOVED)
 
 **Key Architecture Components:**
 
-| Component                        | Purpose                           |
-| -------------------------------- | --------------------------------- |
-| `quickTabsSessionState`          | Memory-based state in background  |
-| `contentScriptPorts`             | Tab ID → Port mapping             |
-| `sidebarPort`                    | Manager sidebar port              |
-| `notifySidebarOfStateChange()`   | Push updates to sidebar           |
-| `_isRenderInProgress`            | Render lock flag                  |
-| `_stateVersion`                  | State version for consistency     |
-| `_filterQuickTabsByContainer()`  | Filters by originContainerId      |
-| `_getContainerNameByIdAsync()`   | Async container name resolution   |
-| `_logActionsByCategory`          | Per-category log tracking         |
-| `_detectCategoryFromLog()`       | Extracts category from log prefix |
-| `_loadLiveFilterSettings()`      | Loads Live Console Output Filter  |
-| `_isCategoryFilterEnabled()`     | Checks if category is enabled     |
+| Component                       | Purpose                           |
+| ------------------------------- | --------------------------------- |
+| `quickTabsSessionState`         | Memory-based state in background  |
+| `contentScriptPorts`            | Tab ID → Port mapping             |
+| `sidebarPort`                   | Manager sidebar port              |
+| `notifySidebarOfStateChange()`  | Push updates to sidebar           |
+| `_isRenderInProgress`           | Render lock flag                  |
+| `_stateVersion`                 | State version for consistency     |
+| `_filterQuickTabsByContainer()` | Filters by originContainerId      |
+| `_getContainerNameByIdAsync()`  | Async container name resolution   |
+| `_logActionsByCategory`         | Per-category log tracking         |
+| `_detectCategoryFromLog()`      | Extracts category from log prefix |
+| `_loadLiveFilterSettings()`     | Loads Live Console Output Filter  |
+| `_isCategoryFilterEnabled()`    | Checks if category is enabled     |
 
 **Key Modules:**
 

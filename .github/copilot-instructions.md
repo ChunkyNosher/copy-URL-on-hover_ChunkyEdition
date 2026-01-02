@@ -136,8 +136,10 @@ const quickTabsSessionState = {
 
 ### v1.6.4-v4 Patterns (Current)
 
-- **Container Filter** - `_filterQuickTabsByContainer()`, `_containerFilterDropdown`
-- **Name Resolution** - `_getContainerNameByIdAsync()`, `_getContainerNameSync()`
+- **Container Filter** - `_filterQuickTabsByContainer()`,
+  `_containerFilterDropdown`
+- **Name Resolution** - `_getContainerNameByIdAsync()`,
+  `_getContainerNameSync()`
 - **Context Change** - `_onContainerContextChanged()` updates UI
 - **Persistence** - `quickTabsContainerFilter` storage key
 
@@ -151,23 +153,26 @@ const quickTabsSessionState = {
 ### v1.6.4 Patterns
 
 - **Race Fixes** - Removed redundant `requestAllQuickTabsViaPort()` calls
-- **Order Persistence** - `_userQuickTabOrderByGroup`, `_handleEmptyStateTransition()`
+- **Order Persistence** - `_userQuickTabOrderByGroup`,
+  `_handleEmptyStateTransition()`
 - **Drag Features** - Reordering, Cross-Tab Transfer, Duplicate, Click-to-Front
 
 ### v1.6.3.12 Patterns (Consolidated)
 
-- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync, Helper Extraction
-- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock, Bulk Close
+- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync, Helper
+  Extraction
+- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock, Bulk
+  Close
 - **v1.6.3.12:** Option 4 Architecture, Port Messaging, storage.local Only
 - **v1.6.3.11-v12:** Solo/Mute REMOVED
 
 ### Key Timing Constants
 
-| Constant                                        | Value                           | Purpose                          |
-| ----------------------------------------------- | ------------------------------- | -------------------------------- |
-| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key  |
-| `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference      |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)   |
+| Constant                                        | Value                           | Purpose                         |
+| ----------------------------------------------- | ------------------------------- | ------------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
+| `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference     |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
 | `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
 | `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
 | `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
@@ -179,17 +184,17 @@ const quickTabsSessionState = {
 
 ## Architecture Classes (Key Methods)
 
-| Class                | Methods                                       |
-| -------------------- | --------------------------------------------- |
-| QuickTabStateMachine | `canTransition()`, `transition()`             |
-| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`        |
-| TabStateManager      | `getTabState()`, `setTabState()`              |
-| MessageRouter        | ACTION-based routing                          |
-| EventBus             | `on()`, `off()`, `emit()`, `once()`           |
-| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`      |
+| Class                | Methods                                             |
+| -------------------- | --------------------------------------------------- |
+| QuickTabStateMachine | `canTransition()`, `transition()`                   |
+| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`              |
+| TabStateManager      | `getTabState()`, `setTabState()`                    |
+| MessageRouter        | ACTION-based routing                                |
+| EventBus             | `on()`, `off()`, `emit()`, `once()`                 |
+| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`            |
 | Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()` |
-| CreateHandler        | `getWritingContainerId()` (v3)                |
-| TestBridge           | `getManagerState()` (v3)                      |
+| CreateHandler        | `getWritingContainerId()` (v3)                      |
+| TestBridge           | `getManagerState()` (v3)                            |
 
 ---
 
@@ -211,7 +216,8 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`, `[Manager] CONTAINER_NAME_RESOLVED:`
+**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`,
+`[Manager] CONTAINER_NAME_RESOLVED:`
 
 **v1.6.4:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
 `[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
@@ -233,14 +239,13 @@ const quickTabsSessionState = {
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
 machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
 error telemetry, originTabId resolution, container isolation, container filter,
-z-index recycling,
-port messaging, factory patterns, lookup tables, generic wrapper functions,
-in-memory state, push notifications, port roundtrip tracking, circuit breaker,
-priority queue, timeout backoff, rolling heartbeat window, sequence number
-tracking, port reconnection circuit breaker, defensive input validation, circuit
-breaker auto-reset, listener registration guards, message timeout protection,
-optimistic UI updates, render lock, orphan recovery UI, state version tracking,
-port routing, sidebar URL detection.
+z-index recycling, port messaging, factory patterns, lookup tables, generic
+wrapper functions, in-memory state, push notifications, port roundtrip tracking,
+circuit breaker, priority queue, timeout backoff, rolling heartbeat window,
+sequence number tracking, port reconnection circuit breaker, defensive input
+validation, circuit breaker auto-reset, listener registration guards, message
+timeout protection, optimistic UI updates, render lock, orphan recovery UI,
+state version tracking, port routing, sidebar URL detection.
 
 ---
 
@@ -302,22 +307,22 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                        | Features                                       |
-| ------------------------------------------- | ---------------------------------------------- |
-| `src/constants.js`                          | Centralized constants                          |
-| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                      |
-| `src/utils/storage-utils.js`                | Storage utilities                              |
-| `src/background/tab-events.js`              | Tabs API listeners                             |
-| `src/utils/structured-logger.js`            | StructuredLogger class with contexts           |
-| `src/messaging/message-router.js`           | ACTION-based routing                           |
-| `background.js`                             | In-memory state, port handlers                 |
+| File                                        | Features                                         |
+| ------------------------------------------- | ------------------------------------------------ |
+| `src/constants.js`                          | Centralized constants                            |
+| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                        |
+| `src/utils/storage-utils.js`                | Storage utilities                                |
+| `src/background/tab-events.js`              | Tabs API listeners                               |
+| `src/utils/structured-logger.js`            | StructuredLogger class with contexts             |
+| `src/messaging/message-router.js`           | ACTION-based routing                             |
+| `background.js`                             | In-memory state, port handlers                   |
 | `sidebar/quick-tabs-manager.js`             | Port-based queries, container filter (v1.6.4-v4) |
-| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)      |
-| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)         |
-| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)              |
-| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)     |
-| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)    |
-| `src/content.js`                            | Port messaging for Quick Tabs                  |
+| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)        |
+| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)           |
+| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)                |
+| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)       |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)      |
+| `src/content.js`                            | Port messaging for Quick Tabs                    |
 
 ### Storage (v1.6.3.12-v8+)
 

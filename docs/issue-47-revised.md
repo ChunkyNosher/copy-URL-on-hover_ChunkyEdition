@@ -900,13 +900,14 @@ Container correctly.
 
 ## Scenario 27: Container Name Resolution (v1.6.4-v4)
 
-**Purpose:** Verify container names are properly resolved from contextualIdentities
-API instead of showing numeric IDs.
+**Purpose:** Verify container names are properly resolved from
+contextualIdentities API instead of showing numeric IDs.
 
 ### Steps:
 
 1. **Open Manager with Quick Tabs in named containers**
-   - Action: Create Quick Tabs in containers named "Shopping", "Research", "Work"
+   - Action: Create Quick Tabs in containers named "Shopping", "Research",
+     "Work"
    - Expected: Container dropdown shows actual names (Shopping, Research, Work)
      NOT "Firefox Container 1, 2, 3"
 

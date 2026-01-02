@@ -5635,15 +5635,18 @@ function _shouldIgnoreRemovalDueToTransfer(quickTabData, senderTabId, quickTabId
   const TRANSFER_GRACE_PERIOD_MS = 5000; // 5 second grace period
 
   if (isFromOldTab && timeSinceTransfer < TRANSFER_GRACE_PERIOD_MS) {
-    console.log('[Background] v1.6.4-v3 QUICKTAB_REMOVED IGNORED: Quick Tab was recently transferred', {
-      quickTabId,
-      senderTabId,
-      transferredFrom: quickTabData.transferredFrom,
-      transferredAt: quickTabData.transferredAt,
-      timeSinceTransfer,
-      currentOriginTabId: quickTabData.originTabId,
-      reason: 'stale_removal_from_old_tab'
-    });
+    console.log(
+      '[Background] v1.6.4-v3 QUICKTAB_REMOVED IGNORED: Quick Tab was recently transferred',
+      {
+        quickTabId,
+        senderTabId,
+        transferredFrom: quickTabData.transferredFrom,
+        transferredAt: quickTabData.transferredAt,
+        timeSinceTransfer,
+        currentOriginTabId: quickTabData.originTabId,
+        reason: 'stale_removal_from_old_tab'
+      }
+    );
     return true;
   }
 

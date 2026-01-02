@@ -1352,9 +1352,12 @@ function _handleContainerFilterChange(event) {
   console.log('[Manager] 🔄 CONTAINER_FILTER_CHANGED:', {
     previousFilter: oldValue,
     newFilter: newValue,
-    filterName: newValue === 'current' ? _getContainerNameSync(_currentContainerId) :
-                newValue === 'all' ? 'All Containers' :
-                _getContainerNameSync(newValue)
+    filterName:
+      newValue === 'current'
+        ? _getContainerNameSync(_currentContainerId)
+        : newValue === 'all'
+          ? 'All Containers'
+          : _getContainerNameSync(newValue)
   });
 
   // Save preference to storage
@@ -1414,9 +1417,8 @@ function _filterQuickTabsByContainer(allTabs) {
   }
 
   // Determine the target container ID
-  const targetContainerId = _selectedContainerFilter === 'current'
-    ? _currentContainerId
-    : _selectedContainerFilter;
+  const targetContainerId =
+    _selectedContainerFilter === 'current' ? _currentContainerId : _selectedContainerFilter;
 
   // Filter tabs by originContainerId
   const filtered = allTabs.filter(tab => {
