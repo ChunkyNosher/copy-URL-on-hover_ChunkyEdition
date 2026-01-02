@@ -1101,6 +1101,89 @@ containers while "Current Container" filter is active.
 
 ---
 
+## Scenario 33: Container Indicator Badge in "All Containers" View (v1.6.4-v4)
+
+**Purpose:** Verify container indicator badge displays Firefox Container name with
+color for each tab group when "All Containers" filter is selected.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Default container, create QT 1; Open WP 2 in Shopping
+     container (blue), create QT 2; Open WP 3 in Work container (orange), create
+     QT 3
+   - Expected: Three Quick Tabs in three different containers
+
+2. **Open Manager with "All Containers" filter**
+   - Action: Press Ctrl+Alt+Z, ensure "🌐 All Containers" is selected in dropdown
+   - Expected: Manager shows all three tab groups (Wikipedia 1, Wikipedia 2,
+     Wikipedia 3)
+
+3. **Verify container badge appears on each tab group**
+   - Action: Observe tab group headers
+   - Expected: Each tab group header shows a colored badge next to the tab title
+   - Expected: Badge shows container name (e.g., "Shopping", "Work") NOT numeric ID
+   - Expected: Badge color matches Firefox container color (blue, orange, etc.)
+
+4. **Verify Default container tabs have no badge**
+   - Action: Observe WP 1 tab group (Default container)
+   - Expected: No container badge shown for Default container (clean appearance)
+
+5. **Verify badge visibility when switching filters**
+   - Action: Change filter from "All Containers" to "Shopping"
+   - Expected: Container badge NOT shown when filtering by specific container
+     (redundant)
+   - Action: Switch back to "All Containers"
+   - Expected: Container badges reappear on non-default container tab groups
+
+6. **Verify badge color scheme**
+   - Action: Create Quick Tabs in containers with different colors (blue,
+     turquoise, green, yellow, orange, red, pink, purple)
+   - Expected: Each badge displays correct Firefox container color
+
+---
+
+## Scenario 34: Go to Tab Button Works for Cross-Container Tabs (v1.6.4-v4)
+
+**Purpose:** Verify "Go to Tab" button properly focuses cross-container tabs by
+first focusing the window, then activating the tab.
+
+### Steps:
+
+1. **Setup: Create Quick Tab in different container**
+   - Action: Open WP 1 in Personal container, create QT 1
+   - Expected: QT 1 visible in WP 1
+
+2. **Switch to tab in different container**
+   - Action: Open YT 1 in Work container, switch to YT 1
+   - Expected: YT 1 is active, WP 1 (Personal) is inactive
+
+3. **Open Manager from YT 1**
+   - Action: Press Ctrl+Alt+Z in YT 1
+   - Expected: Manager shows QT 1 under "Wikipedia Tab 1" with Personal container
+     badge
+
+4. **Click "Go to Tab" button on QT 1's tab group**
+   - Action: Find WP 1 tab group header, click "Go to Tab" button (→ icon)
+   - Expected: Browser focus switches to WP 1 tab (Personal container)
+
+5. **Verify window.update called before tabs.update**
+   - Action: Open browser console, check for focus sequence logs
+   - Expected: Logs show `browser.windows.update()` called first (if cross-window),
+     then `browser.tabs.update()` to activate tab
+
+6. **Verify cross-window scenario**
+   - Action: Open WP 2 in different browser window (same container), create QT 2
+   - Action: From original window, click "Go to Tab" on WP 2 group
+   - Expected: Focus switches to second browser window, WP 2 tab activated
+
+7. **Verify "Go to Tab" works from Manager in any container context**
+   - Action: With Manager open in Work container, click "Go to Tab" on Personal
+     container tab group
+   - Expected: Browser correctly navigates to Personal container tab without errors
+
+---
+
 ## Implementation Notes for Testing
 
 ### Test Bridge API Usage

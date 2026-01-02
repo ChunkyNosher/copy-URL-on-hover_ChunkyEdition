@@ -25,27 +25,18 @@
 
 - **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
   Manager header (default: "All Containers")
+- **Container Indicator Badge** - Shows container name/color in "All Containers"
+  view
 - **Container Name Resolution** - Shows actual names (Shopping, Work) via
   contextualIdentities API
-- **Dynamic Updates** - Container indicator updates when switching tabs
+- **Go to Tab Cross-Container Fix** - `browser.windows.update()` before
+  `browser.tabs.update()` for cross-container tabs
+- **ContainerManager.js** - New module (9.68) with container isolation/filtering
 - **Filter Persistence** - Selection saved to `quickTabsContainerFilter`
-- **Diagnostic Logging** - Improved drag-drop logging with summary-only output
-  (no per-event spam)
 
-**v1.6.4-v4 Bug Fixes (NEW):**
-
-- **Container Filter Fix** - `buildQuickTabData()` now includes
-  `originContainerId` via `getWritingContainerId()` import from storage-utils.js
-- **"Default" Dropdown Removal** - Removed "firefox-default" from container
-  dropdown (redundant with "All Containers"); added `DEFAULT_CONTAINER_ID`
-  constant
-- **Tab Group Drag-Drop Fix** - Quick Tab drag handlers now allow tab-group drag
-  events to bubble up (removed excessive `stopPropagation()` calls)
-- **Container Switch Refresh Fix** - `_onContainerContextChanged()` now calls
-  `requestAllQuickTabsViaPort()` to fetch fresh data instead of `renderUI()`
-  with stale data (v1.6.4-v4)
-- **Auto-Detect Indicator** - Current Container dropdown option now shows
-  "(auto-detect)" suffix to clarify dynamic behavior (v1.6.4-v4)
+**v1.6.4-v4 Bug Fixes:** Container filter fix (`buildQuickTabData()`),
+"firefox-default" dropdown removal, tab group drag-drop bubble fix, container
+switch refresh fix, auto-detect indicator
 
 **v1.6.4-v3 Bug Fixes:** Title updates, state sync, forceEmpty, navigation,
 duplicate messages, UI flicker, STATE_CHANGED race, metrics footer, DEBOUNCE
@@ -131,16 +122,14 @@ const quickTabsSessionState = {
 
 - **Container Filter** - `_filterQuickTabsByContainer()`,
   `_containerFilterDropdown` (default: "all")
+- **Container Badge** - `_createContainerBadge()` in ContainerManager.js
+- **Go to Tab** - `browser.windows.update()` + `browser.tabs.update()` sequence
 - **Name Resolution** - `_getContainerNameByIdAsync()`,
   `_getContainerNameSync()`
 - **Context Change** - `_onContainerContextChanged()` calls
-  `requestAllQuickTabsViaPort()` for fresh data (v1.6.4-v4 fix)
-- **Auto-Detect Indicator** - Current Container option shows "(auto-detect)"
-  suffix (v1.6.4-v4)
+  `requestAllQuickTabsViaPort()` for fresh data
 - **Persistence** - `quickTabsContainerFilter` storage key
-- **Drag Logging** - Summary-only debounce logs (no per-event spam)
-- **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()` for
-  `originContainerId`
+- **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()`
 - **Drag Bubble** - Tab-group drag events bubble past Quick Tab item handlers
 
 ### v1.6.4-v3 Patterns
@@ -322,6 +311,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)           |
 | `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)                |
 | `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)       |
+| `sidebar/managers/ContainerManager.js`      | Container isolation, filtering, badge (v1.6.4-v4)|
 | `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)      |
 | `src/content.js`                            | Port messaging for Quick Tabs                    |
 
