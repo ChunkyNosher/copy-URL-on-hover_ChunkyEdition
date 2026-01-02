@@ -1464,6 +1464,17 @@ function _filterQuickTabsByContainer(allTabs) {
   const targetContainerId =
     _selectedContainerFilter === 'current' ? _currentContainerId : _selectedContainerFilter;
 
+  // v1.6.4-v4 - DEBUG: Log each tab's originContainerId for debugging filter issues
+  console.log('[Manager] CONTAINER_FILTER_DEBUG:', {
+    filter: _selectedContainerFilter,
+    targetContainerId,
+    tabsToCheck: allTabs.map(tab => ({
+      id: tab.id,
+      originContainerId: tab.originContainerId,
+      hasOriginContainerId: 'originContainerId' in tab
+    }))
+  });
+
   // Filter tabs by originContainerId
   const filtered = allTabs.filter(tab => {
     // Get the tab's container ID (use 'firefox-default' if not set)
