@@ -344,15 +344,35 @@ function _handleTabGroupReorder(targetGroup) {
     return;
   }
 
-  const container = draggedGroup.parentElement;
+  // v1.6.4-v4 - FIX BUG #2: Handle stale DOM references after re-render
+  // Instead of using element references directly, find groups by originTabId
+  const draggedOriginTabId = draggedGroup.dataset.originTabId;
+  const targetOriginTabId = targetGroup.dataset.originTabId;
+  
+  // Find the current container (tab-groups-container)
+  const container = document.querySelector('.tab-groups-container');
   if (!container) {
-    console.warn('[Manager] REORDER_FAILED: No parent container');
+    console.warn('[Manager] REORDER_FAILED: No tab-groups-container found');
     return;
   }
 
-  const groups = Array.from(container.children);
-  const draggedIndex = groups.indexOf(draggedGroup);
-  const targetIndex = groups.indexOf(targetGroup);
+  // Find current DOM elements by their originTabId
+  const currentDraggedGroup = container.querySelector(`.tab-group[data-origin-tab-id="${draggedOriginTabId}"]`);
+  const currentTargetGroup = container.querySelector(`.tab-group[data-origin-tab-id="${targetOriginTabId}"]`);
+  
+  if (!currentDraggedGroup || !currentTargetGroup) {
+    console.warn('[Manager] REORDER_FAILED: Could not find groups by originTabId', {
+      draggedOriginTabId,
+      targetOriginTabId,
+      draggedFound: !!currentDraggedGroup,
+      targetFound: !!currentTargetGroup
+    });
+    return;
+  }
+
+  const groups = Array.from(container.querySelectorAll('.tab-group'));
+  const draggedIndex = groups.indexOf(currentDraggedGroup);
+  const targetIndex = groups.indexOf(currentTargetGroup);
   const groupCount = groups.length;
 
   // Validate indexes before reorder
@@ -363,16 +383,16 @@ function _handleTabGroupReorder(targetGroup) {
   console.log('[Manager] REORDER: Tab groups', {
     fromIndex: draggedIndex,
     toIndex: targetIndex,
-    fromTabId: draggedGroup.dataset.originTabId,
-    toTabId: targetGroup.dataset.originTabId,
+    fromTabId: draggedOriginTabId,
+    toTabId: targetOriginTabId,
     groupCount
   });
 
-  // Move in DOM
+  // Move in DOM using current references
   if (draggedIndex < targetIndex) {
-    targetGroup.after(draggedGroup);
+    currentTargetGroup.after(currentDraggedGroup);
   } else {
-    targetGroup.before(draggedGroup);
+    currentTargetGroup.before(currentDraggedGroup);
   }
 
   // v1.6.4 - FIX BUG #4: Save user's preferred group order
