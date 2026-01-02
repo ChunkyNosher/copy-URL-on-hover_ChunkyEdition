@@ -69,6 +69,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   quick-tabs-manager.html (single footer in settings.html sends postMessage)
 - **Bug #14d Excessive Console Logging** - Removed verbose
   DEBOUNCE[DRAG_EVENT_QUEUED] logs on every mouse move (kept completion logs)
+- **Bug #15d Critical State Refresh** - Added `_pendingCriticalStateRefresh`
+  flag to force immediate render after transfer/duplicate ACK
+- **Bug #16d Stale QUICKTAB_REMOVED** - Background ignores QUICKTAB_REMOVED from
+  old tab after transfer (5-second grace period)
 
 **v1.6.4-v3 Features (NEW):**
 
@@ -80,6 +84,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   settings, `_isCategoryFilterEnabled()` checks if category should be counted
 - **Single Metrics Footer** - Only settings.html has metrics footer,
   quick-tabs-manager.js sends METRICS_UPDATE postMessage to parent
+- **Export Console Logs includes Manager** - `MANAGER_LOG_BUFFER` captures logs,
+  `GET_MANAGER_LOGS` postMessage returns logs to settings.js for export
 
 **New Module:**
 

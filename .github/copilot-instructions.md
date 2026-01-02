@@ -27,6 +27,7 @@
 - **BUG FIX #10d-#14d** - Transfer/Duplicate sync (no setTimeout), single
   metrics footer, reduced DEBOUNCE logging
 - **BUG FIX #15d** - Critical state refresh force immediate render
+- **BUG FIX #16d** - Ignore stale QUICKTAB_REMOVED after transfer (5s grace)
 
 **v1.6.4-v3 Features (NEW):**
 
@@ -36,6 +37,7 @@
   per-category counts
 - **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
 - **Footer Visibility** - Save/Reset buttons hidden on Manager tab
+- **Export Console Logs includes Manager logs** - Full debugging with sidebar
 
 **v1.6.4-v3 Code Health:**
 

@@ -116,10 +116,20 @@ quota monitoring, code health 9.0+, render queue priority, simplified init
 
 **Key Settings Functions (v1.6.4-v3):**
 
-| Function                      | Purpose                               |
-| ----------------------------- | ------------------------------------- |
-| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters     |
-| Live Console Output Filter    | Checkboxes for enabled log categories |
+| Function                      | Purpose                                  |
+| ----------------------------- | ---------------------------------------- |
+| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters        |
+| `GET_MANAGER_LOGS` msg        | postMessage to get Manager logs          |
+| `CLEAR_MANAGER_LOGS` msg      | postMessage to clear Manager log buffer  |
+| Live Console Output Filter    | Checkboxes for enabled log categories    |
+
+**Export Console Logs (v1.6.4-v3):**
+
+- **Background logs** - via `GET_BACKGROUND_LOGS` message
+- **Content script logs** - via `GET_CONTENT_LOGS` to active tab
+- **Manager logs** - via `GET_MANAGER_LOGS` postMessage to iframe
+- **Log merge** - All sources merged and sorted by timestamp
+- **Clear function** - `handleClearLogHistory()` clears all three buffers
 
 **v1.6.3.6 Fixes:**
 
