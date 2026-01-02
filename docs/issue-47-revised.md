@@ -1092,8 +1092,8 @@ containers while "Current Container" filter is active.
 
 5. **Verify container indicator updates in header**
    - Action: Observe dropdown label during container switches
-   - Expected: Dropdown label updates to show new container name (e.g.,
-     "💼 Work (auto-detect)" → "👤 Personal (auto-detect)")
+   - Expected: Dropdown label updates to show new container name (e.g., "💼 Work
+     (auto-detect)" → "👤 Personal (auto-detect)")
 
 6. **Verify other filters not affected by container switch**
    - Action: Set filter to "All Containers", switch between container tabs
