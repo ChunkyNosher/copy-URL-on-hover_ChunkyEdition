@@ -147,6 +147,54 @@ async function getContentScriptLogs() {
 }
 
 /**
+ * Request logs from Quick Tabs Manager iframe via postMessage
+ * v1.6.4-v3 - FEATURE: Include Manager/sidebar logs in export
+ * @returns {Promise<Array>} Array of log entries
+ */
+async function getManagerLogs() {
+  console.log('[Settings] getManagerLogs: Requesting logs from Manager iframe...');
+
+  const iframe = document.querySelector('iframe');
+  if (!iframe || !iframe.contentWindow) {
+    console.warn('[Settings] getManagerLogs: Manager iframe not available');
+    return [];
+  }
+
+  return new Promise(resolve => {
+    const timeoutId = setTimeout(() => {
+      console.warn('[Settings] getManagerLogs: Timeout waiting for Manager response');
+      window.removeEventListener('message', handler);
+      resolve([]);
+    }, 5000);
+
+    const handler = event => {
+      // Security check: only accept messages from same origin
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data && event.data.type === 'MANAGER_LOGS_RESPONSE') {
+        clearTimeout(timeoutId);
+        window.removeEventListener('message', handler);
+        const logCount = event.data.logs ? event.data.logs.length : 0;
+        console.log(`[Settings] getManagerLogs: Received ${logCount} logs from Manager`);
+        resolve(event.data.logs || []);
+      }
+    };
+
+    window.addEventListener('message', handler);
+
+    try {
+      iframe.contentWindow.postMessage({ type: 'GET_MANAGER_LOGS' }, window.location.origin);
+      console.log('[Settings] getManagerLogs: Sent GET_MANAGER_LOGS to iframe');
+    } catch (err) {
+      console.error('[Settings] getManagerLogs: Failed to send message to iframe:', err);
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handler);
+      resolve([]);
+    }
+  });
+}
+
+/**
  * Format logs as plain text
  * v1.6.4 - FIX BUG #3: Add first log timestamp at top of export
  * @param {Array} logs - Array of log entries
@@ -208,16 +256,20 @@ function generateLogFilename(version) {
 
 /**
  * Log debug information about collected logs
+ * v1.6.4-v3 - Updated to include Manager logs
  * @param {Array} backgroundLogs - Background logs
  * @param {Array} contentLogs - Content script logs
+ * @param {Array} managerLogs - Manager/sidebar logs
  */
-function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
+function _logCollectionDebugInfo(backgroundLogs, contentLogs, managerLogs = []) {
   console.log(`[Settings] Collected ${backgroundLogs.length} background logs`);
   console.log(`[Settings] Collected ${contentLogs.length} content logs`);
+  console.log(`[Settings] Collected ${managerLogs.length} manager logs`);
 
   // Show breakdown by log type
   const backgroundTypes = {};
   const contentTypes = {};
+  const managerTypes = {};
 
   backgroundLogs.forEach(log => {
     backgroundTypes[log.type] = (backgroundTypes[log.type] || 0) + 1;
@@ -227,8 +279,13 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
     contentTypes[log.type] = (contentTypes[log.type] || 0) + 1;
   });
 
+  managerLogs.forEach(log => {
+    managerTypes[log.type] = (managerTypes[log.type] || 0) + 1;
+  });
+
   console.log('[Settings] Background log types:', backgroundTypes);
   console.log('[Settings] Content log types:', contentTypes);
+  console.log('[Settings] Manager log types:', managerTypes);
 }
 
 /**
@@ -238,22 +295,23 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs) {
  */
 const LOG_VALIDATION_RULES = [
   {
-    condition: (_, __, ___, activeTab) => activeTab && activeTab.url.startsWith('about:'),
+    condition: (_, __, ___, ____, activeTab) => activeTab && activeTab.url.startsWith('about:'),
     message:
       'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
   },
   {
-    condition: (_, __, ___, activeTab) => !activeTab,
+    condition: (_, __, ___, ____, activeTab) => !activeTab,
     message: 'No active tab found. Try clicking on a webpage tab first.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs) =>
-      contentLogs.length === 0 && backgroundLogs.length === 0,
+    condition: (_, backgroundLogs, contentLogs, managerLogs) =>
+      contentLogs.length === 0 && backgroundLogs.length === 0 && managerLogs.length === 0,
     message:
       'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs) => contentLogs.length === 0,
+    condition: (_, backgroundLogs, contentLogs, managerLogs) =>
+      contentLogs.length === 0 && managerLogs.length === 0,
     messageBuilder: (_, backgroundLogs) =>
       `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
   }
@@ -261,13 +319,15 @@ const LOG_VALIDATION_RULES = [
 
 /**
  * Validate that logs were collected and throw appropriate errors
+ * v1.6.4-v3 - Updated to include Manager logs
  * @param {Array} allLogs - All collected logs
  * @param {Array} backgroundLogs - Background logs
  * @param {Array} contentLogs - Content logs
+ * @param {Array} managerLogs - Manager/sidebar logs
  * @param {Object|null} activeTab - Active tab or null
  * @throws {Error} If validation fails
  */
-function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab) {
+function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab) {
   if (allLogs.length > 0) {
     console.log('[Settings] Log validation passed:', allLogs.length, 'logs collected');
     return;
@@ -277,9 +337,9 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, activeTab)
 
   // Find first matching validation rule and throw appropriate error
   for (const rule of LOG_VALIDATION_RULES) {
-    if (rule.condition(allLogs, backgroundLogs, contentLogs, activeTab)) {
+    if (rule.condition(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab)) {
       const errorMessage = rule.messageBuilder
-        ? rule.messageBuilder(allLogs, backgroundLogs, contentLogs, activeTab)
+        ? rule.messageBuilder(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab)
         : rule.message;
       throw new Error(errorMessage);
     }
@@ -464,6 +524,7 @@ function filterLogsByExportSettings(allLogs, exportSettings) {
  * Uses Blob URLs for Firefox compatibility (data: URLs are blocked)
  * v1.6.0.9 - Added export filter support
  * v1.6.4 - FIX Issue 7: Added comprehensive logging
+ * v1.6.4-v3 - FEATURE: Include Manager/sidebar logs in export
  *
  * @param {string} version - Extension version
  * @returns {Promise<void>}
@@ -482,15 +543,18 @@ async function exportAllLogs(version) {
     }
 
     // Collect logs from all sources
+    // v1.6.4-v3 - Now includes Manager/sidebar logs
     console.log('[Settings] exportAllLogs: Collecting logs from all sources...');
     const backgroundLogs = await getBackgroundLogs();
     const contentLogs = await getContentScriptLogs();
+    const managerLogs = await getManagerLogs();
 
     // Log debug information
-    _logCollectionDebugInfo(backgroundLogs, contentLogs);
+    _logCollectionDebugInfo(backgroundLogs, contentLogs, managerLogs);
 
     // Merge and sort logs
-    const allLogs = [...backgroundLogs, ...contentLogs];
+    // v1.6.4-v3 - Now includes Manager logs
+    const allLogs = [...backgroundLogs, ...contentLogs, ...managerLogs];
     allLogs.sort((a, b) => a.timestamp - b.timestamp);
 
     console.log(`[Settings] exportAllLogs: Total logs captured: ${allLogs.length}`);
@@ -509,7 +573,7 @@ async function exportAllLogs(version) {
     // ==================== END EXPORT FILTER ====================
 
     // Validate logs were collected
-    _validateCollectedLogs(filteredLogs, backgroundLogs, contentLogs, activeTab);
+    _validateCollectedLogs(filteredLogs, backgroundLogs, contentLogs, managerLogs, activeTab);
 
     // Format logs as plain text (using filtered logs)
     const logText = formatLogsAsText(filteredLogs, version);
@@ -1342,21 +1406,27 @@ async function handleClearLogHistory() {
   const clearedTabs = response?.clearedTabs || 0;
   const backgroundEntries = response?.clearedBackgroundEntries || 0;
 
-  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-  const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
-  console.log('[Settings] handleClearLogHistory:', statusMsg);
-  showStatus(statusMsg, true);
-
-  // v1.6.4-v3 - FIX Task 1: Post message to iframe to reset metrics log action counts
+  // v1.6.4-v3 - Also clear Manager log buffer
+  let managerCleared = 0;
   const iframe = document.querySelector('iframe');
   if (iframe && iframe.contentWindow) {
     try {
+      // Clear log action counts for metrics
       iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
       console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
+
+      // v1.6.4-v3 - Clear Manager log buffer
+      iframe.contentWindow.postMessage({ type: 'CLEAR_MANAGER_LOGS' }, window.location.origin);
+      console.log('[Settings] handleClearLogHistory: Sent CLEAR_MANAGER_LOGS to iframe');
     } catch (err) {
       console.warn('[Settings] handleClearLogHistory: Failed to send message to iframe:', err);
     }
   }
+
+  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
+  const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
+  console.log('[Settings] handleClearLogHistory:', statusMsg);
+  showStatus(statusMsg, true);
 }
 
 /**

@@ -5617,11 +5617,46 @@ function handleQuickTabMinimizedMessage(message, sender) {
 }
 
 /**
+ * Check if a QUICKTAB_REMOVED should be ignored due to recent transfer
+ * v1.6.4-v3 - FIX BUG #16d: Extracted to reduce handleQuickTabRemovedMessage complexity
+ * @private
+ * @param {Object} quickTabData - Quick Tab data from session state
+ * @param {number} senderTabId - Tab ID that sent the QUICKTAB_REMOVED message
+ * @param {string} quickTabId - Quick Tab ID for logging
+ * @returns {boolean} True if the removal should be ignored
+ */
+function _shouldIgnoreRemovalDueToTransfer(quickTabData, senderTabId, quickTabId) {
+  if (!quickTabData || !quickTabData.transferredAt) {
+    return false;
+  }
+
+  const timeSinceTransfer = Date.now() - quickTabData.transferredAt;
+  const isFromOldTab = quickTabData.transferredFrom === senderTabId;
+  const TRANSFER_GRACE_PERIOD_MS = 5000; // 5 second grace period
+
+  if (isFromOldTab && timeSinceTransfer < TRANSFER_GRACE_PERIOD_MS) {
+    console.log('[Background] v1.6.4-v3 QUICKTAB_REMOVED IGNORED: Quick Tab was recently transferred', {
+      quickTabId,
+      senderTabId,
+      transferredFrom: quickTabData.transferredFrom,
+      transferredAt: quickTabData.transferredAt,
+      timeSinceTransfer,
+      currentOriginTabId: quickTabData.originTabId,
+      reason: 'stale_removal_from_old_tab'
+    });
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handle QUICKTAB_REMOVED message from content script
  * v1.6.3.12-v7 - FIX Bug #3: When content script closes Quick Tab via UI button,
  * DestroyHandler sends this message to notify background for state sync.
  * This ensures the Manager sidebar gets updated when Quick Tabs are closed
  * from their own close buttons, not just from Manager buttons.
+ * v1.6.4-v3 - FIX BUG #16d: Ignore stale removals after Quick Tab transfer
  *
  * @param {Object} message - Message containing quickTabId, originTabId, source
  * @param {browser.runtime.MessageSender} sender - Message sender info
@@ -5637,6 +5672,12 @@ function handleQuickTabRemovedMessage(message, sender) {
     source,
     timestamp: timestamp || Date.now()
   });
+
+  // v1.6.4-v3 - FIX BUG #16d: Check if Quick Tab was recently transferred
+  const quickTabData = _findQuickTabInSessionState(quickTabId);
+  if (_shouldIgnoreRemovalDueToTransfer(quickTabData, senderTabId, quickTabId)) {
+    return; // Don't remove - this is a stale removal from the old tab
+  }
 
   // Remove the Quick Tab from session state
   const { ownerTabId, found } = _removeQuickTabFromSessionState(quickTabId);
@@ -5670,9 +5711,6 @@ function handleQuickTabRemovedMessage(message, sender) {
     });
 
     // v1.6.3.12-v13 - FIX Bug #3: ALWAYS notify sidebar even if Quick Tab not found
-    // This handles the case where the Quick Tab was already removed from session state
-    // (e.g., via storage.onChanged or a previous close operation) but the Manager UI
-    // still shows it. Notifying ensures the Manager gets the latest state.
     console.log('[Background] v1.6.3.12-v13 Notifying sidebar anyway for UI sync:', {
       quickTabId,
       reason: 'ensure_manager_ui_sync',
@@ -6838,6 +6876,24 @@ function _findAndModifyQuickTabInSession(quickTabId, modifier) {
     searchedTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
   });
   return { ownerTabId: null, found: false };
+}
+
+/**
+ * Find Quick Tab in session state without modifying (read-only)
+ * v1.6.4-v3 - FIX BUG #16d: Helper to check Quick Tab state before QUICKTAB_REMOVED
+ * @private
+ * @param {string} quickTabId - Quick Tab ID to find
+ * @returns {Object|null} Quick Tab data if found, null otherwise
+ */
+function _findQuickTabInSessionState(quickTabId) {
+  for (const tabId in quickTabsSessionState.quickTabsByTab) {
+    const tabQuickTabs = quickTabsSessionState.quickTabsByTab[tabId];
+    const quickTab = tabQuickTabs.find(qt => qt.id === quickTabId);
+    if (quickTab) {
+      return quickTab;
+    }
+  }
+  return null;
 }
 
 /**

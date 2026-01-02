@@ -22,12 +22,12 @@
 
 **v1.6.4-v3 Bug Fixes (NEW):**
 
-- **BUG FIX #1d-#7d** - Title updates, state sync, forceEmpty, navigation,
-  open-and-close, duplicate messages, UI flicker
-- **BUG FIX #8d** - Cross-Tab Transfer STATE_CHANGED race fix (immediate
-  requestAllQuickTabsViaPort after ACK)
-- **BUG FIX #9d** - Total logs count resets on "Clear Log History" click
-  (CLEAR_LOG_ACTION_COUNTS postMessage)
+- **BUG FIX #1d-#9d** - Title updates, state sync, forceEmpty, navigation,
+  open-and-close, duplicate messages, UI flicker, STATE_CHANGED race, total logs
+- **BUG FIX #10d-#14d** - Transfer/Duplicate sync (no setTimeout), single
+  metrics footer, reduced DEBOUNCE logging
+- **BUG FIX #15d** - Critical state refresh force immediate render
+- **BUG FIX #16d** - Ignore stale QUICKTAB_REMOVED after transfer (5s grace)
 
 **v1.6.4-v3 Features (NEW):**
 
@@ -37,6 +37,7 @@
   per-category counts
 - **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
 - **Footer Visibility** - Save/Reset buttons hidden on Manager tab
+- **Export Console Logs includes Manager logs** - Full debugging with sidebar
 
 **v1.6.4-v3 Code Health:**
 
@@ -139,10 +140,14 @@ const quickTabsSessionState = {
 - **Navigation Update** - Manager updates when navigating within Quick Tab
   iframe
 - **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
-- **Immediate State Refresh** - `requestAllQuickTabsViaPort()` after
-  Transfer/Duplicate ACK
-- **Live Metrics Footer** - Configurable sidebar metrics with category breakdown
-- **Filter-Aware Counting** - Log metrics sync with Live Console Output Filters
+- **Direct State Refresh** - `requestAllQuickTabsViaPort()` called directly
+  after ACK (no setTimeout)
+- **Critical State Refresh** - `_pendingCriticalStateRefresh` flag forces
+  immediate render after transfer/duplicate response (bypass debounce)
+- **Single Metrics Footer** - Only settings.html has metrics (quick-tabs-manager
+  sends postMessage)
+- **Reduced Logging** - DEBOUNCE event-queuing logs removed, completion logs
+  retained
 
 ### v1.6.4 Patterns
 

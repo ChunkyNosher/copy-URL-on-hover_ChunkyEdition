@@ -2,21 +2,31 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v3 STATE_CHANGED SAFETY TIMEOUT FIX ===
- * v1.6.4-v3 - FIX BUG #1/#2/#3: Transfer/duplicate/Move to Current Tab not appearing in Manager
- *   - ROOT CAUSE: STATE_CHANGED message not received by sidebar after transfer/duplicate
- *     The background script calls notifySidebarOfStateChange() but if the sidebar port
- *     is disconnected or null, the message is dropped (BROADCAST_DROPPED).
- *     Without STATE_CHANGED, the sidebar never gets the updated Quick Tab state.
- *   - FIX: Added safety timeout after transfer/duplicate ACK
- *     - Added STATE_CHANGED_SAFETY_TIMEOUT_MS (500ms) constant
- *     - Added _stateChangedSafetyTimeoutId tracking variable
- *     - Added _scheduleStateChangedSafetyTimeout() helper function
- *     - Added _clearStateChangedSafetyTimeout() to cancel on STATE_CHANGED receipt
- *     - Modified _handleSuccessfulTransferAck() to schedule safety timeout
- *     - Modified DUPLICATE_QUICK_TAB_ACK handler to schedule safety timeout
- *     - Modified _handleQuickTabsStateUpdate() to clear safety timeout on STATE_CHANGED
- *   - BEHAVIOR: If STATE_CHANGED doesn't arrive within 500ms, requests fresh state via port
+ * === v1.6.4-v3 TRANSFER/DUPLICATE STATE SYNC FIX ===
+ * v1.6.4-v3 - FIX BUG #15d: Added _pendingCriticalStateRefresh flag to force immediate render
+ *            after transfer/duplicate operations to ensure Manager displays correct state
+ *   - ROOT CAUSE: GET_ALL_QUICK_TABS_RESPONSE used debounced rendering, which could skip
+ *     or delay render after transfer/duplicate operations due to hash check
+ *   - FIX: Added _pendingCriticalStateRefresh flag set before requestAllQuickTabsViaPort()
+ *     in _handleSuccessfulTransferAck() and DUPLICATE_QUICK_TAB_ACK handlers
+ *   - When flag is set, _handleQuickTabsStateUpdate() bypasses scheduleRender() and calls
+ *     _forceImmediateRender('critical-state-refresh') instead
+ *
+ * v1.6.4-v3 - FIX BUG #1/#2: Transfer/duplicate Quick Tabs not appearing in Manager
+ *   - ROOT CAUSE: setTimeout(0) wrapper around requestAllQuickTabsViaPort() caused
+ *     inconsistent state sync. The event loop deferral meant the request could be
+ *     processed after unrelated state changes, causing stale data.
+ *   - FIX: Removed setTimeout(0) wrapper, call requestAllQuickTabsViaPort() directly
+ *     - Modified _handleSuccessfulTransferAck() - direct call after optimistic update
+ *     - Modified DUPLICATE_QUICK_TAB_ACK handler - direct call after optimistic update
+ *   - BEHAVIOR: Immediate state request after ACK ensures Manager gets updated state
+ *   - NOTE: STATE_CHANGED safety timeout removed as direct call is more reliable
+ *
+ * v1.6.4-v3 - FIX BUG #4: Excessive logging during drag operations (60+ logs/sec)
+ *   - ROOT CAUSE: [DEBOUNCE][DRAG_EVENT_QUEUED] and [DEBOUNCE][MAIN_EVENT_QUEUED]
+ *     logs were firing on every mouse move during drag operations
+ *   - FIX: Removed console.log calls in UpdateHandler.js, kept counter logic
+ *   - Files: src/features/quick-tabs/handlers/UpdateHandler.js lines 152, 494
  *
  * === v1.6.4-v2 MOVE TO CURRENT TAB STATE SYNC FIX ===
  * v1.6.4-v2 - FIX BUG #2: "Move to Current Tab" Quick Tab not appearing in Manager
@@ -481,14 +491,8 @@ let _metricsIntervalId = null;
 // Current metrics settings
 let _metricsEnabled = METRICS_DEFAULT_ENABLED;
 let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
-// DOM element references for metrics (cached for performance)
-let _metricsFooterEl = null;
-let _metricsContentEl = null;
-let _metricsDisabledEl = null;
-let _metricQuickTabsEl = null;
-// v1.6.4-v3 - Changed from storage/memory to log action tracking
-let _metricLogsPerSecondEl = null;
-let _metricTotalLogsEl = null;
+// v1.6.4-v3 REMOVED: DOM element references removed - metrics footer now only in settings.html
+// The postMessage to parent window is still active for the expandable footer
 
 // v1.6.4-v3 - Log action tracking state
 let _totalLogActions = 0;
@@ -519,27 +523,9 @@ function _incrementStateVersion(source) {
 
 // ==================== v1.6.4-v2 FEATURE: LIVE METRICS FUNCTIONS ====================
 
-/**
- * Initialize metrics footer DOM element references
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * v1.6.4-v3 - Changed to log action tracking elements
- * @private
- */
-function _initMetricsDOMReferences() {
-  _metricsFooterEl = document.getElementById('metricsFooter');
-  _metricsContentEl = document.getElementById('metricsContent');
-  _metricsDisabledEl = document.getElementById('metricsDisabled');
-  _metricQuickTabsEl = document.getElementById('metricQuickTabs');
-  // v1.6.4-v3 - Changed from storage/memory to log action tracking
-  _metricLogsPerSecondEl = document.getElementById('metricLogsPerSecond');
-  _metricTotalLogsEl = document.getElementById('metricTotalLogs');
-
-  if (!_metricsFooterEl) {
-    console.warn('[Manager] METRICS: Footer element not found in DOM');
-    return false;
-  }
-  return true;
-}
+// v1.6.4-v3 REMOVED: _initMetricsDOMReferences() function deleted
+// Metrics footer DOM elements no longer exist in quick-tabs-manager.html
+// Metrics are sent to parent window via postMessage for display in settings.html
 
 /**
  * Load metrics settings from storage
@@ -769,8 +755,9 @@ function _clearLogActionCounts() {
 }
 
 /**
- * Install console interceptors to track log actions
+ * Install console interceptors to track log actions and capture logs for export
  * v1.6.4-v3 - FEATURE: Log action tracking with category detection
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
  * @private
  */
 function _installConsoleInterceptors() {
@@ -778,18 +765,52 @@ function _installConsoleInterceptors() {
   const originalWarn = console.warn;
   const originalError = console.error;
 
+  // Helper to add log to buffer
+  const addToLogBuffer = (type, args) => {
+    const message = args
+      .map(arg => {
+        if (arg === null || arg === undefined) return String(arg);
+        if (arg instanceof Error)
+          return `[Error: ${arg.message}]\nStack: ${arg.stack || 'unavailable'}`;
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      })
+      .join(' ');
+
+    // Enforce buffer size limit
+    if (MANAGER_LOG_BUFFER.length >= MAX_MANAGER_LOG_BUFFER_SIZE) {
+      MANAGER_LOG_BUFFER.shift();
+    }
+
+    MANAGER_LOG_BUFFER.push({
+      timestamp: Date.now(),
+      type,
+      message,
+      source: 'manager'
+    });
+  };
+
   console.log = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('LOG', args);
     originalLog.apply(console, args);
   };
 
   console.warn = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('WARN', args);
     originalWarn.apply(console, args);
   };
 
   console.error = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('ERROR', args);
     originalError.apply(console, args);
   };
 
@@ -800,22 +821,37 @@ function _installConsoleInterceptors() {
 }
 
 /**
+ * Get all captured Manager logs for export
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
+ * @returns {Array} Copy of log buffer
+ */
+function getManagerLogs() {
+  return [...MANAGER_LOG_BUFFER];
+}
+
+/**
+ * Clear Manager log buffer
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
+ * @returns {number} Number of entries cleared
+ */
+function clearManagerLogs() {
+  const cleared = MANAGER_LOG_BUFFER.length;
+  MANAGER_LOG_BUFFER.length = 0;
+  // Use original console to avoid incrementing counter
+  if (console._originalLog) {
+    console._originalLog('[Manager] Log buffer cleared:', cleared, 'entries');
+  }
+  return cleared;
+}
+
+/**
  * Update a metric value with animation if changed
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * @private
  * @param {HTMLElement} element - The metric value element
  * @param {string} newValue - The new value to display
  */
-function _updateMetricValue(element, newValue) {
-  if (!element) return;
-
-  const oldValue = element.textContent;
-  if (oldValue !== newValue) {
-    element.textContent = newValue;
-    element.classList.add('updated');
-    setTimeout(() => element.classList.remove('updated'), 300);
-  }
-}
+// v1.6.4-v3 REMOVED: _updateMetricValue() function removed - local DOM elements no longer exist
 
 /**
  * Update all metrics display
@@ -823,10 +859,11 @@ function _updateMetricValue(element, newValue) {
  * v1.6.4-v3 - Changed to log action tracking
  * v1.6.4-v3 - Also send metrics to parent window for display in settings.html
  * v1.6.4-v3 - Task 2: Include category breakdown in metrics update
+ * v1.6.4-v3 - MODIFIED: Local DOM updates removed - only sends postMessage to parent
  * @private
  */
 function _updateMetrics() {
-  // Get metrics data even if local display is disabled (parent might show it)
+  // Get metrics data for parent window
   const quickTabCount = _allQuickTabsFromPort.length;
   const logsPerSecond = _calculateLogsPerSecond();
   const totalLogs = _totalLogActions;
@@ -853,38 +890,11 @@ function _updateMetrics() {
     // Ignore cross-origin errors - parent might not be available
   }
 
-  // Skip local update if metrics disabled or footer not available
-  if (!_metricsEnabled || !_metricsFooterEl) return;
-
-  try {
-    // Update DOM
-    _updateMetricValue(_metricQuickTabsEl, String(quickTabCount));
-    _updateMetricValue(_metricLogsPerSecondEl, `${logsPerSecond}/s`);
-    _updateMetricValue(_metricTotalLogsEl, String(totalLogs));
-  } catch (err) {
-    // Use original console to avoid infinite loop
-    if (console._originalWarn) {
-      console._originalWarn('[Manager] METRICS: Update failed', err.message);
-    }
-  }
+  // v1.6.4-v3 REMOVED: Local DOM updates removed - metrics footer now only in settings.html
 }
 
-/**
- * Show/hide metrics based on enabled state
- * v1.6.4-v2 - FEATURE: Live metrics footer
- * @private
- */
-function _applyMetricsVisibility() {
-  if (!_metricsContentEl || !_metricsDisabledEl) return;
-
-  if (_metricsEnabled) {
-    _metricsContentEl.style.display = 'flex';
-    _metricsDisabledEl.style.display = 'none';
-  } else {
-    _metricsContentEl.style.display = 'none';
-    _metricsDisabledEl.style.display = 'block';
-  }
-}
+// v1.6.4-v3 REMOVED: _applyMetricsVisibility() function deleted
+// Local metrics footer no longer exists - visibility controlled by parent window (settings.html)
 
 /**
  * Start the metrics update interval
@@ -940,17 +950,14 @@ async function initializeMetrics() {
   // v1.6.4-v3 - Install console interceptors FIRST (before any other logs)
   _installConsoleInterceptors();
 
-  // Initialize DOM references
-  if (!_initMetricsDOMReferences()) {
-    console.warn('[Manager] METRICS: Initialization failed - DOM elements not found');
-    return;
-  }
+  // v1.6.4-v3 REMOVED: DOM references init no longer needed (metrics footer in parent window)
+  // Previously: if (!_initMetricsDOMReferences()) { return; }
 
   // Load settings from storage
   await _loadMetricsSettings();
 
-  // Apply visibility based on settings
-  _applyMetricsVisibility();
+  // v1.6.4-v3 REMOVED: Visibility application no longer needed (controlled by parent window)
+  // Previously: _applyMetricsVisibility();
 
   // Start interval if enabled
   _startMetricsInterval();
@@ -1003,14 +1010,65 @@ function _handleMetricsSettingsChange(changes, areaName) {
   }
 
   if (settingsChanged) {
-    _applyMetricsVisibility();
+    // v1.6.4-v3 REMOVED: _applyMetricsVisibility() no longer needed (controlled by parent window)
     _startMetricsInterval(); // Restart with new settings
   }
 }
 
 /**
+ * Send a postMessage response to parent window
+ * v1.6.4-v3 - FEATURE: Helper for log buffer functionality
+ * @private
+ * @param {MessageEventSource} source - The message source to respond to
+ * @param {string} origin - The origin to post message to
+ * @param {Object} message - The message object to send
+ */
+function _sendParentWindowResponse(source, origin, message) {
+  try {
+    source.postMessage(message, origin);
+  } catch (err) {
+    console.error('[Manager] Failed to send response:', message.type, err);
+  }
+}
+
+/**
+ * Parent window message handlers lookup table
+ * v1.6.4-v3 - FEATURE: Lookup table pattern to reduce complexity
+ * @private
+ */
+const _parentWindowMessageHandlers = {
+  CLEAR_LOG_ACTION_COUNTS: () => {
+    _clearLogActionCounts();
+    if (console._originalLog) {
+      console._originalLog(
+        '[Manager] METRICS: Log action counts cleared via parent window message'
+      );
+    }
+  },
+  GET_MANAGER_LOGS: event => {
+    const logs = getManagerLogs();
+    if (console._originalLog) {
+      console._originalLog('[Manager] GET_MANAGER_LOGS: Returning', logs.length, 'logs');
+    }
+    _sendParentWindowResponse(event.source, event.origin, {
+      type: 'MANAGER_LOGS_RESPONSE',
+      logs: logs
+    });
+  },
+  CLEAR_MANAGER_LOGS: event => {
+    const cleared = clearManagerLogs();
+    _sendParentWindowResponse(event.source, event.origin, {
+      type: 'CLEAR_MANAGER_LOGS_RESPONSE',
+      cleared: cleared
+    });
+  }
+};
+
+/**
  * Handle messages from parent window (settings.js)
  * v1.6.4-v3 - FIX Task 1: Reset log action counts when Clear Log History clicked
+ * v1.6.4-v3 - FEATURE: Log buffer retrieval and clearing for export functionality
+ * v1.6.4-v3 - Refactored to use lookup table pattern for reduced complexity
  * @private
  * @param {MessageEvent} event - Message event from parent window
  */
@@ -1019,15 +1077,9 @@ function _handleParentWindowMessage(event) {
   if (event.origin !== window.location.origin) return;
 
   const data = event.data || {};
-
-  if (data.type === 'CLEAR_LOG_ACTION_COUNTS') {
-    _clearLogActionCounts();
-    // Use original console to avoid incrementing counter
-    if (console._originalLog) {
-      console._originalLog(
-        '[Manager] METRICS: Log action counts cleared via parent window message'
-      );
-    }
+  const handler = _parentWindowMessageHandlers[data.type];
+  if (handler) {
+    handler(event);
   }
 }
 
@@ -1090,6 +1142,10 @@ let quickTabsPort = null;
  */
 let _allQuickTabsFromPort = [];
 
+// v1.6.4-v3 - Log buffer for export functionality
+const MAX_MANAGER_LOG_BUFFER_SIZE = 5000;
+const MANAGER_LOG_BUFFER = [];
+
 // v1.6.4 - Note: _userGroupOrder and _userQuickTabOrderByGroup now managed by OrderManager.js
 // These module-level variables have been removed to reduce code duplication
 
@@ -1124,6 +1180,13 @@ let _sequenceGapsDetected = 0;
  * Cleared when STATE_CHANGED arrives
  */
 let _stateChangedSafetyTimeoutId = null;
+
+/**
+ * v1.6.4-v3 - FIX BUG #15d: Flag to force immediate render after transfer/duplicate response
+ * When set, GET_ALL_QUICK_TABS_RESPONSE will bypass debounced scheduling and force immediate render
+ * This ensures Manager displays correct state after transfer/duplicate operations
+ */
+let _pendingCriticalStateRefresh = false;
 
 /**
  * Initialize Quick Tabs port connection
@@ -1626,6 +1689,13 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   const isNowEmpty = quickTabs.length === 0;
 
   _allQuickTabsFromPort = quickTabs;
+
+  // v1.6.4-v3 - DEBUG: Log state received during critical refresh for transfer debugging
+  // Note: Uses extracted helper to avoid adding complexity to this function
+  if (_pendingCriticalStateRefresh) {
+    _logCriticalRefreshStateReceived(quickTabs, renderReason, correlationId);
+  }
+
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
 
@@ -1651,8 +1721,19 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
   _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
-  // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
-  scheduleRender(renderReason, correlationId);
+  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
+  if (_pendingCriticalStateRefresh) {
+    _pendingCriticalStateRefresh = false;
+    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
+      renderReason,
+      tabCount: quickTabs.length,
+      timestamp: Date.now()
+    });
+    _forceImmediateRender('critical-state-refresh');
+  } else {
+    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
+    scheduleRender(renderReason, correlationId);
+  }
 }
 
 /**
@@ -1847,6 +1928,25 @@ function _logQuickTabValidationFailures(totalReceived, validCount, invalidCount,
 }
 
 /**
+ * Log state received during critical refresh for transfer debugging
+ * v1.6.4-v3 - DEBUG: Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logCriticalRefreshStateReceived(quickTabs, renderReason, correlationId) {
+  console.log('[Sidebar] CRITICAL_REFRESH_STATE_RECEIVED:', {
+    renderReason,
+    quickTabCount: quickTabs.length,
+    quickTabIds: quickTabs.map(qt => qt.id),
+    originTabIds: quickTabs.map(qt => qt.originTabId),
+    correlationId: correlationId || null,
+    timestamp: Date.now()
+  });
+}
+
+/**
  * Validate sequence number field
  * v1.6.4 - FIX Issue #15: Add sequence number validation
  * @private
@@ -1924,8 +2024,7 @@ function _logPortMessageValidationError(type, msg, error) {
 /**
  * Handle successful transfer ACK - update local state and force render
  * v1.6.4 - FIX BUG #1: Extracted to reduce complexity of TRANSFER_QUICK_TAB_ACK handler
- * v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
- * v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout to request fresh state if STATE_CHANGED doesn't arrive
+ * v1.6.4-v3 - FIX BUG #1/#2: Direct requestAllQuickTabsViaPort() call without setTimeout
  * @private
  * @param {Object} msg - ACK message with quickTabId, oldOriginTabId, newOriginTabId
  */
@@ -1937,7 +2036,17 @@ function _handleSuccessfulTransferAck(msg) {
     newOriginTabId: msg.newOriginTabId,
     currentPortDataCount: _allQuickTabsFromPort.length,
     timestamp: Date.now(),
-    message: 'STATE_CHANGED should follow with complete updated state'
+    message: 'Requesting fresh state immediately after ACK'
+  });
+
+  // v1.6.4-v3 - DEBUG: Log state BEFORE optimistic update for transfer debugging
+  console.log('[Sidebar] TRANSFER_BEFORE_OPTIMISTIC_UPDATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    currentQuickTabCount: _allQuickTabsFromPort.length,
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id),
+    originTabIds: _allQuickTabsFromPort.map(qt => qt.originTabId),
+    timestamp: Date.now()
   });
 
   // Clear cache for both old and new origin tabs
@@ -1946,6 +2055,17 @@ function _handleSuccessfulTransferAck(msg) {
   // Update _allQuickTabsFromPort optimistically
   _updateLocalQuickTabOrigin(msg.quickTabId, msg.newOriginTabId);
 
+  // v1.6.4-v3 - DEBUG: Log state AFTER optimistic update for transfer debugging
+  console.log('[Sidebar] TRANSFER_AFTER_OPTIMISTIC_UPDATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    quickTabCount: _allQuickTabsFromPort.length,
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id),
+    originTabIds: _allQuickTabsFromPort.map(qt => qt.originTabId),
+    quickTabFoundInLocalState: _allQuickTabsFromPort.some(qt => qt.id === msg.quickTabId),
+    timestamp: Date.now()
+  });
+
   // Also update quickTabsState for hash consistency
   _updateQuickTabsStateOrigin(msg.quickTabId, msg.newOriginTabId);
 
@@ -1953,19 +2073,29 @@ function _handleSuccessfulTransferAck(msg) {
   _incrementStateVersion('transfer-ack');
   _forceImmediateRender('transfer-ack-success');
 
-  // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after transfer to ensure consistency
-  // Previous approach relied on STATE_CHANGED broadcast which may be dropped if sidebarPort is null.
-  // This direct request ensures we get the updated state even if the broadcast fails.
-  // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
-  // messages before we request fresh state, ensuring proper ordering
-  setTimeout(() => {
-    console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
-      quickTabId: msg.quickTabId,
-      newOriginTabId: msg.newOriginTabId,
-      timestamp: Date.now()
+  // v1.6.4-v3 - FIX BUG #15d: Set flag to force immediate render when response arrives
+  _pendingCriticalStateRefresh = true;
+  console.log('[Sidebar] CRITICAL_STATE_REFRESH_PENDING: Transfer ACK', {
+    quickTabId: msg.quickTabId
+  });
+
+  // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after transfer ACK
+  // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
+  // Removed setTimeout(0) wrapper as it was causing inconsistent state sync.
+  console.log('[Sidebar] TRANSFER_ACK_REQUESTING_FRESH_STATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    timestamp: Date.now()
+  });
+  const portRequestSuccess = requestAllQuickTabsViaPort();
+
+  // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
+  if (!portRequestSuccess) {
+    _pendingCriticalStateRefresh = false;
+    console.warn('[Sidebar] CRITICAL_STATE_REFRESH_CLEARED: Port request failed', {
+      quickTabId: msg.quickTabId
     });
-    requestAllQuickTabsViaPort();
-  }, 0);
+  }
 }
 
 /**
@@ -2212,8 +2342,7 @@ const _portMessageHandlers = {
   },
   // v1.6.4 - FIX BUG #3: Handle duplicate ACK
   // v1.6.4 - FIX BUG #2: Force immediate render after successful duplicate
-  // v1.6.4 - FIX BUG #1/#2: Removed requestAllQuickTabsViaPort() to prevent race with STATE_CHANGED
-  // v1.6.4-v3 - FIX BUG #1/#2/#3: Added safety timeout for STATE_CHANGED
+  // v1.6.4-v3 - FIX BUG #1/#2: Direct requestAllQuickTabsViaPort() call without setTimeout
   DUPLICATE_QUICK_TAB_ACK: msg => {
     console.log('[Sidebar] DUPLICATE_QUICK_TAB_ACK received:', {
       success: msg.success,
@@ -2223,7 +2352,7 @@ const _portMessageHandlers = {
       correlationId: msg.correlationId || null,
       currentPortDataCount: _allQuickTabsFromPort.length,
       timestamp: Date.now(),
-      message: 'STATE_CHANGED should follow with complete updated state'
+      message: 'Requesting fresh state immediately after ACK'
     });
     // v1.6.4 - FIX BUG #2: If duplicate succeeded, increment version and force render
     if (msg.success) {
@@ -2237,16 +2366,29 @@ const _portMessageHandlers = {
       _incrementStateVersion('duplicate-ack');
       _forceImmediateRender('duplicate-ack-success');
 
-      // v1.6.4-v3 - FIX BUG #8d: ALWAYS request fresh state after duplicate to ensure consistency
-      // v1.6.4-v3 - Use setTimeout(0) to allow event loop to process any pending STATE_CHANGED
-      setTimeout(() => {
-        console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
-          newQuickTabId: msg.newQuickTabId,
-          newOriginTabId: msg.newOriginTabId,
-          timestamp: Date.now()
+      // v1.6.4-v3 - FIX BUG #15d: Set flag to force immediate render when response arrives
+      _pendingCriticalStateRefresh = true;
+      console.log('[Sidebar] CRITICAL_STATE_REFRESH_PENDING: Duplicate ACK', {
+        newQuickTabId: msg.newQuickTabId
+      });
+
+      // v1.6.4-v3 - FIX BUG #1/#2: Request fresh state immediately after duplicate ACK
+      // Direct call ensures we get updated state even if STATE_CHANGED broadcast is dropped.
+      // Removed setTimeout(0) wrapper as it was causing inconsistent state sync.
+      console.log('[Sidebar] DUPLICATE_ACK_REQUESTING_FRESH_STATE:', {
+        newQuickTabId: msg.newQuickTabId,
+        newOriginTabId: msg.newOriginTabId,
+        timestamp: Date.now()
+      });
+      const portRequestSuccess = requestAllQuickTabsViaPort();
+
+      // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
+      if (!portRequestSuccess) {
+        _pendingCriticalStateRefresh = false;
+        console.warn('[Sidebar] CRITICAL_STATE_REFRESH_CLEARED: Port request failed', {
+          newQuickTabId: msg.newQuickTabId
         });
-        requestAllQuickTabsViaPort();
-      }, 0);
+      }
     }
   }
 };
@@ -7643,6 +7785,9 @@ async function _executeRenderUIInternal() {
   // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
   const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
+  // v1.6.4-v3 - DEBUG: Log render input data for transfer debugging (uses extracted helper)
+  _logRenderInputData(allTabs, source);
+
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
@@ -7756,6 +7901,23 @@ function _updateRenderTrackers(stateVersionAtRenderStart) {
       message: 'State was updated during render - next render will process newer state'
     });
   }
+}
+
+/**
+ * Log render input data for transfer debugging
+ * v1.6.4-v3 - DEBUG: Extracted to reduce lines in _executeRenderUIInternal
+ * @private
+ * @param {Array} allTabs - Quick Tabs to render
+ * @param {string} source - Data source (port, cache, etc.)
+ */
+function _logRenderInputData(allTabs, source) {
+  console.log('[Manager] RENDER_INPUT_DATA:', {
+    tabCount: allTabs.length,
+    quickTabIds: allTabs.map(t => t.id),
+    originTabIds: allTabs.map(t => t.originTabId),
+    dataSource: source,
+    timestamp: Date.now()
+  });
 }
 
 /**

@@ -72,6 +72,8 @@ const relevantMemories = await searchMemories({
   settings, `_isCategoryFilterEnabled()` checks if category should be counted
 - **Bug #9d Total Logs Reset** - settings.js sends `CLEAR_LOG_ACTION_COUNTS`
   postMessage to iframe to reset counters
+- **Bug #13d Single Metrics Footer** - Only settings.html has metrics footer,
+  quick-tabs-manager.js sends METRICS_UPDATE postMessage to parent
 - **Default Interval** - `METRICS_DEFAULT_INTERVAL_MS` = 1000ms
 
 **v1.6.3.12-v12 Features - Button Operation Fix + Code Health:**
@@ -114,10 +116,20 @@ quota monitoring, code health 9.0+, render queue priority, simplified init
 
 **Key Settings Functions (v1.6.4-v3):**
 
-| Function                      | Purpose                               |
-| ----------------------------- | ------------------------------------- |
-| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters     |
-| Live Console Output Filter    | Checkboxes for enabled log categories |
+| Function                      | Purpose                                  |
+| ----------------------------- | ---------------------------------------- |
+| `CLEAR_LOG_ACTION_COUNTS` msg | postMessage to reset log counters        |
+| `GET_MANAGER_LOGS` msg        | postMessage to get Manager logs          |
+| `CLEAR_MANAGER_LOGS` msg      | postMessage to clear Manager log buffer  |
+| Live Console Output Filter    | Checkboxes for enabled log categories    |
+
+**Export Console Logs (v1.6.4-v3):**
+
+- **Background logs** - via `GET_BACKGROUND_LOGS` message
+- **Content script logs** - via `GET_CONTENT_LOGS` to active tab
+- **Manager logs** - via `GET_MANAGER_LOGS` postMessage to iframe
+- **Log merge** - All sources merged and sorted by timestamp
+- **Clear function** - `handleClearLogHistory()` clears all three buffers
 
 **v1.6.3.6 Fixes:**
 
@@ -255,6 +267,7 @@ CodeScene, Agentic-Tools (memories), Playwright (UI testing), Codecov (coverage)
 - [ ] Expandable category breakdown (click footer to expand/collapse)
 - [ ] Filter-aware log counting via \_loadLiveFilterSettings()
 - [ ] Bug #9d: CLEAR_LOG_ACTION_COUNTS resets counters
+- [ ] Bug #13d: Single metrics footer only in settings.html
 - [ ] Live Metrics interval configurable (500ms-30s)
 - [ ] Live Metrics toggle works in settings
 - [ ] Live Console Output Filter checkboxes work

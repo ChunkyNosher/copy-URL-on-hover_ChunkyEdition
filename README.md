@@ -9,7 +9,7 @@ Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
 **🔧 v1.6.4-v3 Status:** Metrics on All Tabs ✅ | Transfer Sync ✅ | Footer
-Fixed ✅
+Fixed ✅ | Export Manager Logs ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -35,6 +35,11 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
   transfer/duplicate ACK
 - ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
+- ✅ **Single Metrics Footer** - Metrics footer only in settings.html (no
+  duplicate in manager)
+- ✅ **Reduced Logging** - Removed verbose DEBOUNCE event-queuing logs
+- ✅ **Export Console Logs includes Manager** - Full debugging with Manager logs
+- ✅ **Stale QUICKTAB_REMOVED Fix** - Transferred Quick Tabs no longer disappear
 
 ## 🎉 What's New in v1.6.4-v2
 
