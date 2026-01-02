@@ -1125,6 +1125,8 @@ function cleanupMetrics() {
  * v1.6.4-v4 - FEATURE: Container isolation
  */
 const CONTAINER_FILTER_STORAGE_KEY = 'quickTabsContainerFilter';
+// v1.6.4-v4 - FIX BUG #1b: Migration flag to track if 'current' filter was reset to 'all'
+const CONTAINER_FILTER_MIGRATION_KEY = 'containerFilterMigrated_v1_6_4_v4';
 
 /**
  * Get container name by cookieStoreId (async)
@@ -1393,9 +1395,9 @@ async function _saveContainerFilterPreference(filterValue) {
  */
 async function _loadContainerFilterPreference() {
   try {
-    const result = await browser.storage.local.get([CONTAINER_FILTER_STORAGE_KEY, 'containerFilterMigrated_v1_6_4_v4']);
+    const result = await browser.storage.local.get([CONTAINER_FILTER_STORAGE_KEY, CONTAINER_FILTER_MIGRATION_KEY]);
     const savedFilter = result[CONTAINER_FILTER_STORAGE_KEY];
-    const alreadyMigrated = result['containerFilterMigrated_v1_6_4_v4'];
+    const alreadyMigrated = result[CONTAINER_FILTER_MIGRATION_KEY];
     
     // v1.6.4-v4 - FIX BUG #1b: One-time migration from 'current' to 'all'
     const needsMigration = !alreadyMigrated && savedFilter === 'current';
@@ -1411,7 +1413,7 @@ async function _loadContainerFilterPreference() {
     
     // Mark migration check complete to prevent re-running on future loads
     if (!alreadyMigrated) {
-      await browser.storage.local.set({ 'containerFilterMigrated_v1_6_4_v4': true });
+      await browser.storage.local.set({ [CONTAINER_FILTER_MIGRATION_KEY]: true });
     }
   } catch (err) {
     console.warn('[Manager] CONTAINER_FILTER_LOAD_FAILED:', err.message);
@@ -1429,7 +1431,7 @@ async function _migrateContainerFilterToAll() {
   _selectedContainerFilter = 'all';
   await browser.storage.local.set({
     [CONTAINER_FILTER_STORAGE_KEY]: 'all',
-    'containerFilterMigrated_v1_6_4_v4': true
+    [CONTAINER_FILTER_MIGRATION_KEY]: true
   });
   console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter, '(migrated from current)');
 }
