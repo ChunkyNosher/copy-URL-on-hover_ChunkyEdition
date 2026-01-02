@@ -1395,22 +1395,25 @@ async function _saveContainerFilterPreference(filterValue) {
  */
 async function _loadContainerFilterPreference() {
   try {
-    const result = await browser.storage.local.get([CONTAINER_FILTER_STORAGE_KEY, CONTAINER_FILTER_MIGRATION_KEY]);
+    const result = await browser.storage.local.get([
+      CONTAINER_FILTER_STORAGE_KEY,
+      CONTAINER_FILTER_MIGRATION_KEY
+    ]);
     const savedFilter = result[CONTAINER_FILTER_STORAGE_KEY];
     const alreadyMigrated = result[CONTAINER_FILTER_MIGRATION_KEY];
-    
+
     // v1.6.4-v4 - FIX BUG #1b: One-time migration from 'current' to 'all'
     const needsMigration = !alreadyMigrated && savedFilter === 'current';
-    
+
     if (needsMigration) {
       await _migrateContainerFilterToAll();
       return;
     }
-    
+
     // v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
     _selectedContainerFilter = savedFilter || 'all';
     console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter);
-    
+
     // Mark migration check complete to prevent re-running on future loads
     if (!alreadyMigrated) {
       await browser.storage.local.set({ [CONTAINER_FILTER_MIGRATION_KEY]: true });
@@ -1433,7 +1436,11 @@ async function _migrateContainerFilterToAll() {
     [CONTAINER_FILTER_STORAGE_KEY]: 'all',
     [CONTAINER_FILTER_MIGRATION_KEY]: true
   });
-  console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter, '(migrated from current)');
+  console.log(
+    '[Manager] CONTAINER_FILTER_LOADED:',
+    _selectedContainerFilter,
+    '(migrated from current)'
+  );
 }
 
 /**
