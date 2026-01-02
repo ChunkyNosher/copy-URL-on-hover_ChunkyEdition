@@ -1933,7 +1933,7 @@ function _handleSuccessfulTransferAck(msg) {
     timestamp: Date.now()
   });
   const portRequestSuccess = requestAllQuickTabsViaPort();
-  
+
   // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
   if (!portRequestSuccess) {
     _pendingCriticalStateRefresh = false;
@@ -2226,7 +2226,7 @@ const _portMessageHandlers = {
         timestamp: Date.now()
       });
       const portRequestSuccess = requestAllQuickTabsViaPort();
-      
+
       // v1.6.4-v3 - Code Review: Clear flag if port request fails to prevent unintended immediate renders
       if (!portRequestSuccess) {
         _pendingCriticalStateRefresh = false;

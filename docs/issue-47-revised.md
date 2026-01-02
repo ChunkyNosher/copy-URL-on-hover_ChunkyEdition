@@ -1280,14 +1280,18 @@ the transferred Quick Tab.
 transfer/duplicate operations, it went through `_handleQuickTabsStateUpdate()`
 which called `scheduleRender()` - a debounced render function. The debounce
 mechanism could delay or skip the render because:
+
 1. The previous immediate render from the ACK updated `lastRenderedStateHash`
 2. The hash comparison in `scheduleRender()` could skip the render
 3. Even if not skipped, the debounce timer would delay the update
 
 **Fix:** Added `_pendingCriticalStateRefresh` flag to force immediate render:
-1. Set flag before `requestAllQuickTabsViaPort()` in transfer/duplicate ACK handlers
+
+1. Set flag before `requestAllQuickTabsViaPort()` in transfer/duplicate ACK
+   handlers
 2. Check flag in `_handleQuickTabsStateUpdate()` and call
-   `_forceImmediateRender('critical-state-refresh')` instead of `scheduleRender()`
+   `_forceImmediateRender('critical-state-refresh')` instead of
+   `scheduleRender()`
 3. Clear flag after forcing immediate render
 
 **Files Changed:** `sidebar/quick-tabs-manager.js`
