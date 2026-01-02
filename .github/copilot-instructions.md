@@ -24,56 +24,34 @@
 **v1.6.4-v4 Features (NEW):**
 
 - **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
-  Manager header
+  Manager header (default: "All Containers")
 - **Container Name Resolution** - Shows actual names (Shopping, Work) via
   contextualIdentities API
 - **Dynamic Updates** - Container indicator updates when switching tabs
 - **Filter Persistence** - Selection saved to `quickTabsContainerFilter`
+- **Diagnostic Logging** - Improved drag-drop logging with summary-only output
+  (no per-event spam)
 
-**v1.6.4-v3 Bug Fixes:**
+**v1.6.4-v3 Bug Fixes:** Title updates, state sync, forceEmpty, navigation,
+duplicate messages, UI flicker, STATE_CHANGED race, metrics footer, DEBOUNCE
+logging
 
-- **BUG FIX #1d-#9d** - Title updates, state sync, forceEmpty, navigation,
-  open-and-close, duplicate messages, UI flicker, STATE_CHANGED race, total logs
-- **BUG FIX #10d-#14d** - Transfer/Duplicate sync (no setTimeout), single
-  metrics footer, reduced DEBOUNCE logging
-- **BUG FIX #15d** - Critical state refresh force immediate render
-- **BUG FIX #16d** - Ignore stale QUICKTAB_REMOVED after transfer (5s grace)
-
-**v1.6.4-v3 Features:**
-
-- **Live Log Action Metrics Footer** - Quick Tab count, logs/sec, total logs.
-  Configurable interval (500ms-30s), toggle in settings.
-- **Expandable Category Breakdown** - Click metrics to expand/collapse
-  per-category counts
-- **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
-- **Footer Visibility** - Save/Reset buttons hidden on Manager tab
-- **Export Console Logs includes Manager logs** - Full debugging with sidebar
+**v1.6.4-v3 Features:** Live Log Action Metrics Footer, Expandable Category
+Breakdown, Filter-Aware Log Counting, Footer Visibility toggle
 
 **v1.6.4-v3 Code Health:** window.js (9.38), VisibilityHandler.js (9.38),
 content.js (9.09), StorageChangeAnalyzer.js (new module)
 
-**v1.6.4 Bug Fixes:**
-
-- **BUG FIX #1-2** - Transfer/Duplicate race fix (removed redundant port calls)
-- **BUG FIX #3** - Quick Tab reordering persistence
-  (`_userQuickTabOrderByGroup`)
-- **BUG FIX #4** - Last Quick Tab close fix (`_handleEmptyStateTransition()`)
+**v1.6.4 Bug Fixes:** Transfer/Duplicate race, Quick Tab reordering persistence,
+Last Quick Tab close fix
 
 **v1.6.4 Code Health:** PortManager.js (9.68), RenderManager.js (9.17)
 
-**v1.6.4 Features:**
+**v1.6.4 Features:** Drag-and-Drop reordering, Cross-Tab Transfer, Duplicate via
+Shift+Drag, Click-to-Front, Move to Current Tab, Tab Group Actions, Open in New
+Tab, Duplicate Modifier Key setting
 
-- Drag-and-Drop reordering, Cross-Tab Transfer, Duplicate via Shift+Drag
-- Click-to-Front, Move to Current Tab, Tab Group Actions, Open in New Tab
-- Duplicate Modifier Key setting: Shift (default), Ctrl, None
-
-**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
-**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
-**v1.6.3.12-v10:** Port Routing Fix (Issue #48), Code Health 9.09  
-**v1.6.3.12-v8 to v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close  
-**v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
-**v1.6.3.11-v12:** Solo/Mute REMOVED
+**v1.6.3.12:** Option 4 Architecture, Port-Based Messaging, Solo/Mute REMOVED
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
@@ -137,11 +115,12 @@ const quickTabsSessionState = {
 ### v1.6.4-v4 Patterns (Current)
 
 - **Container Filter** - `_filterQuickTabsByContainer()`,
-  `_containerFilterDropdown`
+  `_containerFilterDropdown` (default: "all")
 - **Name Resolution** - `_getContainerNameByIdAsync()`,
   `_getContainerNameSync()`
 - **Context Change** - `_onContainerContextChanged()` updates UI
 - **Persistence** - `quickTabsContainerFilter` storage key
+- **Drag Logging** - Summary-only debounce logs (no per-event spam)
 
 ### v1.6.4-v3 Patterns
 
