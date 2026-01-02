@@ -1286,6 +1286,63 @@ indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 
 
 ---
 
+## Scenario 35: Close All Respects Container Filter (v1.6.4-v4)
+
+**Feature:** The "Close All" button in the Manager respects the current container
+filter setting. When viewing a specific container, Close All only closes Quick
+Tabs in that container, leaving Quick Tabs in other containers untouched.
+
+### Setup
+
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 and WP QT 2 in WP 1
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open WP QT 3 and WP QT 4 in WP 2
+5. Open Manager (Ctrl+Alt+Z)
+6. Set container filter to "Shopping" container
+
+### Actions
+
+**Action A:** Click "Close All" button in Manager header
+
+### Expected Behavior
+
+**After Action A:**
+
+| Component              | Expected State                                      |
+| ---------------------- | --------------------------------------------------- |
+| WP QT 1                | ❌ CLOSED (was in Shopping container)               |
+| WP QT 2                | ❌ CLOSED (was in Shopping container)               |
+| WP QT 3                | ✅ STILL OPEN (in Research container)               |
+| WP QT 4                | ✅ STILL OPEN (in Research container)               |
+| Manager List           | Shows only WP 2 group with QT 3 and QT 4            |
+| Container Filter       | Still set to "Shopping" (now shows empty)           |
+
+### Implementation Details
+
+**Sidebar (`quick-tabs-manager.js`):**
+
+1. `closeAllTabs()` reads `_getSelectedContainerFilter()`
+2. Resolves "current" to actual container ID via `_getCurrentContainerId()`
+3. Passes `containerFilter` to `_sendClearAllMessage()`
+4. Message includes `containerFilter` field for background processing
+
+**Background (`background.js`):**
+
+1. `handleSidebarCloseAllQuickTabs()` extracts `containerFilter` from message
+2. Uses `_filterQuickTabsByContainerForClose()` to get matching Quick Tabs
+3. Only notifies content scripts for Quick Tabs in the target container
+4. Uses `_removeQuickTabsFromSessionStateByContainer()` to update state
+5. Quick Tabs in other containers remain in session state
+
+**Key Messages:**
+
+- `CLOSE_ALL_QUICK_TABS` now includes `containerFilter` field
+- `containerFilter: 'all'` closes all Quick Tabs (default)
+- `containerFilter: 'firefox-container-X'` closes only that container
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
