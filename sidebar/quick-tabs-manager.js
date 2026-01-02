@@ -1194,12 +1194,17 @@ async function _tryFetchContainerFromAPI(cookieStoreId) {
  * @returns {string} Formatted name
  */
 function _formatContainerIdAsName(cookieStoreId) {
+  // Early return for invalid input
+  if (!cookieStoreId || typeof cookieStoreId !== 'string') {
+    return 'Unnamed Container';
+  }
   // e.g., 'firefox-container-1' -> 'Container 1'
-  const match = cookieStoreId?.match(/firefox-container-(\d+)/);
+  const match = cookieStoreId.match(/firefox-container-(\d+)/);
   if (match) {
     return `Container ${match[1]}`;
   }
-  return cookieStoreId || 'Unknown';
+  // Return the ID itself if it doesn't match expected pattern
+  return cookieStoreId === '' ? 'Unnamed Container' : cookieStoreId;
 }
 
 /**
@@ -1332,6 +1337,11 @@ async function _populateContainerDropdown() {
  * @param {Event} event - Change event
  */
 function _handleContainerFilterChange(event) {
+  // Validate event target
+  if (!event?.target?.value) {
+    console.warn('[Manager] CONTAINER_FILTER_CHANGE: Invalid event target');
+    return;
+  }
   const newValue = event.target.value;
   const oldValue = _selectedContainerFilter;
 
@@ -1453,8 +1463,12 @@ async function initializeContainerIsolation() {
   // Load saved filter preference
   await _loadContainerFilterPreference();
 
-  // Setup dropdown
+  // Setup dropdown - validate it was found
   _setupContainerFilterDropdown();
+  if (!_containerFilterDropdown) {
+    console.warn('[Manager] CONTAINER_ISOLATION: Dropdown not found - feature disabled');
+    return;
+  }
 
   // Get current container from active tab
   if (currentBrowserTabId) {
@@ -1467,7 +1481,8 @@ async function initializeContainerIsolation() {
   console.log('[Manager] CONTAINER_ISOLATION: Initialization complete', {
     currentContainerId: _currentContainerId,
     currentContainerName: _getContainerNameSync(_currentContainerId),
-    selectedFilter: _selectedContainerFilter
+    selectedFilter: _selectedContainerFilter,
+    dropdownReady: !!_containerFilterDropdown
   });
 }
 

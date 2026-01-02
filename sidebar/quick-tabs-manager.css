@@ -185,10 +185,12 @@ html {
   padding: 4px 8px;
 }
 
-/* Hide dropdown on very narrow screens */
+/* Compact dropdown on narrow screens instead of hiding */
 @media (max-width: 280px) {
   .container-filter-dropdown {
-    display: none;
+    max-width: 80px;
+    font-size: 10px;
+    padding: 2px 4px;
   }
 }
 
