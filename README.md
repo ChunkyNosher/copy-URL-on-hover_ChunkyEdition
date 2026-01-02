@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4-v3** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.4-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,12 +8,29 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4-v3 Status:** Metrics on All Tabs ✅ | Transfer Sync ✅ | Footer
-Fixed ✅ | Export Manager Logs ✅
+**🔧 v1.6.4-v4 Status:** Container Filter ✅ | Name Resolution ✅ | Filter
+Persistence ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.4-v4
+
+**🔧 Container Filter for Quick Tabs Manager ✅**
+
+- ✅ **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
+  Manager header
+- ✅ **Container-Based Filtering** - Quick Tabs filtered by current tab's
+  container by default
+- ✅ **Container Name Resolution** - Shows actual container names (Shopping,
+  Research, Work) instead of "Firefox Container 1, 2, 3"
+- ✅ **Dynamic Container Indicator** - Updates when switching to tabs in
+  different containers
+- ✅ **"All Containers" Option** - View Quick Tabs across all containers via
+  dropdown
+- ✅ **Filter Preference Persistence** - Container filter selection saved to
+  storage
 
 ## 🎉 What's New in v1.6.4-v3
 
@@ -123,7 +140,8 @@ in the sidebar!
 
 ✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
 ✓ Quick Tabs - Floating, draggable, resizable iframe windows  
-✓ **Container Isolation** - Firefox Container support with originContainerId  
+✓ **Container Isolation** - Firefox Container support with originContainerId +
+  Container Filter dropdown  
 ✓ **Session-Only Quick Tabs** - Start fresh each browser session (v1.6.3.12)  
 ✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok  
 ✓ **Port Messaging** - `'quick-tabs-port'` for reliable Quick Tabs sync
@@ -205,6 +223,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.4-v4** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.3.12-v12.
+  documentation. Current version: v1.6.4-v4.
 tools: ['*']
 ---
 
@@ -69,45 +69,22 @@ nothing.
 
 ---
 
-## Current Extension State (v1.6.3.12-v12)
+## Current Extension State (v1.6.4-v4)
 
-### v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health
+### v1.6.4-v4 Features (NEW) - Container Filter
 
-- **Button Operation Fix** - Manager buttons now work reliably (Close, Minimize,
-  Restore, Close All, Close Minimized)
-  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't always
-    trigger re-render
-  - FIX #1: Safety timeout in `_applyOptimisticUIUpdate()` reverts UI
-  - FIX #2: `_lastRenderedStateVersion` tracking in `scheduleRender()`
-  - FIX #3: `_handleQuickTabsStateUpdate()` increments state version
-- **Code Health Improvements** - quick-tabs-manager.js: 7.48 → 8.54
-  - Options object pattern (5 args → 1)
-  - Lookup table refactoring (72 LoC → 42 LoC)
-  - Predicate extraction (`_isTabsOnUpdatedAvailable()`)
+- **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
+  Manager header
+- **Container Name Resolution** - Shows actual names via contextualIdentities API
+- **Dynamic Container Indicator** - Updates when switching tabs
+- **Filter Persistence** - `quickTabsContainerFilter` storage key
 
-### v1.6.3.12-v11 Features - Cross-Tab Display + Robustness
+### Previous Versions
 
-- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` prioritizes port
-  data for all-tabs visibility (Issue #1 fix)
-- **Options Page Async Guard** - `_isPageActive` flag + `isPageActive()` for
-  async safety (Issue #10 fix)
-- **Tab Info Cache Invalidation** - `browser.tabs.onUpdated` listener clears
-  stale cache (Issue #12 fix)
-- **Heartbeat Restart Logging** - `HEARTBEAT_CONFIRMED_ACTIVE` prefix (Issue #20
-  fix)
-
-### v1.6.3.12-v10 Features - Issue #48 Port Routing Fix
-
-- **Port Routing Fix** - Sidebar detection prioritized over content script
-  detection in `handleQuickTabsPortConnect()`
-- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
-  Minimized now properly route through sidebar port handlers
-- **Code Health** - background.js: 8.79 → 9.09
-
-### v1.6.3.12-v8 to v1.6.3.12-v9 Features (Consolidated)
-
-- **v9:** Button Click Logging, Optimistic UI, Render Lock, Orphan UI
-- **v8:** Bulk Close Operations, Circuit Breaker Auto-Reset
+- **v1.6.4-v3:** Live Metrics Footer, Transfer Sync Fix, Bug #8d-#16d fixes
+- **v1.6.4:** Drag-and-Drop, Cross-Tab Transfer, Quick Tab Order Persistence
+- **v1.6.3.12-v12:** Button Operation Fix, Code Health 8.54
+- **v1.6.3.12-v10:** Port Routing Fix (Issue #48)
 
 ### Architecture
 
@@ -120,8 +97,8 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.3.12-v12
-- [ ] **v1.6.3.12-v12:** Button Operation Fix + Code Health documented
+- [ ] Version numbers match 1.6.4-v4
+- [ ] **v1.6.4-v4:** Container Filter documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)
 
@@ -129,14 +106,14 @@ nothing.
 
 ## Common Documentation Errors
 
-| Error                    | Fix                             |
-| ------------------------ | ------------------------------- |
-| v1.6.3.12-v11 or earlier | Update to 1.6.3.12-v12          |
-| "Solo/Mute" references   | REMOVE - Feature DELETED in v12 |
-| "Pin to Page"            | REMOVE - Feature DELETED in v12 |
-| Cross-session persist    | REMOVE - Session-only in v12    |
-| Direct storage writes    | Use Single Writer Authority     |
-| BroadcastChannel refs    | REMOVE - BC DELETED in v6       |
+| Error                     | Fix                                |
+| ------------------------- | ---------------------------------- |
+| v1.6.4-v3 or earlier      | Update to 1.6.4-v4                 |
+| "Solo/Mute" references    | REMOVE - Feature DELETED in v12    |
+| "Pin to Page"             | REMOVE - Feature DELETED in v12    |
+| Cross-session persist     | REMOVE - Session-only in v12       |
+| Direct storage writes     | Use Single Writer Authority        |
+| BroadcastChannel refs     | REMOVE - BC DELETED in v6          |
 
 ---
 
