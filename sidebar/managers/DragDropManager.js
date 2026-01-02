@@ -8,7 +8,13 @@
  * - Cross-tab transfer via drag-and-drop
  * - Duplicate via modifier key + drag
  *
- * @version 1.6.4
+ * @version 1.6.4-v4
+ *
+ * v1.6.4-v4 - FIX: Tab group reordering now works on full tab group element
+ *   - Previously, dragging a tab group over the Quick Tab content area did not work
+ *   - Root cause: Quick Tab item handlers blocked tab-group drags with stopPropagation
+ *   - Fix: _handleQuickTabDragOver, _handleQuickTabDrop, _handleQuickTabDragLeave
+ *     now let tab-group drags bubble up to the parent .tab-group element
  *
  * v1.6.4 - Extracted from quick-tabs-manager.js for code health improvement
  *   - FEATURE #2: Drag-and-drop reordering for tabs and Quick Tabs
@@ -512,10 +518,20 @@ function _handleQuickTabDragStart(event, item) {
 /**
  * Handle drag over for Quick Tab items (for reordering within group)
  * v1.6.4 - FEATURE #2: Reorder visual feedback
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
+ *   Previously, tab-group drags over quick-tab-items were silently ignored,
+ *   preventing tab group reordering when dragging over the content area.
  * @private
  * @param {DragEvent} event - Drag event
  */
 function _handleQuickTabDragOver(event) {
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  // Don't preventDefault or handle the event - let it propagate to .tab-group
+  if (_dragState.dragType === 'tab-group') {
+    // Don't call preventDefault here - let it bubble to tab group handler
+    return;
+  }
+
   event.preventDefault();
 
   if (_dragState.dragType !== 'quick-tab') return;
@@ -542,10 +558,16 @@ function _handleQuickTabDragOver(event) {
 /**
  * Handle drag leave for Quick Tab items
  * v1.6.4 - FEATURE #2: Remove reorder visual feedback
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
  * @private
  * @param {DragEvent} event - Drag event
  */
 function _handleQuickTabDragLeave(event) {
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  if (_dragState.dragType === 'tab-group') {
+    return;
+  }
+
   const targetItem = event.currentTarget;
   targetItem.classList.remove('drag-over', 'drag-over-bottom');
 }
@@ -616,12 +638,24 @@ function _handleSameGroupReorder(event, targetItem, draggedItem, targetGroup) {
  * v1.6.4 - FIX BUG #3b: Handle cross-tab transfer here since stopPropagation prevents tab group handler
  * v1.6.4 - FIX BUG #3: Save Quick Tab order after same-group reorder
  * v1.6.4 - FIX Code Health: Extracted helpers to reduce complexity (cc=11 -> cc=5)
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
+ *   Previously, tab-group drags over quick-tab-items were swallowed by stopPropagation,
+ *   preventing tab group reordering when dropping on the content area.
  * @private
  * @param {DragEvent} event - Drop event
  */
 function _handleQuickTabDrop(event) {
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  // Don't preventDefault or stopPropagation - let it propagate to .tab-group handler
+  if (_dragState.dragType === 'tab-group') {
+    console.log('[Manager] DROP: Tab-group drag over quick-tab-item, bubbling to parent', {
+      timestamp: Date.now()
+    });
+    return;
+  }
+
   event.preventDefault();
-  event.stopPropagation(); // Prevent bubbling to tab group
+  event.stopPropagation(); // Prevent bubbling to tab group (only for quick-tab drags)
 
   if (_dragState.dragType !== 'quick-tab') {
     console.log('[Manager] DROP_SKIPPED: Not a quick-tab drag', {
