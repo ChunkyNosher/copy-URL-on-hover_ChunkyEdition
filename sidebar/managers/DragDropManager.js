@@ -338,18 +338,40 @@ function _handleTabGroupDrop(event) {
  */
 function _handleTabGroupReorder(targetGroup) {
   const draggedGroup = _dragState.draggedElement;
-  if (!draggedGroup || draggedGroup === targetGroup) return;
+  if (!draggedGroup || draggedGroup === targetGroup) {
+    console.log('[Manager] REORDER_SKIPPED: Tab groups', {
+      reason: !draggedGroup ? 'no dragged element' : 'same element',
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   const container = draggedGroup.parentElement;
+  if (!container) {
+    console.warn('[Manager] REORDER_FAILED: No parent container');
+    return;
+  }
+
   const groups = Array.from(container.children);
   const draggedIndex = groups.indexOf(draggedGroup);
   const targetIndex = groups.indexOf(targetGroup);
+
+  // v1.6.4-v4 - FIX BUG #2: Validate indexes before reorder
+  if (draggedIndex === -1 || targetIndex === -1) {
+    console.warn('[Manager] REORDER_FAILED: Invalid indexes', {
+      draggedIndex,
+      targetIndex,
+      groupCount: groups.length
+    });
+    return;
+  }
 
   console.log('[Manager] REORDER: Tab groups', {
     fromIndex: draggedIndex,
     toIndex: targetIndex,
     fromTabId: draggedGroup.dataset.originTabId,
-    toTabId: targetGroup.dataset.originTabId
+    toTabId: targetGroup.dataset.originTabId,
+    groupCount: groups.length
   });
 
   // Move in DOM
@@ -533,12 +555,24 @@ function _handleQuickTabDrop(event) {
   event.preventDefault();
   event.stopPropagation(); // Prevent bubbling to tab group
 
-  if (_dragState.dragType !== 'quick-tab') return;
+  if (_dragState.dragType !== 'quick-tab') {
+    console.log('[Manager] DROP_SKIPPED: Not a quick-tab drag', {
+      dragType: _dragState.dragType,
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   const targetItem = event.currentTarget;
   const draggedItem = _dragState.draggedElement;
 
-  if (!draggedItem || targetItem === draggedItem) return;
+  if (!draggedItem || targetItem === draggedItem) {
+    console.log('[Manager] DROP_SKIPPED: Invalid elements', {
+      reason: !draggedItem ? 'no dragged element' : 'same element',
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   targetItem.classList.remove('drag-over', 'drag-over-bottom');
 

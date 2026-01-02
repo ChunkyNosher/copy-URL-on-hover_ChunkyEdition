@@ -875,26 +875,27 @@ Container correctly.
 
 2. **Open Manager and verify default filter**
    - Action: Press Ctrl+Alt+Z
-   - Expected: Manager shows container dropdown with "📁 Default" selected
-     (current container)
-   - Expected: Only QT 1 visible (filtered by current container)
+   - Expected: Manager shows container dropdown with "🌐 All Containers" selected
+     (v1.6.4-v4 default)
+   - Expected: All three Quick Tabs visible (QT 1, QT 2, QT 3)
 
-3. **Change filter to "All Containers"**
-   - Action: Click container dropdown, select "🌐 All Containers"
-   - Expected: Manager shows all three Quick Tabs (QT 1, QT 2, QT 3)
+3. **Change filter to "Current Container"**
+   - Action: Click container dropdown, select current container option
+   - Expected: Manager shows only Quick Tabs from the current container
+   - Expected: Dropdown label updates to show current container name
 
 4. **Filter by specific container**
    - Action: Click dropdown, select "Personal" container
    - Expected: Manager shows only QT 2 (Personal container)
 
-5. **Switch to different container tab**
-   - Action: Switch to WP 2 (Personal container tab)
+5. **Switch to different container tab while filtering by current**
+   - Action: Set filter to "Current Container", switch to WP 2 (Personal container tab)
    - Expected: Dropdown label updates to show "💼 Personal" as current container
-   - Expected: If filter was "Current Container", Quick Tabs list updates
+   - Expected: Quick Tabs list updates to show only Personal container Quick Tabs
 
 6. **Verify filter preference persists**
-   - Action: Set filter to "All Containers", close and reopen Manager
-   - Expected: Filter still set to "All Containers" after reopening
+   - Action: Set filter to "Personal" container, close and reopen Manager
+   - Expected: Filter still set to "Personal" after reopening
 
 ---
 
