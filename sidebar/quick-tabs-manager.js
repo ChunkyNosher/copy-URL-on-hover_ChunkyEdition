@@ -8705,6 +8705,15 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
   animateCountBadgeIfChanged(groupKey, group.quickTabs.length, count);
   summary.appendChild(count);
 
+  // v1.6.4-v4 - FEATURE Issue #1: Container indicator badge in "All Containers" view
+  // Only show when viewing all containers, not when filtering by specific container
+  if (_selectedContainerFilter === 'all' && !isOrphaned && group.quickTabs.length > 0) {
+    const containerBadge = _createContainerBadge(group.quickTabs);
+    if (containerBadge) {
+      summary.appendChild(containerBadge);
+    }
+  }
+
   // v1.6.4 - FEATURE #4: Add group action buttons (Go to Tab, Close All in Tab)
   const groupActions = _createGroupActions(groupKey, isOrphaned);
   summary.appendChild(groupActions);
@@ -8759,8 +8768,54 @@ function _createGroupActions(groupKey, isOrphaned) {
 }
 
 /**
+ * Create container indicator badge for "All Containers" view
+ * v1.6.4-v4 - FEATURE Issue #1: Shows which Firefox Container the tab belongs to
+ * Only shown when _selectedContainerFilter === 'all'
+ * @private
+ * @param {Array} quickTabs - Quick Tabs in this group
+ * @returns {HTMLElement|null} Container badge element or null
+ */
+function _createContainerBadge(quickTabs) {
+  // Get the container ID from the first Quick Tab in the group
+  // All Quick Tabs in a group should have the same originContainerId
+  const firstTab = quickTabs[0];
+  if (!firstTab) {
+    return null;
+  }
+
+  const containerId = firstTab.originContainerId || DEFAULT_CONTAINER_ID;
+
+  // Get container info
+  const containerName = _getContainerNameSync(containerId);
+  const containerIcon = _getContainerIconSync(containerId);
+
+  // Create badge element
+  const badge = document.createElement('span');
+  badge.className = 'container-indicator-badge';
+
+  // v1.6.4-v4 - Get container color from cache for styling
+  const containerInfo = containersData[containerId];
+  if (containerInfo && containerInfo.color) {
+    badge.dataset.containerColor = containerInfo.color;
+  }
+
+  badge.textContent = `${containerIcon} ${containerName}`;
+  badge.title = `Container: ${containerName}`;
+
+  console.log('[Manager] CONTAINER_BADGE_CREATED:', {
+    containerId,
+    containerName,
+    containerIcon,
+    quickTabCount: quickTabs.length
+  });
+
+  return badge;
+}
+
+/**
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
+ * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
@@ -8773,8 +8828,14 @@ async function _handleGoToTabGroup(tabId) {
   });
 
   try {
+    // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
+    // This ensures proper tab switching when the target tab is in a different window
+    const tab = await browser.tabs.get(numTabId);
+    if (tab.windowId) {
+      await browser.windows.update(tab.windowId, { focused: true });
+    }
     await browser.tabs.update(numTabId, { active: true });
-    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId });
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId: tab.windowId });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
       tabId: numTabId,

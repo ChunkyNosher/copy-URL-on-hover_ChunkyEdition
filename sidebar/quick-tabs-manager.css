@@ -648,6 +648,118 @@ html {
   color: white;
 }
 
+/* v1.6.4-v4 - FEATURE Issue #1: Container indicator badge in "All Containers" view */
+.container-indicator-badge {
+  font-size: 10px;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  margin-left: 4px;
+  white-space: nowrap;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.2s ease;
+}
+
+/* v1.6.4-v4 - Container color variants based on Firefox container colors */
+.container-indicator-badge[data-container-color='blue'] {
+  background: rgba(55, 114, 255, 0.15);
+  color: #3772ff;
+}
+
+.container-indicator-badge[data-container-color='turquoise'] {
+  background: rgba(0, 196, 196, 0.15);
+  color: #00c4c4;
+}
+
+.container-indicator-badge[data-container-color='green'] {
+  background: rgba(81, 183, 81, 0.15);
+  color: #51b751;
+}
+
+.container-indicator-badge[data-container-color='yellow'] {
+  background: rgba(255, 203, 0, 0.15);
+  color: #c9a100;
+}
+
+.container-indicator-badge[data-container-color='orange'] {
+  background: rgba(255, 144, 0, 0.15);
+  color: #ff9000;
+}
+
+.container-indicator-badge[data-container-color='red'] {
+  background: rgba(255, 75, 75, 0.15);
+  color: #ff4b4b;
+}
+
+.container-indicator-badge[data-container-color='pink'] {
+  background: rgba(255, 117, 181, 0.15);
+  color: #ff75b5;
+}
+
+.container-indicator-badge[data-container-color='purple'] {
+  background: rgba(175, 75, 255, 0.15);
+  color: #af4bff;
+}
+
+/* Dark mode adjustments for container indicator */
+@media (prefers-color-scheme: dark) {
+  .container-indicator-badge {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-secondary);
+  }
+
+  .container-indicator-badge[data-container-color='blue'] {
+    background: rgba(55, 114, 255, 0.25);
+    color: #5c99ff;
+  }
+
+  .container-indicator-badge[data-container-color='turquoise'] {
+    background: rgba(0, 196, 196, 0.25);
+    color: #33d1d1;
+  }
+
+  .container-indicator-badge[data-container-color='green'] {
+    background: rgba(81, 183, 81, 0.25);
+    color: #6bc96b;
+  }
+
+  .container-indicator-badge[data-container-color='yellow'] {
+    background: rgba(255, 203, 0, 0.25);
+    color: #ffd633;
+  }
+
+  .container-indicator-badge[data-container-color='orange'] {
+    background: rgba(255, 144, 0, 0.25);
+    color: #ffa733;
+  }
+
+  .container-indicator-badge[data-container-color='red'] {
+    background: rgba(255, 75, 75, 0.25);
+    color: #ff6e6e;
+  }
+
+  .container-indicator-badge[data-container-color='pink'] {
+    background: rgba(255, 117, 181, 0.25);
+    color: #ff91c7;
+  }
+
+  .container-indicator-badge[data-container-color='purple'] {
+    background: rgba(175, 75, 255, 0.25);
+    color: #c47aff;
+  }
+}
+
+/* Responsive: Hide container badge on narrow screens */
+@media (max-width: 300px) {
+  .container-indicator-badge {
+    display: none;
+  }
+}
+
 /* Issue #3: Visual hierarchy - Indented Quick Tab list with container effect */
 .tab-group-content {
   padding-left: 28px; /* Issue #3: Slightly more indentation */
