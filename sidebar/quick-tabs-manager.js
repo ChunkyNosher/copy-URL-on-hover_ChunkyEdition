@@ -10318,8 +10318,9 @@ async function closeAllTabs() {
     _logClearAllResponse(response, startTime);
 
     const hostInfoBeforeClear = quickTabHostInfo.size;
-    // v1.6.4-v4: Clear all hostInfo - background state is authoritative for container filtering
-    // The background script handles container-aware clearing, so we just clear the local cache
+    // v1.6.4-v4: Clear local hostInfo cache entirely.
+    // Background script handles container-specific state updates and sends STATE_CHANGED.
+    // The UI will refresh with correct data after receiving the state update.
     quickTabHostInfo.clear();
 
     _logPostActionCleanup(preActionState.clearedIds, hostInfoBeforeClear, startTime);
@@ -10372,6 +10373,9 @@ function _sendClearAllMessage(containerFilter = 'all') {
       containerFilter === 'current' ? _getCurrentContainerId() : containerFilter;
   }
 
+  // v1.6.4-v4 - Compute the resolved filter value once for reuse
+  const resolvedContainerFilter = containerFilter === 'all' ? 'all' : targetContainerId;
+
   console.log('[Manager] Close All: Dispatching CLOSE_ALL_QUICK_TABS via port...', {
     portConnected: !!quickTabsPort,
     containerFilter,
@@ -10396,8 +10400,7 @@ function _sendClearAllMessage(containerFilter = 'all') {
       type: 'CLOSE_ALL_QUICK_TABS',
       timestamp: sentAt,
       correlationId,
-      // v1.6.4-v4: If containerFilter is not 'all', include targetContainerId
-      containerFilter: containerFilter === 'all' ? 'all' : targetContainerId
+      containerFilter: resolvedContainerFilter
     });
 
     console.log('[Sidebar] CLOSE_ALL_QUICK_TABS sent via port:', {
@@ -10416,7 +10419,7 @@ function _sendClearAllMessage(containerFilter = 'all') {
   console.warn('[Manager] Close All: Port not connected, falling back to runtime.sendMessage');
   return browser.runtime.sendMessage({
     action: 'COORDINATED_CLEAR_ALL_QUICK_TABS',
-    containerFilter: containerFilter === 'all' ? 'all' : targetContainerId
+    containerFilter: resolvedContainerFilter
   });
 }
 
