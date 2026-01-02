@@ -8376,8 +8376,8 @@ async function _handleGoToTabGroup(tabId) {
     // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
     // This ensures proper tab switching when the target tab is in a different window
     const tab = await browser.tabs.get(numTabId);
-    // v1.6.4-v5 - FIX: Validate tab and windowId before using (code review feedback)
-    // browser.tabs.get() can return null/undefined if tab doesn't exist
+    // v1.6.4-v4 - FIX: Validate windowId before using (code review feedback)
+    // browser.tabs.get() throws if tab doesn't exist; this validates the returned object structure
     const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
     if (windowId !== null) {
       await browser.windows.update(windowId, { focused: true });

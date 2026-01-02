@@ -84,6 +84,8 @@ let _getCurrentBrowserTabId = null;
  * @param {Function} deps.getCurrentBrowserTabId - Function to get current browser tab ID
  */
 export function initializeContainerManagerDeps(deps) {
+  // v1.6.4-v4 - Use explicit undefined checks to distinguish 'not passed' from explicit falsy values
+  // This allows passing null or empty objects/functions intentionally
   if (deps.containersData !== undefined) {
     _containersData = deps.containersData;
   }
@@ -306,6 +308,14 @@ export async function updateCurrentContainerId(tabId) {
 /**
  * Populate container filter dropdown with available containers
  * v1.6.4-v4 - FEATURE: Container isolation
+ * 
+ * Populates the dropdown with:
+ * 1. "Current Container (auto-detect)" - Shows Quick Tabs from active tab's container
+ * 2. "All Containers" - Shows all Quick Tabs regardless of container
+ * 3. Individual container options - Shows Quick Tabs from a specific container
+ * 
+ * Called during initialization and when containers change.
+ * @exports populateContainerDropdown
  */
 export function populateContainerDropdown() {
   if (!_containerFilterDropdown) return;
