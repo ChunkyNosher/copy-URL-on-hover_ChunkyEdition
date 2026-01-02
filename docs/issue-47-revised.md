@@ -875,8 +875,8 @@ Container correctly.
 
 2. **Open Manager and verify default filter**
    - Action: Press Ctrl+Alt+Z
-   - Expected: Manager shows container dropdown with "🌐 All Containers" selected
-     (v1.6.4-v4 default)
+   - Expected: Manager shows container dropdown with "🌐 All Containers"
+     selected (v1.6.4-v4 default)
    - Expected: All three Quick Tabs visible (QT 1, QT 2, QT 3)
 
 3. **Change filter to "Current Container"**
@@ -889,9 +889,11 @@ Container correctly.
    - Expected: Manager shows only QT 2 (Personal container)
 
 5. **Switch to different container tab while filtering by current**
-   - Action: Set filter to "Current Container", switch to WP 2 (Personal container tab)
+   - Action: Set filter to "Current Container", switch to WP 2 (Personal
+     container tab)
    - Expected: Dropdown label updates to show "💼 Personal" as current container
-   - Expected: Quick Tabs list updates to show only Personal container Quick Tabs
+   - Expected: Quick Tabs list updates to show only Personal container Quick
+     Tabs
 
 6. **Verify filter preference persists**
    - Action: Set filter to "Personal" container, close and reopen Manager
@@ -1026,5 +1028,6 @@ indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 2, 2026  
+**Last
+Review Date:** January 2, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v4)

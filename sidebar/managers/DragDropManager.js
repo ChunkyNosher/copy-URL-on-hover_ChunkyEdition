@@ -338,7 +338,7 @@ function _handleTabGroupDrop(event) {
  */
 function _handleTabGroupReorder(targetGroup) {
   const draggedGroup = _dragState.draggedElement;
-  
+
   // Early exit conditions
   if (!_canReorderTabGroup(draggedGroup, targetGroup)) {
     return;
@@ -413,7 +413,7 @@ function _canReorderTabGroup(draggedGroup, targetGroup) {
 function _areReorderIndexesValid(draggedIndex, targetIndex, groupCount) {
   const isInvalidIndex = draggedIndex === -1 || targetIndex === -1;
   const isOutOfBounds = draggedIndex >= groupCount || targetIndex >= groupCount;
-  
+
   if (isInvalidIndex || isOutOfBounds) {
     const reason = isInvalidIndex ? 'index not found' : 'out of bounds';
     console.warn('[Manager] REORDER_FAILED: Invalid indexes', {
