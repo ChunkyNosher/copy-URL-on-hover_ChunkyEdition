@@ -1103,8 +1103,8 @@ containers while "Current Container" filter is active.
 
 ## Scenario 33: Container Indicator Badge in "All Containers" View (v1.6.4-v4)
 
-**Purpose:** Verify container indicator badge displays Firefox Container name with
-color for each tab group when "All Containers" filter is selected.
+**Purpose:** Verify container indicator badge displays Firefox Container name
+with color for each tab group when "All Containers" filter is selected.
 
 ### Steps:
 
@@ -1115,14 +1115,16 @@ color for each tab group when "All Containers" filter is selected.
    - Expected: Three Quick Tabs in three different containers
 
 2. **Open Manager with "All Containers" filter**
-   - Action: Press Ctrl+Alt+Z, ensure "🌐 All Containers" is selected in dropdown
+   - Action: Press Ctrl+Alt+Z, ensure "🌐 All Containers" is selected in
+     dropdown
    - Expected: Manager shows all three tab groups (Wikipedia 1, Wikipedia 2,
      Wikipedia 3)
 
 3. **Verify container badge appears on each tab group**
    - Action: Observe tab group headers
    - Expected: Each tab group header shows a colored badge next to the tab title
-   - Expected: Badge shows container name (e.g., "Shopping", "Work") NOT numeric ID
+   - Expected: Badge shows container name (e.g., "Shopping", "Work") NOT numeric
+     ID
    - Expected: Badge color matches Firefox container color (blue, orange, etc.)
 
 4. **Verify Default container tabs have no badge**
@@ -1160,8 +1162,8 @@ first focusing the window, then activating the tab.
 
 3. **Open Manager from YT 1**
    - Action: Press Ctrl+Alt+Z in YT 1
-   - Expected: Manager shows QT 1 under "Wikipedia Tab 1" with Personal container
-     badge
+   - Expected: Manager shows QT 1 under "Wikipedia Tab 1" with Personal
+     container badge
 
 4. **Click "Go to Tab" button on QT 1's tab group**
    - Action: Find WP 1 tab group header, click "Go to Tab" button (→ icon)
@@ -1169,8 +1171,8 @@ first focusing the window, then activating the tab.
 
 5. **Verify window.update called before tabs.update**
    - Action: Open browser console, check for focus sequence logs
-   - Expected: Logs show `browser.windows.update()` called first (if cross-window),
-     then `browser.tabs.update()` to activate tab
+   - Expected: Logs show `browser.windows.update()` called first (if
+     cross-window), then `browser.tabs.update()` to activate tab
 
 6. **Verify cross-window scenario**
    - Action: Open WP 2 in different browser window (same container), create QT 2
@@ -1180,7 +1182,8 @@ first focusing the window, then activating the tab.
 7. **Verify "Go to Tab" works from Manager in any container context**
    - Action: With Manager open in Work container, click "Go to Tab" on Personal
      container tab group
-   - Expected: Browser correctly navigates to Personal container tab without errors
+   - Expected: Browser correctly navigates to Personal container tab without
+     errors
 
 ---
 

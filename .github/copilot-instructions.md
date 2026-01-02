@@ -297,23 +297,23 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                        | Features                                         |
-| ------------------------------------------- | ------------------------------------------------ |
-| `src/constants.js`                          | Centralized constants                            |
-| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                        |
-| `src/utils/storage-utils.js`                | Storage utilities                                |
-| `src/background/tab-events.js`              | Tabs API listeners                               |
-| `src/utils/structured-logger.js`            | StructuredLogger class with contexts             |
-| `src/messaging/message-router.js`           | ACTION-based routing                             |
-| `background.js`                             | In-memory state, port handlers                   |
-| `sidebar/quick-tabs-manager.js`             | Port-based queries, container filter (v1.6.4-v4) |
-| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)        |
-| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)           |
-| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)                |
-| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)       |
-| `sidebar/managers/ContainerManager.js`      | Container isolation, filtering, badge (v1.6.4-v4)|
-| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)      |
-| `src/content.js`                            | Port messaging for Quick Tabs                    |
+| File                                        | Features                                          |
+| ------------------------------------------- | ------------------------------------------------- |
+| `src/constants.js`                          | Centralized constants                             |
+| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                         |
+| `src/utils/storage-utils.js`                | Storage utilities                                 |
+| `src/background/tab-events.js`              | Tabs API listeners                                |
+| `src/utils/structured-logger.js`            | StructuredLogger class with contexts              |
+| `src/messaging/message-router.js`           | ACTION-based routing                              |
+| `background.js`                             | In-memory state, port handlers                    |
+| `sidebar/quick-tabs-manager.js`             | Port-based queries, container filter (v1.6.4-v4)  |
+| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)         |
+| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)            |
+| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)                 |
+| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)        |
+| `sidebar/managers/ContainerManager.js`      | Container isolation, filtering, badge (v1.6.4-v4) |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)       |
+| `src/content.js`                            | Port messaging for Quick Tabs                     |
 
 ### Storage (v1.6.3.12-v8+)
 

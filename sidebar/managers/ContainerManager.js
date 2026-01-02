@@ -189,7 +189,11 @@ async function _tryFetchContainerFromAPI(cookieStoreId) {
       return container;
     }
   } catch (err) {
-    console.log('[ContainerManager] CONTAINER_NAME_LOOKUP: API error for', cookieStoreId, err.message);
+    console.log(
+      '[ContainerManager] CONTAINER_NAME_LOOKUP: API error for',
+      cookieStoreId,
+      err.message
+    );
   }
 
   return null;
@@ -308,12 +312,12 @@ export async function updateCurrentContainerId(tabId) {
 /**
  * Populate container filter dropdown with available containers
  * v1.6.4-v4 - FEATURE: Container isolation
- * 
+ *
  * Populates the dropdown with:
  * 1. "Current Container (auto-detect)" - Shows Quick Tabs from active tab's container
  * 2. "All Containers" - Shows all Quick Tabs regardless of container
  * 3. Individual container options - Shows Quick Tabs from a specific container
- * 
+ *
  * Called during initialization and when containers change.
  * @exports populateContainerDropdown
  */
@@ -438,7 +442,9 @@ async function _saveContainerFilterPreference(filterValue) {
  * @private
  */
 async function _migrateContainerFilterToAll() {
-  console.log('[ContainerManager] CONTAINER_FILTER_MIGRATING: Resetting "current" to "all" for v1.6.4-v4');
+  console.log(
+    '[ContainerManager] CONTAINER_FILTER_MIGRATING: Resetting "current" to "all" for v1.6.4-v4'
+  );
   _selectedContainerFilter = 'all';
   await browser.storage.local.set({
     [CONTAINER_FILTER_STORAGE_KEY]: 'all',
@@ -567,7 +573,9 @@ export function onContainerContextChanged() {
 
   // If filter is 'current', request fresh data and re-render to apply new container filter
   if (_selectedContainerFilter === 'current') {
-    console.log('[ContainerManager] CONTAINER_CONTEXT_CHANGED: Requesting fresh data for new container');
+    console.log(
+      '[ContainerManager] CONTAINER_CONTEXT_CHANGED: Requesting fresh data for new container'
+    );
     // v1.6.4-v4 - FIX: Request fresh Quick Tabs from background to get updated container context
     if (_requestAllQuickTabsViaPort) {
       _requestAllQuickTabsViaPort();
