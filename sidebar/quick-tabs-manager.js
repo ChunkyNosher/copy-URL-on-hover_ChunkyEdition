@@ -1286,12 +1286,13 @@ async function _populateContainerDropdown() {
   _containerFilterDropdown.innerHTML = '';
 
   // Add "Current Container" option (default)
+  // v1.6.4-v4 - FIX: Add "(auto-detect)" indicator to show context-awareness
   const currentName = _getContainerNameSync(_currentContainerId);
   const currentIcon = _getContainerIconSync(_currentContainerId);
   const currentOption = document.createElement('option');
   currentOption.value = 'current';
-  currentOption.textContent = `${currentIcon} ${currentName}`;
-  currentOption.title = `Filter to Quick Tabs in current container (${currentName})`;
+  currentOption.textContent = `${currentIcon} ${currentName} (auto-detect)`;
+  currentOption.title = `Filter to Quick Tabs in current container (${currentName}) - auto-detects active container`;
   _containerFilterDropdown.appendChild(currentOption);
 
   // Add "All Containers" option
@@ -1557,10 +1558,12 @@ async function _onContainerContextChanged() {
   // Update dropdown to show new "current" container name
   await _populateContainerDropdown();
 
-  // If filter is 'current', re-render to apply new container filter
+  // If filter is 'current', request fresh data and re-render to apply new container filter
   if (_selectedContainerFilter === 'current') {
-    console.log('[Manager] CONTAINER_CONTEXT_CHANGED: Re-rendering for current container filter');
-    renderUI();
+    console.log('[Manager] CONTAINER_CONTEXT_CHANGED: Requesting fresh data for new container');
+    // v1.6.4-v4 - FIX: Request fresh Quick Tabs from background to get updated container context
+    requestAllQuickTabsViaPort();
+    // Note: renderUI() will be called by GET_ALL_QUICK_TABS_RESPONSE handler
   }
 }
 
