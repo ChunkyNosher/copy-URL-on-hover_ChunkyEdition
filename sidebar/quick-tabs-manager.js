@@ -432,8 +432,9 @@ let previousBrowserTabId = null;
 // v1.6.4-v4 - FEATURE: Container isolation and filtering
 // Track current container ID for filtering Quick Tabs by container
 let _currentContainerId = 'firefox-default';
-// Selected container filter: 'current' (default, filter by current container) or 'all' or a specific cookieStoreId
-let _selectedContainerFilter = 'current';
+// v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
+// Selected container filter: 'all' (default, show all) or 'current' (filter by current container) or a specific cookieStoreId
+let _selectedContainerFilter = 'all';
 // Container dropdown DOM element reference
 let _containerFilterDropdown = null;
 
@@ -1386,16 +1387,18 @@ async function _saveContainerFilterPreference(filterValue) {
 /**
  * Load container filter preference from storage
  * v1.6.4-v4 - FEATURE: Container isolation
+ * v1.6.4-v4 - FIX BUG #1: Default to 'all' if no saved preference
  * @private
  */
 async function _loadContainerFilterPreference() {
   try {
     const result = await browser.storage.local.get(CONTAINER_FILTER_STORAGE_KEY);
-    _selectedContainerFilter = result[CONTAINER_FILTER_STORAGE_KEY] || 'current';
+    // v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
+    _selectedContainerFilter = result[CONTAINER_FILTER_STORAGE_KEY] || 'all';
     console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter);
   } catch (err) {
     console.warn('[Manager] CONTAINER_FILTER_LOAD_FAILED:', err.message);
-    _selectedContainerFilter = 'current';
+    _selectedContainerFilter = 'all';
   }
 }
 
