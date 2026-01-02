@@ -1029,6 +1029,78 @@ group element, not just the header.
 
 ---
 
+## Scenario 31: Auto-Detect Indicator in Current Container Option (v1.6.4-v4)
+
+**Purpose:** Verify the Current Container dropdown option shows "(auto-detect)"
+indicator to clarify dynamic behavior.
+
+### Steps:
+
+1. **Open Manager and view container dropdown**
+   - Action: Press Ctrl+Alt+Z, click on container filter dropdown
+   - Expected: Dropdown opens showing available options
+
+2. **Verify Current Container option shows auto-detect indicator**
+   - Action: Locate the "Current Container" option in dropdown
+   - Expected: Option text shows "Container Name (auto-detect)" format (e.g.,
+     "💼 Work (auto-detect)")
+   - Expected: NOT just "Current Container" or plain container name
+
+3. **Verify tooltip mentions auto-detection**
+   - Action: Hover over Current Container option
+   - Expected: Tooltip explains dynamic behavior (container changes when
+     switching tabs)
+
+4. **Verify other container options do NOT have indicator**
+   - Action: Check "All Containers" and specific named container options
+   - Expected: "All Containers" and static container options do NOT show
+     "(auto-detect)"
+
+5. **Verify indicator updates with container context**
+   - Action: Switch to tab in Personal container, open dropdown
+   - Expected: Current Container option shows "👤 Personal (auto-detect)"
+
+---
+
+## Scenario 32: Quick Tabs List Auto-Updates on Container Switch (v1.6.4-v4)
+
+**Purpose:** Verify Quick Tabs list refreshes automatically when switching
+containers while "Current Container" filter is active.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Personal container, create QT 1; Open WP 2 in Work
+     container, create QT 2
+   - Expected: Two Quick Tabs in two different containers
+
+2. **Open Manager and set filter to "Current Container"**
+   - Action: Press Ctrl+Alt+Z in Personal container tab, select "Current
+     Container" from dropdown
+   - Expected: Manager shows only QT 1 (Personal container Quick Tab)
+
+3. **Switch to Work container tab**
+   - Action: Click on WP 2 tab (Work container)
+   - Expected: Manager automatically refreshes and shows QT 2 (Work container)
+   - Expected: QT 1 (Personal) no longer visible in list
+
+4. **Verify no stale data displayed**
+   - Action: Rapidly switch between Personal and Work container tabs
+   - Expected: Each switch triggers fresh data fetch via
+     `requestAllQuickTabsViaPort()`
+   - Expected: List always reflects Quick Tabs for current container
+
+5. **Verify container indicator updates in header**
+   - Action: Observe dropdown label during container switches
+   - Expected: Dropdown label updates to show new container name (e.g.,
+     "💼 Work (auto-detect)" → "👤 Personal (auto-detect)")
+
+6. **Verify other filters not affected by container switch**
+   - Action: Set filter to "All Containers", switch between container tabs
+   - Expected: All Quick Tabs remain visible regardless of which tab is active
+
+---
+
 ## Implementation Notes for Testing
 
 ### Test Bridge API Usage

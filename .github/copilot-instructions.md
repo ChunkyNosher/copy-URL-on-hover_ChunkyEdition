@@ -41,6 +41,11 @@
   constant
 - **Tab Group Drag-Drop Fix** - Quick Tab drag handlers now allow tab-group drag
   events to bubble up (removed excessive `stopPropagation()` calls)
+- **Container Switch Refresh Fix** - `_onContainerContextChanged()` now calls
+  `requestAllQuickTabsViaPort()` to fetch fresh data instead of `renderUI()`
+  with stale data (v1.6.4-v4)
+- **Auto-Detect Indicator** - Current Container dropdown option now shows
+  "(auto-detect)" suffix to clarify dynamic behavior (v1.6.4-v4)
 
 **v1.6.4-v3 Bug Fixes:** Title updates, state sync, forceEmpty, navigation,
 duplicate messages, UI flicker, STATE_CHANGED race, metrics footer, DEBOUNCE
@@ -128,7 +133,10 @@ const quickTabsSessionState = {
   `_containerFilterDropdown` (default: "all")
 - **Name Resolution** - `_getContainerNameByIdAsync()`,
   `_getContainerNameSync()`
-- **Context Change** - `_onContainerContextChanged()` updates UI
+- **Context Change** - `_onContainerContextChanged()` calls
+  `requestAllQuickTabsViaPort()` for fresh data (v1.6.4-v4 fix)
+- **Auto-Detect Indicator** - Current Container option shows "(auto-detect)"
+  suffix (v1.6.4-v4)
 - **Persistence** - `quickTabsContainerFilter` storage key
 - **Drag Logging** - Summary-only debounce logs (no per-event spam)
 - **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()` for
