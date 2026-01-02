@@ -149,8 +149,47 @@ html {
   border-bottom: 1px solid var(--border-color);
   display: flex;
   justify-content: space-between;
+  align-items: center;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+/* v1.6.4-v4 - FEATURE: Container filter dropdown styling */
+.container-filter-dropdown {
+  flex: 1;
+  max-width: 150px;
+  min-width: 90px;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--primary-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.container-filter-dropdown:hover {
+  border-color: var(--blue-primary);
+}
+
+.container-filter-dropdown:focus {
+  outline: none;
+  border-color: var(--blue-primary);
+  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+}
+
+/* Container indicator icon before container name in dropdown */
+.container-filter-dropdown option {
+  padding: 4px 8px;
+}
+
+/* Hide dropdown on very narrow screens */
+@media (max-width: 280px) {
+  .container-filter-dropdown {
+    display: none;
+  }
 }
 
 .containers-list {

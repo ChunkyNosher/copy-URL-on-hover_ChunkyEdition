@@ -1,8 +1,8 @@
-# Quick Tabs – Comprehensive Behavior Scenarios (v1.6.3+)
+# Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 3.0 (Tab-Scoped)  
-**Last Updated:** December 12, 2025  
-**Extension Version:** v1.6.3+
+**Document Version:** 4.0 (Container-Isolated)  
+**Last Updated:** January 2, 2026  
+**Extension Version:** v1.6.4-v4
 
 ---
 
@@ -858,6 +858,66 @@ operations.
    - Action: Look at `[DEBOUNCE][DRAG_COMPLETE]` log
    - Expected: Shows `preventedWrites: X` where X is the number of events that
      were coalesced
+
+---
+
+## Scenario 26: Container Filter Dropdown (v1.6.4-v4)
+
+**Purpose:** Verify the container filter dropdown filters Quick Tabs by Firefox
+Container correctly.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Default container, create QT 1; Open WP 2 in Personal
+     container, create QT 2; Open WP 3 in Work container, create QT 3
+   - Expected: Three Quick Tabs in three different containers
+
+2. **Open Manager and verify default filter**
+   - Action: Press Ctrl+Alt+Z
+   - Expected: Manager shows container dropdown with "📁 Default" selected
+     (current container)
+   - Expected: Only QT 1 visible (filtered by current container)
+
+3. **Change filter to "All Containers"**
+   - Action: Click container dropdown, select "🌐 All Containers"
+   - Expected: Manager shows all three Quick Tabs (QT 1, QT 2, QT 3)
+
+4. **Filter by specific container**
+   - Action: Click dropdown, select "Personal" container
+   - Expected: Manager shows only QT 2 (Personal container)
+
+5. **Switch to different container tab**
+   - Action: Switch to WP 2 (Personal container tab)
+   - Expected: Dropdown label updates to show "💼 Personal" as current container
+   - Expected: If filter was "Current Container", Quick Tabs list updates
+
+6. **Verify filter preference persists**
+   - Action: Set filter to "All Containers", close and reopen Manager
+   - Expected: Filter still set to "All Containers" after reopening
+
+---
+
+## Scenario 27: Container Name Resolution (v1.6.4-v4)
+
+**Purpose:** Verify container names are properly resolved from contextualIdentities
+API instead of showing numeric IDs.
+
+### Steps:
+
+1. **Open Manager with Quick Tabs in named containers**
+   - Action: Create Quick Tabs in containers named "Shopping", "Research", "Work"
+   - Expected: Container dropdown shows actual names (Shopping, Research, Work)
+     NOT "Firefox Container 1, 2, 3"
+
+2. **Verify container icons display**
+   - Action: Check container dropdown options
+   - Expected: Each container shows its configured icon (🛒, 📚, 💼 etc.)
+
+3. **Verify console logs show container names**
+   - Action: Open browser console, switch containers
+   - Expected: Logs show `currentContainerName: "Shopping"` instead of just
+     `currentContainerId: "firefox-container-1"`
 
 ---
 
