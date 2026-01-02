@@ -3371,7 +3371,8 @@ function buildQuickTabData(options) {
   // getWritingContainerId() returns the current container ID set during content script initialization
   // This ensures Quick Tabs inherit the correct Firefox Container context
   const identityContainerId = getWritingContainerId();
-  const originContainerId = identityContainerId ?? 'firefox-default';
+  // v1.6.4-v4 - Use CONSTANTS.DEFAULT_CONTAINER for consistency with codebase
+  const originContainerId = identityContainerId ?? CONSTANTS.DEFAULT_CONTAINER;
 
   // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
   if (originTabId === null) {
@@ -3404,6 +3405,7 @@ function buildQuickTabData(options) {
     height: size.height,
     title,
     // v1.6.4-v4 - FIX Issue #47 Container Filter: Use actual container ID from Identity system
+    // cookieStoreId is Firefox's field for container identity (from contextualIdentities API)
     cookieStoreId: originContainerId,
     minimized: false,
     pinnedToUrl: null,

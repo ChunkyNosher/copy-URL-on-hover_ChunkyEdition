@@ -430,8 +430,10 @@ let currentBrowserTabId = null;
 let previousBrowserTabId = null;
 
 // v1.6.4-v4 - FEATURE: Container isolation and filtering
+// Default container ID constant (used throughout container filtering logic)
+const DEFAULT_CONTAINER_ID = 'firefox-default';
 // Track current container ID for filtering Quick Tabs by container
-let _currentContainerId = 'firefox-default';
+let _currentContainerId = DEFAULT_CONTAINER_ID;
 // v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default.
 // Selected container filter: 'all' (default, show all), 'current' (filter by current container), or a specific cookieStoreId.
 let _selectedContainerFilter = 'all';
@@ -1143,7 +1145,7 @@ async function _getContainerNameByIdAsync(cookieStoreId) {
   }
 
   // Handle default container
-  if (!cookieStoreId || cookieStoreId === 'firefox-default') {
+  if (!cookieStoreId || cookieStoreId === DEFAULT_CONTAINER_ID) {
     return 'Default';
   }
 
@@ -1221,7 +1223,7 @@ function _getContainerNameSync(cookieStoreId) {
   if (containersData[cookieStoreId]) {
     return containersData[cookieStoreId].name;
   }
-  if (!cookieStoreId || cookieStoreId === 'firefox-default') {
+  if (!cookieStoreId || cookieStoreId === DEFAULT_CONTAINER_ID) {
     return 'Default';
   }
   return _formatContainerIdAsName(cookieStoreId);
@@ -1252,10 +1254,10 @@ async function _updateCurrentContainerId(tabId) {
 
   try {
     const tab = await browser.tabs.get(tabId);
-    _currentContainerId = tab?.cookieStoreId || 'firefox-default';
+    _currentContainerId = tab?.cookieStoreId || DEFAULT_CONTAINER_ID;
   } catch (err) {
     console.log('[Manager] CONTAINER_UPDATE: Tab lookup failed', tabId, err.message);
-    _currentContainerId = 'firefox-default';
+    _currentContainerId = DEFAULT_CONTAINER_ID;
   }
 
   const containerChanged = oldContainerId !== _currentContainerId;
@@ -1306,10 +1308,10 @@ async function _populateContainerDropdown() {
   _containerFilterDropdown.appendChild(separator);
 
   // Add each known container as an option
-  // v1.6.4-v4 FIX: Skip "firefox-default" container since "All Containers" already shows all Quick Tabs
+  // v1.6.4-v4 FIX: Skip DEFAULT_CONTAINER_ID since "All Containers" already shows all Quick Tabs
   // This eliminates the confusing duplicate view between "All Containers" and "Default"
   const containerIds = Object.keys(containersData)
-    .filter((id) => id !== 'firefox-default')
+    .filter((id) => id !== DEFAULT_CONTAINER_ID)
     .sort((a, b) => {
       // Sort alphabetically by name
       return _getContainerNameSync(a).localeCompare(_getContainerNameSync(b));
@@ -1479,8 +1481,8 @@ function _filterQuickTabsByContainer(allTabs) {
 
   // Filter tabs by originContainerId
   const filtered = allTabs.filter(tab => {
-    // Get the tab's container ID (use 'firefox-default' if not set)
-    const tabContainerId = tab.originContainerId || 'firefox-default';
+    // Get the tab's container ID (use DEFAULT_CONTAINER_ID if not set)
+    const tabContainerId = tab.originContainerId || DEFAULT_CONTAINER_ID;
     return tabContainerId === targetContainerId;
   });
 
@@ -5241,7 +5243,7 @@ async function _getTabContainerId(tabId) {
 
   try {
     const tab = await browser.tabs.get(tabId);
-    return tab?.cookieStoreId || 'firefox-default';
+    return tab?.cookieStoreId || DEFAULT_CONTAINER_ID;
   } catch (err) {
     // Tab may not exist anymore
     console.log('[Manager] CONTAINER_ID_LOOKUP_FAILED:', {
