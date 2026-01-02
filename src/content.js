@@ -242,10 +242,12 @@ import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.j
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.11-v11 - FIX Issue #47: Import setWritingContainerId for container isolation
 // v1.6.3.12-v3 - FIX Issue E: Import TAB_ID_CALLER_CONTEXT to identify caller context
+// v1.6.4-v4 - FIX Issue #47 Container Filter: Import getWritingContainerId for originContainerId in Quick Tab creation
 import {
   setWritingTabId,
   isWritingTabIdInitialized,
   setWritingContainerId,
+  getWritingContainerId,
   TAB_ID_CALLER_CONTEXT
 } from './utils/storage-utils.js';
 
@@ -3365,6 +3367,12 @@ function buildQuickTabData(options) {
   // cachedTabId is set during background port connection and contains the current tab ID
   const originTabId = cachedTabId ?? null;
 
+  // v1.6.4-v4 - FIX Issue #47 Container Filter: Get container ID from Identity system
+  // getWritingContainerId() returns the current container ID set during content script initialization
+  // This ensures Quick Tabs inherit the correct Firefox Container context
+  const identityContainerId = getWritingContainerId();
+  const originContainerId = identityContainerId ?? 'firefox-default';
+
   // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
   if (originTabId === null) {
     console.warn(
@@ -3377,10 +3385,13 @@ function buildQuickTabData(options) {
       }
     );
   } else {
-    console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
+    // v1.6.4-v4 - FIX Issue #47: Enhanced logging to include container context
+    console.log('[Content] QUICK_TAB_CREATE: Including originTabId and originContainerId in creation payload', {
       url,
       id,
-      originTabId
+      originTabId,
+      originContainerId,
+      identityContainerId
     });
   }
 
@@ -3392,11 +3403,14 @@ function buildQuickTabData(options) {
     width: size.width,
     height: size.height,
     title,
-    cookieStoreId: 'firefox-default',
+    // v1.6.4-v4 - FIX Issue #47 Container Filter: Use actual container ID from Identity system
+    cookieStoreId: originContainerId,
     minimized: false,
     pinnedToUrl: null,
     // v1.6.3.10-v7 - FIX Issues #3, #11: Pass originTabId to background
-    originTabId
+    originTabId,
+    // v1.6.4-v4 - FIX Issue #47 Container Filter: Include originContainerId for Manager filtering
+    originContainerId
   };
 }
 
