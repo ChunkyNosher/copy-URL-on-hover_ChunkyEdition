@@ -1388,18 +1388,50 @@ async function _saveContainerFilterPreference(filterValue) {
  * Load container filter preference from storage
  * v1.6.4-v4 - FEATURE: Container isolation
  * v1.6.4-v4 - FIX BUG #1: Default to 'all' if no saved preference
+ * v1.6.4-v4 - FIX BUG #1b: Migrate old 'current' preference to 'all' on version upgrade
  * @private
  */
 async function _loadContainerFilterPreference() {
   try {
-    const result = await browser.storage.local.get(CONTAINER_FILTER_STORAGE_KEY);
+    const result = await browser.storage.local.get([CONTAINER_FILTER_STORAGE_KEY, 'containerFilterMigrated_v1_6_4_v4']);
+    const savedFilter = result[CONTAINER_FILTER_STORAGE_KEY];
+    const alreadyMigrated = result['containerFilterMigrated_v1_6_4_v4'];
+    
+    // v1.6.4-v4 - FIX BUG #1b: One-time migration from 'current' to 'all'
+    const needsMigration = !alreadyMigrated && savedFilter === 'current';
+    
+    if (needsMigration) {
+      await _migrateContainerFilterToAll();
+      return;
+    }
+    
     // v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
-    _selectedContainerFilter = result[CONTAINER_FILTER_STORAGE_KEY] || 'all';
+    _selectedContainerFilter = savedFilter || 'all';
     console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter);
+    
+    // Mark as migrated even if no migration was needed
+    if (!alreadyMigrated) {
+      await browser.storage.local.set({ 'containerFilterMigrated_v1_6_4_v4': true });
+    }
   } catch (err) {
     console.warn('[Manager] CONTAINER_FILTER_LOAD_FAILED:', err.message);
     _selectedContainerFilter = 'all';
   }
+}
+
+/**
+ * Migrate container filter from 'current' to 'all'
+ * v1.6.4-v4 - FIX BUG #1b: One-time migration helper
+ * @private
+ */
+async function _migrateContainerFilterToAll() {
+  console.log('[Manager] CONTAINER_FILTER_MIGRATING: Resetting "current" to "all" for v1.6.4-v4');
+  _selectedContainerFilter = 'all';
+  await browser.storage.local.set({
+    [CONTAINER_FILTER_STORAGE_KEY]: 'all',
+    'containerFilterMigrated_v1_6_4_v4': true
+  });
+  console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter, '(migrated from current)');
 }
 
 /**
