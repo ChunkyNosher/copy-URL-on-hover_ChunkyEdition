@@ -153,24 +153,24 @@ async function getContentScriptLogs() {
  */
 async function getManagerLogs() {
   console.log('[Settings] getManagerLogs: Requesting logs from Manager iframe...');
-  
+
   const iframe = document.querySelector('iframe');
   if (!iframe || !iframe.contentWindow) {
     console.warn('[Settings] getManagerLogs: Manager iframe not available');
     return [];
   }
 
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     const timeoutId = setTimeout(() => {
       console.warn('[Settings] getManagerLogs: Timeout waiting for Manager response');
       window.removeEventListener('message', handler);
       resolve([]);
     }, 5000);
 
-    const handler = (event) => {
+    const handler = event => {
       // Security check: only accept messages from same origin
       if (event.origin !== window.location.origin) return;
-      
+
       if (event.data && event.data.type === 'MANAGER_LOGS_RESPONSE') {
         clearTimeout(timeoutId);
         window.removeEventListener('message', handler);
@@ -181,7 +181,7 @@ async function getManagerLogs() {
     };
 
     window.addEventListener('message', handler);
-    
+
     try {
       iframe.contentWindow.postMessage({ type: 'GET_MANAGER_LOGS' }, window.location.origin);
       console.log('[Settings] getManagerLogs: Sent GET_MANAGER_LOGS to iframe');
@@ -310,7 +310,7 @@ const LOG_VALIDATION_RULES = [
       'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs, managerLogs) => 
+    condition: (_, backgroundLogs, contentLogs, managerLogs) =>
       contentLogs.length === 0 && managerLogs.length === 0,
     messageBuilder: (_, backgroundLogs) =>
       `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
@@ -1414,7 +1414,7 @@ async function handleClearLogHistory() {
       // Clear log action counts for metrics
       iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
       console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
-      
+
       // v1.6.4-v3 - Clear Manager log buffer
       iframe.contentWindow.postMessage({ type: 'CLEAR_MANAGER_LOGS' }, window.location.origin);
       console.log('[Settings] handleClearLogHistory: Sent CLEAR_MANAGER_LOGS to iframe');

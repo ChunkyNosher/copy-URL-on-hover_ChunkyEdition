@@ -768,7 +768,7 @@ function _installConsoleInterceptors() {
   // Helper to add log to buffer
   const addToLogBuffer = (type, args) => {
     const message = args
-      .map((arg) => {
+      .map(arg => {
         if (arg === null || arg === undefined) return String(arg);
         if (arg instanceof Error)
           return `[Error: ${arg.message}]\nStack: ${arg.stack || 'unavailable'}`;
@@ -1045,7 +1045,7 @@ const _parentWindowMessageHandlers = {
       );
     }
   },
-  GET_MANAGER_LOGS: (event) => {
+  GET_MANAGER_LOGS: event => {
     const logs = getManagerLogs();
     if (console._originalLog) {
       console._originalLog('[Manager] GET_MANAGER_LOGS: Returning', logs.length, 'logs');
@@ -1055,7 +1055,7 @@ const _parentWindowMessageHandlers = {
       logs: logs
     });
   },
-  CLEAR_MANAGER_LOGS: (event) => {
+  CLEAR_MANAGER_LOGS: event => {
     const cleared = clearManagerLogs();
     _sendParentWindowResponse(event.source, event.origin, {
       type: 'CLEAR_MANAGER_LOGS_RESPONSE',
@@ -1082,7 +1082,6 @@ function _handleParentWindowMessage(event) {
     handler(event);
   }
 }
-
 
 /**
  * Cleanup metrics on sidebar close
@@ -1940,8 +1939,8 @@ function _logCriticalRefreshStateReceived(quickTabs, renderReason, correlationId
   console.log('[Sidebar] CRITICAL_REFRESH_STATE_RECEIVED:', {
     renderReason,
     quickTabCount: quickTabs.length,
-    quickTabIds: quickTabs.map((qt) => qt.id),
-    originTabIds: quickTabs.map((qt) => qt.originTabId),
+    quickTabIds: quickTabs.map(qt => qt.id),
+    originTabIds: quickTabs.map(qt => qt.originTabId),
     correlationId: correlationId || null,
     timestamp: Date.now()
   });
@@ -2045,8 +2044,8 @@ function _handleSuccessfulTransferAck(msg) {
     quickTabId: msg.quickTabId,
     newOriginTabId: msg.newOriginTabId,
     currentQuickTabCount: _allQuickTabsFromPort.length,
-    quickTabIds: _allQuickTabsFromPort.map((qt) => qt.id),
-    originTabIds: _allQuickTabsFromPort.map((qt) => qt.originTabId),
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id),
+    originTabIds: _allQuickTabsFromPort.map(qt => qt.originTabId),
     timestamp: Date.now()
   });
 
@@ -2061,11 +2060,9 @@ function _handleSuccessfulTransferAck(msg) {
     quickTabId: msg.quickTabId,
     newOriginTabId: msg.newOriginTabId,
     quickTabCount: _allQuickTabsFromPort.length,
-    quickTabIds: _allQuickTabsFromPort.map((qt) => qt.id),
-    originTabIds: _allQuickTabsFromPort.map((qt) => qt.originTabId),
-    quickTabFoundInLocalState: _allQuickTabsFromPort.some(
-      (qt) => qt.id === msg.quickTabId
-    ),
+    quickTabIds: _allQuickTabsFromPort.map(qt => qt.id),
+    originTabIds: _allQuickTabsFromPort.map(qt => qt.originTabId),
+    quickTabFoundInLocalState: _allQuickTabsFromPort.some(qt => qt.id === msg.quickTabId),
     timestamp: Date.now()
   });
 
@@ -7916,8 +7913,8 @@ function _updateRenderTrackers(stateVersionAtRenderStart) {
 function _logRenderInputData(allTabs, source) {
   console.log('[Manager] RENDER_INPUT_DATA:', {
     tabCount: allTabs.length,
-    quickTabIds: allTabs.map((t) => t.id),
-    originTabIds: allTabs.map((t) => t.originTabId),
+    quickTabIds: allTabs.map(t => t.id),
+    originTabIds: allTabs.map(t => t.originTabId),
     dataSource: source,
     timestamp: Date.now()
   });
