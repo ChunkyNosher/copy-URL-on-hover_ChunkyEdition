@@ -222,6 +222,23 @@
 
 // ==================== IMPORTS ====================
 // v1.6.4 - Code Health: Import extracted manager modules first
+// v1.6.4-v4 - Import ContainerManager for container isolation (extracted for code health)
+import {
+  DEFAULT_CONTAINER_ID,
+  getContainerIcon,
+  getContainerNameSync as _getContainerNameSync,
+  getContainerIconSync as _getContainerIconSync,
+  getCurrentContainerId as _getCurrentContainerId,
+  getSelectedContainerFilter as _getSelectedContainerFilter,
+  updateCurrentContainerId as _updateCurrentContainerId,
+  filterQuickTabsByContainer as _filterQuickTabsByContainer,
+  onContainerContextChanged as _onContainerContextChanged,
+  shouldShowContainerBadge as _shouldShowContainerBadge,
+  createContainerBadge as _createContainerBadge,
+  initializeContainerIsolation as _initializeContainerIsolationFromCM,
+  initializeContainerManagerDeps as _initializeContainerManagerDeps,
+  updateContainersData as _updateContainersDataInCM
+} from './managers/ContainerManager.js';
 import {
   initialize as initializeDragDrop,
   attachDragDropEventListeners,
@@ -443,15 +460,8 @@ let currentBrowserTabId = null;
 let previousBrowserTabId = null;
 
 // v1.6.4-v4 - FEATURE: Container isolation and filtering
-// Default container ID constant (used throughout container filtering logic)
-const DEFAULT_CONTAINER_ID = 'firefox-default';
-// Track current container ID for filtering Quick Tabs by container
-let _currentContainerId = DEFAULT_CONTAINER_ID;
-// v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default.
-// Selected container filter: 'all' (default, show all), 'current' (filter by current container), or a specific cookieStoreId.
-let _selectedContainerFilter = 'all';
-// Container dropdown DOM element reference
-let _containerFilterDropdown = null;
+// NOTE: Container state (_currentContainerId, _selectedContainerFilter, _containerFilterDropdown)
+// now managed by ContainerManager.js module
 
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
@@ -1133,454 +1143,11 @@ function cleanupMetrics() {
 
 // ==================== END LIVE METRICS FUNCTIONS ====================
 
-// ==================== v1.6.4-v4 CONTAINER ISOLATION AND FILTERING ====================
-
-/**
- * Storage key for container filter preference
- * v1.6.4-v4 - FEATURE: Container isolation
- */
-const CONTAINER_FILTER_STORAGE_KEY = 'quickTabsContainerFilter';
-// v1.6.4-v4 - FIX BUG #1b: Migration flag to track if 'current' filter was reset to 'all'
-const CONTAINER_FILTER_MIGRATION_KEY = 'containerFilterMigrated_v1_6_4_v4';
-
-/**
- * Get container name by cookieStoreId (async)
- * Uses containersData cache when available, falls back to API
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {string} cookieStoreId - Container ID (e.g., 'firefox-container-1')
- * @returns {Promise<string>} Container name (e.g., 'Shopping')
- */
-async function _getContainerNameByIdAsync(cookieStoreId) {
-  // Check cache first
-  if (containersData[cookieStoreId]) {
-    return containersData[cookieStoreId].name;
-  }
-
-  // Handle default container
-  if (!cookieStoreId || cookieStoreId === DEFAULT_CONTAINER_ID) {
-    return 'Default';
-  }
-
-  // Try to fetch from API if not in cache
-  const container = await _tryFetchContainerFromAPI(cookieStoreId);
-  if (container) {
-    return container.name;
-  }
-
-  // Fallback: format cookieStoreId as a readable name
-  return _formatContainerIdAsName(cookieStoreId);
-}
-
-/**
- * Try to fetch container info from contextualIdentities API
- * v1.6.4-v4 - FEATURE: Container isolation - extracted to reduce nesting depth
- * @private
- * @param {string} cookieStoreId - Container ID
- * @returns {Promise<Object|null>} Container object or null
- */
-async function _tryFetchContainerFromAPI(cookieStoreId) {
-  if (typeof browser.contextualIdentities === 'undefined') {
-    return null;
-  }
-
-  try {
-    const container = await browser.contextualIdentities.get(cookieStoreId);
-    if (container) {
-      // Cache the result
-      containersData[cookieStoreId] = {
-        name: container.name,
-        icon: getContainerIcon(container.icon),
-        color: container.color,
-        colorCode: container.colorCode,
-        cookieStoreId: container.cookieStoreId
-      };
-      return container;
-    }
-  } catch (err) {
-    console.log('[Manager] CONTAINER_NAME_LOOKUP: API error for', cookieStoreId, err.message);
-  }
-
-  return null;
-}
-
-/**
- * Format container ID as a readable name (fallback)
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {string} cookieStoreId - Container ID
- * @returns {string} Formatted name
- */
-function _formatContainerIdAsName(cookieStoreId) {
-  // Early return for invalid input
-  if (!cookieStoreId || typeof cookieStoreId !== 'string') {
-    return 'Unnamed Container';
-  }
-  // e.g., 'firefox-container-1' -> 'Container 1'
-  const match = cookieStoreId.match(/firefox-container-(\d+)/);
-  if (match) {
-    return `Container ${match[1]}`;
-  }
-  // Return the ID itself if it doesn't match expected pattern
-  return cookieStoreId === '' ? 'Unnamed Container' : cookieStoreId;
-}
-
-/**
- * Get container name synchronously from cache
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {string} cookieStoreId - Container ID
- * @returns {string} Container name or fallback
- */
-function _getContainerNameSync(cookieStoreId) {
-  if (containersData[cookieStoreId]) {
-    return containersData[cookieStoreId].name;
-  }
-  if (!cookieStoreId || cookieStoreId === DEFAULT_CONTAINER_ID) {
-    return 'Default';
-  }
-  return _formatContainerIdAsName(cookieStoreId);
-}
-
-/**
- * Get container icon by cookieStoreId
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {string} cookieStoreId - Container ID
- * @returns {string} Container icon emoji
- */
-function _getContainerIconSync(cookieStoreId) {
-  if (containersData[cookieStoreId]) {
-    return containersData[cookieStoreId].icon;
-  }
-  return '📁';
-}
-
-/**
- * Update current container ID from active tab
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {number} tabId - Browser tab ID
- */
-async function _updateCurrentContainerId(tabId) {
-  const oldContainerId = _currentContainerId;
-
-  try {
-    const tab = await browser.tabs.get(tabId);
-    _currentContainerId = tab?.cookieStoreId || DEFAULT_CONTAINER_ID;
-  } catch (err) {
-    console.log('[Manager] CONTAINER_UPDATE: Tab lookup failed', tabId, err.message);
-    _currentContainerId = DEFAULT_CONTAINER_ID;
-  }
-
-  const containerChanged = oldContainerId !== _currentContainerId;
-
-  if (containerChanged) {
-    console.log('[Manager] 🔄 CONTAINER_CHANGED:', {
-      previousContainerId: oldContainerId,
-      previousContainerName: _getContainerNameSync(oldContainerId),
-      currentContainerId: _currentContainerId,
-      currentContainerName: _getContainerNameSync(_currentContainerId)
-    });
-  }
-
-  return containerChanged;
-}
-
-/**
- * Populate container filter dropdown with available containers
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- */
-async function _populateContainerDropdown() {
-  if (!_containerFilterDropdown) return;
-
-  // Clear existing options
-  _containerFilterDropdown.innerHTML = '';
-
-  // Add "Current Container" option (default)
-  // v1.6.4-v4 - FIX: Add "(auto-detect)" indicator to show context-awareness
-  const currentName = _getContainerNameSync(_currentContainerId);
-  const currentIcon = _getContainerIconSync(_currentContainerId);
-  const currentOption = document.createElement('option');
-  currentOption.value = 'current';
-  currentOption.textContent = `${currentIcon} ${currentName} (auto-detect)`;
-  currentOption.title = `Filter to Quick Tabs in current container (${currentName}) - auto-detects active container`;
-  _containerFilterDropdown.appendChild(currentOption);
-
-  // Add "All Containers" option
-  const allOption = document.createElement('option');
-  allOption.value = 'all';
-  allOption.textContent = '🌐 All Containers';
-  allOption.title = 'Show Quick Tabs from all containers';
-  _containerFilterDropdown.appendChild(allOption);
-
-  // Add separator-like disabled option
-  const separator = document.createElement('option');
-  separator.disabled = true;
-  separator.textContent = '──────────';
-  _containerFilterDropdown.appendChild(separator);
-
-  // Add each known container as an option
-  // v1.6.4-v4 FIX: Skip DEFAULT_CONTAINER_ID since "All Containers" already shows all Quick Tabs
-  // This eliminates the confusing duplicate view between "All Containers" and "Default"
-  const containerIds = Object.keys(containersData)
-    .filter(id => id !== DEFAULT_CONTAINER_ID)
-    .sort((a, b) => {
-      // Sort alphabetically by name
-      return _getContainerNameSync(a).localeCompare(_getContainerNameSync(b));
-    });
-
-  for (const containerId of containerIds) {
-    const name = _getContainerNameSync(containerId);
-    const icon = _getContainerIconSync(containerId);
-    const option = document.createElement('option');
-    option.value = containerId;
-    option.textContent = `${icon} ${name}`;
-    option.title = `Filter to Quick Tabs in ${name} container`;
-    _containerFilterDropdown.appendChild(option);
-  }
-
-  // Set the selected value
-  _containerFilterDropdown.value = _selectedContainerFilter;
-
-  console.log('[Manager] CONTAINER_DROPDOWN_POPULATED:', {
-    containerCount: containerIds.length,
-    selectedFilter: _selectedContainerFilter,
-    currentContainerId: _currentContainerId
-  });
-}
-
-/**
- * Handle container filter dropdown change
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {Event} event - Change event
- */
-function _handleContainerFilterChange(event) {
-  // Validate event target
-  if (!event?.target?.value) {
-    console.warn('[Manager] CONTAINER_FILTER_CHANGE: Invalid event target');
-    return;
-  }
-  const newValue = event.target.value;
-  const oldValue = _selectedContainerFilter;
-
-  if (newValue === oldValue) return;
-
-  _selectedContainerFilter = newValue;
-
-  console.log('[Manager] 🔄 CONTAINER_FILTER_CHANGED:', {
-    previousFilter: oldValue,
-    newFilter: newValue,
-    filterName:
-      newValue === 'current'
-        ? _getContainerNameSync(_currentContainerId)
-        : newValue === 'all'
-          ? 'All Containers'
-          : _getContainerNameSync(newValue)
-  });
-
-  // Save preference to storage
-  _saveContainerFilterPreference(newValue);
-
-  // Re-render UI with new filter
-  _incrementStateVersion('container-filter-change');
-  renderUI();
-}
-
-/**
- * Save container filter preference to storage
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {string} filterValue - Filter value to save
- */
-async function _saveContainerFilterPreference(filterValue) {
-  try {
-    await browser.storage.local.set({ [CONTAINER_FILTER_STORAGE_KEY]: filterValue });
-    console.log('[Manager] CONTAINER_FILTER_SAVED:', filterValue);
-  } catch (err) {
-    console.warn('[Manager] CONTAINER_FILTER_SAVE_FAILED:', err.message);
-  }
-}
-
-/**
- * Load container filter preference from storage
- * v1.6.4-v4 - FEATURE: Container isolation
- * v1.6.4-v4 - FIX BUG #1: Default to 'all' if no saved preference
- * v1.6.4-v4 - FIX BUG #1b: Migrate old 'current' preference to 'all' on version upgrade
- * @private
- */
-async function _loadContainerFilterPreference() {
-  try {
-    const result = await browser.storage.local.get([
-      CONTAINER_FILTER_STORAGE_KEY,
-      CONTAINER_FILTER_MIGRATION_KEY
-    ]);
-    const savedFilter = result[CONTAINER_FILTER_STORAGE_KEY];
-    const alreadyMigrated = result[CONTAINER_FILTER_MIGRATION_KEY];
-
-    // v1.6.4-v4 - FIX BUG #1b: One-time migration from 'current' to 'all'
-    const needsMigration = !alreadyMigrated && savedFilter === 'current';
-
-    if (needsMigration) {
-      await _migrateContainerFilterToAll();
-      return;
-    }
-
-    // v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
-    _selectedContainerFilter = savedFilter || 'all';
-    console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter);
-
-    // Mark migration check complete to prevent re-running on future loads
-    if (!alreadyMigrated) {
-      await browser.storage.local.set({ [CONTAINER_FILTER_MIGRATION_KEY]: true });
-    }
-  } catch (err) {
-    console.warn('[Manager] CONTAINER_FILTER_LOAD_FAILED:', err.message);
-    _selectedContainerFilter = 'all';
-  }
-}
-
-/**
- * Migrate container filter from 'current' to 'all'
- * v1.6.4-v4 - FIX BUG #1b: One-time migration helper
- * @private
- */
-async function _migrateContainerFilterToAll() {
-  console.log('[Manager] CONTAINER_FILTER_MIGRATING: Resetting "current" to "all" for v1.6.4-v4');
-  _selectedContainerFilter = 'all';
-  await browser.storage.local.set({
-    [CONTAINER_FILTER_STORAGE_KEY]: 'all',
-    [CONTAINER_FILTER_MIGRATION_KEY]: true
-  });
-  console.log(
-    '[Manager] CONTAINER_FILTER_LOADED:',
-    _selectedContainerFilter,
-    '(migrated from current)'
-  );
-}
-
-/**
- * Filter Quick Tabs by container based on current filter setting
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- * @param {Array} allTabs - All Quick Tabs
- * @returns {Array} Filtered Quick Tabs
- */
-function _filterQuickTabsByContainer(allTabs) {
-  if (!Array.isArray(allTabs) || allTabs.length === 0) {
-    return allTabs;
-  }
-
-  // If filter is 'all', return all tabs
-  if (_selectedContainerFilter === 'all') {
-    return allTabs;
-  }
-
-  // Determine the target container ID
-  const targetContainerId =
-    _selectedContainerFilter === 'current' ? _currentContainerId : _selectedContainerFilter;
-
-  // v1.6.4-v4 - DEBUG: Log each tab's originContainerId for debugging filter issues
-  console.log('[Manager] CONTAINER_FILTER_DEBUG:', {
-    filter: _selectedContainerFilter,
-    targetContainerId,
-    tabsToCheck: allTabs.map(tab => ({
-      id: tab.id,
-      originContainerId: tab.originContainerId,
-      hasOriginContainerId: 'originContainerId' in tab
-    }))
-  });
-
-  // Filter tabs by originContainerId
-  const filtered = allTabs.filter(tab => {
-    // Get the tab's container ID (use DEFAULT_CONTAINER_ID if not set)
-    const tabContainerId = tab.originContainerId || DEFAULT_CONTAINER_ID;
-    return tabContainerId === targetContainerId;
-  });
-
-  console.log('[Manager] CONTAINER_FILTER_APPLIED:', {
-    filter: _selectedContainerFilter,
-    targetContainerId,
-    targetContainerName: _getContainerNameSync(targetContainerId),
-    totalTabs: allTabs.length,
-    filteredTabs: filtered.length
-  });
-
-  return filtered;
-}
-
-/**
- * Setup container filter dropdown event listener
- * v1.6.4-v4 - FEATURE: Container isolation
- * @private
- */
-function _setupContainerFilterDropdown() {
-  _containerFilterDropdown = document.getElementById('containerFilter');
-  if (!_containerFilterDropdown) {
-    console.warn('[Manager] CONTAINER_FILTER: Dropdown element not found');
-    return;
-  }
-
-  _containerFilterDropdown.addEventListener('change', _handleContainerFilterChange);
-  console.log('[Manager] CONTAINER_FILTER: Dropdown event listener attached');
-}
-
-/**
- * Initialize container isolation feature
- * v1.6.4-v4 - FEATURE: Container isolation
- * Called during sidebar initialization
- */
-async function initializeContainerIsolation() {
-  console.log('[Manager] CONTAINER_ISOLATION: Initializing...');
-
-  // Load saved filter preference
-  await _loadContainerFilterPreference();
-
-  // Setup dropdown - validate it was found
-  _setupContainerFilterDropdown();
-  if (!_containerFilterDropdown) {
-    console.warn('[Manager] CONTAINER_ISOLATION: Dropdown not found - feature disabled');
-    return;
-  }
-
-  // Get current container from active tab
-  if (currentBrowserTabId) {
-    await _updateCurrentContainerId(currentBrowserTabId);
-  }
-
-  // Populate dropdown
-  await _populateContainerDropdown();
-
-  console.log('[Manager] CONTAINER_ISOLATION: Initialization complete', {
-    currentContainerId: _currentContainerId,
-    currentContainerName: _getContainerNameSync(_currentContainerId),
-    selectedFilter: _selectedContainerFilter,
-    dropdownReady: !!_containerFilterDropdown
-  });
-}
-
-/**
- * Update container dropdown display when container changes
- * v1.6.4-v4 - FEATURE: Container isolation
- * Called when user switches to a different container tab
- * @private
- */
-async function _onContainerContextChanged() {
-  // Update dropdown to show new "current" container name
-  await _populateContainerDropdown();
-
-  // If filter is 'current', request fresh data and re-render to apply new container filter
-  if (_selectedContainerFilter === 'current') {
-    console.log('[Manager] CONTAINER_CONTEXT_CHANGED: Requesting fresh data for new container');
-    // v1.6.4-v4 - FIX: Request fresh Quick Tabs from background to get updated container context
-    requestAllQuickTabsViaPort();
-    // Note: renderUI() will be called by GET_ALL_QUICK_TABS_RESPONSE handler
-  }
-}
-
-// ==================== END CONTAINER ISOLATION FUNCTIONS ====================
+// ==================== v1.6.4-v4 CONTAINER ISOLATION ====================
+// Container isolation functions have been extracted to managers/ContainerManager.js
+// See ContainerManager.js for: initializeContainerIsolation, filterQuickTabsByContainer,
+// getContainerNameSync, getContainerIconSync, populateContainerDropdown, etc.
+// ==================== END CONTAINER ISOLATION ====================
 
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
@@ -7080,8 +6647,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load container information from Firefox API
   await loadContainerInfo();
 
-  // v1.6.4-v4 - FEATURE: Initialize container isolation AFTER container info loaded
-  await initializeContainerIsolation();
+  // v1.6.4-v4 - FEATURE: Initialize ContainerManager dependencies BEFORE container isolation
+  _initializeContainerManagerDeps({
+    containersData: containersData,
+    renderUI: renderUI,
+    incrementStateVersion: _incrementStateVersion,
+    requestAllQuickTabsViaPort: requestAllQuickTabsViaPort,
+    getCurrentBrowserTabId: () => currentBrowserTabId
+  });
+
+  // v1.6.4-v4 - FEATURE: Initialize container isolation AFTER container info loaded and deps set
+  await _initializeContainerIsolationFromCM(currentBrowserTabId);
 
   // Load Quick Tabs state from storage
   await loadQuickTabsState();
@@ -7401,6 +6977,8 @@ async function loadContainerInfo() {
         color: 'grey',
         cookieStoreId: 'firefox-default'
       };
+      // v1.6.4-v4 - Sync with ContainerManager
+      _updateContainersDataInCM(containersData);
       return;
     }
 
@@ -7428,34 +7006,16 @@ async function loadContainerInfo() {
       cookieStoreId: 'firefox-default'
     };
 
+    // v1.6.4-v4 - Sync with ContainerManager
+    _updateContainersDataInCM(containersData);
+
     console.log('Loaded container info:', containersData);
   } catch (err) {
     console.error('Error loading container info:', err);
   }
 }
 
-/**
- * Convert Firefox container icon identifier to emoji
- */
-function getContainerIcon(icon) {
-  const iconMap = {
-    fingerprint: '🔒',
-    briefcase: '💼',
-    dollar: '💰',
-    cart: '🛒',
-    circle: '⭕',
-    gift: '🎁',
-    vacation: '🏖️',
-    food: '🍴',
-    fruit: '🍎',
-    pet: '🐾',
-    tree: '🌳',
-    chill: '❄️',
-    fence: '🚧'
-  };
-
-  return iconMap[icon] || '📁';
-}
+// v1.6.4-v4 - NOTE: getContainerIcon() moved to managers/ContainerManager.js
 
 /**
  * Check if storage read should be debounced
@@ -8274,8 +7834,8 @@ function _getAllQuickTabsForRender() {
     source,
     unfilteredCount,
     filteredCount: allTabs.length,
-    containerFilter: _selectedContainerFilter,
-    currentContainerId: _currentContainerId
+    containerFilter: _getSelectedContainerFilter(),
+    currentContainerId: _getCurrentContainerId()
   });
 
   return {
@@ -8795,59 +8355,7 @@ function _createGroupActions(groupKey, isOrphaned) {
   return actionsContainer;
 }
 
-/**
- * Determine if container badge should be shown for a group
- * v1.6.4-v5 - PERF: Extracted from _createGroupHeader for code health
- * Only show when viewing all containers, group is not orphaned, and has Quick Tabs
- * @private
- * @param {boolean} isOrphaned - Whether this is the orphaned group
- * @param {number} quickTabCount - Number of Quick Tabs in the group
- * @returns {boolean} True if container badge should be shown
- */
-function _shouldShowContainerBadge(isOrphaned, quickTabCount) {
-  return _selectedContainerFilter === 'all' && !isOrphaned && quickTabCount > 0;
-}
-
-/**
- * Create container indicator badge for "All Containers" view
- * v1.6.4-v4 - FEATURE Issue #1: Shows which Firefox Container the tab belongs to
- * v1.6.4-v5 - PERF: Removed per-badge logging to reduce log volume
- * Only shown when _selectedContainerFilter === 'all'
- * @private
- * @param {Array} quickTabs - Quick Tabs in this group
- * @returns {HTMLElement|null} Container badge element or null
- */
-function _createContainerBadge(quickTabs) {
-  // Get the container ID from the first Quick Tab in the group
-  // All Quick Tabs in a group should have the same originContainerId
-  const firstTab = quickTabs[0];
-  if (!firstTab) {
-    return null;
-  }
-
-  const containerId = firstTab.originContainerId || DEFAULT_CONTAINER_ID;
-
-  // Get container info
-  const containerName = _getContainerNameSync(containerId);
-  const containerIcon = _getContainerIconSync(containerId);
-
-  // Create badge element
-  const badge = document.createElement('span');
-  badge.className = 'container-indicator-badge';
-
-  // v1.6.4-v4 - Get container color from cache for styling
-  const containerInfo = containersData[containerId];
-  if (containerInfo && containerInfo.color) {
-    badge.dataset.containerColor = containerInfo.color;
-  }
-
-  badge.textContent = `${containerIcon} ${containerName}`;
-  badge.title = `Container: ${containerName}`;
-
-  // v1.6.4-v5 - PERF: Removed per-badge debug logging (was firing for every group)
-
-  return badge;
-}
+// v1.6.4-v4 - NOTE: _shouldShowContainerBadge() and _createContainerBadge() moved to managers/ContainerManager.js
 
 /**
  * Handle "Go to Tab" button click - switches to the browser tab
