@@ -2,6 +2,19 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v5 PERFORMANCE OPTIMIZATIONS ===
+ * v1.6.4-v5 - PERF: Reduce log volume for high-frequency operations
+ *   - Consolidated duplicate logs in _logRenderSkipped() (was 2 logs, now 1)
+ *   - Removed per-badge debug logging in _createContainerBadge() (fires per group)
+ *   - _logHashComputation() now only logs when hash actually changed
+ *   - Removed unused _buildStateSummary() function
+ *
+ * v1.6.4-v5 - PERF: Code Health improvements for better maintainability
+ *   - Extracted _validateStateUpdateInput() from _handleQuickTabsStateUpdate() (cc reduction)
+ *   - Extracted _executeRenderForStateUpdate() from _handleQuickTabsStateUpdate() (cc: 9 → 5)
+ *   - Extracted _shouldShowContainerBadge() for cleaner conditional in _createGroupHeader()
+ *   - Added windowId validation in _handleGoToTabGroup() (code review feedback)
+ *
  * === v1.6.4-v4 CONTAINER ISOLATION & FILTERING ===
  * v1.6.4-v4 - FEATURE: Container-based filtering for Quick Tabs
  *   - Quick Tabs filtered by Firefox Container (cookieStoreId/originContainerId)
@@ -2115,23 +2128,16 @@ function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
 }
 
 /**
- * Handle Quick Tabs state update from background
- * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
- * v1.6.3.12 - Gap #7: End-to-end state sync path logging
- * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
- * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
- * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
+ * Validate and log state update input
+ * v1.6.4-v5 - PERF: Extracted from _handleQuickTabsStateUpdate for code health (cc reduction)
  * @private
- * @param {Array} quickTabs - Quick Tabs array
- * @param {string} renderReason - Reason for render scheduling
- * @param {string} [correlationId=null] - Correlation ID for async tracing
+ * @param {*} quickTabs - Input to validate
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID
+ * @param {number} receiveTime - Timestamp of receive
+ * @returns {boolean} True if input is valid, false to early exit
  */
-function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
-  const receiveTime = Date.now();
-
-  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
-  _clearStateChangedSafetyTimeout();
-
+function _validateStateUpdateInput(quickTabs, renderReason, correlationId, receiveTime) {
   // v1.6.3.12 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
@@ -2150,6 +2156,56 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
       reason: 'quickTabs is not an array',
       receivedType: typeof quickTabs
     });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Execute render based on state refresh status
+ * v1.6.4-v5 - PERF: Extracted from _handleQuickTabsStateUpdate for code health (cc reduction)
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID
+ */
+function _executeRenderForStateUpdate(quickTabs, renderReason, correlationId) {
+  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
+  if (_pendingCriticalStateRefresh) {
+    _pendingCriticalStateRefresh = false;
+    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
+      renderReason,
+      tabCount: quickTabs.length,
+      timestamp: Date.now()
+    });
+    _forceImmediateRender('critical-state-refresh');
+  } else {
+    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
+    scheduleRender(renderReason, correlationId);
+  }
+}
+
+/**
+ * Handle Quick Tabs state update from background
+ * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
+ * v1.6.3.12 - Gap #7: End-to-end state sync path logging
+ * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
+ * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
+ * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
+ * v1.6.4-v5 - PERF: Extracted validation and render decision to helpers (cc: 9 → 5)
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render scheduling
+ * @param {string} [correlationId=null] - Correlation ID for async tracing
+ */
+function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
+  const receiveTime = Date.now();
+
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
+  _clearStateChangedSafetyTimeout();
+
+  // v1.6.4-v5 - PERF: Extracted validation to helper for code health
+  if (!_validateStateUpdateInput(quickTabs, renderReason, correlationId, receiveTime)) {
     return;
   }
 
@@ -2193,19 +2249,8 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
   _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
-  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
-  if (_pendingCriticalStateRefresh) {
-    _pendingCriticalStateRefresh = false;
-    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
-      renderReason,
-      tabCount: quickTabs.length,
-      timestamp: Date.now()
-    });
-    _forceImmediateRender('critical-state-refresh');
-  } else {
-    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
-    scheduleRender(renderReason, correlationId);
-  }
+  // v1.6.4-v5 - PERF: Extracted render decision to helper for code health
+  _executeRenderForStateUpdate(quickTabs, renderReason, correlationId);
 }
 
 /**
@@ -4715,56 +4760,39 @@ function _handleStateSyncResponse(response) {
 /**
  * Log hash computation for render scheduling
  * v1.6.3.12-v7 - Extracted for complexity reduction
+ * v1.6.4-v5 - PERF: Only log when hash actually changed to reduce log volume
  * @private
  */
 function _logHashComputation(scheduleTimestamp, source, currentHash) {
+  const hashChanged = currentHash !== lastRenderedStateHash;
+  // v1.6.4-v5 - PERF: Skip logging when hash unchanged (reduces log volume significantly)
+  if (!hashChanged) {
+    return;
+  }
   console.log('[Sidebar] DEBOUNCE_HASH_COMPUTED:', {
     timestamp: scheduleTimestamp,
     source,
     hashValue: currentHash,
     previousHash: lastRenderedStateHash,
-    hashChanged: currentHash !== lastRenderedStateHash,
-    stateTabCount: quickTabsState?.tabs?.length || 0,
-    fieldsInHash: ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId']
+    hashChanged,
+    stateTabCount: quickTabsState?.tabs?.length || 0
   });
-}
-
-/**
- * Log when render is skipped due to hash match
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * @private
- */
-/**
- * Build state summary for logging
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * @private
- */
-function _buildStateSummary() {
-  const tabs = quickTabsState?.tabs || [];
-  return {
-    totalTabs: tabs.length,
-    minimizedTabs: tabs.filter(t => t.minimized).length
-  };
 }
 
 /**
  * Log when render is skipped due to hash match
  * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * v1.6.4-v5 - PERF: Consolidated duplicate logs into single log entry
  * @private
  */
 function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId = null) {
-  console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
-    source,
-    hash: currentHash,
-    correlationId: correlationId || null
-  });
-  console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
+  // v1.6.4-v5 - PERF: Single consolidated log entry (was 2 separate logs)
+  console.log('[Manager] RENDER_SKIPPED: Hash and version unchanged', {
     timestamp: scheduleTimestamp,
     source,
-    correlationId: correlationId || null,
     hash: currentHash,
-    tabCount: quickTabsState?.tabs?.length || 0,
-    stateSummary: _buildStateSummary()
+    correlationId: correlationId || null,
+    tabCount: quickTabsState?.tabs?.length || 0
   });
 }
 
@@ -8706,8 +8734,8 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
   summary.appendChild(count);
 
   // v1.6.4-v4 - FEATURE Issue #1: Container indicator badge in "All Containers" view
-  // Only show when viewing all containers, not when filtering by specific container
-  if (_selectedContainerFilter === 'all' && !isOrphaned && group.quickTabs.length > 0) {
+  // v1.6.4-v5 - PERF: Extracted visibility check to helper for code health
+  if (_shouldShowContainerBadge(isOrphaned, group.quickTabs.length)) {
     const containerBadge = _createContainerBadge(group.quickTabs);
     if (containerBadge) {
       summary.appendChild(containerBadge);
@@ -8768,8 +8796,22 @@ function _createGroupActions(groupKey, isOrphaned) {
 }
 
 /**
+ * Determine if container badge should be shown for a group
+ * v1.6.4-v5 - PERF: Extracted from _createGroupHeader for code health
+ * Only show when viewing all containers, group is not orphaned, and has Quick Tabs
+ * @private
+ * @param {boolean} isOrphaned - Whether this is the orphaned group
+ * @param {number} quickTabCount - Number of Quick Tabs in the group
+ * @returns {boolean} True if container badge should be shown
+ */
+function _shouldShowContainerBadge(isOrphaned, quickTabCount) {
+  return _selectedContainerFilter === 'all' && !isOrphaned && quickTabCount > 0;
+}
+
+/**
  * Create container indicator badge for "All Containers" view
  * v1.6.4-v4 - FEATURE Issue #1: Shows which Firefox Container the tab belongs to
+ * v1.6.4-v5 - PERF: Removed per-badge logging to reduce log volume
  * Only shown when _selectedContainerFilter === 'all'
  * @private
  * @param {Array} quickTabs - Quick Tabs in this group
@@ -8802,12 +8844,7 @@ function _createContainerBadge(quickTabs) {
   badge.textContent = `${containerIcon} ${containerName}`;
   badge.title = `Container: ${containerName}`;
 
-  console.log('[Manager] CONTAINER_BADGE_CREATED:', {
-    containerId,
-    containerName,
-    containerIcon,
-    quickTabCount: quickTabs.length
-  });
+  // v1.6.4-v5 - PERF: Removed per-badge debug logging (was firing for every group)
 
   return badge;
 }
@@ -8831,11 +8868,14 @@ async function _handleGoToTabGroup(tabId) {
     // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
     // This ensures proper tab switching when the target tab is in a different window
     const tab = await browser.tabs.get(numTabId);
-    if (tab.windowId) {
-      await browser.windows.update(tab.windowId, { focused: true });
+    // v1.6.4-v5 - FIX: Validate tab and windowId before using (code review feedback)
+    // browser.tabs.get() can return null/undefined if tab doesn't exist
+    const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+    if (windowId !== null) {
+      await browser.windows.update(windowId, { focused: true });
     }
     await browser.tabs.update(numTabId, { active: true });
-    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId: tab.windowId });
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
       tabId: numTabId,
