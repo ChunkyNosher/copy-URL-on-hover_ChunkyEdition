@@ -1581,6 +1581,13 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   const isNowEmpty = quickTabs.length === 0;
 
   _allQuickTabsFromPort = quickTabs;
+
+  // v1.6.4-v3 - DEBUG: Log state received during critical refresh for transfer debugging
+  // Note: Uses extracted helper to avoid adding complexity to this function
+  if (_pendingCriticalStateRefresh) {
+    _logCriticalRefreshStateReceived(quickTabs, renderReason, correlationId);
+  }
+
   console.log(`[Sidebar] ${renderReason}: ${quickTabs.length} Quick Tabs`);
   updateQuickTabsStateFromPort(quickTabs);
 
@@ -1813,6 +1820,25 @@ function _logQuickTabValidationFailures(totalReceived, validCount, invalidCount,
 }
 
 /**
+ * Log state received during critical refresh for transfer debugging
+ * v1.6.4-v3 - DEBUG: Extracted to reduce complexity of _handleQuickTabsStateUpdate
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID for tracing
+ */
+function _logCriticalRefreshStateReceived(quickTabs, renderReason, correlationId) {
+  console.log('[Sidebar] CRITICAL_REFRESH_STATE_RECEIVED:', {
+    renderReason,
+    quickTabCount: quickTabs.length,
+    quickTabIds: quickTabs.map((qt) => qt.id),
+    originTabIds: quickTabs.map((qt) => qt.originTabId),
+    correlationId: correlationId || null,
+    timestamp: Date.now()
+  });
+}
+
+/**
  * Validate sequence number field
  * v1.6.4 - FIX Issue #15: Add sequence number validation
  * @private
@@ -1905,11 +1931,34 @@ function _handleSuccessfulTransferAck(msg) {
     message: 'Requesting fresh state immediately after ACK'
   });
 
+  // v1.6.4-v3 - DEBUG: Log state BEFORE optimistic update for transfer debugging
+  console.log('[Sidebar] TRANSFER_BEFORE_OPTIMISTIC_UPDATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    currentQuickTabCount: _allQuickTabsFromPort.length,
+    quickTabIds: _allQuickTabsFromPort.map((qt) => qt.id),
+    originTabIds: _allQuickTabsFromPort.map((qt) => qt.originTabId),
+    timestamp: Date.now()
+  });
+
   // Clear cache for both old and new origin tabs
   _clearTabCacheForTransfer(msg.oldOriginTabId, msg.newOriginTabId);
 
   // Update _allQuickTabsFromPort optimistically
   _updateLocalQuickTabOrigin(msg.quickTabId, msg.newOriginTabId);
+
+  // v1.6.4-v3 - DEBUG: Log state AFTER optimistic update for transfer debugging
+  console.log('[Sidebar] TRANSFER_AFTER_OPTIMISTIC_UPDATE:', {
+    quickTabId: msg.quickTabId,
+    newOriginTabId: msg.newOriginTabId,
+    quickTabCount: _allQuickTabsFromPort.length,
+    quickTabIds: _allQuickTabsFromPort.map((qt) => qt.id),
+    originTabIds: _allQuickTabsFromPort.map((qt) => qt.originTabId),
+    quickTabFoundInLocalState: _allQuickTabsFromPort.some(
+      (qt) => qt.id === msg.quickTabId
+    ),
+    timestamp: Date.now()
+  });
 
   // Also update quickTabsState for hash consistency
   _updateQuickTabsStateOrigin(msg.quickTabId, msg.newOriginTabId);
@@ -7630,6 +7679,9 @@ async function _executeRenderUIInternal() {
   // v1.6.3.12-v11 - FIX Issue #1: Use helper that prioritizes port data
   const { allTabs, latestTimestamp, source } = _getAllQuickTabsForRender();
 
+  // v1.6.4-v3 - DEBUG: Log render input data for transfer debugging (uses extracted helper)
+  _logRenderInputData(allTabs, source);
+
   // v1.6.3.7 - FIX Issue #8: Log render entry with trigger reason
   const triggerReason = pendingRenderUI ? 'debounced' : 'direct';
   console.log('[Manager] RENDER_UI: entry', {
@@ -7743,6 +7795,23 @@ function _updateRenderTrackers(stateVersionAtRenderStart) {
       message: 'State was updated during render - next render will process newer state'
     });
   }
+}
+
+/**
+ * Log render input data for transfer debugging
+ * v1.6.4-v3 - DEBUG: Extracted to reduce lines in _executeRenderUIInternal
+ * @private
+ * @param {Array} allTabs - Quick Tabs to render
+ * @param {string} source - Data source (port, cache, etc.)
+ */
+function _logRenderInputData(allTabs, source) {
+  console.log('[Manager] RENDER_INPUT_DATA:', {
+    tabCount: allTabs.length,
+    quickTabIds: allTabs.map((t) => t.id),
+    originTabIds: allTabs.map((t) => t.originTabId),
+    dataSource: source,
+    timestamp: Date.now()
+  });
 }
 
 /**
