@@ -1306,12 +1306,14 @@ async function _populateContainerDropdown() {
   _containerFilterDropdown.appendChild(separator);
 
   // Add each known container as an option
-  const containerIds = Object.keys(containersData).sort((a, b) => {
-    // Sort default first, then by name
-    if (a === 'firefox-default') return -1;
-    if (b === 'firefox-default') return 1;
-    return _getContainerNameSync(a).localeCompare(_getContainerNameSync(b));
-  });
+  // v1.6.4-v4 FIX: Skip "firefox-default" container since "All Containers" already shows all Quick Tabs
+  // This eliminates the confusing duplicate view between "All Containers" and "Default"
+  const containerIds = Object.keys(containersData)
+    .filter((id) => id !== 'firefox-default')
+    .sort((a, b) => {
+      // Sort alphabetically by name
+      return _getContainerNameSync(a).localeCompare(_getContainerNameSync(b));
+    });
 
   for (const containerId of containerIds) {
     const name = _getContainerNameSync(containerId);
