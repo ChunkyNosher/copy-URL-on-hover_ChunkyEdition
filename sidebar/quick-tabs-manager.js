@@ -1311,7 +1311,7 @@ async function _populateContainerDropdown() {
   // v1.6.4-v4 FIX: Skip DEFAULT_CONTAINER_ID since "All Containers" already shows all Quick Tabs
   // This eliminates the confusing duplicate view between "All Containers" and "Default"
   const containerIds = Object.keys(containersData)
-    .filter((id) => id !== DEFAULT_CONTAINER_ID)
+    .filter(id => id !== DEFAULT_CONTAINER_ID)
     .sort((a, b) => {
       // Sort alphabetically by name
       return _getContainerNameSync(a).localeCompare(_getContainerNameSync(b));

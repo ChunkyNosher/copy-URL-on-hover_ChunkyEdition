@@ -34,10 +34,11 @@
 
 **v1.6.4-v4 Bug Fixes (NEW):**
 
-- **Container Filter Fix** - `buildQuickTabData()` now includes `originContainerId`
-  via `getWritingContainerId()` import from storage-utils.js
-- **"Default" Dropdown Removal** - Removed "firefox-default" from container dropdown
-  (redundant with "All Containers"); added `DEFAULT_CONTAINER_ID` constant
+- **Container Filter Fix** - `buildQuickTabData()` now includes
+  `originContainerId` via `getWritingContainerId()` import from storage-utils.js
+- **"Default" Dropdown Removal** - Removed "firefox-default" from container
+  dropdown (redundant with "All Containers"); added `DEFAULT_CONTAINER_ID`
+  constant
 - **Tab Group Drag-Drop Fix** - Quick Tab drag handlers now allow tab-group drag
   events to bubble up (removed excessive `stopPropagation()` calls)
 

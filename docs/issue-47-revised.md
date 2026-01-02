@@ -927,49 +927,60 @@ contextualIdentities API instead of showing numeric IDs.
 
 ## Scenario 28: Container Filter Properly Includes originContainerId (v1.6.4-v4)
 
-**Purpose:** Verify Quick Tabs include `originContainerId` field so container filter works correctly.
+**Purpose:** Verify Quick Tabs include `originContainerId` field so container
+filter works correctly.
 
 ### Steps:
 
 1. **Open WP 1 in Personal container, create QT 1**
-   - Action: Right-click new tab → "Personal" container, navigate to Wikipedia, press Q
-   - Expected: QT 1 created with `originContainerId: "firefox-container-X"` (where X is Personal container ID)
+   - Action: Right-click new tab → "Personal" container, navigate to Wikipedia,
+     press Q
+   - Expected: QT 1 created with `originContainerId: "firefox-container-X"`
+     (where X is Personal container ID)
 
 2. **Open Manager and set filter to "Personal" container**
    - Action: Press Ctrl+Alt+Z, click container dropdown, select "Personal"
-   - Expected: QT 1 appears in filtered list (container filter matches originContainerId)
+   - Expected: QT 1 appears in filtered list (container filter matches
+     originContainerId)
 
 3. **Open WP 2 in Work container, create QT 2**
-   - Action: Right-click new tab → "Work" container, navigate to Wikipedia, press Q
+   - Action: Right-click new tab → "Work" container, navigate to Wikipedia,
+     press Q
    - Expected: QT 2 created with different `originContainerId`
 
 4. **Verify Personal filter excludes Work Quick Tab**
    - Action: With Personal filter still active, observe Manager list
-   - Expected: Only QT 1 visible (QT 2 filtered out because originContainerId doesn't match)
+   - Expected: Only QT 1 visible (QT 2 filtered out because originContainerId
+     doesn't match)
 
 5. **Verify Quick Tab data in console**
    - Action: Open browser console, check Quick Tab object
-   - Expected: `originContainerId` field is present and correctly populated (not undefined or 'firefox-default' for container tabs)
+   - Expected: `originContainerId` field is present and correctly populated (not
+     undefined or 'firefox-default' for container tabs)
 
 ---
 
 ## Scenario 29: "Default" Container Not in Dropdown (v1.6.4-v4)
 
-**Purpose:** Verify "firefox-default" container does not appear as a separate dropdown option since "All Containers" already includes it.
+**Purpose:** Verify "firefox-default" container does not appear as a separate
+dropdown option since "All Containers" already includes it.
 
 ### Steps:
 
 1. **Setup: Create Quick Tabs in default and named containers**
-   - Action: Open WP 1 in default (no container), create QT 1; Open WP 2 in Personal container, create QT 2
+   - Action: Open WP 1 in default (no container), create QT 1; Open WP 2 in
+     Personal container, create QT 2
    - Expected: Two Quick Tabs created
 
 2. **Open Manager container dropdown**
    - Action: Press Ctrl+Alt+Z, click container filter dropdown
-   - Expected: Dropdown shows "🌐 All Containers" and named containers (Personal, Work, etc.)
+   - Expected: Dropdown shows "🌐 All Containers" and named containers
+     (Personal, Work, etc.)
 
 3. **Verify "Default" or "firefox-default" NOT in list**
    - Action: Scan all dropdown options
-   - Expected: NO option labeled "Default", "firefox-default", or "No Container" appears
+   - Expected: NO option labeled "Default", "firefox-default", or "No Container"
+     appears
 
 4. **Verify default container Quick Tabs visible under "All Containers"**
    - Action: Select "🌐 All Containers" filter
@@ -983,12 +994,14 @@ contextualIdentities API instead of showing numeric IDs.
 
 ## Scenario 30: Tab Group Drag-Drop on Full Element (v1.6.4-v4)
 
-**Purpose:** Verify tab groups can be reordered by dragging anywhere on the group element, not just the header.
+**Purpose:** Verify tab groups can be reordered by dragging anywhere on the
+group element, not just the header.
 
 ### Steps:
 
 1. **Setup: Create Quick Tabs in multiple tabs**
-   - Action: Open WP 1, create QT 1; Open YT 1, create QT 2; Open GH 1, create QT 3
+   - Action: Open WP 1, create QT 1; Open YT 1, create QT 2; Open GH 1, create
+     QT 3
    - Expected: Three tab groups in Manager (Wikipedia, YouTube, GitHub)
 
 2. **Open Manager**
@@ -996,8 +1009,10 @@ contextualIdentities API instead of showing numeric IDs.
    - Expected: Manager shows three tab groups in default order
 
 3. **Drag tab group by its Quick Tab item area**
-   - Action: Drag the Wikipedia group by clicking on the QT 1 item area (NOT the group header)
-   - Expected: Drag operation initiates for the TAB GROUP (not just the Quick Tab item)
+   - Action: Drag the Wikipedia group by clicking on the QT 1 item area (NOT the
+     group header)
+   - Expected: Drag operation initiates for the TAB GROUP (not just the Quick
+     Tab item)
 
 4. **Drop tab group onto another group**
    - Action: Drop Wikipedia group onto YouTube group's drop zone
@@ -1005,7 +1020,8 @@ contextualIdentities API instead of showing numeric IDs.
 
 5. **Verify Quick Tab item drag still works**
    - Action: Drag QT 1 from Wikipedia group to GitHub group (cross-tab transfer)
-   - Expected: QT 1 transfers to GitHub group (Quick Tab item-level drag still functional)
+   - Expected: QT 1 transfers to GitHub group (Quick Tab item-level drag still
+     functional)
 
 6. **Verify no console errors during drag operations**
    - Action: Open browser console, perform several drag operations

@@ -3387,13 +3387,16 @@ function buildQuickTabData(options) {
     );
   } else {
     // v1.6.4-v4 - FIX Issue #47: Enhanced logging to include container context
-    console.log('[Content] QUICK_TAB_CREATE: Including originTabId and originContainerId in creation payload', {
-      url,
-      id,
-      originTabId,
-      originContainerId,
-      identityContainerId
-    });
+    console.log(
+      '[Content] QUICK_TAB_CREATE: Including originTabId and originContainerId in creation payload',
+      {
+        url,
+        id,
+        originTabId,
+        originContainerId,
+        identityContainerId
+      }
+    );
   }
 
   return {
