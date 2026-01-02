@@ -32,6 +32,15 @@
 - **Diagnostic Logging** - Improved drag-drop logging with summary-only output
   (no per-event spam)
 
+**v1.6.4-v4 Bug Fixes (NEW):**
+
+- **Container Filter Fix** - `buildQuickTabData()` now includes `originContainerId`
+  via `getWritingContainerId()` import from storage-utils.js
+- **"Default" Dropdown Removal** - Removed "firefox-default" from container dropdown
+  (redundant with "All Containers"); added `DEFAULT_CONTAINER_ID` constant
+- **Tab Group Drag-Drop Fix** - Quick Tab drag handlers now allow tab-group drag
+  events to bubble up (removed excessive `stopPropagation()` calls)
+
 **v1.6.4-v3 Bug Fixes:** Title updates, state sync, forceEmpty, navigation,
 duplicate messages, UI flicker, STATE_CHANGED race, metrics footer, DEBOUNCE
 logging
@@ -121,6 +130,9 @@ const quickTabsSessionState = {
 - **Context Change** - `_onContainerContextChanged()` updates UI
 - **Persistence** - `quickTabsContainerFilter` storage key
 - **Drag Logging** - Summary-only debounce logs (no per-event spam)
+- **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()` for
+  `originContainerId`
+- **Drag Bubble** - Tab-group drag events bubble past Quick Tab item handlers
 
 ### v1.6.4-v3 Patterns
 
@@ -151,6 +163,7 @@ const quickTabsSessionState = {
 | ----------------------------------------------- | ------------------------------- | ------------------------------- |
 | `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
 | `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference     |
+| `DEFAULT_CONTAINER_ID`                          | 'firefox-default'               | Default container identifier    |
 | `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
 | `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
 | `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
