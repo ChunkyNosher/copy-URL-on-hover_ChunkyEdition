@@ -1409,7 +1409,7 @@ async function _loadContainerFilterPreference() {
     _selectedContainerFilter = savedFilter || 'all';
     console.log('[Manager] CONTAINER_FILTER_LOADED:', _selectedContainerFilter);
     
-    // Mark as migrated even if no migration was needed
+    // Mark migration check complete to prevent re-running on future loads
     if (!alreadyMigrated) {
       await browser.storage.local.set({ 'containerFilterMigrated_v1_6_4_v4': true });
     }

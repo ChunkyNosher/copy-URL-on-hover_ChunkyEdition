@@ -356,9 +356,13 @@ function _handleTabGroupReorder(targetGroup) {
     return;
   }
 
+  // v1.6.4-v4 - FIX: Use CSS.escape to safely handle special characters in originTabId
+  const escapedDraggedId = CSS.escape(draggedOriginTabId);
+  const escapedTargetId = CSS.escape(targetOriginTabId);
+  
   // Find current DOM elements by their originTabId
-  const currentDraggedGroup = container.querySelector(`.tab-group[data-origin-tab-id="${draggedOriginTabId}"]`);
-  const currentTargetGroup = container.querySelector(`.tab-group[data-origin-tab-id="${targetOriginTabId}"]`);
+  const currentDraggedGroup = container.querySelector(`.tab-group[data-origin-tab-id="${escapedDraggedId}"]`);
+  const currentTargetGroup = container.querySelector(`.tab-group[data-origin-tab-id="${escapedTargetId}"]`);
   
   if (!currentDraggedGroup || !currentTargetGroup) {
     console.warn('[Manager] REORDER_FAILED: Could not find groups by originTabId', {
