@@ -7135,83 +7135,177 @@ function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
 }
 
 /**
+ * Filter Quick Tabs by container ID
+ * v1.6.4-v4 - Helper for container-aware Close All
+ * @param {Array} allQuickTabs - All Quick Tabs
+ * @param {string} containerFilter - Container filter ('all' or specific cookieStoreId)
+ * @returns {Array} Filtered Quick Tabs
+ */
+function _filterQuickTabsByContainerForClose(allQuickTabs, containerFilter) {
+  if (containerFilter === 'all') {
+    return allQuickTabs;
+  }
+  const filtered = allQuickTabs.filter(qt => {
+    const tabContainerId = qt.originContainerId || 'firefox-default';
+    return tabContainerId === containerFilter;
+  });
+  console.log('[Background] CLOSE_ALL_CONTAINER_FILTER:', {
+    containerFilter,
+    totalQuickTabs: allQuickTabs.length,
+    quickTabsToClose: filtered.length
+  });
+  return filtered;
+}
+
+/**
+ * Remove Quick Tabs from session state by container
+ * v1.6.4-v4 - Helper for container-aware Close All
+ * @param {string} containerFilter - Container to remove ('all' removes all)
+ */
+function _removeQuickTabsFromSessionStateByContainer(containerFilter) {
+  if (containerFilter === 'all') {
+    quickTabsSessionState.quickTabsByTab = {};
+    globalQuickTabState.tabs = [];
+    return;
+  }
+  // Filter Quick Tabs by container from each tab
+  for (const tabId of Object.keys(quickTabsSessionState.quickTabsByTab)) {
+    const quickTabsInTab = quickTabsSessionState.quickTabsByTab[tabId];
+    const remaining = quickTabsInTab.filter(qt => {
+      const tabContainerId = qt.originContainerId || 'firefox-default';
+      return tabContainerId !== containerFilter;
+    });
+    if (remaining.length === 0) {
+      delete quickTabsSessionState.quickTabsByTab[tabId];
+    } else {
+      quickTabsSessionState.quickTabsByTab[tabId] = remaining;
+    }
+  }
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => {
+    const tabContainerId = qt.originContainerId || 'firefox-default';
+    return tabContainerId !== containerFilter;
+  });
+}
+
+/**
  * Handle sidebar request to close all Quick Tabs
  * v1.6.3.12-v7 - FIX Issue #15: Implement Close All button via port messaging
+ * v1.6.4-v4 - FEATURE: Support container filtering (only close Quick Tabs in specified container)
  * @param {Object} msg - Message from sidebar
+ * @param {string} [msg.containerFilter] - Container filter ('all' or specific cookieStoreId)
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
 function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   const handlerStartTime = performance.now();
-  // Use msg.correlationId if available, otherwise generate a new one
   const correlationId = msg.correlationId || `close-all-${Date.now()}`;
+  const containerFilter = msg.containerFilter || 'all';
 
   console.log('[Background] SIDEBAR_CLOSE_ALL_QUICK_TABS:', {
     correlationId,
+    containerFilter,
     timestamp: Date.now(),
     currentQuickTabCount: getAllQuickTabsFromMemory().length
   });
 
-  // Count Quick Tabs before clearing
+  // Get Quick Tabs to close (filtered by container if specified)
   const allQuickTabs = getAllQuickTabsFromMemory();
-  const closedCount = allQuickTabs.length;
-  const quickTabIds = allQuickTabs.map(qt => qt.id);
+  const quickTabsToClose = _filterQuickTabsByContainerForClose(allQuickTabs, containerFilter);
+  const closedCount = quickTabsToClose.length;
+  const quickTabIds = quickTabsToClose.map(qt => qt.id);
 
-  // Notify all content scripts to close their Quick Tabs
-  for (const quickTab of allQuickTabs) {
-    const ownerTabId = quickTab.originTabId;
-    if (ownerTabId) {
-      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
-    }
-  }
+  // Notify content scripts to close their Quick Tabs
+  _notifyContentScriptsToCloseQuickTabs(quickTabsToClose);
 
-  // Clear all Quick Tabs from session state
-  quickTabsSessionState.quickTabsByTab = {};
-
-  // Clear global state
-  globalQuickTabState.tabs = [];
+  // Update session state
+  _removeQuickTabsFromSessionStateByContainer(containerFilter);
   globalQuickTabState.lastUpdate = Date.now();
   globalQuickTabState.saveId = `close-all-${Date.now()}`;
 
-  // Clear Quick Tab host tracking
-  quickTabHostTabs.clear();
+  // Update host tracking
+  _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds);
 
   // Send ACK to sidebar
-  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
-  if (sidebarPort) {
-    const ackMessage = {
-      type: 'CLOSE_ALL_QUICK_TABS_ACK',
-      success: true,
-      closedCount,
-      quickTabIds,
-      correlationId,
-      timestamp: Date.now()
-    };
-    try {
-      sidebarPort.postMessage(ackMessage);
-      console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', {
-        correlationId,
-        closedCount
-      });
-    } catch (err) {
-      console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
-        error: err.message,
-        correlationId,
-        closedCount
-      });
-    }
-  }
+  _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds);
 
-  // Notify sidebar of state change (empty state)
+  // Notify sidebar of state change
   notifySidebarOfStateChange();
 
   // Log completion
   const durationMs = performance.now() - handlerStartTime;
   console.log('[Background] CLOSE_ALL_QUICK_TABS completed:', {
     correlationId,
+    containerFilter,
     closedCount,
     durationMs: durationMs.toFixed(2),
     globalTabsRemaining: globalQuickTabState.tabs.length
   });
+}
+
+/**
+ * Notify content scripts to close their Quick Tabs
+ * v1.6.4-v4 - Helper for Close All
+ * @param {Array} quickTabsToClose - Quick Tabs to close
+ */
+function _notifyContentScriptsToCloseQuickTabs(quickTabsToClose) {
+  for (const quickTab of quickTabsToClose) {
+    const ownerTabId = quickTab.originTabId;
+    if (ownerTabId) {
+      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+    }
+  }
+}
+
+/**
+ * Update host tracking after Close All
+ * v1.6.4-v4 - Helper for Close All
+ * @param {string} containerFilter - Container filter
+ * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ */
+function _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds) {
+  if (containerFilter === 'all') {
+    quickTabHostTabs.clear();
+  } else {
+    for (const quickTabId of quickTabIds) {
+      quickTabHostTabs.delete(quickTabId);
+    }
+  }
+}
+
+/**
+ * Send Close All ACK to sidebar
+ * v1.6.4-v4 - Helper for Close All
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port
+ * @param {string} correlationId - Correlation ID
+ * @param {string} containerFilter - Container filter
+ * @param {number} closedCount - Number of closed Quick Tabs
+ * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ */
+function _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds) {
+  if (!sidebarPort) return;
+
+  const ackMessage = {
+    type: 'CLOSE_ALL_QUICK_TABS_ACK',
+    success: true,
+    closedCount,
+    quickTabIds,
+    containerFilter,
+    correlationId,
+    timestamp: Date.now()
+  };
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', {
+      correlationId,
+      containerFilter,
+      closedCount
+    });
+  } catch (err) {
+    console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
+      error: err.message,
+      correlationId,
+      closedCount
+    });
+  }
 }
 
 /**

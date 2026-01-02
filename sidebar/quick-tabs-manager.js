@@ -10300,19 +10300,26 @@ async function _broadcastLegacyCloseMessage() {
  */
 async function closeAllTabs() {
   const startTime = Date.now();
+  const containerFilter = _getSelectedContainerFilter();
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
   console.log('[Manager] │ CLOSE_ALL_TABS function invoked');
+  console.log('[Manager] │ Container Filter:', containerFilter);
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
   try {
     const preActionState = _capturePreActionState();
     _logPreActionState(preActionState);
 
-    const response = await _sendClearAllMessage();
+    // v1.6.4-v4 - FEATURE: Close All respects container filter
+    // If filter is 'all', close all Quick Tabs
+    // If filter is 'current' or a specific container, only close Quick Tabs in that container
+    const response = await _sendClearAllMessage(containerFilter);
     _logClearAllResponse(response, startTime);
 
     const hostInfoBeforeClear = quickTabHostInfo.size;
+    // v1.6.4-v4: Clear all hostInfo - background state is authoritative for container filtering
+    // The background script handles container-aware clearing, so we just clear the local cache
     quickTabHostInfo.clear();
 
     _logPostActionCleanup(preActionState.clearedIds, hostInfoBeforeClear, startTime);
@@ -10352,12 +10359,23 @@ function _logPreActionState({ clearedIds, originTabIds }) {
 /**
  * Send CLOSE_ALL_QUICK_TABS message to background via port
  * v1.6.3.12-v7 - FIX Issue #15: Use port messaging for Close All operation
+ * v1.6.4-v4 - FEATURE: Close All respects container filter
  * @private
+ * @param {string} [containerFilter='all'] - Container filter ('all', 'current', or specific cookieStoreId)
  * @returns {Promise<Object>} Response from background
  */
-function _sendClearAllMessage() {
+function _sendClearAllMessage(containerFilter = 'all') {
+  // v1.6.4-v4 - Resolve 'current' to actual container ID
+  let targetContainerId = null;
+  if (containerFilter && containerFilter !== 'all') {
+    targetContainerId =
+      containerFilter === 'current' ? _getCurrentContainerId() : containerFilter;
+  }
+
   console.log('[Manager] Close All: Dispatching CLOSE_ALL_QUICK_TABS via port...', {
     portConnected: !!quickTabsPort,
+    containerFilter,
+    targetContainerId,
     timestamp: Date.now()
   });
 
@@ -10373,14 +10391,19 @@ function _sendClearAllMessage() {
       correlationId
     });
 
+    // v1.6.4-v4 - Include container filter in message
     quickTabsPort.postMessage({
       type: 'CLOSE_ALL_QUICK_TABS',
       timestamp: sentAt,
-      correlationId
+      correlationId,
+      // v1.6.4-v4: If containerFilter is not 'all', include targetContainerId
+      containerFilter: containerFilter === 'all' ? 'all' : targetContainerId
     });
 
     console.log('[Sidebar] CLOSE_ALL_QUICK_TABS sent via port:', {
       correlationId,
+      containerFilter,
+      targetContainerId,
       timestamp: sentAt
     });
 
@@ -10392,7 +10415,8 @@ function _sendClearAllMessage() {
   // Fallback to runtime.sendMessage if port not connected
   console.warn('[Manager] Close All: Port not connected, falling back to runtime.sendMessage');
   return browser.runtime.sendMessage({
-    action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
+    action: 'COORDINATED_CLEAR_ALL_QUICK_TABS',
+    containerFilter: containerFilter === 'all' ? 'all' : targetContainerId
   });
 }
 
