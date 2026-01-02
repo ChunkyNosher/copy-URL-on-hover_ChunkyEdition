@@ -755,8 +755,9 @@ function _clearLogActionCounts() {
 }
 
 /**
- * Install console interceptors to track log actions
+ * Install console interceptors to track log actions and capture logs for export
  * v1.6.4-v3 - FEATURE: Log action tracking with category detection
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
  * @private
  */
 function _installConsoleInterceptors() {
@@ -764,18 +765,52 @@ function _installConsoleInterceptors() {
   const originalWarn = console.warn;
   const originalError = console.error;
 
+  // Helper to add log to buffer
+  const addToLogBuffer = (type, args) => {
+    const message = args
+      .map((arg) => {
+        if (arg === null || arg === undefined) return String(arg);
+        if (arg instanceof Error)
+          return `[Error: ${arg.message}]\nStack: ${arg.stack || 'unavailable'}`;
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg, null, 2);
+          } catch {
+            return String(arg);
+          }
+        }
+        return String(arg);
+      })
+      .join(' ');
+
+    // Enforce buffer size limit
+    if (MANAGER_LOG_BUFFER.length >= MAX_MANAGER_LOG_BUFFER_SIZE) {
+      MANAGER_LOG_BUFFER.shift();
+    }
+
+    MANAGER_LOG_BUFFER.push({
+      timestamp: Date.now(),
+      type,
+      message,
+      source: 'manager'
+    });
+  };
+
   console.log = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('LOG', args);
     originalLog.apply(console, args);
   };
 
   console.warn = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('WARN', args);
     originalWarn.apply(console, args);
   };
 
   console.error = function (...args) {
     _trackLogAction(args);
+    addToLogBuffer('ERROR', args);
     originalError.apply(console, args);
   };
 
@@ -783,6 +818,30 @@ function _installConsoleInterceptors() {
   console._originalLog = originalLog;
   console._originalWarn = originalWarn;
   console._originalError = originalError;
+}
+
+/**
+ * Get all captured Manager logs for export
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
+ * @returns {Array} Copy of log buffer
+ */
+function getManagerLogs() {
+  return [...MANAGER_LOG_BUFFER];
+}
+
+/**
+ * Clear Manager log buffer
+ * v1.6.4-v3 - FEATURE: Log buffer for export functionality
+ * @returns {number} Number of entries cleared
+ */
+function clearManagerLogs() {
+  const cleared = MANAGER_LOG_BUFFER.length;
+  MANAGER_LOG_BUFFER.length = 0;
+  // Use original console to avoid incrementing counter
+  if (console._originalLog) {
+    console._originalLog('[Manager] Log buffer cleared:', cleared, 'entries');
+  }
+  return cleared;
 }
 
 /**
@@ -957,8 +1016,59 @@ function _handleMetricsSettingsChange(changes, areaName) {
 }
 
 /**
+ * Send a postMessage response to parent window
+ * v1.6.4-v3 - FEATURE: Helper for log buffer functionality
+ * @private
+ * @param {MessageEventSource} source - The message source to respond to
+ * @param {string} origin - The origin to post message to
+ * @param {Object} message - The message object to send
+ */
+function _sendParentWindowResponse(source, origin, message) {
+  try {
+    source.postMessage(message, origin);
+  } catch (err) {
+    console.error('[Manager] Failed to send response:', message.type, err);
+  }
+}
+
+/**
+ * Parent window message handlers lookup table
+ * v1.6.4-v3 - FEATURE: Lookup table pattern to reduce complexity
+ * @private
+ */
+const _parentWindowMessageHandlers = {
+  CLEAR_LOG_ACTION_COUNTS: () => {
+    _clearLogActionCounts();
+    if (console._originalLog) {
+      console._originalLog(
+        '[Manager] METRICS: Log action counts cleared via parent window message'
+      );
+    }
+  },
+  GET_MANAGER_LOGS: (event) => {
+    const logs = getManagerLogs();
+    if (console._originalLog) {
+      console._originalLog('[Manager] GET_MANAGER_LOGS: Returning', logs.length, 'logs');
+    }
+    _sendParentWindowResponse(event.source, event.origin, {
+      type: 'MANAGER_LOGS_RESPONSE',
+      logs: logs
+    });
+  },
+  CLEAR_MANAGER_LOGS: (event) => {
+    const cleared = clearManagerLogs();
+    _sendParentWindowResponse(event.source, event.origin, {
+      type: 'CLEAR_MANAGER_LOGS_RESPONSE',
+      cleared: cleared
+    });
+  }
+};
+
+/**
  * Handle messages from parent window (settings.js)
  * v1.6.4-v3 - FIX Task 1: Reset log action counts when Clear Log History clicked
+ * v1.6.4-v3 - FEATURE: Log buffer retrieval and clearing for export functionality
+ * v1.6.4-v3 - Refactored to use lookup table pattern for reduced complexity
  * @private
  * @param {MessageEvent} event - Message event from parent window
  */
@@ -967,17 +1077,12 @@ function _handleParentWindowMessage(event) {
   if (event.origin !== window.location.origin) return;
 
   const data = event.data || {};
-
-  if (data.type === 'CLEAR_LOG_ACTION_COUNTS') {
-    _clearLogActionCounts();
-    // Use original console to avoid incrementing counter
-    if (console._originalLog) {
-      console._originalLog(
-        '[Manager] METRICS: Log action counts cleared via parent window message'
-      );
-    }
+  const handler = _parentWindowMessageHandlers[data.type];
+  if (handler) {
+    handler(event);
   }
 }
+
 
 /**
  * Cleanup metrics on sidebar close
@@ -1037,6 +1142,10 @@ let quickTabsPort = null;
  * v1.6.3.12 - Option 4: In-memory cache from background
  */
 let _allQuickTabsFromPort = [];
+
+// v1.6.4-v3 - Log buffer for export functionality
+const MAX_MANAGER_LOG_BUFFER_SIZE = 5000;
+const MANAGER_LOG_BUFFER = [];
 
 // v1.6.4 - Note: _userGroupOrder and _userQuickTabOrderByGroup now managed by OrderManager.js
 // These module-level variables have been removed to reduce code duplication
