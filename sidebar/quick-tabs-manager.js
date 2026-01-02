@@ -432,8 +432,8 @@ let previousBrowserTabId = null;
 // v1.6.4-v4 - FEATURE: Container isolation and filtering
 // Track current container ID for filtering Quick Tabs by container
 let _currentContainerId = 'firefox-default';
-// v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default
-// Selected container filter: 'all' (default, show all) or 'current' (filter by current container) or a specific cookieStoreId
+// v1.6.4-v4 - FIX BUG #1: Default to 'all' so Quick Tabs are visible by default.
+// Selected container filter: 'all' (default, show all), 'current' (filter by current container), or a specific cookieStoreId.
 let _selectedContainerFilter = 'all';
 // Container dropdown DOM element reference
 let _containerFilterDropdown = null;

@@ -338,11 +338,9 @@ function _handleTabGroupDrop(event) {
  */
 function _handleTabGroupReorder(targetGroup) {
   const draggedGroup = _dragState.draggedElement;
-  if (!draggedGroup || draggedGroup === targetGroup) {
-    console.log('[Manager] REORDER_SKIPPED: Tab groups', {
-      reason: !draggedGroup ? 'no dragged element' : 'same element',
-      timestamp: Date.now()
-    });
+  
+  // Early exit conditions
+  if (!_canReorderTabGroup(draggedGroup, targetGroup)) {
     return;
   }
 
@@ -355,14 +353,10 @@ function _handleTabGroupReorder(targetGroup) {
   const groups = Array.from(container.children);
   const draggedIndex = groups.indexOf(draggedGroup);
   const targetIndex = groups.indexOf(targetGroup);
+  const groupCount = groups.length;
 
-  // v1.6.4-v4 - FIX BUG #2: Validate indexes before reorder
-  if (draggedIndex === -1 || targetIndex === -1) {
-    console.warn('[Manager] REORDER_FAILED: Invalid indexes', {
-      draggedIndex,
-      targetIndex,
-      groupCount: groups.length
-    });
+  // Validate indexes before reorder
+  if (!_areReorderIndexesValid(draggedIndex, targetIndex, groupCount)) {
     return;
   }
 
@@ -371,7 +365,7 @@ function _handleTabGroupReorder(targetGroup) {
     toIndex: targetIndex,
     fromTabId: draggedGroup.dataset.originTabId,
     toTabId: targetGroup.dataset.originTabId,
-    groupCount: groups.length
+    groupCount
   });
 
   // Move in DOM
@@ -385,6 +379,52 @@ function _handleTabGroupReorder(targetGroup) {
   if (_callbacks.saveGroupOrder) {
     _callbacks.saveGroupOrder(container);
   }
+}
+
+/**
+ * Check if tab group reorder can proceed
+ * v1.6.4-v4 - Extracted to reduce complexity
+ * @private
+ * @param {HTMLElement|null} draggedGroup - Element being dragged
+ * @param {HTMLElement} targetGroup - Drop target
+ * @returns {boolean} True if reorder can proceed
+ */
+function _canReorderTabGroup(draggedGroup, targetGroup) {
+  if (!draggedGroup || draggedGroup === targetGroup) {
+    const reason = !draggedGroup ? 'no dragged element' : 'same element';
+    console.log('[Manager] REORDER_SKIPPED: Tab groups', {
+      reason,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Validate reorder indexes
+ * v1.6.4-v4 - Extracted to reduce complexity
+ * @private
+ * @param {number} draggedIndex - Index of dragged element
+ * @param {number} targetIndex - Index of target element
+ * @param {number} groupCount - Total number of groups
+ * @returns {boolean} True if indexes are valid
+ */
+function _areReorderIndexesValid(draggedIndex, targetIndex, groupCount) {
+  const isInvalidIndex = draggedIndex === -1 || targetIndex === -1;
+  const isOutOfBounds = draggedIndex >= groupCount || targetIndex >= groupCount;
+  
+  if (isInvalidIndex || isOutOfBounds) {
+    const reason = isInvalidIndex ? 'index not found' : 'out of bounds';
+    console.warn('[Manager] REORDER_FAILED: Invalid indexes', {
+      draggedIndex,
+      targetIndex,
+      groupCount,
+      reason
+    });
+    return false;
+  }
+  return true;
 }
 
 // ==================== QUICK TAB DRAG HANDLERS ====================
@@ -567,8 +607,9 @@ function _handleQuickTabDrop(event) {
   const draggedItem = _dragState.draggedElement;
 
   if (!draggedItem || targetItem === draggedItem) {
+    const skipReason = !draggedItem ? 'no dragged element' : 'same element';
     console.log('[Manager] DROP_SKIPPED: Invalid elements', {
-      reason: !draggedItem ? 'no dragged element' : 'same element',
+      reason: skipReason,
       timestamp: Date.now()
     });
     return;
