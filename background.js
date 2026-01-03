@@ -7509,7 +7509,13 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
  * @param {number} oldOriginTabId - Old origin tab ID
  * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId) {
+function _updateStateForTransfer(
+  quickTabData,
+  quickTabId,
+  newOriginTabId,
+  oldOriginTabId,
+  newContainerId
+) {
   const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
 
   // Update the Quick Tab's origin tab ID

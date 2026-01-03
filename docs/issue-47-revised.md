@@ -1348,8 +1348,8 @@ untouched.
 
 **Feature:** When transferring a Quick Tab from a tab in Container 1 to a tab in
 Container 2, the Quick Tab's `originContainerId` is updated to match the new
-container. This ensures the Quick Tab appears in the correct container's filtered
-view after the transfer.
+container. This ensures the Quick Tab appears in the correct container's
+filtered view after the transfer.
 
 ### Setup
 
@@ -1369,20 +1369,20 @@ view after the transfer.
 
 **After Action A (Transfer):**
 
-| Component         | Expected State                                |
-| ----------------- | --------------------------------------------- |
-| WP QT 1 location  | Now belongs to WP 2 (originTabId changed)     |
-| WP QT 1 container | Now in Research (originContainerId changed)   |
-| Manager List      | WP QT 1 now appears in WP 2 group             |
-| Container Badge   | Shows "Research" for WP QT 1 in All view      |
+| Component         | Expected State                              |
+| ----------------- | ------------------------------------------- |
+| WP QT 1 location  | Now belongs to WP 2 (originTabId changed)   |
+| WP QT 1 container | Now in Research (originContainerId changed) |
+| Manager List      | WP QT 1 now appears in WP 2 group           |
+| Container Badge   | Shows "Research" for WP QT 1 in All view    |
 
 **After Action B (Filter Change):**
 
-| Component     | Expected State                                   |
-| ------------- | ------------------------------------------------ |
-| Manager List  | Shows WP 2 group with WP QT 1                    |
-| WP QT 1       | ✅ VISIBLE (now in Research container)           |
-| WP 1 group    | Not visible (no Quick Tabs in Research)          |
+| Component    | Expected State                          |
+| ------------ | --------------------------------------- |
+| Manager List | Shows WP 2 group with WP QT 1           |
+| WP QT 1      | ✅ VISIBLE (now in Research container)  |
+| WP 1 group   | Not visible (no Quick Tabs in Research) |
 
 ### Implementation Details
 
@@ -1405,10 +1405,10 @@ view after the transfer.
 
 ## Scenario 37: Go to Tab Cross-Container Focus Fix (v1.6.4-v5)
 
-**Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab in a
-different Firefox Container, the browser now properly switches focus to that tab.
-Previously, the API calls succeeded but the sidebar retained focus, making it
-appear like nothing happened.
+**Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab
+in a different Firefox Container, the browser now properly switches focus to
+that tab. Previously, the API calls succeeded but the sidebar retained focus,
+making it appear like nothing happened.
 
 ### Setup
 
@@ -1428,13 +1428,13 @@ appear like nothing happened.
 
 **After Action A (Go to Tab):**
 
-| Component     | Expected State                                            |
-| ------------- | --------------------------------------------------------- |
-| Active Tab    | WP 2 is now the active tab (visible)                      |
-| Tab Switch    | Browser properly switches from WP 1 to WP 2               |
-| Main Content  | WP 2's content is displayed in main browser area          |
-| Sidebar       | Remains open but focus transferred to main window         |
-| Container     | Now viewing Research container context                    |
+| Component    | Expected State                                    |
+| ------------ | ------------------------------------------------- |
+| Active Tab   | WP 2 is now the active tab (visible)              |
+| Tab Switch   | Browser properly switches from WP 1 to WP 2       |
+| Main Content | WP 2's content is displayed in main browser area  |
+| Sidebar      | Remains open but focus transferred to main window |
+| Container    | Now viewing Research container context            |
 
 ### Root Cause Analysis
 
@@ -1448,7 +1448,8 @@ newly-active tab.
 
 **Manager (`sidebar/quick-tabs-manager.js`):**
 
-1. `_handleGoToTabGroup()` now calls `document.activeElement.blur()` after tab switch
+1. `_handleGoToTabGroup()` now calls `document.activeElement.blur()` after tab
+   switch
 2. Also calls `window.blur()` to release sidebar focus to main browser
 3. This allows the main browser window to receive focus after tab switch
 4. The tab switch API calls remain the same (window focus + tab activate)
