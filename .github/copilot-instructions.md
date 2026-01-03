@@ -24,7 +24,7 @@
 **v1.6.4-v5 Features (CURRENT):**
 
 - **Go to Tab Cross-Container Fix** - Uses `browser.sidebarAction.close()` for
-  aggressive sidebar focus release, then re-opens after 100ms delay
+  aggressive sidebar focus release, then re-opens after 300ms delay
 - **Minimize All Button** - New ⏬ button in tab group headers minimizes all
   Quick Tabs in that group
 - **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
