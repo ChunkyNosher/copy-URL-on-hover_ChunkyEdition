@@ -1,8 +1,8 @@
 # Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 4.0 (Container-Isolated)  
-**Last Updated:** January 2, 2026  
-**Extension Version:** v1.6.4-v4
+**Document Version:** 4.1 (v1.6.4-v5 Features)  
+**Last Updated:** January 3, 2026  
+**Extension Version:** v1.6.4-v5
 
 ---
 
@@ -1462,10 +1462,117 @@ newly-active tab.
 
 ---
 
+## Scenario 38: Minimize All Quick Tabs in Tab Group (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Bulk Actions  
+**Feature:** Minimize All button in tab group header  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create 3 Quick Tabs (WP QT 1, WP QT 2, WP QT 3)
+2. All Quick Tabs are visible on screen
+
+### Test Steps
+
+1. Open Quick Tabs Manager (Ctrl+Alt+Z)
+2. In the WP 1 tab group header, click the "Minimize All" button (⏬)
+3. Observe the Quick Tabs
+
+### Expected Behavior
+
+| Step | Result                                              |
+| ---- | --------------------------------------------------- |
+| 2    | All 3 Quick Tabs in WP 1 are minimized              |
+| 2    | Quick Tabs disappear from screen but stay in state  |
+| 2    | Manager shows minimized state for all Quick Tabs    |
+| 2    | Other tab groups' Quick Tabs remain unchanged       |
+
+### Key Implementation Details
+
+- `_handleMinimizeAllInTabGroup()` function in quick-tabs-manager.js
+- Sends `SIDEBAR_MINIMIZE_QUICK_TAB` for each Quick Tab in the group
+- Button uses ⏬ icon and appears alongside Close All and Go to Tab buttons
+
+---
+
+## Scenario 39: Shift+Move to Current Tab Duplicates Quick Tab (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Quick Tab Actions  
+**Feature:** Duplicate on Shift+Move to Current Tab  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Open browser tab YT 1 (current active tab)
+3. Open Quick Tabs Manager
+
+### Test Steps
+
+1. In Manager, find WP QT 1 listed under WP 1
+2. Hold Shift and click "Move to Current Tab" button (➡️ 📋)
+3. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                  |
+| ---- | ------------------------------------------------------- |
+| 2    | WP QT 1 remains on WP 1 (original not moved)            |
+| 2    | A new duplicate Quick Tab appears on YT 1               |
+| 2    | Manager shows Quick Tabs on both WP 1 and YT 1          |
+| 2    | `DUPLICATE_QUICK_TAB` message sent instead of transfer  |
+
+### Key Implementation Details
+
+- `_handleQuickTabActionClick()` captures `shiftKey` from event
+- `_dispatchMoveToCurrentTab()` checks for Shift modifier
+- `_executeMoveOrDuplicate()` helper for clean conditional dispatch
+- Button tooltip shows "(Shift+click to duplicate)"
+
+---
+
+## Scenario 40: Duplicate Quick Tab Updates Container ID (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Duplicate  
+**Feature:** Duplicated Quick Tabs have correct container ID  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Work" (FX 1)
+2. Open browser tab YT 1 in Firefox Container "Personal" (FX 2)
+3. Create WP QT 1 on WP 1
+4. Open Quick Tabs Manager
+
+### Test Steps
+
+1. Set filter to "All Containers" to see all Quick Tabs
+2. Shift+Drag WP QT 1 to YT 1 tab group (or Shift+click Move to Current Tab)
+3. Set filter to "Personal" container (FX 2)
+4. Observe the Quick Tabs list
+
+### Expected Behavior
+
+| Step | Result                                                  |
+| ---- | ------------------------------------------------------- |
+| 2    | Duplicate Quick Tab created on YT 1                     |
+| 2    | Duplicate has `originContainerId: "firefox-container-2"` |
+| 3    | Filter shows only the duplicate Quick Tab (on YT 1)     |
+| 3    | Original WP QT 1 is filtered out (it's in FX 1)         |
+
+### Key Implementation Details
+
+- `handleSidebarDuplicateQuickTab()` lookups target tab's container ID
+- `_createDuplicateQuickTab()` sets `originContainerId` and `cookieStoreId`
+- Ensures duplicated Quick Tabs appear in correct container filter view
+- Fixes "ghost Quick Tab" bug where duplicates appeared in wrong container
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 2, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v4)
+**Last Review Date:** January 3, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v5)

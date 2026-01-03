@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v4  
+**Version:** 1.6.4-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -21,7 +21,18 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4-v4 Features (NEW):**
+**v1.6.4-v5 Features (CURRENT):**
+
+- **Go to Tab Cross-Container Fix** - Uses `browser.sidebarAction.close()` for
+  aggressive sidebar focus release, then re-opens after 100ms delay
+- **Minimize All Button** - New ⏬ button in tab group headers minimizes all
+  Quick Tabs in that group
+- **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
+  duplicates instead of moving
+- **Duplicate Container Fix** - Duplicated Quick Tabs now have correct
+  `originContainerId` for proper filtering
+
+**v1.6.4-v4 Features:**
 
 - **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
   Manager header (default: "All Containers")
@@ -29,8 +40,6 @@
   view
 - **Container Name Resolution** - Shows actual names (Shopping, Work) via
   contextualIdentities API
-- **Go to Tab Cross-Container Fix** - `browser.windows.update()` before
-  `browser.tabs.update()` for cross-container tabs
 - **ContainerManager.js** - New module (9.68) with container isolation/filtering
 - **Filter Persistence** - Selection saved to `quickTabsContainerFilter`
 
@@ -118,7 +127,17 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v4 Patterns (Current)
+### v1.6.4-v5 Patterns (Current)
+
+- **Go to Tab Focus Fix** - `_releaseSidebarFocusForGoToTab()` uses
+  `browser.sidebarAction.close()` then delayed re-open
+- **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs in
+  a tab group
+- **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
+  duplicate vs move
+- **Duplicate Container** - `_createDuplicateQuickTab()` sets `originContainerId`
+
+### v1.6.4-v4 Patterns
 
 - **Container Filter** - `_filterQuickTabsByContainer()`,
   `_containerFilterDropdown` (default: "all")
