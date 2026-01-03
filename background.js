@@ -183,6 +183,12 @@ let _startupCleanupCompleted = false;
 const QUICK_TABS_STORAGE_KEY = 'quick_tabs_state_v2';
 
 /**
+ * Default Firefox container ID (no container / private browsing)
+ * v1.6.4-v4 - Used for container-aware Quick Tab transfers and filtering
+ */
+const DEFAULT_CONTAINER_ID = 'firefox-default';
+
+/**
  * Session storage key used by QuickTabStateManager
  * v1.6.3.12-v4 - Must match QuickTabStateManager sessionKey
  */
@@ -7504,7 +7510,7 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
  * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
  */
 function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId) {
-  const oldContainerId = quickTabData.originContainerId || 'firefox-default';
+  const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
 
   // Update the Quick Tab's origin tab ID
   quickTabData.originTabId = newOriginTabId;
@@ -7513,6 +7519,7 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
 
   // v1.6.4-v4 - FIX: Update originContainerId when transferring to different container
   // This ensures container-filtered views show the Quick Tab in the correct container
+  // Both fields must be updated: originContainerId (for filtering) and cookieStoreId (for Firefox API compatibility)
   if (newContainerId && newContainerId !== oldContainerId) {
     quickTabData.originContainerId = newContainerId;
     quickTabData.cookieStoreId = newContainerId;
@@ -7535,7 +7542,7 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
   if (globalIndex >= 0) {
     globalQuickTabState.tabs[globalIndex].originTabId = newOriginTabId;
     globalQuickTabState.tabs[globalIndex].transferredAt = Date.now();
-    // v1.6.4-v4 - FIX: Also update container ID in global state
+    // v1.6.4-v4 - FIX: Also update container ID in global state (both fields for consistency)
     if (newContainerId) {
       globalQuickTabState.tabs[globalIndex].originContainerId = newContainerId;
       globalQuickTabState.tabs[globalIndex].cookieStoreId = newContainerId;
@@ -7553,12 +7560,12 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
  * @private
  * @param {string} quickTabId - Quick Tab ID (for logging)
  * @param {number} newOriginTabId - Target tab ID
- * @returns {Promise<string>} Container ID or 'firefox-default' if lookup fails
+ * @returns {Promise<string>} Container ID or DEFAULT_CONTAINER_ID if lookup fails
  */
 async function _getTargetTabContainerId(quickTabId, newOriginTabId) {
   try {
     const targetTab = await browser.tabs.get(newOriginTabId);
-    const containerId = targetTab?.cookieStoreId || 'firefox-default';
+    const containerId = targetTab?.cookieStoreId || DEFAULT_CONTAINER_ID;
     console.log('[Background] TRANSFER_TARGET_TAB_INFO:', {
       quickTabId,
       newOriginTabId,
@@ -7573,7 +7580,7 @@ async function _getTargetTabContainerId(quickTabId, newOriginTabId) {
       error: err.message,
       timestamp: Date.now()
     });
-    return 'firefox-default';
+    return DEFAULT_CONTAINER_ID;
   }
 }
 
