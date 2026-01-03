@@ -1288,9 +1288,10 @@ indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 
 
 ## Scenario 35: Close All Respects Container Filter (v1.6.4-v4)
 
-**Feature:** The "Close All" button in the Manager respects the current container
-filter setting. When viewing a specific container, Close All only closes Quick
-Tabs in that container, leaving Quick Tabs in other containers untouched.
+**Feature:** The "Close All" button in the Manager respects the current
+container filter setting. When viewing a specific container, Close All only
+closes Quick Tabs in that container, leaving Quick Tabs in other containers
+untouched.
 
 ### Setup
 
@@ -1309,14 +1310,14 @@ Tabs in that container, leaving Quick Tabs in other containers untouched.
 
 **After Action A:**
 
-| Component              | Expected State                                      |
-| ---------------------- | --------------------------------------------------- |
-| WP QT 1                | ❌ CLOSED (was in Shopping container)               |
-| WP QT 2                | ❌ CLOSED (was in Shopping container)               |
-| WP QT 3                | ✅ STILL OPEN (in Research container)               |
-| WP QT 4                | ✅ STILL OPEN (in Research container)               |
-| Manager List           | Shows only WP 2 group with QT 3 and QT 4            |
-| Container Filter       | Still set to "Shopping" (now shows empty)           |
+| Component        | Expected State                            |
+| ---------------- | ----------------------------------------- |
+| WP QT 1          | ❌ CLOSED (was in Shopping container)     |
+| WP QT 2          | ❌ CLOSED (was in Shopping container)     |
+| WP QT 3          | ✅ STILL OPEN (in Research container)     |
+| WP QT 4          | ✅ STILL OPEN (in Research container)     |
+| Manager List     | Shows only WP 2 group with QT 3 and QT 4  |
+| Container Filter | Still set to "Shopping" (now shows empty) |
 
 ### Implementation Details
 

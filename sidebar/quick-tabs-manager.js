@@ -10369,8 +10369,7 @@ function _sendClearAllMessage(containerFilter = 'all') {
   // v1.6.4-v4 - Resolve 'current' to actual container ID
   let targetContainerId = null;
   if (containerFilter && containerFilter !== 'all') {
-    targetContainerId =
-      containerFilter === 'current' ? _getCurrentContainerId() : containerFilter;
+    targetContainerId = containerFilter === 'current' ? _getCurrentContainerId() : containerFilter;
   }
 
   // v1.6.4-v4 - Compute the resolved filter value once for reuse
