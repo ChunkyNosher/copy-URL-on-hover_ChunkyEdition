@@ -7495,17 +7495,34 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
 /**
  * Update session and global state for Quick Tab transfer
  * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * v1.6.4-v4 - FIX: Also update originContainerId when transferring to different container
  * @private
  * @param {Object} quickTabData - Quick Tab data to transfer
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} newOriginTabId - New origin tab ID
  * @param {number} oldOriginTabId - Old origin tab ID
+ * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId) {
+function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId) {
+  const oldContainerId = quickTabData.originContainerId || 'firefox-default';
+
   // Update the Quick Tab's origin tab ID
   quickTabData.originTabId = newOriginTabId;
   quickTabData.transferredAt = Date.now();
   quickTabData.transferredFrom = oldOriginTabId;
+
+  // v1.6.4-v4 - FIX: Update originContainerId when transferring to different container
+  // This ensures container-filtered views show the Quick Tab in the correct container
+  if (newContainerId && newContainerId !== oldContainerId) {
+    quickTabData.originContainerId = newContainerId;
+    quickTabData.cookieStoreId = newContainerId;
+    console.log('[Background] TRANSFER_CONTAINER_UPDATE:', {
+      quickTabId,
+      oldContainerId,
+      newContainerId,
+      timestamp: Date.now()
+    });
+  }
 
   // Add to new tab's Quick Tabs array
   if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
@@ -7518,6 +7535,11 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
   if (globalIndex >= 0) {
     globalQuickTabState.tabs[globalIndex].originTabId = newOriginTabId;
     globalQuickTabState.tabs[globalIndex].transferredAt = Date.now();
+    // v1.6.4-v4 - FIX: Also update container ID in global state
+    if (newContainerId) {
+      globalQuickTabState.tabs[globalIndex].originContainerId = newContainerId;
+      globalQuickTabState.tabs[globalIndex].cookieStoreId = newContainerId;
+    }
   }
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -7526,13 +7548,44 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
 }
 
 /**
+ * Get the container ID for a target tab during transfer
+ * v1.6.4-v4 - Extracted to reduce handleSidebarTransferQuickTab line count
+ * @private
+ * @param {string} quickTabId - Quick Tab ID (for logging)
+ * @param {number} newOriginTabId - Target tab ID
+ * @returns {Promise<string>} Container ID or 'firefox-default' if lookup fails
+ */
+async function _getTargetTabContainerId(quickTabId, newOriginTabId) {
+  try {
+    const targetTab = await browser.tabs.get(newOriginTabId);
+    const containerId = targetTab?.cookieStoreId || 'firefox-default';
+    console.log('[Background] TRANSFER_TARGET_TAB_INFO:', {
+      quickTabId,
+      newOriginTabId,
+      newContainerId: containerId,
+      timestamp: Date.now()
+    });
+    return containerId;
+  } catch (err) {
+    console.warn('[Background] TRANSFER_GET_TAB_FAILED:', {
+      quickTabId,
+      newOriginTabId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return 'firefox-default';
+  }
+}
+
+/**
  * Handle sidebar request to transfer a Quick Tab to a different browser tab
  * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
  * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (85 -> ~40)
+ * v1.6.4-v4 - FIX: Made async to get target tab's container ID for container-aware transfer
  * @param {Object} msg - Message with quickTabId and newOriginTabId
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
-function handleSidebarTransferQuickTab(msg, sidebarPort) {
+async function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const { quickTabId, newOriginTabId } = msg;
   const handlerStartTime = performance.now();
   const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
@@ -7564,8 +7617,11 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
     return;
   }
 
-  // Update all state
-  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId);
+  // v1.6.4-v4 - FIX: Get target tab's container ID for container-aware transfer
+  const newContainerId = await _getTargetTabContainerId(quickTabId, newOriginTabId);
+
+  // Update all state (including container ID)
+  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId);
 
   // Send success ACK to sidebar
   _sendTransferAck(
@@ -7576,6 +7632,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
       quickTabId,
       oldOriginTabId,
       newOriginTabId,
+      newContainerId, // v1.6.4-v4 - Include new container ID in ACK
       correlationId
     },
     quickTabId,
@@ -7586,6 +7643,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
   console.log('[Background] TRANSFER_PRE_NOTIFY:', {
     quickTabId,
     newOriginTabId,
+    newContainerId,
     sidebarPortConnected: !!quickTabsSessionState.sidebarPort,
     timestamp: Date.now()
   });
@@ -7599,6 +7657,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
     quickTabId,
     oldOriginTabId,
     newOriginTabId,
+    newContainerId,
     success: true,
     durationMs: durationMs.toFixed(2),
     correlationId
