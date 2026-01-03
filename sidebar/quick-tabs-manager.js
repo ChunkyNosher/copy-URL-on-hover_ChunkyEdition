@@ -409,6 +409,8 @@ const CACHE_STALENESS_AUTO_SYNC_MS = 60000; // Request state sync if stale for >
 const CACHE_STALENESS_CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
+// v1.6.4-v5 - FIX: Sidebar reopen delay after Go to Tab (code review feedback)
+const SIDEBAR_REOPEN_DELAY_MS = 300; // Wait for tab switch to complete before reopening sidebar
 
 // ==================== v1.6.3.10-v7 CONSTANTS ====================
 // FIX Bug #1: quickTabHostInfo memory leak prevention
@@ -8454,7 +8456,7 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
     await browser.sidebarAction.close();
     console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', { tabId, windowId });
 
-    // Wait 300ms for the tab switch to visually complete, then reopen sidebar
+    // Wait SIDEBAR_REOPEN_DELAY_MS (300ms) for the tab switch to visually complete, then reopen sidebar
     // Note: Using fire-and-forget setTimeout intentionally - we don't need to await the reopen
     // as the user has already switched tabs and this is just a UX enhancement to restore sidebar
     _scheduleDelayedSidebarReopen(tabId);
@@ -8480,7 +8482,7 @@ function _scheduleDelayedSidebarReopen(tabId) {
       .open()
       .then(() => console.log('[Manager] GO_TO_TAB_SIDEBAR_REOPENED:', { tabId }))
       .catch(err => console.warn('[Manager] GO_TO_TAB_SIDEBAR_REOPEN_SKIPPED:', { reason: err.message }));
-  }, 300);
+  }, SIDEBAR_REOPEN_DELAY_MS);
 }
 
 /**

@@ -7990,8 +7990,9 @@ async function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   });
 
   // v1.6.4-v6 - FIX Bug #3: Get target tab's container ID for container-aware duplication
-  // Note: Passing 'duplicate' as first param since source Quick Tab ID isn't available in msg
-  const newContainerId = await _getTargetTabContainerId('duplicate', newOriginTabId);
+  // Note: Passing 'duplicate-operation' as first param for logging clarity (source Quick Tab ID
+  // is in msg.sourceQuickTabId but _getTargetTabContainerId uses it only for logging)
+  const newContainerId = await _getTargetTabContainerId(msg.sourceQuickTabId || 'duplicate', newOriginTabId);
 
   console.log('[Background] DUPLICATE_TARGET_CONTAINER:', {
     newOriginTabId,
