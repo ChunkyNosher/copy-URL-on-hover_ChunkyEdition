@@ -7851,14 +7851,16 @@ function _generateQuickTabId() {
 /**
  * Create Quick Tab object for duplication
  * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * v1.6.4-v6 - FIX Bug #3: Add originContainerId parameter for container-aware duplication
  * @private
  * @param {Object} msg - Message with Quick Tab properties
  * @param {string} newQuickTabId - New Quick Tab ID
+ * @param {string} [newContainerId] - Target container ID (optional, for container-aware duplication)
  * @returns {Object} New Quick Tab object
  */
-function _createDuplicateQuickTab(msg, newQuickTabId) {
+function _createDuplicateQuickTab(msg, newQuickTabId, newContainerId) {
   const { url, title, left, top, width, height, minimized, newOriginTabId } = msg;
-  return {
+  const quickTab = {
     id: newQuickTabId,
     url,
     title: title || 'Duplicated Quick Tab',
@@ -7871,6 +7873,14 @@ function _createDuplicateQuickTab(msg, newQuickTabId) {
     createdAt: Date.now(),
     duplicatedFrom: msg.sourceQuickTabId || null
   };
+
+  // v1.6.4-v6 - FIX Bug #3: Include container ID for proper container filtering in Manager
+  if (newContainerId) {
+    quickTab.originContainerId = newContainerId;
+    quickTab.cookieStoreId = newContainerId;
+  }
+
+  return quickTab;
 }
 
 /**
@@ -7963,10 +7973,11 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
 /**
  * Handle sidebar request to duplicate a Quick Tab to a different browser tab
  * v1.6.4 - FEATURE #5: Alt+drag duplicate
+ * v1.6.4-v6 - FIX Bug #3: Made async to lookup target container ID for proper filtering
  * @param {Object} msg - Message with Quick Tab properties and newOriginTabId
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
-function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
+async function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   const { newOriginTabId } = msg;
   const handlerStartTime = performance.now();
   const correlationId = sidebarPort._lastCorrelationId || `duplicate-${Date.now()}`;
@@ -7978,26 +7989,40 @@ function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
     timestamp: Date.now()
   });
 
-  // Create new Quick Tab with unique ID
+  // v1.6.4-v6 - FIX Bug #3: Get target tab's container ID for container-aware duplication
+  // Note: Passing 'duplicate' as first param since source Quick Tab ID isn't available in msg
+  const newContainerId = await _getTargetTabContainerId('duplicate', newOriginTabId);
+
+  console.log('[Background] DUPLICATE_TARGET_CONTAINER:', {
+    newOriginTabId,
+    newContainerId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Create new Quick Tab with unique ID and container info
   const newQuickTabId = _generateQuickTabId();
-  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId);
+  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId, newContainerId);
 
   // Add to state
   _addQuickTabToState(newQuickTab, newOriginTabId);
 
   // Send ACK to sidebar
   // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+  // v1.6.4-v6 - Include newContainerId in ACK for Manager to use immediately
   const ackMessage = {
     type: 'DUPLICATE_QUICK_TAB_ACK',
     success: true,
     newQuickTabId,
     newOriginTabId,
+    newContainerId, // v1.6.4-v6 - Include container ID for proper filtering
     correlationId
   };
   try {
     sidebarPort.postMessage(ackMessage);
     console.log('[Background] DUPLICATE_QUICK_TAB_ACK sent via port:', {
       newQuickTabId,
+      newContainerId,
       correlationId
     });
   } catch (err) {
@@ -8016,6 +8041,7 @@ function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   console.log('[Background] DUPLICATE_QUICK_TAB_EXIT:', {
     newQuickTabId,
     newOriginTabId,
+    newContainerId,
     success: true,
     durationMs: durationMs.toFixed(2),
     correlationId

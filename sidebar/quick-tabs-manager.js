@@ -2,7 +2,23 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX ===
+ * === v1.6.4-v6 CROSS-CONTAINER GO TO TAB FIX ===
+ * v1.6.4-v6 - FIX: Go to Tab button now properly switches focus across containers
+ *   - ROOT CAUSE: Firefox sidebars retain focus even after blur() calls
+ *   - FIX: Use browser.sidebarAction.close() to force-close sidebar, then reopen after delay
+ *   - This is more aggressive than v1.6.4-v5's blur() approach which was insufficient
+ *
+ * === v1.6.4-v6 MINIMIZE ALL IN TAB FEATURE ===
+ * v1.6.4-v6 - FEATURE: Add "Minimize All" button for each tab group header
+ *   - Added _handleMinimizeAllInTabGroup() handler function
+ *   - Added minimize all button (⏬) in _createGroupActions() next to Close All button
+ *
+ * === v1.6.4-v6 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
+ * v1.6.4-v6 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
+ *   - Modified _dispatchMoveToCurrentTab() to accept shiftKey parameter
+ *   - When shiftKey=true, calls _duplicateQuickTabToTab() instead of _transferQuickTabToTab()
+ *
+ * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
  * v1.6.4-v5 - FIX: Go to Tab button now properly switches focus across containers
  *   - ROOT CAUSE: Firefox sidebars retain focus after browser.tabs.update() succeeds
  *   - FIX: Blur activeElement and window after tab switch to release sidebar focus
@@ -8319,6 +8335,7 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
 /**
  * Create group action buttons (Go to Tab, Close All in Tab)
  * v1.6.4 - FEATURE #4: New tab buttons for each group header
+ * v1.6.4-v6 - FEATURE #2: Added "Minimize All" button
  * @private
  * @param {number|string} groupKey - Group key (origin tab ID)
  * @param {boolean} isOrphaned - Whether this is the orphaned group
@@ -8346,6 +8363,19 @@ function _createGroupActions(groupKey, isOrphaned) {
   });
   actionsContainer.appendChild(goToTabBtn);
 
+  // v1.6.4-v6 - FEATURE #2: Minimize All in Tab button - minimizes all Quick Tabs in this group
+  const minimizeAllBtn = document.createElement('button');
+  minimizeAllBtn.className = 'btn-icon btn-minimize-all-in-tab';
+  minimizeAllBtn.textContent = '⏬';
+  minimizeAllBtn.title = `Minimize all Quick Tabs in Tab ${groupKey}`;
+  minimizeAllBtn.dataset.action = 'minimizeAllInTab';
+  minimizeAllBtn.dataset.tabId = String(groupKey);
+  minimizeAllBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleMinimizeAllInTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(minimizeAllBtn);
+
   // Close All in Tab button - closes all Quick Tabs in this group
   const closeAllBtn = document.createElement('button');
   closeAllBtn.className = 'btn-icon btn-close-all-in-tab';
@@ -8368,6 +8398,10 @@ function _createGroupActions(groupKey, isOrphaned) {
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
  * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
+ * v1.6.4-v6 - FIX Issue #1: Force-close sidebar to release focus, then reopen
+ *   - blur() calls were insufficient for cross-container tab switching
+ *   - browser.sidebarAction.close() forces focus to transfer to main window
+ *   - setTimeout reopens sidebar after tab switch is complete
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
@@ -8391,18 +8425,8 @@ async function _handleGoToTabGroup(tabId) {
     }
     await browser.tabs.update(numTabId, { active: true });
 
-    // v1.6.4-v5 - FIX: Blur the sidebar document to release focus to the main window
-    // Firefox sidebars maintain focus even after browser.tabs.update() succeeds, which
-    // makes it appear like the tab switch didn't work. Blurring the active element and
-    // the document allows the main browser window to receive focus.
-    // This is a known Firefox WebExtension limitation with sidebars.
-    if (document.activeElement && typeof document.activeElement.blur === 'function') {
-      document.activeElement.blur();
-    }
-    // Also blur the window/document to ensure focus transfers to the main browser
-    if (typeof window.blur === 'function') {
-      window.blur();
-    }
+    // v1.6.4-v6 - FIX Issue #1: Force-close sidebar to release focus to main window
+    await _releaseSidebarFocusForGoToTab(numTabId, windowId);
 
     console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId });
   } catch (err) {
@@ -8412,6 +8436,64 @@ async function _handleGoToTabGroup(tabId) {
     });
     // Tab might have been closed
     _showErrorNotification(`Cannot switch to tab: ${err.message}`);
+  }
+}
+
+/**
+ * Release sidebar focus to allow tab switch to take effect
+ * v1.6.4-v6 - Extracted from _handleGoToTabGroup to reduce complexity
+ * @private
+ * @param {number} tabId - Tab ID for logging
+ * @param {number|null} windowId - Window ID for logging
+ */
+async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
+  // Firefox sidebars aggressively retain focus even after browser.tabs.update() and blur() calls.
+  // The only reliable way to force focus to the main window is to close the sidebar temporarily.
+  try {
+    // Close the sidebar - this forces focus to transfer to the main browser window
+    await browser.sidebarAction.close();
+    console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', { tabId, windowId });
+
+    // Wait 300ms for the tab switch to visually complete, then reopen sidebar
+    // Note: Using fire-and-forget setTimeout intentionally - we don't need to await the reopen
+    // as the user has already switched tabs and this is just a UX enhancement to restore sidebar
+    _scheduleDelayedSidebarReopen(tabId);
+  } catch (sidebarErr) {
+    // If sidebarAction API fails, fall back to blur approach
+    console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
+      error: sidebarErr.message,
+      fallback: 'blur'
+    });
+    _fallbackBlurForFocusRelease();
+  }
+}
+
+/**
+ * Schedule sidebar reopen after delay (fire-and-forget)
+ * v1.6.4-v6 - Extracted from _releaseSidebarFocusForGoToTab per code review
+ * @private
+ * @param {number} tabId - Tab ID for logging
+ */
+function _scheduleDelayedSidebarReopen(tabId) {
+  setTimeout(() => {
+    browser.sidebarAction
+      .open()
+      .then(() => console.log('[Manager] GO_TO_TAB_SIDEBAR_REOPENED:', { tabId }))
+      .catch(err => console.warn('[Manager] GO_TO_TAB_SIDEBAR_REOPEN_SKIPPED:', { reason: err.message }));
+  }, 300);
+}
+
+/**
+ * Fallback blur approach when sidebarAction API is unavailable
+ * v1.6.4-v6 - Extracted from _handleGoToTabGroup to reduce nesting depth
+ * @private
+ */
+function _fallbackBlurForFocusRelease() {
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
+  if (typeof window.blur === 'function') {
+    window.blur();
   }
 }
 
@@ -8446,6 +8528,45 @@ function _handleCloseAllInTabGroup(tabId) {
   // Close each Quick Tab via port
   for (const qt of quickTabsInGroup) {
     closeQuickTabViaPort(qt.id);
+  }
+}
+
+/**
+ * Handle "Minimize All in Tab" button click - minimizes all Quick Tabs in this group
+ * v1.6.4-v6 - FEATURE #2: Minimize all Quick Tabs in a specific tab group
+ * @private
+ * @param {number|string} tabId - The browser tab ID whose Quick Tabs to minimize
+ */
+function _handleMinimizeAllInTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] MINIMIZE_ALL_IN_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  // Get all Quick Tabs for this origin tab that are NOT already minimized
+  const quickTabsInGroup = _allQuickTabsFromPort.filter(
+    qt => qt.originTabId === numTabId && qt.minimized !== true
+  );
+
+  if (quickTabsInGroup.length === 0) {
+    console.log('[Manager] MINIMIZE_ALL_IN_TAB_NO_TABS:', {
+      tabId: numTabId,
+      reason: 'No active Quick Tabs to minimize'
+    });
+    return;
+  }
+
+  console.log('[Manager] MINIMIZE_ALL_IN_TAB_SENDING:', {
+    tabId: numTabId,
+    count: quickTabsInGroup.length,
+    quickTabIds: quickTabsInGroup.map(qt => qt.id)
+  });
+
+  // Minimize each Quick Tab via port
+  for (const qt of quickTabsInGroup) {
+    minimizeQuickTabViaPort(qt.id);
   }
 }
 
@@ -8938,15 +9059,19 @@ function _appendActiveTabActions(actions, tab, context) {
 
   // v1.6.4 - FIX: Replaced "Go to Tab" with "Move to Current Tab" button
   // This moves the Quick Tab to the current active browser tab
-  // If modifier key is held, it duplicates instead of moving
+  // v1.6.4-v6 - FIX Bug #4: Shift+click duplicates instead of moving
   if (tab.originTabId) {
-    const moveToCurrentTabBtn = _createActionButton('📥', 'Move to Current Tab', {
-      action: 'moveToCurrentTab',
-      quickTabId: tab.id,
-      originTabId: tab.originTabId,
-      url: tab.url,
-      title: tab.title
-    });
+    const moveToCurrentTabBtn = _createActionButton(
+      '📥',
+      'Move to Current Tab (Shift+click to duplicate)',
+      {
+        action: 'moveToCurrentTab',
+        quickTabId: tab.id,
+        originTabId: tab.originTabId,
+        url: tab.url,
+        title: tab.title
+      }
+    );
     moveToCurrentTabBtn.classList.add('btn-move-to-current-tab');
     actions.appendChild(moveToCurrentTabBtn);
   }
@@ -9411,11 +9536,12 @@ function _checkAndTrackPendingOperation(action, quickTabId) {
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
  * v1.6.4-v2 - Refactored to use options object to reduce argument count
  * v1.6.4 - FIX Issue #48/#10: Check PENDING_OPERATIONS before dispatching state-dependent operations
+ * v1.6.4-v6 - FIX Bug #4: Pass shiftKey for duplicate-on-shift feature
  * @private
  * @param {QuickTabActionOptions} options - Action options
  */
 async function _dispatchQuickTabAction(options) {
-  const { action, quickTabId, tabId, button, clickTimestamp } = options;
+  const { action, quickTabId, tabId, button, clickTimestamp, shiftKey } = options;
 
   // v1.6.4 - FIX Issue #48/#10: Check for pending operations on state-dependent actions
   if (!_checkAndTrackPendingOperation(action, quickTabId)) {
@@ -9425,7 +9551,8 @@ async function _dispatchQuickTabAction(options) {
   // v1.6.4 - Refactored to dispatch table for reduced line count
   const dispatcher = _getActionDispatcher(action);
   if (dispatcher) {
-    await dispatcher({ quickTabId, tabId, button, clickTimestamp });
+    // v1.6.4-v6 - Pass shiftKey for moveToCurrentTab duplicate feature
+    await dispatcher({ quickTabId, tabId, button, clickTimestamp, shiftKey });
   } else {
     console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
   }
@@ -9516,64 +9643,75 @@ async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }
 }
 
 /**
+ * Execute move or duplicate operation for Move to Current Tab
+ * v1.6.4-v6 - Extracted from _dispatchMoveToCurrentTab to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} targetTabId - Target tab ID
+ * @param {boolean} shouldDuplicate - True to duplicate, false to move
+ * @returns {boolean} True if operation was executed, false if blocked
+ */
+function _executeMoveOrDuplicate(quickTabId, targetTabId, shouldDuplicate) {
+  if (shouldDuplicate) {
+    const quickTabData = _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
+    if (!quickTabData) {
+      console.error('[Manager] DUPLICATE_TO_CURRENT_TAB: Quick Tab not found', { quickTabId });
+      _showErrorNotification('Cannot duplicate: Quick Tab not found');
+      return false;
+    }
+    _duplicateQuickTabToTab(quickTabData, targetTabId);
+    console.log('[Manager] DUPLICATE_TO_CURRENT_TAB: Duplicate sent', { quickTabId, toTabId: targetTabId });
+  } else {
+    _transferQuickTabToTab(quickTabId, targetTabId);
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', { quickTabId, toTabId: targetTabId });
+  }
+  return true;
+}
+
+/**
  * Dispatch "Move to Current Tab" action
  * v1.6.4 - FIX: Replacement for "Go to Tab" - moves Quick Tab to current active tab
- * NOTE: Button click always moves. Use drag-and-drop with Shift key to duplicate.
+ * v1.6.4-v6 - FIX Bug #4: Shift+click duplicates instead of moves
  * @private
  */
-async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp }) {
+async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp, shiftKey }) {
   const originTabId = parseInt(button.dataset.originTabId, 10);
+  const operation = shiftKey ? 'duplicate' : 'move';
 
   console.log('[Manager] ACTION_DISPATCH: moveToCurrentTab', {
-    quickTabId,
-    originTabId,
-    timestamp: Date.now()
+    quickTabId, originTabId, shiftKey, operation, timestamp: Date.now()
   });
 
   try {
-    // Get the current active browser tab
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-
     if (!activeTab) {
       console.error('[Manager] MOVE_TO_CURRENT_TAB: No active tab found');
-      _showErrorNotification('Cannot move: No active tab found');
+      _showErrorNotification(`Cannot ${operation}: No active tab found`);
       return;
     }
 
     const currentTabId = activeTab.id;
+    // For move: skip if already on same tab. For duplicate: allow same-tab duplication
+    const isMovingToSameTab = originTabId === currentTabId && !shiftKey;
 
-    // Don't move if already on the same tab
-    if (originTabId === currentTabId) {
-      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab, no action needed', {
-        quickTabId,
-        tabId: currentTabId
-      });
+    if (isMovingToSameTab) {
+      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab', { quickTabId, tabId: currentTabId });
       return;
     }
 
     console.log('[Manager] MOVE_TO_CURRENT_TAB: Operation', {
-      quickTabId,
-      fromTabId: originTabId,
-      toTabId: currentTabId
+      quickTabId, fromTabId: originTabId, toTabId: currentTabId, operation, shiftKey
     });
 
-    // Button click always moves (use drag-and-drop with modifier key to duplicate)
-    _transferQuickTabToTab(quickTabId, currentTabId);
-    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
-      quickTabId,
-      toTabId: currentTabId
-    });
-
-    console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
-      quickTabId,
-      durationMs: Date.now() - clickTimestamp
-    });
+    const success = _executeMoveOrDuplicate(quickTabId, currentTabId, shiftKey);
+    if (success) {
+      console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
+        quickTabId, operation, durationMs: Date.now() - clickTimestamp
+      });
+    }
   } catch (err) {
-    console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', {
-      quickTabId,
-      error: err.message
-    });
-    _showErrorNotification(`Failed to move Quick Tab: ${err.message}`);
+    console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', { quickTabId, operation, error: err.message });
+    _showErrorNotification(`Failed to ${operation} Quick Tab: ${err.message}`);
   }
 }
 
@@ -9627,6 +9765,7 @@ async function _handleOpenInNewTab(url, quickTabId) {
 /**
  * Handle delegated click on Quick Tab action buttons
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4-v6 - FIX Bug #4: Capture shiftKey for moveToCurrentTab duplicate feature
  * @private
  * @param {Event} e - Click event
  */
@@ -9650,11 +9789,14 @@ async function _handleQuickTabActionClick(e) {
   const quickTabId = button.dataset.quickTabId;
   const tabId = button.dataset.tabId;
   const clickTimestamp = Date.now();
+  // v1.6.4-v6 - FIX Bug #4: Capture modifier keys for duplicate-on-shift feature
+  const shiftKey = e.shiftKey;
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
   console.log('[Manager] │ QUICK_TAB_ACTION_BUTTON_CLICKED');
   console.log('[Manager] │ Action:', action);
   console.log('[Manager] │ QuickTabId:', quickTabId);
+  console.log('[Manager] │ ShiftKey:', shiftKey);
   console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
@@ -9662,6 +9804,7 @@ async function _handleQuickTabActionClick(e) {
     action,
     quickTabId,
     tabId,
+    shiftKey,
     buttonText: button.textContent,
     buttonTitle: button.title,
     buttonDisabled: button.disabled,
@@ -9671,7 +9814,7 @@ async function _handleQuickTabActionClick(e) {
   });
 
   _applyOptimisticUIUpdate(action, quickTabId, button);
-  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp });
+  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp, shiftKey });
 }
 
 /**
