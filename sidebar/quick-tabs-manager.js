@@ -2,6 +2,13 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX ===
+ * v1.6.4-v5 - FIX: Go to Tab button now properly switches focus across containers
+ *   - ROOT CAUSE: Firefox sidebars retain focus after browser.tabs.update() succeeds
+ *   - FIX: Blur activeElement and window after tab switch to release sidebar focus
+ *   - Added document.activeElement.blur() and window.blur() in _handleGoToTabGroup()
+ *   - This is a known Firefox WebExtension sidebar limitation workaround
+ *
  * === v1.6.4-v5 PERFORMANCE OPTIMIZATIONS ===
  * v1.6.4-v5 - PERF: Reduce log volume for high-frequency operations
  *   - Consolidated duplicate logs in _logRenderSkipped() (was 2 logs, now 1)
@@ -8383,6 +8390,20 @@ async function _handleGoToTabGroup(tabId) {
       await browser.windows.update(windowId, { focused: true });
     }
     await browser.tabs.update(numTabId, { active: true });
+
+    // v1.6.4-v5 - FIX: Blur the sidebar document to release focus to the main window
+    // Firefox sidebars maintain focus even after browser.tabs.update() succeeds, which
+    // makes it appear like the tab switch didn't work. Blurring the active element and
+    // the document allows the main browser window to receive focus.
+    // This is a known Firefox WebExtension limitation with sidebars.
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    // Also blur the window/document to ensure focus transfers to the main browser
+    if (typeof window.blur === 'function') {
+      window.blur();
+    }
+
     console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {

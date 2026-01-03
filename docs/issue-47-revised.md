@@ -1403,6 +1403,64 @@ view after the transfer.
 
 ---
 
+## Scenario 37: Go to Tab Cross-Container Focus Fix (v1.6.4-v5)
+
+**Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab in a
+different Firefox Container, the browser now properly switches focus to that tab.
+Previously, the API calls succeeded but the sidebar retained focus, making it
+appear like nothing happened.
+
+### Setup
+
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 in WP 1
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open WP QT 2 in WP 2
+5. Open Manager sidebar (Ctrl+Alt+Z)
+6. Set container filter to "All Containers"
+7. Have WP 1 (Shopping) as the active tab
+
+### Actions
+
+**Action A:** Click "Go to Tab" button for WP 2 (Research container tab)
+
+### Expected Behavior
+
+**After Action A (Go to Tab):**
+
+| Component     | Expected State                                            |
+| ------------- | --------------------------------------------------------- |
+| Active Tab    | WP 2 is now the active tab (visible)                      |
+| Tab Switch    | Browser properly switches from WP 1 to WP 2               |
+| Main Content  | WP 2's content is displayed in main browser area          |
+| Sidebar       | Remains open but focus transferred to main window         |
+| Container     | Now viewing Research container context                    |
+
+### Root Cause Analysis
+
+Firefox WebExtension sidebars have a known limitation where they retain focus
+even after `browser.tabs.update()` and `browser.windows.update()` calls succeed.
+The API calls work correctly (logs show `GO_TO_TAB_SUCCESS`), but the sidebar
+panel keeps input focus, which prevents the user from interacting with the
+newly-active tab.
+
+### Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. `_handleGoToTabGroup()` now calls `document.activeElement.blur()` after tab switch
+2. Also calls `window.blur()` to release sidebar focus to main browser
+3. This allows the main browser window to receive focus after tab switch
+4. The tab switch API calls remain the same (window focus + tab activate)
+
+**Key Logs:**
+
+- `[Manager] GO_TO_TAB_CLICKED` shows click registered
+- `[Manager] GO_TO_TAB_SUCCESS` confirms API calls succeeded
+- Browser focus now properly transfers to the selected tab
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
