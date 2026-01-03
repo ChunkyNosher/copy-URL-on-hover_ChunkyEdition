@@ -1344,6 +1344,65 @@ untouched.
 
 ---
 
+## Scenario 36: Cross-Container Quick Tab Transfer Updates Container ID (v1.6.4-v4)
+
+**Feature:** When transferring a Quick Tab from a tab in Container 1 to a tab in
+Container 2, the Quick Tab's `originContainerId` is updated to match the new
+container. This ensures the Quick Tab appears in the correct container's filtered
+view after the transfer.
+
+### Setup
+
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 in WP 1 (originContainerId = "firefox-container-1" for Shopping)
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open Manager (Ctrl+Alt+Z)
+5. Set container filter to "All Containers"
+
+### Actions
+
+**Action A:** Drag WP QT 1 from WP 1 group to WP 2 group in Manager
+
+**Action B:** Switch container filter to "Research" container
+
+### Expected Behavior
+
+**After Action A (Transfer):**
+
+| Component         | Expected State                                |
+| ----------------- | --------------------------------------------- |
+| WP QT 1 location  | Now belongs to WP 2 (originTabId changed)     |
+| WP QT 1 container | Now in Research (originContainerId changed)   |
+| Manager List      | WP QT 1 now appears in WP 2 group             |
+| Container Badge   | Shows "Research" for WP QT 1 in All view      |
+
+**After Action B (Filter Change):**
+
+| Component     | Expected State                                   |
+| ------------- | ------------------------------------------------ |
+| Manager List  | Shows WP 2 group with WP QT 1                    |
+| WP QT 1       | ✅ VISIBLE (now in Research container)           |
+| WP 1 group    | Not visible (no Quick Tabs in Research)          |
+
+### Implementation Details
+
+**Background (`background.js`):**
+
+1. `handleSidebarTransferQuickTab()` is now async
+2. Calls `_getTargetTabContainerId()` to get target tab's container ID
+3. `_updateStateForTransfer()` now accepts `newContainerId` parameter
+4. Updates `quickTabData.originContainerId` and `quickTabData.cookieStoreId`
+5. Updates `globalQuickTabState.tabs[].originContainerId` and `.cookieStoreId`
+6. `TRANSFER_QUICK_TAB_ACK` includes `newContainerId` field
+
+**Key Logs:**
+
+- `[Background] TRANSFER_TARGET_TAB_INFO` shows target tab's container
+- `[Background] TRANSFER_CONTAINER_UPDATE` logs when container changes
+- `[Background] TRANSFER_QUICK_TAB_EXIT` includes `newContainerId`
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
