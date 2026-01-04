@@ -8400,10 +8400,10 @@ function _createGroupActions(groupKey, isOrphaned) {
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
  * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
- * v1.6.4-v6 - FIX Issue #1: Force-close sidebar to release focus, then reopen
+ * v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus (NO auto-reopen)
  *   - blur() calls were insufficient for cross-container tab switching
  *   - browser.sidebarAction.close() forces focus to transfer to main window
- *   - setTimeout reopens sidebar after tab switch is complete
+ *   - Sidebar stays closed - reopening would retain original container context
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
@@ -8422,15 +8422,34 @@ async function _handleGoToTabGroup(tabId) {
     // v1.6.4-v4 - FIX: Validate windowId before using (code review feedback)
     // browser.tabs.get() throws if tab doesn't exist; this validates the returned object structure
     const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+
+    // v1.6.4-v4 - Container context logging for cross-container switches
+    const originContainerId = tab?.cookieStoreId || 'unknown';
+    const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    const currentContainerId = currentTab?.cookieStoreId || 'unknown';
+    const isCrossContainerSwitch = originContainerId !== currentContainerId;
+
+    console.log('[Manager] GO_TO_TAB_CONTAINER_CONTEXT:', {
+      targetTabId: numTabId,
+      targetContainerId: originContainerId,
+      currentContainerId,
+      isCrossContainerSwitch
+    });
+
     if (windowId !== null) {
       await browser.windows.update(windowId, { focused: true });
     }
     await browser.tabs.update(numTabId, { active: true });
 
-    // v1.6.4-v6 - FIX Issue #1: Force-close sidebar to release focus to main window
+    // v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus to main window
     await _releaseSidebarFocusForGoToTab(numTabId, windowId);
 
-    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId, windowId });
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', {
+      tabId: numTabId,
+      windowId,
+      targetContainerId: originContainerId,
+      isCrossContainerSwitch
+    });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
       tabId: numTabId,
@@ -8443,23 +8462,27 @@ async function _handleGoToTabGroup(tabId) {
 
 /**
  * Release sidebar focus to allow tab switch to take effect
- * v1.6.4-v6 - Extracted from _handleGoToTabGroup to reduce complexity
+ * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce complexity
+ * v1.6.4-v4 - FIX: Sidebar stays closed after Go to Tab for cross-container support
+ *   - Reopening sidebar would retain original container context, defeating the purpose
+ *   - User can manually reopen sidebar when needed
  * @private
  * @param {number} tabId - Tab ID for logging
  * @param {number|null} windowId - Window ID for logging
  */
 async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
   // Firefox sidebars aggressively retain focus even after browser.tabs.update() and blur() calls.
-  // The only reliable way to force focus to the main window is to close the sidebar temporarily.
+  // The only reliable way to force focus to the main window is to close the sidebar.
+  // v1.6.4-v4 - FIX: Do NOT reopen sidebar - it would reopen in the original container context,
+  // which defeats the purpose of cross-container tab switching.
   try {
     // Close the sidebar - this forces focus to transfer to the main browser window
     await browser.sidebarAction.close();
-    console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', { tabId, windowId });
-
-    // Wait SIDEBAR_REOPEN_DELAY_MS (300ms) for the tab switch to visually complete, then reopen sidebar
-    // Note: Using fire-and-forget setTimeout intentionally - we don't need to await the reopen
-    // as the user has already switched tabs and this is just a UX enhancement to restore sidebar
-    _scheduleDelayedSidebarReopen(tabId);
+    console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
+      tabId,
+      windowId,
+      note: 'Sidebar stays closed for cross-container support'
+    });
   } catch (sidebarErr) {
     // If sidebarAction API fails, fall back to blur approach
     console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
@@ -8472,7 +8495,8 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
 
 /**
  * Schedule sidebar reopen after delay (fire-and-forget)
- * v1.6.4-v6 - Extracted from _releaseSidebarFocusForGoToTab per code review
+ * v1.6.4-v4 - Extracted helper function
+ * NOTE: Not used by Go to Tab flow (sidebar stays closed for cross-container support)
  * @private
  * @param {number} tabId - Tab ID for logging
  */
@@ -8489,7 +8513,7 @@ function _scheduleDelayedSidebarReopen(tabId) {
 
 /**
  * Fallback blur approach when sidebarAction API is unavailable
- * v1.6.4-v6 - Extracted from _handleGoToTabGroup to reduce nesting depth
+ * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce nesting depth
  * @private
  */
 function _fallbackBlurForFocusRelease() {
