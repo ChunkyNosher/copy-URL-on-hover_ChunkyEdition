@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v5  
+**Version:** 1.6.4-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -21,10 +21,10 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4-v5 Features (CURRENT):**
+**v1.6.4-v4 Features (CURRENT):**
 
-- **Go to Tab Cross-Container Fix** - Uses `browser.sidebarAction.close()` for
-  aggressive sidebar focus release, then re-opens after 300ms delay
+- **Go to Tab Cross-Container Fix** - Sidebar stays closed after Go to Tab click
+  for proper focus transfer; container context logging added
 - **Minimize All Button** - New ⏬ button in tab group headers minimizes all
   Quick Tabs in that group
 - **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
@@ -32,7 +32,7 @@
 - **Duplicate Container Fix** - Duplicated Quick Tabs now have correct
   `originContainerId` for proper filtering
 
-**v1.6.4-v4 Features:**
+**v1.6.4-v4 Container Features:**
 
 - **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
   Manager header (default: "All Containers")
@@ -42,29 +42,16 @@
   contextualIdentities API
 - **ContainerManager.js** - New module (9.68) with container isolation/filtering
 - **Filter Persistence** - Selection saved to `quickTabsContainerFilter`
+- **Go to Tab** - `browser.windows.update()` + `browser.tabs.update()` sequence;
+  sidebar stays closed for reliable focus transfer
 
 **v1.6.4-v4 Bug Fixes:** Container filter fix (`buildQuickTabData()`),
 "firefox-default" dropdown removal, tab group drag-drop bubble fix, container
-switch refresh fix, auto-detect indicator
+switch refresh fix, auto-detect indicator, Go to Tab cross-container focus
 
-**v1.6.4-v3 Bug Fixes:** Title updates, state sync, forceEmpty, navigation,
-duplicate messages, UI flicker, STATE_CHANGED race, metrics footer, DEBOUNCE
-logging
+**v1.6.4-v3:** Metrics footer, DEBOUNCE logging, title/state fixes
 
-**v1.6.4-v3 Features:** Live Log Action Metrics Footer, Expandable Category
-Breakdown, Filter-Aware Log Counting, Footer Visibility toggle
-
-**v1.6.4-v3 Code Health:** window.js (9.38), VisibilityHandler.js (9.38),
-content.js (9.09), StorageChangeAnalyzer.js (new module)
-
-**v1.6.4 Bug Fixes:** Transfer/Duplicate race, Quick Tab reordering persistence,
-Last Quick Tab close fix
-
-**v1.6.4 Code Health:** PortManager.js (9.68), RenderManager.js (9.17)
-
-**v1.6.4 Features:** Drag-and-Drop reordering, Cross-Tab Transfer, Duplicate via
-Shift+Drag, Click-to-Front, Move to Current Tab, Tab Group Actions, Open in New
-Tab, Duplicate Modifier Key setting
+**v1.6.4:** Drag-and-Drop, Cross-Tab Transfer, Duplicate via Shift+Drag
 
 **v1.6.3.12:** Option 4 Architecture, Port-Based Messaging, Solo/Mute REMOVED
 
@@ -127,23 +114,19 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v5 Patterns (Current)
+### v1.6.4-v4 Patterns (Current)
 
-- **Go to Tab Focus Fix** - `_releaseSidebarFocusForGoToTab()` uses
-  `browser.sidebarAction.close()` then delayed re-open
+- **Go to Tab Focus Fix** - Sidebar stays closed after Go to Tab for proper
+  focus transfer; container context logging added
 - **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
   in a tab group
 - **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
   duplicate vs move
 - **Duplicate Container** - `_createDuplicateQuickTab()` sets
   `originContainerId`
-
-### v1.6.4-v4 Patterns
-
 - **Container Filter** - `_filterQuickTabsByContainer()`,
   `_containerFilterDropdown` (default: "all")
 - **Container Badge** - `_createContainerBadge()` in ContainerManager.js
-- **Go to Tab** - `browser.windows.update()` + `browser.tabs.update()` sequence
 - **Name Resolution** - `_getContainerNameByIdAsync()`,
   `_getContainerNameSync()`
 - **Context Change** - `_onContainerContextChanged()` calls

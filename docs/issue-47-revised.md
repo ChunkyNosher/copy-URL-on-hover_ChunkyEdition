@@ -1,8 +1,8 @@
 # Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 4.1 (v1.6.4-v5 Features)  
-**Last Updated:** January 3, 2026  
-**Extension Version:** v1.6.4-v5
+**Document Version:** 4.2 (v1.6.4-v4 Features)  
+**Last Updated:** January 4, 2026  
+**Extension Version:** v1.6.4-v4
 
 ---
 
@@ -1403,7 +1403,7 @@ filtered view after the transfer.
 
 ---
 
-## Scenario 37: Go to Tab Cross-Container Focus Fix (v1.6.4-v5)
+## Scenario 37: Go to Tab Cross-Container Focus Fix (v1.6.4-v4)
 
 **Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab
 in a different Firefox Container, the browser now properly switches focus to
@@ -1433,7 +1433,7 @@ making it appear like nothing happened.
 | Active Tab   | WP 2 is now the active tab (visible)              |
 | Tab Switch   | Browser properly switches from WP 1 to WP 2       |
 | Main Content | WP 2's content is displayed in main browser area  |
-| Sidebar      | Remains open but focus transferred to main window |
+| Sidebar      | Closes automatically for reliable focus transfer  |
 | Container    | Now viewing Research container context            |
 
 ### Root Cause Analysis
@@ -1448,25 +1448,24 @@ newly-active tab.
 
 **Manager (`sidebar/quick-tabs-manager.js`):**
 
-1. `_handleGoToTabGroup()` now calls `document.activeElement.blur()` after tab
-   switch
-2. Also calls `window.blur()` to release sidebar focus to main browser
-3. This allows the main browser window to receive focus after tab switch
+1. `_handleGoToTabGroup()` closes sidebar after Go to Tab click
+2. No automatic sidebar reopen - user re-opens manually when needed
+3. Logs cross-container vs same-container context for debugging
 4. The tab switch API calls remain the same (window focus + tab activate)
 
 **Key Logs:**
 
-- `[Manager] GO_TO_TAB_CLICKED` shows click registered
+- `[Manager] GO_TO_TAB_CLICKED` shows click registered with container context
 - `[Manager] GO_TO_TAB_SUCCESS` confirms API calls succeeded
 - Browser focus now properly transfers to the selected tab
 
 ---
 
-## Scenario 38: Minimize All Quick Tabs in Tab Group (v1.6.4-v5)
+## Scenario 38: Minimize All Quick Tabs in Tab Group (v1.6.4-v4)
 
 **Category:** Quick Tabs Manager - Bulk Actions  
 **Feature:** Minimize All button in tab group header  
-**Version:** v1.6.4-v5
+**Version:** v1.6.4-v4
 
 ### Setup
 
@@ -1496,11 +1495,11 @@ newly-active tab.
 
 ---
 
-## Scenario 39: Shift+Move to Current Tab Duplicates Quick Tab (v1.6.4-v5)
+## Scenario 39: Shift+Move to Current Tab Duplicates Quick Tab (v1.6.4-v4)
 
 **Category:** Quick Tabs Manager - Quick Tab Actions  
 **Feature:** Duplicate on Shift+Move to Current Tab  
-**Version:** v1.6.4-v5
+**Version:** v1.6.4-v4
 
 ### Setup
 
@@ -1532,11 +1531,11 @@ newly-active tab.
 
 ---
 
-## Scenario 40: Duplicate Quick Tab Updates Container ID (v1.6.4-v5)
+## Scenario 40: Duplicate Quick Tab Updates Container ID (v1.6.4-v4)
 
 **Category:** Quick Tabs Manager - Duplicate  
 **Feature:** Duplicated Quick Tabs have correct container ID  
-**Version:** v1.6.4-v5
+**Version:** v1.6.4-v4
 
 ### Setup
 
@@ -1574,6 +1573,5 @@ newly-active tab.
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 3, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v5)
+**Last Review Date:** January 4, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v4)
