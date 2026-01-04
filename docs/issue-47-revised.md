@@ -1446,15 +1446,19 @@ panel keeps input focus, which prevents the user from interacting with the
 newly-active tab. Zen Browser exhibits the same behavior as it is built on
 Firefox.
 
+**Critical Finding:** `browser.sidebarAction.close()` must be called
+synchronously from a user input handler. Previous code did `await` calls first
+(tabs.get, tabs.query, windows.update, tabs.update), which broke the user input
+chain and caused `sidebarAction.close()` to fail silently.
+
 ### Implementation Details
 
 **Manager (`sidebar/quick-tabs-manager.js`):**
 
-1. `_handleGoToTabGroup()` closes sidebar after Go to Tab click
-2. No automatic sidebar reopen - user re-opens manually when needed
-3. Logs cross-container vs same-container context for debugging:
-   `[Manager] GO_TO_TAB: Cross-container switch detected, currentContainer={id}, targetContainer={id}`
-4. The tab switch API calls remain the same (window focus + tab activate)
+1. `_handleGoToTabGroup()` calls `sidebarAction.close()` synchronously FIRST
+2. Sidebar closes immediately on click, before any async operations
+3. Async tab switching (window focus + tab activate) happens after sidebar close
+4. Cross-container logging preserved for debugging Zen Browser compatibility
 
 **Key Logs:**
 
@@ -1661,23 +1665,38 @@ Firefox.
 ### Root Cause Analysis
 
 When a Quick Tab is transferred between tabs while minimized, the receiving
-tab's content script needs to track the Quick Tab for future restore commands.
-Previously, transferred Quick Tabs weren't tracked, causing restore commands to
-fail silently because the content script didn't know about the Quick Tab.
+tab's content script needs the Quick Tab's minimized snapshot (saved position
+and size from before minimizing) to restore it correctly. Previously,
+transferred Quick Tabs didn't have their snapshot, causing restore to fail with
+"Snapshot not found" because the content script couldn't determine where to
+position the restored Quick Tab.
 
 ### Key Implementation Details
 
+**VisibilityHandler (`src/features/quick-tabs/handlers/VisibilityHandler.js`):**
+
+1. Sends `minimizedSnapshot` (left, top, width, height) with `QUICKTAB_MINIMIZED`
+   message
+2. Snapshot captured before minimize operation removes DOM element
+
+**Background Script (`background.js`):**
+
+1. Stores snapshots in `quickTabsSessionState.minimizedSnapshots` map
+2. `minimizedSnapshots: { [quickTabId]: { left, top, width, height } }`
+3. `QUICK_TAB_TRANSFERRED_IN` message includes `minimizedSnapshot` field
+4. Logs: `[Background] SNAPSHOT_STORED:`, `[Background] SNAPSHOT_INCLUDED:`
+
 **Content Script (`src/content.js`):**
 
-1. `_handleQuickTabTransferredIn()` now calls `_trackAdoptedQuickTab()`
-2. `_trackAdoptedQuickTab()` adds Quick Tab to local tracking map
-3. Ensures restore commands via port messaging can find the Quick Tab
-4. Works for both minimized and visible transferred Quick Tabs
+1. `_handleQuickTabTransferredIn()` extracts `minimizedSnapshot` from message
+2. Calls `MinimizedManager.storeTransferredSnapshot()` with snapshot data
+3. Logs: `[Content] MINIMIZED_SNAPSHOT_STORED: quickTabId={id}`
 
-**Key Logs:**
+**MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
 
-- `[Content] ADOPTED_QUICK_TAB_TRACKED: quickTabId={id}, originTabId={tabId}`
-- `[Content] RESTORE_QUICK_TAB: Found tracked adopted Quick Tab`
+1. Added `storeTransferredSnapshot(quickTabId, snapshot)` method
+2. Stores snapshot in local map for later restore operation
+3. Enables restore to use correct position/size from original tab
 
 ---
 

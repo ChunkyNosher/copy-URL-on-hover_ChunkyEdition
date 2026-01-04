@@ -24,10 +24,10 @@
 
 **v1.6.4-v4 Features (CURRENT):**
 
-- **Go to Tab Cross-Container Fix** - Sidebar stays closed after Go to Tab click
-  for proper focus transfer; cross-container logging for Zen Browser
-- **Minimized Drag Restore Fix** - `_trackAdoptedQuickTab()` ensures restore
-  commands work after cross-tab transfer
+- **Go to Tab Cross-Container Fix** - `sidebarAction.close()` called synchronously
+  FIRST for proper focus transfer; Zen Browser compatible
+- **Minimized Drag Restore Fix** - `minimizedSnapshot` transferred with Quick Tab
+  data; `storeTransferredSnapshot()` enables restore after cross-tab transfer
 - **Right-Click Context Menu** - "Close All" and "Minimize All" Quick Tabs via
   `browser.menus` API (`_initializeContextMenus()` in background.js)
 - **Minimize All Button** - New ⏬ button in tab group headers
@@ -83,7 +83,8 @@ const quickTabsSessionState = {
   contentScriptPorts: {}, // { [tabId]: port }
   sidebarPort: null,
   sessionId: generateUUID(),
-  sessionStartTime: Date.now()
+  sessionStartTime: Date.now(),
+  minimizedSnapshots: {} // { [quickTabId]: { left, top, width, height } }
 };
 ```
 
@@ -110,10 +111,11 @@ const quickTabsSessionState = {
 
 ### v1.6.4-v4 Patterns (Current)
 
-- **Go to Tab Focus Fix** - Sidebar stays closed after Go to Tab for proper
-  focus transfer; cross-container logging for Zen Browser compatibility
-- **Minimized Drag Restore** - `_trackAdoptedQuickTab()` in content.js
-  `_handleQuickTabTransferredIn()` tracks transferred Quick Tabs for restore
+- **Go to Tab Focus Fix** - `sidebarAction.close()` called synchronously FIRST
+  in `_handleGoToTabGroup()` before async ops; Zen Browser compatible
+- **Minimized Drag Restore** - `minimizedSnapshots` in `quickTabsSessionState`;
+  `storeTransferredSnapshot()` in MinimizedManager; snapshot sent via
+  `QUICKTAB_MINIMIZED` and included in `QUICK_TAB_TRANSFERRED_IN`
 - **Context Menu** - `_initializeContextMenus()` adds "Close All" and "Minimize
   All" browser context menu items via `browser.menus` API
 - **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
@@ -158,18 +160,13 @@ const quickTabsSessionState = {
 
 ### Key Timing Constants
 
-| Constant                                        | Value                           | Purpose                         |
-| ----------------------------------------------- | ------------------------------- | ------------------------------- |
-| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
-| `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference     |
-| `DEFAULT_CONTAINER_ID`                          | 'firefox-default'               | Default container identifier    |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
-| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
-| `METRICS_DEFAULT_INTERVAL_MS`                   | 1000                            | Live metrics update interval    |
+| Constant                                        | Value                           | Purpose                     |
+| ----------------------------------------------- | ------------------------------- | --------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Order persistence key       |
+| `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index       |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before trip        |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnect attempts      |
 
 ---
 
@@ -195,7 +192,8 @@ const quickTabsSessionState = {
 (not persisted to disk)
 
 **State Object:** `quickTabsSessionState` with `quickTabsByTab`,
-`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`
+`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`,
+`minimizedSnapshots`
 
 **Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
 `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
@@ -208,7 +206,8 @@ const quickTabsSessionState = {
 ## 📝 Logging Prefixes
 
 **v1.6.4-v4 Logging:** `[Manager] GO_TO_TAB: Cross-container switch detected`,
-`[Background] CONTEXT_MENU:`, `[Content] ADOPTED_QUICK_TAB_TRACKED:`
+`[Background] CONTEXT_MENU:`, `[Background] SNAPSHOT_STORED:`,
+`[Background] SNAPSHOT_INCLUDED:`, `[Content] MINIMIZED_SNAPSHOT_STORED:`
 
 **v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`,
 `[Manager] CONTAINER_NAME_RESOLVED:`
@@ -304,7 +303,7 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `src/background/tab-events.js`              | Tabs API listeners                                |
 | `src/utils/structured-logger.js`            | StructuredLogger class with contexts              |
 | `src/messaging/message-router.js`           | ACTION-based routing                              |
-| `background.js`                             | In-memory state, port handlers                    |
+| `background.js`                             | In-memory state, port handlers, minimizedSnapshots|
 | `sidebar/quick-tabs-manager.js`             | Port-based queries, container filter (v1.6.4-v4)  |
 | `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)         |
 | `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)            |
@@ -312,7 +311,9 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 | `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)        |
 | `sidebar/managers/ContainerManager.js`      | Container isolation, filtering, badge (v1.6.4-v4) |
 | `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)       |
-| `src/content.js`                            | Port messaging for Quick Tabs                     |
+| `src/content.js`                            | Port messaging, storeTransferredSnapshot          |
+| `src/features/quick-tabs/minimized-manager.js` | Snapshot storage for minimize/restore          |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | Sends minimizedSnapshot        |
 
 ### Storage (v1.6.3.12-v8+)
 
