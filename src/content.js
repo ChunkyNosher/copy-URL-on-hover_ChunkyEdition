@@ -2022,6 +2022,12 @@ function _handleQuickTabTransferredIn(message) {
 
     quickTabsManager.createQuickTab(createOptions);
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
+
+    // v1.6.4-v5 - FIX BUG #2: Track adoption for transferred Quick Tabs
+    // This ensures that restore operations can find the Quick Tab after transfer
+    // Previously, minimized Quick Tabs transferred via drag-and-drop would fail to restore
+    // because the ownership check couldn't find the adoption tracking entry
+    _trackAdoptedQuickTab(quickTab.id, quickTabsManager.currentTabId);
   } catch (err) {
     // v1.6.4-v3 - If creation fails, remove from session cache to allow retry
     sessionQuickTabs.delete(quickTab.id);

@@ -3740,6 +3740,177 @@ async function _handleOpenToSettingsTab() {
 }
 // ==================== END KEYBOARD COMMANDS ====================
 
+// ==================== CONTEXT MENU ====================
+// v1.6.4-v5 - FIX BUG #3: Right-click context menu for Quick Tab management
+// Create context menu items for closing and minimizing Quick Tabs on the current tab
+
+/**
+ * Initialize context menus for Quick Tab management
+ * v1.6.4-v5 - FIX BUG #3: Add right-click context menu options
+ */
+function _initializeContextMenus() {
+  // Check if menus API is available
+  if (typeof browser === 'undefined' || !browser.menus) {
+    console.log('[Background] CONTEXT_MENU: Menus API not available');
+    return;
+  }
+
+  // Remove existing menus first (in case of extension update/reload)
+  browser.menus.removeAll().then(() => {
+    // Create "Close All Quick Tabs on This Tab" menu item
+    browser.menus.create({
+      id: 'close-all-quick-tabs',
+      title: 'Close All Quick Tabs on This Tab',
+      contexts: ['page']
+    });
+
+    // Create "Minimize All Quick Tabs on This Tab" menu item
+    browser.menus.create({
+      id: 'minimize-all-quick-tabs',
+      title: 'Minimize All Quick Tabs on This Tab',
+      contexts: ['page']
+    });
+
+    console.log('[Background] CONTEXT_MENU: Menu items created');
+  }).catch(err => {
+    console.error('[Background] CONTEXT_MENU: Failed to create menus:', err.message);
+  });
+}
+
+/**
+ * Handle context menu click
+ * v1.6.4-v5 - FIX BUG #3: Process menu item clicks
+ * @param {Object} info - Menu click info
+ * @param {browser.tabs.Tab} tab - Tab where menu was clicked
+ */
+function _handleContextMenuClick(info, tab) {
+  const tabId = tab?.id;
+  if (!tabId) {
+    console.warn('[Background] CONTEXT_MENU_CLICK: No tab ID available');
+    return;
+  }
+
+  console.log('[Background] CONTEXT_MENU_CLICK:', {
+    menuItemId: info.menuItemId,
+    tabId,
+    timestamp: Date.now()
+  });
+
+  // Get Quick Tabs for this tab from session state
+  const quickTabsInTab = quickTabsSessionState.quickTabsByTab?.[tabId] ?? [];
+  
+  if (quickTabsInTab.length === 0) {
+    console.log('[Background] CONTEXT_MENU: No Quick Tabs on this tab:', { tabId });
+    return;
+  }
+
+  if (info.menuItemId === 'close-all-quick-tabs') {
+    _closeAllQuickTabsOnTab(tabId, quickTabsInTab);
+  } else if (info.menuItemId === 'minimize-all-quick-tabs') {
+    _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab);
+  }
+}
+
+/**
+ * Close all Quick Tabs on a specific tab
+ * v1.6.4-v5 - FIX BUG #3: Context menu close all handler
+ * Note: Uses fire-and-forget operations via _notifyContentScriptOfCommand
+ * @param {number} tabId - Tab ID
+ * @param {Array} quickTabsInTab - Quick Tabs on this tab
+ */
+function _closeAllQuickTabsOnTab(tabId, quickTabsInTab) {
+  console.log('[Background] CONTEXT_MENU_CLOSE_ALL:', {
+    tabId,
+    quickTabCount: quickTabsInTab.length
+  });
+
+  // Send close commands to content script for each Quick Tab (fire-and-forget)
+  for (const quickTab of quickTabsInTab) {
+    _notifyContentScriptOfCommand(tabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+  }
+
+  // Remove from session state
+  delete quickTabsSessionState.quickTabsByTab[tabId];
+  
+  // Update global state
+  const closedIds = new Set(quickTabsInTab.map(qt => qt.id));
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => !closedIds.has(qt.id));
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  for (const quickTab of quickTabsInTab) {
+    quickTabHostTabs.delete(quickTab.id);
+  }
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  console.log('[Background] CONTEXT_MENU_CLOSE_ALL_COMPLETE:', {
+    tabId,
+    closedCount: quickTabsInTab.length
+  });
+}
+
+/**
+ * Minimize all Quick Tabs on a specific tab
+ * v1.6.4-v5 - FIX BUG #3: Context menu minimize all handler
+ * Note: Uses fire-and-forget operations via _notifyContentScriptOfCommand
+ * @param {number} tabId - Tab ID
+ * @param {Array} quickTabsInTab - Quick Tabs on this tab
+ */
+function _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab) {
+  console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL:', {
+    tabId,
+    quickTabCount: quickTabsInTab.length
+  });
+
+  // Filter to only non-minimized Quick Tabs
+  const nonMinimized = quickTabsInTab.filter(qt => !qt.minimized);
+  
+  if (nonMinimized.length === 0) {
+    console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL: All Quick Tabs already minimized');
+    return;
+  }
+
+  // Send minimize commands to content script for each non-minimized Quick Tab
+  for (const quickTab of nonMinimized) {
+    // Update state
+    quickTab.minimized = true;
+    quickTab.minimizedAt = Date.now();
+    
+    // Update global state
+    const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTab.id);
+    if (globalQt) {
+      globalQt.minimized = true;
+      globalQt.minimizedAt = Date.now();
+    }
+    
+    // Notify content script
+    _notifyContentScriptOfCommand(tabId, true, 'MINIMIZE_QUICK_TAB_COMMAND', quickTab.id);
+  }
+
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL_COMPLETE:', {
+    tabId,
+    minimizedCount: nonMinimized.length
+  });
+}
+
+// Initialize context menus
+_initializeContextMenus();
+
+// Add context menu click listener
+if (typeof browser !== 'undefined' && browser.menus) {
+  browser.menus.onClicked.addListener(_handleContextMenuClick);
+  console.log('[Background] CONTEXT_MENU: Click listener registered');
+}
+
+// ==================== END CONTEXT MENU ====================
+
 // ==================== BROWSER ACTION HANDLER ====================
 // Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action

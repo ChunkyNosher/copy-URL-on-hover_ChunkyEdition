@@ -8429,12 +8429,21 @@ async function _handleGoToTabGroup(tabId) {
     const currentContainerId = currentTab?.cookieStoreId || 'unknown';
     const isCrossContainerSwitch = originContainerId !== currentContainerId;
 
+    // v1.6.4-v5 - FIX BUG #1: Enhanced cross-container logging for debugging Zen Browser
     console.log('[Manager] GO_TO_TAB_CONTAINER_CONTEXT:', {
       targetTabId: numTabId,
       targetContainerId: originContainerId,
       currentContainerId,
-      isCrossContainerSwitch
+      isCrossContainerSwitch,
+      currentTabId: currentTab?.id,
+      targetWindowId: windowId,
+      currentWindowId: currentTab?.windowId
     });
+
+    // v1.6.4-v5 - FIX BUG #1: Log cross-container switch warning for debugging
+    if (isCrossContainerSwitch) {
+      console.log('[Manager] GO_TO_TAB: Cross-container switch detected, current=' + currentContainerId + ', target=' + originContainerId);
+    }
 
     if (windowId !== null) {
       await browser.windows.update(windowId, { focused: true });
@@ -8442,13 +8451,15 @@ async function _handleGoToTabGroup(tabId) {
     await browser.tabs.update(numTabId, { active: true });
 
     // v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus to main window
-    await _releaseSidebarFocusForGoToTab(numTabId, windowId);
+    // v1.6.4-v5 - FIX BUG #1: Sidebar stays closed for cross-container switches to ensure focus transfer
+    await _releaseSidebarFocusForGoToTab(numTabId, windowId, isCrossContainerSwitch);
 
     console.log('[Manager] GO_TO_TAB_SUCCESS:', {
       tabId: numTabId,
       windowId,
       targetContainerId: originContainerId,
-      isCrossContainerSwitch
+      isCrossContainerSwitch,
+      sidebarAction: 'closed'
     });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
@@ -8466,11 +8477,13 @@ async function _handleGoToTabGroup(tabId) {
  * v1.6.4-v4 - FIX: Sidebar stays closed after Go to Tab for cross-container support
  *   - Reopening sidebar would retain original container context, defeating the purpose
  *   - User can manually reopen sidebar when needed
+ * v1.6.4-v5 - FIX BUG #1: Enhanced logging for cross-container switch
  * @private
  * @param {number} tabId - Tab ID for logging
  * @param {number|null} windowId - Window ID for logging
+ * @param {boolean} isCrossContainerSwitch - Whether this is a cross-container switch
  */
-async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
+async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerSwitch = false) {
   // Firefox sidebars aggressively retain focus even after browser.tabs.update() and blur() calls.
   // The only reliable way to force focus to the main window is to close the sidebar.
   // v1.6.4-v4 - FIX: Do NOT reopen sidebar - it would reopen in the original container context,
@@ -8481,13 +8494,17 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
     console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
       tabId,
       windowId,
-      note: 'Sidebar stays closed for cross-container support'
+      isCrossContainerSwitch,
+      note: isCrossContainerSwitch 
+        ? 'Sidebar stays closed for cross-container focus transfer (Zen Browser compatibility)'
+        : 'Sidebar stays closed for reliable focus transfer'
     });
   } catch (sidebarErr) {
     // If sidebarAction API fails, fall back to blur approach
     console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
       error: sidebarErr.message,
-      fallback: 'blur'
+      fallback: 'blur',
+      isCrossContainerSwitch
     });
     _fallbackBlurForFocusRelease();
   }
