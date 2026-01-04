@@ -73,7 +73,8 @@ Export Console Logs with Manager
 Empty State Handling, Drag-and-Drop Reordering, Cross-Tab Transfer, Duplicate
 via Shift+Drag, Move to Current Tab, Tab Group Actions, Click-to-Front
 
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging
+**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback
+Messaging
 
 **Key Manager Features:**
 
@@ -104,21 +105,21 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 
 **Key Functions (v1.6.4-v5):**
 
-| Function                          | Purpose                                  |
-| --------------------------------- | ---------------------------------------- |
-| `_getGoToTabContainerContext()`   | Detects same/cross-container Go to Tab   |
-| `_handleGoToTabSidebarClose()`    | Closes sidebar for cross-container switch|
-| `_filterQuickTabsByContainer()`   | Filters Quick Tabs by originContainerId  |
-| `_getContainerNameByIdAsync()`    | Async container name resolution          |
-| `_getContainerNameSync()`         | Sync cache lookup for container name     |
-| `_populateContainerDropdown()`    | Populates dropdown with options          |
-| `_handleContainerFilterChange()`  | Handles dropdown selection changes       |
-| `initializeContainerIsolation()`  | Initializes container filter feature     |
-| `_onContainerContextChanged()`    | Updates UI when container changes        |
-| `_logActionsByCategory`           | Per-category log tracking map            |
-| `_detectCategoryFromLog()`        | Extracts category from log prefix        |
-| `_loadLiveFilterSettings()`       | Loads Live Console Output Filter         |
-| `_isCategoryFilterEnabled()`      | Checks if category should be counted     |
+| Function                         | Purpose                                   |
+| -------------------------------- | ----------------------------------------- |
+| `_getGoToTabContainerContext()`  | Detects same/cross-container Go to Tab    |
+| `_handleGoToTabSidebarClose()`   | Closes sidebar for cross-container switch |
+| `_filterQuickTabsByContainer()`  | Filters Quick Tabs by originContainerId   |
+| `_getContainerNameByIdAsync()`   | Async container name resolution           |
+| `_getContainerNameSync()`        | Sync cache lookup for container name      |
+| `_populateContainerDropdown()`   | Populates dropdown with options           |
+| `_handleContainerFilterChange()` | Handles dropdown selection changes        |
+| `initializeContainerIsolation()` | Initializes container filter feature      |
+| `_onContainerContextChanged()`   | Updates UI when container changes         |
+| `_logActionsByCategory`          | Per-category log tracking map             |
+| `_detectCategoryFromLog()`       | Extracts category from log prefix         |
+| `_loadLiveFilterSettings()`      | Loads Live Console Output Filter          |
+| `_isCategoryFilterEnabled()`     | Checks if category should be counted      |
 
 ---
 
@@ -154,10 +155,10 @@ port.postMessage({ type: 'SIDEBAR_READY' });
 ---
 
 **Your strength: Manager coordination with v1.6.4-v5 Go to Tab sidebar behavior
-(same-container stays open, cross-container close/reopen), Toggle Sidebar context
-menu, v1.6.4-v4 container filter dropdown, container name resolution, dynamic
-container indicator, filter persistence, v1.6.4-v3 title updates, state version
-race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer duplicate fix,
-Open in New Tab UI flicker fix, STATE_CHANGED race fix, total logs reset,
-expandable category breakdown, filter-aware log counting, Live Metrics Footer,
-and comprehensive validation.**
+(same-container stays open, cross-container close/reopen), Toggle Sidebar
+context menu, v1.6.4-v4 container filter dropdown, container name resolution,
+dynamic container indicator, filter persistence, v1.6.4-v3 title updates, state
+version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
+duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED race fix, total
+logs reset, expandable category breakdown, filter-aware log counting, Live
+Metrics Footer, and comprehensive validation.**

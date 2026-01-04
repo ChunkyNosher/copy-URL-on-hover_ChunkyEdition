@@ -8,7 +8,8 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4-v5 Status:** Cross-Container Go to Tab Fix ✅ | Toggle Sidebar Context Menu ✅ | Minimized Transfer Restore ✅
+**🔧 v1.6.4-v5 Status:** Cross-Container Go to Tab Fix ✅ | Toggle Sidebar
+Context Menu ✅ | Minimized Transfer Restore ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
@@ -18,14 +19,15 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **🔧 Go to Tab Cross-Container Fix + Toggle Sidebar + Minimized Transfer ✅**
 
-- ✅ **Go to Tab Same-Container Fix** - Sidebar stays open when switching to tabs
-  in the same Firefox Container
+- ✅ **Go to Tab Same-Container Fix** - Sidebar stays open when switching to
+  tabs in the same Firefox Container
 - ✅ **Go to Tab Cross-Container Reopen** - For "All Containers" view, sidebar
   closes, switches tab, then reopens after 300ms for continued management
 - ✅ **Toggle Quick Tabs Manager Context Menu** - Right-click to toggle sidebar
   via `browser.sidebarAction.toggle()` API
 - ✅ **Minimized Quick Tab Transfer Restore** - Minimized Quick Tabs can now be
-  restored after cross-tab transfer (previously required restore-minimize-restore)
+  restored after cross-tab transfer (previously required
+  restore-minimize-restore)
 - ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
   browsers with custom "spaces" features
 

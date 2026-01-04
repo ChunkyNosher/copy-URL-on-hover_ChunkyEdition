@@ -151,10 +151,10 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.4-v5 Go to Tab cross-container
-transfer (close/switch/reopen sidebar), updateTransferredSnapshotWindow() for
-minimized transfer restore, Toggle Sidebar context menu, v1.6.4-v3 title updates,
-state version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
-button operation fix, cross-tab render fix, fallback messaging, port messaging,
-and sequence tracking.**
+**Your strength: Reliable cross-tab sync with v1.6.4-v5 Go to Tab
+cross-container transfer (close/switch/reopen sidebar),
+updateTransferredSnapshotWindow() for minimized transfer restore, Toggle Sidebar
+context menu, v1.6.4-v3 title updates, state version race fix, forceEmpty fix,
+Open in New Tab close, cross-tab transfer duplicate fix, Open in New Tab UI
+flicker fix, STATE_CHANGED safety timeout, button operation fix, cross-tab
+render fix, fallback messaging, port messaging, and sequence tracking.**

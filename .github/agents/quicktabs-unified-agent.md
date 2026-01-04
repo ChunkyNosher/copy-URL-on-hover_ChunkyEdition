@@ -66,7 +66,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 Dynamic Container Indicator, Filter Persistence
 
 **v1.6.4-v3 Bug Fixes:** Title Update, State Version Race Fix, forceEmpty Fix,
-Open in New Tab Close, Transfer Duplicate Messages, UI Flicker Fix, Safety Timeout
+Open in New Tab Close, Transfer Duplicate Messages, UI Flicker Fix, Safety
+Timeout
 
 **v1.6.4-v3 Features:** Live Metrics Footer (count, log actions/sec), Expandable
 Category Breakdown, Filter-Aware Log Counting, Single Metrics Footer
@@ -74,7 +75,8 @@ Category Breakdown, Filter-Aware Log Counting, Single Metrics Footer
 **v1.6.4 Features:** Transfer/Duplicate Race Fix, Quick Tab Order Persistence,
 Drag-and-Drop Reordering, Cross-Tab Transfer, Duplicate via Shift+Drag
 
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging
+**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback
+Messaging
 
 **Key Timing Constants:**
 
@@ -92,23 +94,23 @@ Drag-and-Drop Reordering, Cross-Tab Transfer, Duplicate via Shift+Drag
 
 **Key Architecture Components:**
 
-| Component                            | Purpose                              |
-| ------------------------------------ | ------------------------------------ |
-| `quickTabsSessionState`              | Memory-based state in background     |
-| `contentScriptPorts`                 | Tab ID → Port mapping                |
-| `sidebarPort`                        | Manager sidebar port                 |
-| `notifySidebarOfStateChange()`       | Push updates to sidebar              |
-| `_isRenderInProgress`                | Render lock flag                     |
-| `_stateVersion`                      | State version for consistency        |
-| `_filterQuickTabsByContainer()`      | Filters by originContainerId         |
-| `_getContainerNameByIdAsync()`       | Async container name resolution      |
-| `_getGoToTabContainerContext()`      | Detects same/cross-container switch  |
-| `_handleGoToTabSidebarClose()`       | Closes sidebar for cross-container   |
-| `updateTransferredSnapshotWindow()`  | Updates snapshot after transfer      |
-| `_logActionsByCategory`              | Per-category log tracking            |
-| `_detectCategoryFromLog()`           | Extracts category from log prefix    |
-| `_loadLiveFilterSettings()`          | Loads Live Console Output Filter     |
-| `_isCategoryFilterEnabled()`         | Checks if category is enabled        |
+| Component                           | Purpose                             |
+| ----------------------------------- | ----------------------------------- |
+| `quickTabsSessionState`             | Memory-based state in background    |
+| `contentScriptPorts`                | Tab ID → Port mapping               |
+| `sidebarPort`                       | Manager sidebar port                |
+| `notifySidebarOfStateChange()`      | Push updates to sidebar             |
+| `_isRenderInProgress`               | Render lock flag                    |
+| `_stateVersion`                     | State version for consistency       |
+| `_filterQuickTabsByContainer()`     | Filters by originContainerId        |
+| `_getContainerNameByIdAsync()`      | Async container name resolution     |
+| `_getGoToTabContainerContext()`     | Detects same/cross-container switch |
+| `_handleGoToTabSidebarClose()`      | Closes sidebar for cross-container  |
+| `updateTransferredSnapshotWindow()` | Updates snapshot after transfer     |
+| `_logActionsByCategory`             | Per-category log tracking           |
+| `_detectCategoryFromLog()`          | Extracts category from log prefix   |
+| `_loadLiveFilterSettings()`         | Loads Live Console Output Filter    |
+| `_isCategoryFilterEnabled()`        | Checks if category is enabled       |
 
 **Key Modules:**
 
@@ -179,7 +181,7 @@ behavior (same-container stays open, cross-container close/reopen), Toggle
 Sidebar context menu, updateTransferredSnapshotWindow() for minimized transfer
 restore, v1.6.4-v4 container filter dropdown, container name resolution, dynamic
 container indicator, filter persistence, v1.6.4-v3 title updates, state version
-race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer duplicate fix,
-Open in New Tab UI flicker fix, STATE_CHANGED race fix, total logs reset,
+race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer duplicate
+fix, Open in New Tab UI flicker fix, STATE_CHANGED race fix, total logs reset,
 expandable category breakdown, filter-aware log counting, Live Metrics Footer,
 and comprehensive validation.**

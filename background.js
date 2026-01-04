@@ -5748,7 +5748,10 @@ function notifySidebarOfStateChange() {
 function _updateQuickTabSnapshot(quickTab, minimized, minimizedSnapshot, quickTabId) {
   if (minimized && minimizedSnapshot) {
     quickTab.minimizedSnapshot = minimizedSnapshot;
-    console.log('[Background] MINIMIZE_SNAPSHOT_STORED:', { quickTabId, snapshot: minimizedSnapshot });
+    console.log('[Background] MINIMIZE_SNAPSHOT_STORED:', {
+      quickTabId,
+      snapshot: minimizedSnapshot
+    });
   } else if (!minimized) {
     delete quickTab.minimizedSnapshot;
   }

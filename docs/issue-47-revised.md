@@ -1675,8 +1675,8 @@ position the restored Quick Tab.
 
 **VisibilityHandler (`src/features/quick-tabs/handlers/VisibilityHandler.js`):**
 
-1. Sends `minimizedSnapshot` (left, top, width, height) with `QUICKTAB_MINIMIZED`
-   message
+1. Sends `minimizedSnapshot` (left, top, width, height) with
+   `QUICKTAB_MINIMIZED` message
 2. Snapshot captured before minimize operation removes DOM element
 
 **Background Script (`background.js`):**
@@ -1721,10 +1721,10 @@ position the restored Quick Tab.
 
 ### Expected Behavior
 
-| Step | Result                                                |
-| ---- | ----------------------------------------------------- |
-| 1    | Browser switches to YT 1 tab                          |
-| 1    | Sidebar remains OPEN (same container, no focus issue) |
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 1    | Browser switches to YT 1 tab                                    |
+| 1    | Sidebar remains OPEN (same container, no focus issue)           |
 | 1    | User can continue managing Quick Tabs without reopening sidebar |
 
 ### Key Implementation Details
@@ -1742,7 +1742,8 @@ position the restored Quick Tab.
 ## Scenario 44: Go to Tab Cross-Container Reopens Sidebar (v1.6.4-v5)
 
 **Category:** Quick Tabs Manager - Navigation  
-**Feature:** Go to Tab closes sidebar, switches tab, then reopens sidebar for cross-container tabs  
+**Feature:** Go to Tab closes sidebar, switches tab, then reopens sidebar for
+cross-container tabs  
 **Version:** v1.6.4-v5
 
 ### Setup
@@ -1755,31 +1756,39 @@ position the restored Quick Tab.
 
 ### Test Steps
 
-1. In Manager, click "Go to Tab" button on the YT 1 tab group header (different container)
+1. In Manager, click "Go to Tab" button on the YT 1 tab group header (different
+   container)
 2. Wait 300ms after tab switch
 3. Observe the sidebar and browser tab
 
 ### Expected Behavior
 
-| Step | Result                                                      |
-| ---- | ----------------------------------------------------------- |
-| 1    | Sidebar closes immediately (synchronously from user input)  |
-| 1    | Browser switches to YT 1 tab                                |
-| 2    | Sidebar reopens automatically after 300ms delay             |
-| 2    | User can continue managing Quick Tabs in new container      |
+| Step | Result                                                     |
+| ---- | ---------------------------------------------------------- |
+| 1    | Sidebar closes immediately (synchronously from user input) |
+| 1    | Browser switches to YT 1 tab                               |
+| 2    | Sidebar reopens automatically after 300ms delay            |
+| 2    | User can continue managing Quick Tabs in new container     |
 
 ### Root Cause Analysis
 
-Firefox WebExtension sidebars retain focus even after successful `tabs.update()` calls. For cross-container switches, the sidebar must close first to transfer focus to the main browser area. After the tab switch completes, the sidebar is reopened to enable continued Quick Tab management.
+Firefox WebExtension sidebars retain focus even after successful `tabs.update()`
+calls. For cross-container switches, the sidebar must close first to transfer
+focus to the main browser area. After the tab switch completes, the sidebar is
+reopened to enable continued Quick Tab management.
 
 ### Key Implementation Details
 
 **Manager (`sidebar/quick-tabs-manager.js`):**
 
-1. `_handleGoToTabGroup()` calls `_getGoToTabContainerContext()` to detect cross-container switch
-2. For cross-container: `_handleGoToTabSidebarClose()` called synchronously FIRST
-3. `_handleGoToTabSidebarClose()` uses `browser.sidebarAction.close()` immediately
-4. After async tab switch completes, `setTimeout()` with 300ms delay triggers `browser.sidebarAction.open()`
+1. `_handleGoToTabGroup()` calls `_getGoToTabContainerContext()` to detect
+   cross-container switch
+2. For cross-container: `_handleGoToTabSidebarClose()` called synchronously
+   FIRST
+3. `_handleGoToTabSidebarClose()` uses `browser.sidebarAction.close()`
+   immediately
+4. After async tab switch completes, `setTimeout()` with 300ms delay triggers
+   `browser.sidebarAction.open()`
 5. This enables "Go to Tab → Continue Managing" workflow across containers
 
 **Key Logs:**
@@ -1820,18 +1829,18 @@ Firefox WebExtension sidebars retain focus even after successful `tabs.update()`
 
 **Test A:**
 
-| Step | Result                                                   |
-| ---- | -------------------------------------------------------- |
-| 2    | Context menu shows "Toggle Quick Tabs Manager" option    |
-| 4    | Quick Tabs Manager sidebar opens                         |
-| 4    | Sidebar shows Quick Tabs from all tabs (if any exist)    |
+| Step | Result                                                |
+| ---- | ----------------------------------------------------- |
+| 2    | Context menu shows "Toggle Quick Tabs Manager" option |
+| 4    | Quick Tabs Manager sidebar opens                      |
+| 4    | Sidebar shows Quick Tabs from all tabs (if any exist) |
 
 **Test B:**
 
-| Step | Result                                |
-| ---- | ------------------------------------- |
-| 3    | Quick Tabs Manager sidebar closes     |
-| 3    | Main browser content regains focus    |
+| Step | Result                             |
+| ---- | ---------------------------------- |
+| 3    | Quick Tabs Manager sidebar closes  |
+| 3    | Main browser content regains focus |
 
 ### Key Implementation Details
 
@@ -1852,7 +1861,8 @@ Firefox WebExtension sidebars retain focus even after successful `tabs.update()`
 ## Scenario 46: Minimized Quick Tab Restore After Cross-Container Transfer (v1.6.4-v5)
 
 **Category:** Quick Tabs - Cross-Tab Transfer  
-**Feature:** Minimized Quick Tabs can be restored after transferring to a tab in a different container  
+**Feature:** Minimized Quick Tabs can be restored after transferring to a tab in
+a different container  
 **Version:** v1.6.4-v5
 
 ### Setup
@@ -1865,23 +1875,28 @@ Firefox WebExtension sidebars retain focus even after successful `tabs.update()`
 
 ### Test Steps
 
-1. Drag minimized WP QT 1 from WP 1 group to YT 1 group (cross-container transfer)
+1. Drag minimized WP QT 1 from WP 1 group to YT 1 group (cross-container
+   transfer)
 2. Switch to YT 1 browser tab
 3. Click "Restore" button on WP QT 1 in Manager
 
 ### Expected Behavior
 
-| Step | Result                                                      |
-| ---- | ----------------------------------------------------------- |
+| Step | Result                                                                |
+| ---- | --------------------------------------------------------------------- |
 | 1    | WP QT 1 transfers to YT 1 (originTabId and originContainerId updated) |
-| 1    | minimizedSnapshot transferred along with Quick Tab data     |
-| 3    | WP QT 1 appears visible in YT 1 viewport at (200, 200)      |
-| 3    | Window reference properly updated from snapshot             |
-| 3    | No "Snapshot not found" errors in console                   |
+| 1    | minimizedSnapshot transferred along with Quick Tab data               |
+| 3    | WP QT 1 appears visible in YT 1 viewport at (200, 200)                |
+| 3    | Window reference properly updated from snapshot                       |
+| 3    | No "Snapshot not found" errors in console                             |
 
 ### Root Cause Analysis
 
-Previously, cross-container transfers of minimized Quick Tabs required a restore-minimize-restore cycle because the minimized snapshot was not transferred. Now, `updateTransferredSnapshotWindow()` in MinimizedManager ensures the snapshot's window reference is updated, allowing first-restore to work correctly.
+Previously, cross-container transfers of minimized Quick Tabs required a
+restore-minimize-restore cycle because the minimized snapshot was not
+transferred. Now, `updateTransferredSnapshotWindow()` in MinimizedManager
+ensures the snapshot's window reference is updated, allowing first-restore to
+work correctly.
 
 ### Key Implementation Details
 
@@ -1898,13 +1913,15 @@ Previously, cross-container transfers of minimized Quick Tabs required a restore
 
 **Content Script (`src/content.js`):**
 
-1. `_handleQuickTabTransferredIn()` calls `MinimizedManager.storeTransferredSnapshot()`
+1. `_handleQuickTabTransferredIn()` calls
+   `MinimizedManager.storeTransferredSnapshot()`
 2. Logs: `[Content] MINIMIZED_SNAPSHOT_STORED: quickTabId={id}`
 
 **MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
 
 1. `storeTransferredSnapshot(quickTabId, snapshot)` stores incoming snapshot
-2. `updateTransferredSnapshotWindow(quickTabId, window)` updates window reference
+2. `updateTransferredSnapshotWindow(quickTabId, window)` updates window
+   reference
 3. Enables restore to use correct position/size from original tab
 
 **Key Logs:**
