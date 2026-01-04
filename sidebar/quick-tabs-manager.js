@@ -8496,7 +8496,11 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId) {
 /**
  * Schedule sidebar reopen after delay (fire-and-forget)
  * v1.6.4-v4 - Extracted helper function
- * NOTE: Not used by Go to Tab flow (sidebar stays closed for cross-container support)
+ *
+ * @deprecated Not currently used - retained for potential future sidebar operations
+ * that may need delayed reopen after temporary close. The Go to Tab flow no longer
+ * uses this because sidebars must stay closed for reliable cross-container focus transfer.
+ *
  * @private
  * @param {number} tabId - Tab ID for logging
  */
