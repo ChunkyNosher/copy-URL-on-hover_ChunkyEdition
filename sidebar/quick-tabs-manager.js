@@ -2,37 +2,47 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v6 CROSS-CONTAINER GO TO TAB FIX ===
- * v1.6.4-v6 - FIX: Go to Tab button now properly switches focus across containers
+ * === v1.6.4-v5 SMART GO TO TAB FIX ===
+ * v1.6.4-v5 - FIX BUG #1/#2: Go to Tab now only closes sidebar for cross-container switches
+ *   - ROOT CAUSE (Bug #1): Cross-container tabs in "All Containers" view didn't properly transfer focus
+ *   - ROOT CAUSE (Bug #2): Sidebar was ALWAYS closing, even for same-container tabs
+ *   - FIX: Only close sidebar for cross-container switches, keep open for same-container
+ *   - For cross-container in "All Containers" view: close → switch → reopen after delay
+ *   - For same-container: just activate tab without closing sidebar
+ *   - Added _isCrossContainerSwitch() helper for container comparison
+ *   - Added _shouldReopenSidebarAfterGoToTab() for "All Containers" view detection
+ *
+ * === v1.6.4-v4 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
+ * v1.6.4-v4 - FIX: Go to Tab button now properly switches focus across containers
  *   - ROOT CAUSE: Firefox sidebars retain focus even after blur() calls
  *   - FIX: Use browser.sidebarAction.close() to force-close sidebar, then reopen after delay
  *   - This is more aggressive than v1.6.4-v5's blur() approach which was insufficient
  *
- * === v1.6.4-v6 MINIMIZE ALL IN TAB FEATURE ===
- * v1.6.4-v6 - FEATURE: Add "Minimize All" button for each tab group header
+ * === v1.6.4-v4 MINIMIZE ALL IN TAB FEATURE ===
+ * v1.6.4-v4 - FEATURE: Add "Minimize All" button for each tab group header
  *   - Added _handleMinimizeAllInTabGroup() handler function
  *   - Added minimize all button (⏬) in _createGroupActions() next to Close All button
  *
- * === v1.6.4-v6 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
- * v1.6.4-v6 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
+ * === v1.6.4-v4 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
+ * v1.6.4-v4 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
  *   - Modified _dispatchMoveToCurrentTab() to accept shiftKey parameter
  *   - When shiftKey=true, calls _duplicateQuickTabToTab() instead of _transferQuickTabToTab()
  *
- * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
- * v1.6.4-v5 - FIX: Go to Tab button now properly switches focus across containers
+ * === v1.6.4-v3 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
+ * v1.6.4-v3 - FIX: Go to Tab button now properly switches focus across containers
  *   - ROOT CAUSE: Firefox sidebars retain focus after browser.tabs.update() succeeds
  *   - FIX: Blur activeElement and window after tab switch to release sidebar focus
  *   - Added document.activeElement.blur() and window.blur() in _handleGoToTabGroup()
  *   - This is a known Firefox WebExtension sidebar limitation workaround
  *
- * === v1.6.4-v5 PERFORMANCE OPTIMIZATIONS ===
- * v1.6.4-v5 - PERF: Reduce log volume for high-frequency operations
+ * === v1.6.4-v3 PERFORMANCE OPTIMIZATIONS ===
+ * v1.6.4-v3 - PERF: Reduce log volume for high-frequency operations
  *   - Consolidated duplicate logs in _logRenderSkipped() (was 2 logs, now 1)
  *   - Removed per-badge debug logging in _createContainerBadge() (fires per group)
  *   - _logHashComputation() now only logs when hash actually changed
  *   - Removed unused _buildStateSummary() function
  *
- * v1.6.4-v5 - PERF: Code Health improvements for better maintainability
+ * v1.6.4-v3 - PERF: Code Health improvements for better maintainability
  *   - Extracted _validateStateUpdateInput() from _handleQuickTabsStateUpdate() (cc reduction)
  *   - Extracted _executeRenderForStateUpdate() from _handleQuickTabsStateUpdate() (cc: 9 → 5)
  *   - Extracted _shouldShowContainerBadge() for cleaner conditional in _createGroupHeader()
@@ -8397,116 +8407,132 @@ function _createGroupActions(groupKey, isOrphaned) {
 // v1.6.4-v4 - NOTE: _shouldShowContainerBadge() and _createContainerBadge() moved to managers/ContainerManager.js
 
 /**
+ * Get container context for Go to Tab operation
+ * v1.6.4-v5 - Extracted to reduce _handleGoToTabGroup complexity
+ * @private
+ * @param {number} numTabId - Target tab ID
+ * @returns {Promise<Object>} Container context object
+ */
+async function _getGoToTabContainerContext(numTabId) {
+  const tab = await browser.tabs.get(numTabId);
+  const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+  const targetContainerId = tab?.cookieStoreId || 'firefox-default';
+
+  const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+  const currentContainerId = currentTab?.cookieStoreId || 'firefox-default';
+  const isCrossContainerSwitch = targetContainerId !== currentContainerId;
+
+  const selectedFilter = _getSelectedContainerFilter();
+  const shouldReopenSidebar = selectedFilter === 'all' && isCrossContainerSwitch;
+
+  return {
+    tab,
+    windowId,
+    targetContainerId,
+    currentTab,
+    currentContainerId,
+    isCrossContainerSwitch,
+    selectedFilter,
+    shouldReopenSidebar
+  };
+}
+
+/**
+ * Handle sidebar close for cross-container Go to Tab
+ * v1.6.4-v5 - Extracted to reduce _handleGoToTabGroup complexity
+ * @private
+ * @param {number} tabId - Target tab ID
+ * @param {boolean} shouldReopenSidebar - Whether to reopen sidebar after close
+ */
+function _handleGoToTabSidebarClose(tabId, shouldReopenSidebar) {
+  browser.sidebarAction
+    .close()
+    .then(() => {
+      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
+        tabId,
+        reason: 'cross-container-switch',
+        willReopen: shouldReopenSidebar
+      });
+
+      if (shouldReopenSidebar) {
+        _scheduleDelayedSidebarReopen(tabId);
+      }
+    })
+    .catch(err => {
+      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
+        error: err.message,
+        tabId
+      });
+      _fallbackBlurForFocusRelease();
+    });
+}
+
+/**
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
  * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
- * v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus (NO auto-reopen)
- *   - blur() calls were insufficient for cross-container tab switching
- *   - browser.sidebarAction.close() forces focus to transfer to main window
- *   - Sidebar stays closed - reopening would retain original container context
+ * v1.6.4-v5 - FIX BUG #1/#2: Only close sidebar for cross-container switches
+ *   - For same-container: just activate tab without closing sidebar
+ *   - For cross-container: close sidebar first, then switch tab
+ *   - For cross-container in "All Containers" view: reopen sidebar after switch
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
 async function _handleGoToTabGroup(tabId) {
   const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
 
-  console.log('[Manager] GO_TO_TAB_CLICKED:', {
-    tabId: numTabId,
-    timestamp: Date.now()
-  });
-
-  // v1.6.4-v6 - FIX BUG #1: Call sidebarAction.close() SYNCHRONOUSLY before any await
-  // Firefox only allows sidebarAction.close() from user input handler context.
-  // Any await breaks the call chain and Firefox rejects with:
-  // "sidebarAction.close may only be called from a user input handler"
-  // Solution: Close sidebar FIRST (fire-and-forget), then do async tab switching.
-  browser.sidebarAction
-    .close()
-    .then(() => {
-      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED_SYNC:', {
-        tabId: numTabId,
-        timestamp: Date.now()
-      });
-    })
-    .catch(err => {
-      // If sidebarAction.close() fails, fall back to blur approach
-      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_SYNC_FAILED:', {
-        error: err.message,
-        tabId: numTabId
-      });
-      _fallbackBlurForFocusRelease();
-    });
+  console.log('[Manager] GO_TO_TAB_CLICKED:', { tabId: numTabId, timestamp: Date.now() });
 
   try {
-    // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
-    // This ensures proper tab switching when the target tab is in a different window
-    const tab = await browser.tabs.get(numTabId);
-    // v1.6.4-v4 - FIX: Validate windowId before using (code review feedback)
-    // browser.tabs.get() throws if tab doesn't exist; this validates the returned object structure
-    const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+    const ctx = await _getGoToTabContainerContext(numTabId);
 
-    // v1.6.4-v4 - Container context logging for cross-container switches
-    const originContainerId = tab?.cookieStoreId || 'unknown';
-    const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    const currentContainerId = currentTab?.cookieStoreId || 'unknown';
-    const isCrossContainerSwitch = originContainerId !== currentContainerId;
-
-    // v1.6.4-v5 - FIX BUG #1: Enhanced cross-container logging for debugging Zen Browser
     console.log('[Manager] GO_TO_TAB_CONTAINER_CONTEXT:', {
       targetTabId: numTabId,
-      targetContainerId: originContainerId,
-      currentContainerId,
-      isCrossContainerSwitch,
-      currentTabId: currentTab?.id,
-      targetWindowId: windowId,
-      currentWindowId: currentTab?.windowId
+      targetContainerId: ctx.targetContainerId,
+      currentContainerId: ctx.currentContainerId,
+      isCrossContainerSwitch: ctx.isCrossContainerSwitch,
+      selectedFilter: ctx.selectedFilter,
+      shouldReopenSidebar: ctx.shouldReopenSidebar,
+      currentTabId: ctx.currentTab?.id,
+      targetWindowId: ctx.windowId,
+      currentWindowId: ctx.currentTab?.windowId
     });
 
-    // v1.6.4-v5 - FIX BUG #1: Log cross-container switch warning for debugging
-    if (isCrossContainerSwitch) {
-      console.log(
-        '[Manager] GO_TO_TAB: Cross-container switch detected, current=' +
-          currentContainerId +
-          ', target=' +
-          originContainerId
-      );
+    if (ctx.isCrossContainerSwitch) {
+      console.log('[Manager] GO_TO_TAB: Cross-container switch, closing sidebar');
+      _handleGoToTabSidebarClose(numTabId, ctx.shouldReopenSidebar);
+    } else {
+      console.log('[Manager] GO_TO_TAB: Same-container switch, keeping sidebar open');
     }
 
-    if (windowId !== null) {
-      await browser.windows.update(windowId, { focused: true });
+    if (ctx.windowId !== null) {
+      await browser.windows.update(ctx.windowId, { focused: true });
     }
     await browser.tabs.update(numTabId, { active: true });
 
-    // v1.6.4-v6 - Sidebar already closed synchronously above, just log success
     console.log('[Manager] GO_TO_TAB_SUCCESS:', {
       tabId: numTabId,
-      windowId,
-      targetContainerId: originContainerId,
-      isCrossContainerSwitch,
-      sidebarAction: 'closed_sync'
+      windowId: ctx.windowId,
+      targetContainerId: ctx.targetContainerId,
+      isCrossContainerSwitch: ctx.isCrossContainerSwitch,
+      sidebarAction: ctx.isCrossContainerSwitch ? 'closed' : 'kept_open'
     });
   } catch (err) {
-    console.error('[Manager] GO_TO_TAB_FAILED:', {
-      tabId: numTabId,
-      error: err.message
-    });
-    // Tab might have been closed
+    console.error('[Manager] GO_TO_TAB_FAILED:', { tabId: numTabId, error: err.message });
     _showErrorNotification(`Cannot switch to tab: ${err.message}`);
   }
 }
 
 /**
  * Release sidebar focus to allow tab switch to take effect
- * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce complexity
- * v1.6.4-v4 - FIX: Sidebar stays closed after Go to Tab for cross-container support
+ * v1.6.4-v2 - Extracted from _handleGoToTabGroup to reduce complexity
+ * v1.6.4-v2 - FIX: Sidebar stays closed after Go to Tab for cross-container support
  *   - Reopening sidebar would retain original container context, defeating the purpose
  *   - User can manually reopen sidebar when needed
- * v1.6.4-v5 - FIX BUG #1: Enhanced logging for cross-container switch
+ * v1.6.4-v3 - FIX BUG #1: Enhanced logging for cross-container switch
  *
- * @deprecated v1.6.4-v6 - No longer used. Sidebar is now closed synchronously at the
- * start of _handleGoToTabGroup() to fix Firefox user input handler requirement.
- * Firefox requires sidebarAction.close() to be called synchronously from user input
- * handler - any await before it breaks the call chain. Retained for reference.
+ * @deprecated v1.6.4-v5 - No longer used. Smart Go to Tab now handles sidebar close
+ * conditionally based on cross-container detection. Retained for reference.
  *
  * @private
  * @param {number} tabId - Tab ID for logging
@@ -8543,10 +8569,9 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerS
 /**
  * Schedule sidebar reopen after delay (fire-and-forget)
  * v1.6.4-v4 - Extracted helper function
- *
- * @deprecated Not currently used - retained for potential future sidebar operations
- * that may need delayed reopen after temporary close. The Go to Tab flow no longer
- * uses this because sidebars must stay closed for reliable cross-container focus transfer.
+ * v1.6.4-v5 - Now used for cross-container Go to Tab in "All Containers" view
+ *   - After closing sidebar and switching to a different container tab,
+ *   - reopen sidebar so user can continue managing Quick Tabs
  *
  * @private
  * @param {number} tabId - Tab ID for logging

@@ -3773,6 +3773,13 @@ function _initializeContextMenus() {
         contexts: ['page']
       });
 
+      // Create "Toggle Quick Tabs Manager" menu item
+      browser.menus.create({
+        id: 'toggle-quick-tabs-manager',
+        title: 'Toggle Quick Tabs Manager',
+        contexts: ['page']
+      });
+
       console.log('[Background] CONTEXT_MENU: Menu items created');
     })
     .catch(err => {
@@ -3798,6 +3805,13 @@ function _handleContextMenuClick(info, tab) {
     tabId,
     timestamp: Date.now()
   });
+
+  // Handle toggle sidebar - doesn't require Quick Tabs on current tab
+  if (info.menuItemId === 'toggle-quick-tabs-manager') {
+    console.log('[Background] CONTEXT_MENU: Toggle sidebar clicked');
+    browser.sidebarAction.toggle();
+    return;
+  }
 
   // Get Quick Tabs for this tab from session state
   const quickTabsInTab = quickTabsSessionState.quickTabsByTab?.[tabId] ?? [];

@@ -1952,7 +1952,9 @@ function _validateTransferredInMessage(message) {
 
 /**
  * Store minimized snapshot for transferred Quick Tab
- * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
+ * v1.6.4-v4 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
+ * v1.6.4-v5 - Note: After storing, updateTransferredSnapshotWindow must be called
+ *   with the created window to enable restore
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {boolean} isMinimized - Whether Quick Tab is minimized
@@ -1985,7 +1987,8 @@ function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSn
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
  * v1.6.4-v3 - FIX BUG #1: Add deduplication check to prevent duplicate creation
- * v1.6.4-v6 - FIX BUG #2 (Minimized Drag Restore): Store minimizedSnapshot for restore
+ * v1.6.4-v4 - FIX BUG #2 (Minimized Drag Restore): Store minimizedSnapshot for restore
+ * v1.6.4-v5 - FIX BUG #3: Call updateTransferredSnapshotWindow after creation
  * @private
  * @param {Object} message - Transfer in message
  * @param {Object} message.quickTab - Full Quick Tab data to create
@@ -2033,7 +2036,8 @@ function _handleQuickTabTransferredIn(message) {
 
 /**
  * Execute Quick Tab creation for transfer
- * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn lines
+ * v1.6.4-v4 - Extracted helper to reduce _handleQuickTabTransferredIn lines
+ * v1.6.4-v5 - FIX BUG #3: Update transferred snapshot with window reference for restore
  * @private
  */
 function _executeTransferredQuickTabCreation(quickTab, createOptions) {
@@ -2052,8 +2056,22 @@ function _executeTransferredQuickTabCreation(quickTab, createOptions) {
     };
     sessionQuickTabs.set(quickTab.id, cachedQuickTab);
 
-    quickTabsManager.createQuickTab(createOptions);
+    const result = quickTabsManager.createQuickTab(createOptions);
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
+
+    // v1.6.4-v5 - FIX BUG #3: Update transferred snapshot with window reference
+    // This is critical for minimized Quick Tabs to be restorable after transfer
+    if (quickTab.minimized && result?.tabWindow && quickTabsManager?.minimizedManager) {
+      const updated = quickTabsManager.minimizedManager.updateTransferredSnapshotWindow(
+        quickTab.id,
+        result.tabWindow
+      );
+      console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Updated snapshot window:', {
+        quickTabId: quickTab.id,
+        updated,
+        hasWindow: !!result.tabWindow
+      });
+    }
 
     _trackAdoptedQuickTab(quickTab.id, quickTabsManager.currentTabId);
   } catch (err) {
