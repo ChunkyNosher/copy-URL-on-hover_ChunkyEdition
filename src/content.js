@@ -2065,7 +2065,7 @@ function _executeTransferredQuickTabCreation(quickTab, createOptions) {
     if (quickTab.minimized && result && quickTabsManager?.minimizedManager) {
       const updated = quickTabsManager.minimizedManager.updateTransferredSnapshotWindow(
         quickTab.id,
-        result // result IS the tabWindow (see src/features/quick-tabs/index.js line 1606)
+        result // result IS the tabWindow - createQuickTab() returns tabWindow directly
       );
       console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Updated snapshot window:', {
         quickTabId: quickTab.id,
