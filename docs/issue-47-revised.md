@@ -2108,10 +2108,128 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 ---
 
+## Scenario 51: Minimized Quick Tab Transfer Restore - Destination Tab ID Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** `storeTransferredSnapshot()` uses destination tab ID, not old origin  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Move WP QT 1 to position (400, 300)
+3. Minimize WP QT 1 (snapshot captured: origin tab = WP 1)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1 in Manager
+4. Observe where QT 1 appears
+
+### Expected Behavior
+
+| Step | Result                                                            |
+| ---- | ----------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 (originTabId updated)                   |
+| 3    | WP QT 1 appears in YT 1 viewport at (400, 300)                    |
+| 3    | Quick Tab stays on YT 1 after restore (does NOT revert to WP 1)   |
+| 3    | Snapshot's originTabId correctly points to YT 1                   |
+
+### Root Cause Analysis
+
+Previously, `storeTransferredSnapshot()` stored the snapshot with the OLD origin
+tab ID. When restoring, the snapshot would reference the original tab (WP 1),
+causing the Quick Tab to either fail to restore or revert to the wrong tab.
+
+The fix adds a `newOriginTabId` parameter to `storeTransferredSnapshot()` that
+accepts the destination tab ID from the transfer message.
+
+### Key Implementation Details
+
+**MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
+
+1. `storeTransferredSnapshot(quickTabId, snapshot, newOriginTabId)` - new parameter
+2. Updates snapshot's `originTabId` to destination tab before storing
+3. Ensures restore operation uses correct tab context
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` passes `newOriginTabId` from transfer message
+2. Calls `storeTransferredSnapshot(id, snapshot, newOriginTabId)`
+
+**Key Logs:**
+
+- `[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID: quickTabId={id}, newTabId={newId}`
+- `[MinimizedManager] TRANSFERRED_SNAPSHOT_TAB_UPDATED: {id} -> {newId}`
+
+---
+
+## Scenario 52: Log Metrics Footer Persistence Across Sidebar Sessions (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Settings  
+**Feature:** Log metrics footer count persists across sidebar close/reopen  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab and create several Quick Tabs
+2. Perform various actions (create, minimize, restore, close) to generate logs
+3. Open Quick Tabs Manager (Ctrl+Alt+Z)
+4. Navigate to Settings tab and observe the metrics footer
+
+### Test Steps
+
+1. Note the "📈 total" count in the metrics footer (e.g., "📈 157 total")
+2. Close the Quick Tabs Manager sidebar
+3. Wait 5 seconds
+4. Reopen Quick Tabs Manager (Ctrl+Alt+Z)
+5. Observe the "📈 total" count in the metrics footer
+
+### Expected Behavior
+
+| Step | Result                                                     |
+| ---- | ---------------------------------------------------------- |
+| 1    | Metrics footer shows total log action count (e.g., 157)    |
+| 4    | Total count is preserved (still shows 157, not reset to 0) |
+| 4    | New log actions increment from persisted value             |
+
+### Root Cause Analysis
+
+Previously, `_totalLogActions` was a module-level variable that reset to 0 each
+time the sidebar was opened. This made the "total log actions" metric useless
+for tracking session-wide activity.
+
+The fix persists `_totalLogActions` to `browser.storage.local` using a new
+storage key with debounced saves to avoid excessive writes.
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. Added `TOTAL_LOG_ACTIONS_KEY = 'quickTabsTotalLogActions'` storage key
+2. Loads persisted value on sidebar open via `_loadTotalLogActions()`
+3. Saves value on change via `_saveTotalLogActions()` with 2000ms debounce
+4. Debounce prevents excessive storage writes during rapid log activity
+
+**Storage Format:**
+
+```javascript
+{ 'quickTabsTotalLogActions': 157 }
+```
+
+**Key Logs:**
+
+- `[Manager] METRICS_FOOTER_LOADED: totalLogActions={count}`
+- `[Manager] METRICS_FOOTER_SAVED: totalLogActions={count}`
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Last
 Review Date:** January 4, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v4)
+**Behavior Model:** Tab-Scoped (v1.6.4-v5)

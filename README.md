@@ -30,12 +30,16 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
   restore-minimize-restore)
 - ✅ **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
   since `createQuickTab()` returns `tabWindow` directly
+- ✅ **Minimized Transfer Tab ID Fix** - `storeTransferredSnapshot()` accepts
+  destination tab ID; fixes restore reverting to old tab
 - ✅ **Go to Tab Error Handling** - Added `.catch()` error handler; uses
   container-aware `_handleGoToTabGroup()` for consistency
 - ✅ **Clear Log History Confirmation** - Added `confirm()` dialog before
   clearing logs with detailed warning message
 - ✅ **Clear Log History Counts** - Shows "X background logs" and "logs from Y
   tabs" or "No cached logs were present"
+- ✅ **Log Metrics Footer Persistence** - Total log count persists to
+  `storage.local` with 2000ms debounce (survives sidebar close/reopen)
 - ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
   browsers with custom "spaces" features
 

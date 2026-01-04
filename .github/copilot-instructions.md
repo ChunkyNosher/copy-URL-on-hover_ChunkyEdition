@@ -34,11 +34,15 @@
   enables restore after cross-container transfer
 - **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
   since `createQuickTab()` returns `tabWindow` directly
+- **Minimized Transfer Tab ID Fix** - `storeTransferredSnapshot()` accepts
+  `newOriginTabId` for destination tab; fixes restore reverting to old tab
 - **Go to Tab Error Handling** - Added `.catch()` handler; uses container-aware
   `_handleGoToTabGroup()`
 - **Clear Log History Confirmation** - `confirm()` dialog before clearing logs
 - **Clear Log History Counts** - Status message shows "X background logs" and
   "logs from Y tabs"
+- **Log Metrics Footer Persistence** - `_totalLogActions` persisted to
+  `storage.local` with 2000ms debounce; `TOTAL_LOG_ACTIONS_KEY`
 
 **v1.6.4-v4 Features:**
 
@@ -49,23 +53,17 @@
 - **Right-Click Context Menu** - "Close All" and "Minimize All" via
   `browser.menus` API
 - **Minimize All Button** - ⏬ button in tab group headers
-- **Shift+Move Duplicates** - Shift+click "Move to Current Tab" duplicates
 
-**v1.6.4-v4 Container Features:** Container Filter Dropdown, Badge, Name
-Resolution, ContainerManager.js, Filter Persistence (`quickTabsContainerFilter`)
+**v1.6.4-v4:** Container Filter, Badge, ContainerManager.js  
+**v1.6.4-v3:** Metrics footer, title/state fixes  
+**v1.6.4:** Drag-Drop, Cross-Tab Transfer, Duplicate  
+**v1.6.3.12:** Option 4 Architecture, Port Messaging
 
-**v1.6.4-v3:** Metrics footer, DEBOUNCE logging, title/state fixes
-
-**v1.6.4:** Drag-and-Drop, Cross-Tab Transfer, Duplicate via Shift+Drag
-
-**v1.6.3.12:** Option 4 Architecture, Port-Based Messaging, Solo/Mute REMOVED
-
-**Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
+**Core:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
 
-**Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel (v6),
-`browser.storage.session` (v4), `runtime.sendMessage` for Quick Tabs
-(v1.6.3.12), Solo/Mute (v12)
+**Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel, storage.session,
+runtime.sendMessage for Quick Tabs, Solo/Mute
 
 ---
 
@@ -132,8 +130,11 @@ const quickTabsSessionState = {
   snapshot window reference after cross-container transfer
 - **Transfer Restore Fix** - `result` (not `result?.tabWindow`) from
   `createQuickTab()` for snapshot update
+- **Transfer Tab ID Fix** - `storeTransferredSnapshot(id, snapshot, newTabId)`
+  uses destination tab ID
 - **Clear Logs UX** - `_buildClearLogStatusMessage()`,
   `_clearManagerLogsViaIframe()` helper functions
+- **Metrics Persistence** - `TOTAL_LOG_ACTIONS_KEY`, debounced `storage.local`
 
 ### v1.6.4-v4 Patterns
 
@@ -158,12 +159,9 @@ const quickTabsSessionState = {
 
 ### v1.6.3.12 Patterns (Consolidated)
 
-- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync, Helper
-  Extraction
-- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock, Bulk
-  Close
-- **v1.6.3.12:** Option 4 Architecture, Port Messaging, storage.local Only
-- **v1.6.3.11-v12:** Solo/Mute REMOVED
+- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync
+- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock
+- **Base:** Option 4 Architecture, Port Messaging, storage.local Only
 
 ### Key Timing Constants
 
@@ -171,6 +169,7 @@ const quickTabsSessionState = {
 | --------------------------------------- | ------------------------------- | --------------------------- |
 | `QUICK_TAB_ORDER_STORAGE_KEY`           | 'quickTabsManagerQuickTabOrder' | Order persistence key       |
 | `CONTAINER_FILTER_STORAGE_KEY`          | 'quickTabsContainerFilter'      | Container filter preference |
+| `TOTAL_LOG_ACTIONS_KEY`                 | 'quickTabsTotalLogActions'      | Metrics footer persistence  |
 | `MAX_OVERLAY_Z_INDEX`                   | 2147483646                      | Click overlay z-index       |
 | `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5                               | Failures before trip        |
 | `PORT_RECONNECT_MAX_ATTEMPTS`           | 10                              | Max reconnect attempts      |
@@ -214,28 +213,24 @@ const quickTabsSessionState = {
 
 **v1.6.4-v5:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
 `GO_TO_TAB_CROSS_CONTAINER:`, `GO_TO_TAB_SIDEBAR_REOPEN:`,
-`[Settings] CLEAR_LOG_HISTORY:`,
-`[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`
+`[Settings] CLEAR_LOG_HISTORY:`, `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
+`[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`, `[Manager] METRICS_FOOTER_LOADED:`,
+`METRICS_FOOTER_SAVED:`
 
-**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`, `CONTAINER_NAME_RESOLVED:`,
-`[Background] CONTEXT_MENU:`, `SNAPSHOT_STORED:`, `SNAPSHOT_INCLUDED:`
+**v1.6.4-v4:** `CONTAINER_FILTER:`, `CONTEXT_MENU:`, `SNAPSHOT_*:`
 
-**v1.6.4:** `[Manager] DRAG_DROP:`, `TRANSFER_QUICK_TAB:`,
-`DUPLICATE_QUICK_TAB:`, `MOVE_TO_CURRENT_TAB:`, `QUICKTAB_ORDER:`,
-`EMPTY_STATE_TRANSITION:`
+**v1.6.4:** `DRAG_DROP:`, `TRANSFER_QUICK_TAB:`, `QUICKTAB_ORDER:`
 
-**Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`,
-`[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`
+**Core:** `STORAGE_ONCHANGED`, `STATE_SYNC`, `MSG_ROUTER`, `HYDRATION`,
+`CIRCUIT_BREAKER_*`, `PORT_RECONNECT_*`
 
 ---
 
 ## 🏗️ Key Patterns
 
-Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
-machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
-container isolation, container filter, z-index recycling, port messaging,
-factory patterns, lookup tables, in-memory state, push notifications, circuit
-breaker, port routing, sidebar URL detection, context menu.
+Promise sequencing, debounced drag, per-tab scoping, state machine, Single Writer
+Authority, container isolation, port messaging, in-memory state, circuit breaker,
+port routing, context menu.
 
 ---
 
@@ -275,14 +270,11 @@ breaker, port routing, sidebar URL detection, context menu.
 
 ## 🔧 MCP & Testing
 
-**MCPs:** CodeScene (code health), Context7 (JavaScript API docs), Perplexity
-(research)
+**MCPs:** CodeScene, Context7 (JS API docs), Perplexity
 
-**Context7 Usage:** Use for JavaScript, ES6, Web API, and browser extension API
-documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
-"Map", "Promise", "storage.local", "tabs.sendMessage", etc.
+**Context7:** Search standard APIs (Map, Promise, storage.local) NOT "Quick Tabs"
 
-**Testing:** `npm test` (Jest), `npm run lint` (ESLint), `npm run build`
+**Testing:** `npm test` | `npm run lint` | `npm run build`
 
 ---
 
