@@ -1408,7 +1408,8 @@ filtered view after the transfer.
 **Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab
 in a different Firefox Container, the browser now properly switches focus to
 that tab. Previously, the API calls succeeded but the sidebar retained focus,
-making it appear like nothing happened.
+making it appear like nothing happened. This fix also ensures compatibility with
+Zen Browser, which has similar focus retention issues.
 
 ### Setup
 
@@ -1442,7 +1443,8 @@ Firefox WebExtension sidebars have a known limitation where they retain focus
 even after `browser.tabs.update()` and `browser.windows.update()` calls succeed.
 The API calls work correctly (logs show `GO_TO_TAB_SUCCESS`), but the sidebar
 panel keeps input focus, which prevents the user from interacting with the
-newly-active tab.
+newly-active tab. Zen Browser exhibits the same behavior as it is built on
+Firefox.
 
 ### Implementation Details
 
@@ -1450,12 +1452,14 @@ newly-active tab.
 
 1. `_handleGoToTabGroup()` closes sidebar after Go to Tab click
 2. No automatic sidebar reopen - user re-opens manually when needed
-3. Logs cross-container vs same-container context for debugging
+3. Logs cross-container vs same-container context for debugging:
+   `[Manager] GO_TO_TAB: Cross-container switch detected, currentContainer={id}, targetContainer={id}`
 4. The tab switch API calls remain the same (window focus + tab activate)
 
 **Key Logs:**
 
 - `[Manager] GO_TO_TAB_CLICKED` shows click registered with container context
+- `[Manager] GO_TO_TAB: Cross-container switch detected` logs container IDs
 - `[Manager] GO_TO_TAB_SUCCESS` confirms API calls succeeded
 - Browser focus now properly transfers to the selected tab
 
@@ -1566,6 +1570,112 @@ newly-active tab.
 - `_createDuplicateQuickTab()` sets `originContainerId` and `cookieStoreId`
 - Ensures duplicated Quick Tabs appear in correct container filter view
 - Fixes "ghost Quick Tab" bug where duplicates appeared in wrong container
+
+---
+
+## Scenario 41: Right-Click Context Menu for Quick Tab Management (v1.6.4-v4)
+
+**Category:** Quick Tabs Management - Browser Integration  
+**Feature:** Right-click context menu for bulk Quick Tab operations  
+**Version:** v1.6.4-v4
+
+### Setup
+
+1. Open browser tab WP 1 and create 3 Quick Tabs (WP QT 1, WP QT 2, WP QT 3)
+2. All Quick Tabs are visible on screen
+
+### Test Steps
+
+1. Right-click anywhere on the WP 1 page content
+2. Observe the browser context menu
+3. Click "Close All Quick Tabs on This Tab" menu item
+4. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                        |
+| ---- | ------------------------------------------------------------- |
+| 2    | Context menu shows "Close All Quick Tabs on This Tab" option  |
+| 2    | Context menu shows "Minimize All Quick Tabs on This Tab" option |
+| 3    | All 3 Quick Tabs on WP 1 are closed                           |
+| 3    | Quick Tabs on other browser tabs remain unaffected            |
+| 3    | Manager shows WP 1 group is now empty or removed              |
+
+### Minimize All via Context Menu
+
+1. Open WP 2 and create 2 Quick Tabs (WP QT 4, WP QT 5)
+2. Right-click and select "Minimize All Quick Tabs on This Tab"
+3. All Quick Tabs minimize (disappear from viewport, shown in Manager)
+4. Quick Tabs in WP 1 remain unaffected
+
+### Key Implementation Details
+
+**Background (`background.js`):**
+
+1. `_initializeContextMenus()` called during extension initialization
+2. Uses `browser.menus` API (manifest already has "menus" permission)
+3. Creates two menu items: "Close All Quick Tabs on This Tab" and "Minimize All Quick Tabs on This Tab"
+4. Menu items only appear when right-clicking on page content (not links, images)
+5. Click handlers send close/minimize commands to the current tab only
+
+**Key Logs:**
+
+- `[Background] CONTEXT_MENU: Initializing context menu items`
+- `[Background] CONTEXT_MENU: Close all clicked for tabId={id}`
+- `[Background] CONTEXT_MENU: Minimize all clicked for tabId={id}`
+
+---
+
+## Scenario 42: Minimized Quick Tab Restore After Cross-Tab Transfer (v1.6.4-v4)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** Transferred minimized Quick Tabs can be restored correctly  
+**Version:** v1.6.4-v4
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Minimize WP QT 1 (click minimize button or via Manager)
+3. Open browser tab YT 1
+4. Open Quick Tabs Manager
+
+### Test Steps
+
+1. In Manager, drag WP QT 1 from WP 1 group to YT 1 group (transfer)
+2. Observe WP QT 1 now appears under YT 1 group in Manager
+3. Click "Restore" button on WP QT 1 in the YT 1 group
+4. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                      |
+| ---- | ----------------------------------------------------------- |
+| 1    | WP QT 1 transfers from WP 1 to YT 1 successfully            |
+| 2    | WP QT 1 listed under YT 1 group with minimized indicator 🟡 |
+| 3    | WP QT 1 appears visible in YT 1 viewport                    |
+| 3    | WP QT 1 shows active indicator 🟢 in Manager                |
+| 3    | No console errors about missing Quick Tab tracking          |
+
+### Root Cause Analysis
+
+When a Quick Tab is transferred between tabs while minimized, the receiving
+tab's content script needs to track the Quick Tab for future restore commands.
+Previously, transferred Quick Tabs weren't tracked, causing restore commands
+to fail silently because the content script didn't know about the Quick Tab.
+
+### Key Implementation Details
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` now calls `_trackAdoptedQuickTab()`
+2. `_trackAdoptedQuickTab()` adds Quick Tab to local tracking map
+3. Ensures restore commands via port messaging can find the Quick Tab
+4. Works for both minimized and visible transferred Quick Tabs
+
+**Key Logs:**
+
+- `[Content] ADOPTED_QUICK_TAB_TRACKED: quickTabId={id}, originTabId={tabId}`
+- `[Content] RESTORE_QUICK_TAB: Found tracked adopted Quick Tab`
 
 ---
 

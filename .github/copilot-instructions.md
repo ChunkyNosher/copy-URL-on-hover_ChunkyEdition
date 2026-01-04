@@ -17,6 +17,7 @@
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Container Filter** - Filter Quick Tabs by container in Manager (v1.6.4-v4)
+- **Context Menu** - Right-click context menu for bulk Quick Tab operations
 - **Ephemeral Storage** - Quick Tabs stored in-memory, NOT persisted to disk
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
@@ -24,30 +25,23 @@
 **v1.6.4-v4 Features (CURRENT):**
 
 - **Go to Tab Cross-Container Fix** - Sidebar stays closed after Go to Tab click
-  for proper focus transfer; container context logging added
-- **Minimize All Button** - New ⏬ button in tab group headers minimizes all
-  Quick Tabs in that group
+  for proper focus transfer; cross-container logging for Zen Browser
+- **Minimized Drag Restore Fix** - `_trackAdoptedQuickTab()` ensures restore
+  commands work after cross-tab transfer
+- **Right-Click Context Menu** - "Close All" and "Minimize All" Quick Tabs via
+  `browser.menus` API (`_initializeContextMenus()` in background.js)
+- **Minimize All Button** - New ⏬ button in tab group headers
 - **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
   duplicates instead of moving
 - **Duplicate Container Fix** - Duplicated Quick Tabs now have correct
   `originContainerId` for proper filtering
 
-**v1.6.4-v4 Container Features:**
+**v1.6.4-v4 Container Features:** Container Filter Dropdown, Container Badge,
+Name Resolution via contextualIdentities, ContainerManager.js module,
+Filter Persistence (`quickTabsContainerFilter`), Go to Tab focus sequence
 
-- **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
-  Manager header (default: "All Containers")
-- **Container Indicator Badge** - Shows container name/color in "All Containers"
-  view
-- **Container Name Resolution** - Shows actual names (Shopping, Work) via
-  contextualIdentities API
-- **ContainerManager.js** - New module (9.68) with container isolation/filtering
-- **Filter Persistence** - Selection saved to `quickTabsContainerFilter`
-- **Go to Tab** - `browser.windows.update()` + `browser.tabs.update()` sequence;
-  sidebar stays closed for reliable focus transfer
-
-**v1.6.4-v4 Bug Fixes:** Container filter fix (`buildQuickTabData()`),
-"firefox-default" dropdown removal, tab group drag-drop bubble fix, container
-switch refresh fix, auto-detect indicator, Go to Tab cross-container focus
+**v1.6.4-v4 Bug Fixes:** Container filter fix, dropdown cleanup, drag-drop
+bubble fix, container switch refresh, auto-detect indicator
 
 **v1.6.4-v3:** Metrics footer, DEBOUNCE logging, title/state fixes
 
@@ -117,7 +111,11 @@ const quickTabsSessionState = {
 ### v1.6.4-v4 Patterns (Current)
 
 - **Go to Tab Focus Fix** - Sidebar stays closed after Go to Tab for proper
-  focus transfer; container context logging added
+  focus transfer; cross-container logging for Zen Browser compatibility
+- **Minimized Drag Restore** - `_trackAdoptedQuickTab()` in content.js
+  `_handleQuickTabTransferredIn()` tracks transferred Quick Tabs for restore
+- **Context Menu** - `_initializeContextMenus()` adds "Close All" and "Minimize
+  All" browser context menu items via `browser.menus` API
 - **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
   in a tab group
 - **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
@@ -209,6 +207,9 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
+**v1.6.4-v4 Logging:** `[Manager] GO_TO_TAB: Cross-container switch detected`,
+`[Background] CONTEXT_MENU:`, `[Content] ADOPTED_QUICK_TAB_TRACKED:`
+
 **v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`,
 `[Manager] CONTAINER_NAME_RESOLVED:`
 
@@ -231,14 +232,9 @@ const quickTabsSessionState = {
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
 machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
-error telemetry, originTabId resolution, container isolation, container filter,
-z-index recycling, port messaging, factory patterns, lookup tables, generic
-wrapper functions, in-memory state, push notifications, port roundtrip tracking,
-circuit breaker, priority queue, timeout backoff, rolling heartbeat window,
-sequence number tracking, port reconnection circuit breaker, defensive input
-validation, circuit breaker auto-reset, listener registration guards, message
-timeout protection, optimistic UI updates, render lock, orphan recovery UI,
-state version tracking, port routing, sidebar URL detection.
+container isolation, container filter, z-index recycling, port messaging, factory
+patterns, lookup tables, in-memory state, push notifications, circuit breaker,
+port routing, sidebar URL detection, context menu.
 
 ---
 
