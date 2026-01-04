@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v4  
+**Version:** 1.6.4-v5  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -22,7 +22,18 @@
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4-v4 Features (CURRENT):**
+**v1.6.4-v5 Features (CURRENT):**
+
+- **Go to Tab Same-Container Fix** - Sidebar stays open for same-container tab
+  switches
+- **Go to Tab Cross-Container Reopen** - Sidebar closes, tab switches, sidebar
+  reopens after 300ms for cross-container switches
+- **Toggle Sidebar Context Menu** - "Toggle Quick Tabs Manager" right-click menu
+  item using `browser.sidebarAction.toggle()`
+- **Minimized Transfer Window Fix** - `updateTransferredSnapshotWindow()` enables
+  restore after cross-container transfer
+
+**v1.6.4-v4 Features:**
 
 - **Go to Tab Cross-Container Fix** - `sidebarAction.close()` called synchronously
   FIRST for proper focus transfer; Zen Browser compatible
@@ -109,31 +120,26 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v4 Patterns (Current)
+### v1.6.4-v5 Patterns (Current)
 
-- **Go to Tab Focus Fix** - `sidebarAction.close()` called synchronously FIRST
-  in `_handleGoToTabGroup()` before async ops; Zen Browser compatible
-- **Minimized Drag Restore** - `minimizedSnapshots` in `quickTabsSessionState`;
-  `storeTransferredSnapshot()` in MinimizedManager; snapshot sent via
-  `QUICKTAB_MINIMIZED` and included in `QUICK_TAB_TRANSFERRED_IN`
-- **Context Menu** - `_initializeContextMenus()` adds "Close All" and "Minimize
-  All" browser context menu items via `browser.menus` API
-- **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
-  in a tab group
-- **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
-  duplicate vs move
-- **Duplicate Container** - `_createDuplicateQuickTab()` sets
-  `originContainerId`
-- **Container Filter** - `_filterQuickTabsByContainer()`,
-  `_containerFilterDropdown` (default: "all")
-- **Container Badge** - `_createContainerBadge()` in ContainerManager.js
-- **Name Resolution** - `_getContainerNameByIdAsync()`,
-  `_getContainerNameSync()`
-- **Context Change** - `_onContainerContextChanged()` calls
-  `requestAllQuickTabsViaPort()` for fresh data
-- **Persistence** - `quickTabsContainerFilter` storage key
-- **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()`
-- **Drag Bubble** - Tab-group drag events bubble past Quick Tab item handlers
+- **Go to Tab Same-Container** - `_getGoToTabContainerContext()` extracts container
+  context; sidebar stays open for same-container switches
+- **Go to Tab Cross-Container** - `_handleGoToTabSidebarClose()` conditionally
+  closes sidebar, then reopens after 300ms for cross-container switches
+- **Toggle Sidebar Menu** - "Toggle Quick Tabs Manager" context menu item via
+  `browser.sidebarAction.toggle()`
+- **Minimized Transfer Window** - `updateTransferredSnapshotWindow()` updates
+  snapshot window reference after cross-container transfer
+
+### v1.6.4-v4 Patterns
+
+- **Go to Tab Focus Fix** - `sidebarAction.close()` FIRST; Zen Browser compatible
+- **Minimized Drag Restore** - `minimizedSnapshots`, `storeTransferredSnapshot()`
+- **Context Menu** - `_initializeContextMenus()` for "Close All"/"Minimize All"
+- **Minimize All** - `_handleMinimizeAllInTabGroup()`
+- **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey
+- **Container Filter/Badge** - `_filterQuickTabsByContainer()`, ContainerManager.js
+- **Name Resolution** - `_getContainerNameByIdAsync()`, `_getContainerNameSync()`
 
 ### v1.6.4-v3 Patterns
 
@@ -180,7 +186,7 @@ const quickTabsSessionState = {
 | MessageRouter        | ACTION-based routing                                |
 | EventBus             | `on()`, `off()`, `emit()`, `once()`                 |
 | StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`            |
-| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()` |
+| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_getGoToTabContainerContext()` |
 | CreateHandler        | `getWritingContainerId()` (v3)                      |
 | TestBridge           | `getManagerState()` (v3)                            |
 
@@ -204,6 +210,10 @@ const quickTabsSessionState = {
 ---
 
 ## 📝 Logging Prefixes
+
+**v1.6.4-v5 Logging:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
+`[Manager] GO_TO_TAB_CROSS_CONTAINER:`, `[Manager] GO_TO_TAB_SIDEBAR_REOPEN:`,
+`[Background] CONTEXT_MENU: Toggle sidebar clicked`
 
 **v1.6.4-v4 Logging:** `[Manager] GO_TO_TAB: Cross-container switch detected`,
 `[Background] CONTEXT_MENU:`, `[Background] SNAPSHOT_STORED:`,
