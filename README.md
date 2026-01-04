@@ -105,7 +105,8 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 **🔧 Drag-and-Drop Manager + Cross-Tab Transfer ✅**
 
-- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via drag-and-drop
+- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via
+  drag-and-drop
 - ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another
 - ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
 - ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items

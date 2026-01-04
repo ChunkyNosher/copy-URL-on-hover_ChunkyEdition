@@ -1955,12 +1955,12 @@ returns `tabWindow` directly
 
 ### Expected Behavior
 
-| Step | Result                                                     |
-| ---- | ---------------------------------------------------------- |
-| 1    | WP QT 1 transfers to YT 1 successfully                     |
-| 3    | WP QT 1 appears at (300, 200) in YT 1 viewport             |
+| Step | Result                                                         |
+| ---- | -------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 successfully                         |
+| 3    | WP QT 1 appears at (300, 200) in YT 1 viewport                 |
 | 3    | `updateTransferredSnapshotWindow()` called with correct window |
-| 3    | No "Cannot read property 'tabWindow' of undefined" errors  |
+| 3    | No "Cannot read property 'tabWindow' of undefined" errors      |
 
 ### Root Cause Analysis
 
@@ -1974,7 +1974,8 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 1. `_handleQuickTabTransferredIn()` receives minimizedSnapshot from background
 2. Calls `createQuickTab()` which returns `tabWindow` directly
-3. Passes `result` (not `result?.tabWindow`) to `updateTransferredSnapshotWindow()`
+3. Passes `result` (not `result?.tabWindow`) to
+   `updateTransferredSnapshotWindow()`
 4. Snapshot window reference is properly updated for restore
 
 **Key Logs:**
@@ -2003,12 +2004,12 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 ### Expected Behavior
 
-| Step | Result                                                |
-| ---- | ----------------------------------------------------- |
-| 2    | Error is caught by `.catch()` handler                 |
-| 2    | No unhandled promise rejection in console             |
-| 2    | Error logged with context (tabId, containerId)        |
-| 2    | UI remains responsive and doesn't freeze              |
+| Step | Result                                         |
+| ---- | ---------------------------------------------- |
+| 2    | Error is caught by `.catch()` handler          |
+| 2    | No unhandled promise rejection in console      |
+| 2    | Error logged with context (tabId, containerId) |
+| 2    | UI remains responsive and doesn't freeze       |
 
 ### Key Implementation Details
 
@@ -2044,14 +2045,14 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 ### Expected Behavior
 
-| Step | Result                                                              |
-| ---- | ------------------------------------------------------------------- |
-| 2    | `confirm()` dialog appears with message about clearing logs         |
-| 2    | Message: "Clear all log history? This will clear background logs,   |
-|      | content script logs, and manager logs. This cannot be undone."      |
-| 3    | Logs are NOT cleared (cancel respected)                             |
-| 5    | Logs are cleared                                                    |
-| 5    | Status message shows actual counts (see Scenario 50)                |
+| Step | Result                                                            |
+| ---- | ----------------------------------------------------------------- |
+| 2    | `confirm()` dialog appears with message about clearing logs       |
+| 2    | Message: "Clear all log history? This will clear background logs, |
+|      | content script logs, and manager logs. This cannot be undone."    |
+| 3    | Logs are NOT cleared (cancel respected)                           |
+| 5    | Logs are cleared                                                  |
+| 5    | Status message shows actual counts (see Scenario 50)              |
 
 ### Key Implementation Details
 
@@ -2083,11 +2084,11 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 ### Expected Behavior
 
-| Step | Result                                                        |
-| ---- | ------------------------------------------------------------- |
-| 2    | Status shows "Cleared X background logs"                      |
-| 2    | Status shows "and logs from Y tabs" where Y is the tab count  |
-| 2    | If no logs existed: "No cached logs were present"             |
+| Step | Result                                                       |
+| ---- | ------------------------------------------------------------ |
+| 2    | Status shows "Cleared X background logs"                     |
+| 2    | Status shows "and logs from Y tabs" where Y is the tab count |
+| 2    | If no logs existed: "No cached logs were present"            |
 
 ### Key Implementation Details
 

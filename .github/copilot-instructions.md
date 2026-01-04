@@ -139,7 +139,8 @@ const quickTabsSessionState = {
 
 - **Go to Tab Focus Fix** - `sidebarAction.close()` FIRST; Zen Browser
   compatible
-- **Minimized Drag Restore** - `minimizedSnapshots`, `storeTransferredSnapshot()`
+- **Minimized Drag Restore** - `minimizedSnapshots`,
+  `storeTransferredSnapshot()`
 - **Context Menu** - `_initializeContextMenus()` for "Close All"/"Minimize All"
 - **Container Filter/Badge** - `_filterQuickTabsByContainer()`, ContainerManager
 
@@ -213,13 +214,15 @@ const quickTabsSessionState = {
 
 **v1.6.4-v5:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
 `GO_TO_TAB_CROSS_CONTAINER:`, `GO_TO_TAB_SIDEBAR_REOPEN:`,
-`[Settings] CLEAR_LOG_HISTORY:`, `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`
+`[Settings] CLEAR_LOG_HISTORY:`,
+`[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`
 
 **v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`, `CONTAINER_NAME_RESOLVED:`,
 `[Background] CONTEXT_MENU:`, `SNAPSHOT_STORED:`, `SNAPSHOT_INCLUDED:`
 
-**v1.6.4:** `[Manager] DRAG_DROP:`, `TRANSFER_QUICK_TAB:`, `DUPLICATE_QUICK_TAB:`,
-`MOVE_TO_CURRENT_TAB:`, `QUICKTAB_ORDER:`, `EMPTY_STATE_TRANSITION:`
+**v1.6.4:** `[Manager] DRAG_DROP:`, `TRANSFER_QUICK_TAB:`,
+`DUPLICATE_QUICK_TAB:`, `MOVE_TO_CURRENT_TAB:`, `QUICKTAB_ORDER:`,
+`EMPTY_STATE_TRANSITION:`
 
 **Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`,
 `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`
