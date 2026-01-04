@@ -1,0 +1,2698 @@
+================================================================================
+Copy URL on Hover - Extension Console Logs
+================================================================================
+
+Version: 1.6.4-v4
+Export Date: 2026-01-04T20:05:03.363Z
+Export Date (Local): 1/4/2026, 3:05:03 PM
+First Log: 2026-01-04T20:04:48.148Z
+First Log (Local): 1/4/2026, 3:04:48 PM
+Total Logs: 475
+
+================================================================================
+[2026-01-04T20:04:48.148Z] [LOG  ] [Manager] METRICS: Settings loaded {
+  "enabled": true,
+  "intervalMs": 1000
+}
+[2026-01-04T20:04:48.148Z] [LOG  ] [Manager] METRICS: Starting interval {
+  "intervalMs": 1000
+}
+[2026-01-04T20:04:48.148Z] [LOG  ] [Manager] METRICS: Initialization complete
+[2026-01-04T20:04:48.148Z] [LOG  ] [Manager] [SYNC] Requesting immediate state sync on open
+[2026-01-04T20:04:48.148Z] [LOG  ] [Manager] v1.6.4-v4 Container isolation + Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit + Scroll persistence initialized
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 105,
+  "extensions": 4,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557088144,
+  "debounceSetTimestamp": 1767557088145,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557088144,
+  "debounceSetTimestamp": 1767557088145,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] Debounce render proceeding: hash changed {
+  "previousHash": 0,
+  "newHash": 1020844525
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_DEBUG: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "tabsToCheck": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557048430-10v0mo91qw4bmj",
+      "originContainerId": "firefox-container-7",
+      "hasOriginContainerId": true
+    }
+  ]
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_APPLIED: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "targetContainerName": "Technical/Advanced Research",
+  "totalTabs": 6,
+  "filteredTabs": 5
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] RENDER_DATA_SOURCE: {
+  "source": "port",
+  "unfilteredCount": 6,
+  "filteredCount": 5,
+  "containerFilter": "current",
+  "currentContainerId": "firefox-container-9"
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] RENDER_INPUT_DATA: {
+  "tabCount": 5,
+  "quickTabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ],
+  "originTabIds": [
+    574,
+    574,
+    575,
+    575,
+    575
+  ],
+  "dataSource": "port",
+  "timestamp": 1767557088249
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] RENDER_UI: entry {
+  "triggerReason": "direct",
+  "tabCount": 5,
+  "dataSource": "port",
+  "timestamp": 1767557088249
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] UI Rebuild starting: {
+  "totalTabs": 5,
+  "activeCount": 4,
+  "minimizedCount": 1,
+  "cacheCount": 2,
+  "lastRenderedHash": 1020844525,
+  "trigger": "_renderUIImmediate()",
+  "timestamp": 1767557088249
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] UI List contents: {
+  "activeTabIds": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "url": "https://en.wikipedia.org/wiki/Archipelago"
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "url": "https://en.wikipedia.org/wiki/Japanese_Paleolithic"
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "url": "https://en.wikipedia.org/wiki/Livestreaming"
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "url": "https://en.wikipedia.org/wiki/Hololive_Production"
+    }
+  ],
+  "minimizedTabIds": [
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "minimized": true
+    }
+  ]
+}
+[2026-01-04T20:04:48.249Z] [LOG  ] [Manager] Last sync updated: {
+  "timestamp": 1767557088144,
+  "formatted": "3:04:48 PM",
+  "totalTabs": 5
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_START: {
+  "totalTabsToGroup": 5,
+  "tabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ]
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUPING_COMPLETE: {
+  "totalTabs": 5,
+  "groupCount": 2,
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupSummary": {
+    "574": {
+      "tabCount": 2,
+      "tabIds": [
+        "qt-574-1767557033432-1htn9r91cd5z0r",
+        "qt-574-1767557033870-1q9ulgfw9tkhp"
+      ]
+    },
+    "575": {
+      "tabCount": 3,
+      "tabIds": [
+        "qt-575-1767557022475-sdmvn716se6h",
+        "qt-575-1767557022948-nsnw5pgrjm1f",
+        "qt-1794-1767557047757-13k9xmd359hxf"
+      ]
+    }
+  }
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUP_ORDER_APPLYING: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupKeyTypes": [
+    "number",
+    "number"
+  ]
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUP_ORDER_KEY_NOT_FOUND: {
+  "tabId": "1794",
+  "triedFormats": [
+    "1794",
+    1794,
+    "1794"
+  ],
+  "availableKeys": [
+    574,
+    575
+  ]
+}
+[2026-01-04T20:04:48.250Z] [LOG  ] [Manager] GROUP_ORDER_APPLIED: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "resultOrder": [
+    575,
+    574
+  ],
+  "inputGroupCount": 2,
+  "outputGroupCount": 2,
+  "timestamp": 1767557088250
+}
+[2026-01-04T20:04:48.254Z] [LOG  ] [Manager][Display] GROUPING: Organizing Quick Tabs by originTabId {
+  "totalQuickTabs": null,
+  "groups": [
+    {
+      "originTabId": 575
+    },
+    {
+      "originTabId": 574
+    }
+  ]
+}
+[2026-01-04T20:04:48.254Z] [LOG  ] [Manager] Issue #1: Rendering groups directly (no global header) {
+  "groupCount": 2,
+  "groupKeys": [
+    575,
+    574
+  ]
+}
+[2026-01-04T20:04:48.255Z] [LOG  ] [Manager] RESORT_SKIPPED: User group order is defined, preserving user order
+[2026-01-04T20:04:48.255Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 2,
+  "minimizedCount": 1,
+  "hasBothSections": true,
+  "isOpen": true,
+  "timestamp": 1767557088255
+}
+[2026-01-04T20:04:48.255Z] [LOG  ] [Manager] Section header inserted: Active {
+  "count": 2
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] Section header inserted: Minimized {
+  "count": 1
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "isMinimized": true,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "buttons": [
+    "restore",
+    "close"
+  ],
+  "buttonCount": 2
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 2,
+  "minimizedCount": 0,
+  "hasBothSections": false,
+  "isOpen": true,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] DRAG_DROP: Event listeners attached {
+  "tabGroups": 2,
+  "quickTabItems": 5,
+  "timestamp": 1767557088256
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [RENDER_PERF] Render completed: {
+  "totalDurationMs": 7,
+  "phases": {
+    "groupingMs": 0,
+    "collapseStateMs": 4,
+    "domManipulationMs": 2
+  },
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "isSlowRender": false
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] RENDER_UI: exit {
+  "triggerReason": "direct",
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "durationMs": 7
+}
+[2026-01-04T20:04:48.256Z] [LOG  ] [Manager] UI Rebuild complete: {
+  "renderedActive": 4,
+  "renderedMinimized": 1,
+  "groupCount": 2,
+  "newHash": 1020844525,
+  "durationMs": 7
+}
+[2026-01-04T20:04:50.161Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:04:50.169Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 8
+}
+[2026-01-04T20:04:50.169Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:04:50.270Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 101,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:50.270Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557088144,
+  "debounceSetTimestamp": 1767557090169,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:50.270Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557088144,
+  "debounceSetTimestamp": 1767557090169,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:50.270Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 4,
+  "tabCount": 2
+}
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] ┌─────────────────────────────────────────────────────────
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] │ QUICK_TAB_ACTION_BUTTON_CLICKED
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] │ Action: restore
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] │ QuickTabId: qt-1794-1767557047757-13k9xmd359hxf
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] │ ShiftKey: false
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] │ Timestamp: 2026-01-04T20:04:50.624Z
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] └─────────────────────────────────────────────────────────
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] QUICK_TAB_BUTTON_CLICKED: {
+  "action": "restore",
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "shiftKey": false,
+  "buttonText": "↑",
+  "buttonTitle": "Restore",
+  "buttonDisabled": false,
+  "timestamp": 1767557090624,
+  "portConnected": true,
+  "currentBrowserTabId": 574
+}
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] OPTIMISTIC_UI_UPDATE: {
+  "action": "restore",
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "timestamp": 1767557090624,
+  "phase": "applying_immediate_visual_feedback"
+}
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] OPTIMISTIC_UI_APPLIED: restor {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "classes": "restoring, operation-pending"
+}
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] ACTION_DISPATCH: restore via port {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "timestamp": 1767557090624
+}
+[2026-01-04T20:04:50.624Z] [LOG  ] [Manager] RESTORE_QUICK_TAB_VIA_PORT_CALLED: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "timestamp": 1767557090624,
+  "portConnected": true,
+  "portCircuitBreakerTripped": false
+}
+[2026-01-04T20:04:50.625Z] [LOG  ] [Sidebar] QUICK_TAB_PORT_MESSAGE_SENT: RESTORE_QUICK_TAB {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "timestamp": 1767557090624,
+  "method": "port",
+  "hasRoundtripTracking": true
+}
+[2026-01-04T20:04:50.625Z] [LOG  ] [Manager] RESTORE_QUICK_TAB_VIA_PORT_RESULT: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "success": true,
+  "timestamp": 1767557090625,
+  "roundtripStarted": true
+}
+[2026-01-04T20:04:50.625Z] [LOG  ] [Manager] ACTION_SENT: restore {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "durationMs": 1
+}
+[2026-01-04T20:04:50.628Z] [LOG  ] [PORT_HANDLER_ENTRY] type=RESTORE_QUICK_TAB_ACK, correlationId=none, timestamp=1767557090628 {
+  "type": "RESTORE_QUICK_TAB_ACK",
+  "correlationId": null,
+  "timestamp": 1767557090628,
+  "messageTimestamp": 1767557090626,
+  "payloadSize": 124,
+  "source": "background",
+  "sequence": null,
+  "expectedSequence": 1,
+  "sequenceStatus": "no_sequence"
+}
+[2026-01-04T20:04:50.628Z] [LOG  ] [Sidebar] QUICK_TAB_ACK_RECEIVED: RESTORE {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "success": true,
+  "roundtripMs": 4,
+  "responseTimestamp": 1767557090626,
+  "sentAt": 1767557090624,
+  "sentCorrelationId": "port-1767557090624-02hmbx6",
+  "responseCorrelationId": null,
+  "correlationMatch": false
+}
+[2026-01-04T20:04:50.628Z] [LOG  ] [Sidebar] PENDING_OPERATION_CLEARED_BY_ACK: {
+  "operationKey": "restore-qt-1794-1767557047757-13k9xmd359hxf",
+  "ackType": "RESTORE",
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [PORT_HANDLER_EXIT] type=RESTORE_QUICK_TAB_ACK, outcome=success, durationMs=0.00 {
+  "type": "RESTORE_QUICK_TAB_ACK",
+  "correlationId": null,
+  "outcome": "success",
+  "durationMs": "0.00"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [PORT_HANDLER_ENTRY] type=STATE_CHANGED, correlationId=broadcast-1767557090627-5kx2w, timestamp=1767557090629 {
+  "type": "STATE_CHANGED",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "timestamp": 1767557090629,
+  "messageTimestamp": 1767557090627,
+  "payloadSize": 2367,
+  "source": "background",
+  "sequence": null,
+  "expectedSequence": 1,
+  "sequenceStatus": "no_sequence"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED: {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "tabCount": 6,
+  "isValidArray": true,
+  "previousTabCount": 6
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] STATE_SYNC_CROSS_TAB_AGGREGATION: {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "totalQuickTabs": 6,
+  "originTabCount": 3,
+  "quickTabsPerOriginTab": {
+    "tab-574": 2,
+    "tab-575": 3,
+    "tab-1794": 1
+  },
+  "message": "Received 6 Quick Tabs from 3 browser tabs"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] state-changed-notification: 6 Quick Tabs
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] Quick Tabs state updated from port: {
+  "tabCount": 6,
+  "timestamp": 1767557090629
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] v1.6.4 STATE_VERSION_INCREMENT: {
+  "newVersion": 5,
+  "source": "state-changed-notification",
+  "timestamp": 1767557090629
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] STATE_SYNC_PATH_RENDER_TRIGGERED: {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "tabCount": 6,
+  "latencyMs": 0
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] DEBOUNCE_HASH_COMPUTED: {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "hashValue": -807902348,
+  "previousHash": 1020844525,
+  "hashChanged": true,
+  "stateTabCount": 6
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] RENDER_SCHEDULED: Hash changed {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "previousHash": 1020844525,
+  "currentHash": -807902348
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] ┌─────────────────────────────────────────────────────────
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] │ RENDER_SCHEDULED
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] │ Source: state-changed-notification
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] │ TabCount: 6 (minimized: 0)
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] │ CorrelationId: broadcast-1767557090627-5kx2w
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] └─────────────────────────────────────────────────────────
+[2026-01-04T20:04:50.629Z] [LOG  ] [Sidebar] DEBOUNCE_SCHEDULED: {
+  "timestamp": 1767557090629,
+  "source": "state-changed-notification",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "debounceId": "render-1767557090629",
+  "delayMs": 100,
+  "reason": "hash_changed"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [Manager] RENDER_SCHEDULED: {
+  "source": "state-changed-notification",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "newHash": -807902348,
+  "previousHash": 1020844525,
+  "tabCount": 6,
+  "minimizedCount": 0,
+  "timestamp": 1767557090629
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [PORT_HANDLER_EXIT] type=STATE_CHANGED, outcome=success, durationMs=1.00 {
+  "type": "STATE_CHANGED",
+  "correlationId": "broadcast-1767557090627-5kx2w",
+  "outcome": "success",
+  "durationMs": "1.00"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [PORT_HANDLER_ENTRY] type=ACKNOWLEDGMENT, correlationId=port-1767557090624-02hmbx6, timestamp=1767557090629 {
+  "type": "ACKNOWLEDGMENT",
+  "correlationId": "port-1767557090624-02hmbx6",
+  "timestamp": 1767557090629,
+  "messageTimestamp": 1767557090627,
+  "payloadSize": 178,
+  "source": "background",
+  "sequence": null,
+  "expectedSequence": 1,
+  "sequenceStatus": "no_sequence"
+}
+[2026-01-04T20:04:50.629Z] [LOG  ] [PORT_HANDLER_EXIT] type=ACKNOWLEDGMENT, outcome=unknown_type, durationMs=0.00 {
+  "type": "ACKNOWLEDGMENT",
+  "correlationId": "port-1767557090624-02hmbx6",
+  "outcome": "unknown_type",
+  "durationMs": "0.00"
+}
+[2026-01-04T20:04:50.735Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 106,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:50.735Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557090629,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:50.735Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557090629,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:50.735Z] [LOG  ] [Manager] Debounce render proceeding: hash changed {
+  "previousHash": 1020844525,
+  "newHash": -807902348
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_DEBUG: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "tabsToCheck": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557048430-10v0mo91qw4bmj",
+      "originContainerId": "firefox-container-7",
+      "hasOriginContainerId": true
+    }
+  ]
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_APPLIED: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "targetContainerName": "Technical/Advanced Research",
+  "totalTabs": 6,
+  "filteredTabs": 5
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] RENDER_DATA_SOURCE: {
+  "source": "port",
+  "unfilteredCount": 6,
+  "filteredCount": 5,
+  "containerFilter": "current",
+  "currentContainerId": "firefox-container-9"
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] RENDER_INPUT_DATA: {
+  "tabCount": 5,
+  "quickTabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ],
+  "originTabIds": [
+    574,
+    574,
+    575,
+    575,
+    575
+  ],
+  "dataSource": "port",
+  "timestamp": 1767557090736
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] RENDER_UI: entry {
+  "triggerReason": "direct",
+  "tabCount": 5,
+  "dataSource": "port",
+  "timestamp": 1767557090736
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] UI Rebuild starting: {
+  "totalTabs": 5,
+  "activeCount": 5,
+  "minimizedCount": 0,
+  "cacheCount": 6,
+  "lastRenderedHash": -807902348,
+  "trigger": "_renderUIImmediate()",
+  "timestamp": 1767557090736
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] UI List contents: {
+  "activeTabIds": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "url": "https://en.wikipedia.org/wiki/Archipelago"
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "url": "https://en.wikipedia.org/wiki/Japanese_Paleolithic"
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "url": "https://en.wikipedia.org/wiki/Livestreaming"
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "url": "https://en.wikipedia.org/wiki/Hololive_Production"
+    },
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "url": "https://en.wikipedia.org/wiki/Serif#Old-style"
+    }
+  ],
+  "minimizedTabIds": []
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] Last sync updated: {
+  "timestamp": 1767557090629,
+  "formatted": "3:04:50 PM",
+  "totalTabs": 5
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_START: {
+  "totalTabsToGroup": 5,
+  "tabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ]
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUPING_COMPLETE: {
+  "totalTabs": 5,
+  "groupCount": 2,
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupSummary": {
+    "574": {
+      "tabCount": 2,
+      "tabIds": [
+        "qt-574-1767557033432-1htn9r91cd5z0r",
+        "qt-574-1767557033870-1q9ulgfw9tkhp"
+      ]
+    },
+    "575": {
+      "tabCount": 3,
+      "tabIds": [
+        "qt-575-1767557022475-sdmvn716se6h",
+        "qt-575-1767557022948-nsnw5pgrjm1f",
+        "qt-1794-1767557047757-13k9xmd359hxf"
+      ]
+    }
+  }
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUP_ORDER_APPLYING: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupKeyTypes": [
+    "number",
+    "number"
+  ]
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUP_ORDER_KEY_NOT_FOUND: {
+  "tabId": "1794",
+  "triedFormats": [
+    "1794",
+    1794,
+    "1794"
+  ],
+  "availableKeys": [
+    574,
+    575
+  ]
+}
+[2026-01-04T20:04:50.736Z] [LOG  ] [Manager] GROUP_ORDER_APPLIED: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "resultOrder": [
+    575,
+    574
+  ],
+  "inputGroupCount": 2,
+  "outputGroupCount": 2,
+  "timestamp": 1767557090736
+}
+[2026-01-04T20:04:50.737Z] [LOG  ] [Manager][Display] GROUPING: Organizing Quick Tabs by originTabId {
+  "totalQuickTabs": null,
+  "groups": [
+    {
+      "originTabId": 575
+    },
+    {
+      "originTabId": 574
+    }
+  ]
+}
+[2026-01-04T20:04:50.737Z] [LOG  ] [Manager] Issue #1: Rendering groups directly (no global header) {
+  "groupCount": 2,
+  "groupKeys": [
+    575,
+    574
+  ]
+}
+[2026-01-04T20:04:50.737Z] [LOG  ] [Manager] RESORT_SKIPPED: User group order is defined, preserving user order
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 3,
+  "minimizedCount": 0,
+  "hasBothSections": false,
+  "isOpen": true,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 2,
+  "minimizedCount": 0,
+  "hasBothSections": false,
+  "isOpen": true,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] DRAG_DROP: Event listeners attached {
+  "tabGroups": 2,
+  "quickTabItems": 5,
+  "timestamp": 1767557090738
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [RENDER_PERF] Render completed: {
+  "totalDurationMs": 2,
+  "phases": {
+    "groupingMs": 0,
+    "collapseStateMs": 1,
+    "domManipulationMs": 1
+  },
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "isSlowRender": false
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] RENDER_UI: exit {
+  "triggerReason": "direct",
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "durationMs": 2
+}
+[2026-01-04T20:04:50.738Z] [LOG  ] [Manager] UI Rebuild complete: {
+  "renderedActive": 5,
+  "renderedMinimized": 0,
+  "groupCount": 2,
+  "newHash": -807902348,
+  "durationMs": 2
+}
+[2026-01-04T20:04:52.179Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:04:52.179Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 0
+}
+[2026-01-04T20:04:52.179Z] [LOG  ] [Manager] Updated in-memory cache: {
+  "tabCount": 2,
+  "syncTimestamp": 1767557092179
+}
+[2026-01-04T20:04:52.179Z] [LOG  ] [Manager] HYDRATION_STARTED: {
+  "tabsFromStorage": 2,
+  "tabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp"
+  ],
+  "timestamp": 1767557092179
+}
+[2026-01-04T20:04:52.179Z] [LOG  ] [Manager] HYDRATION_VALIDATION: {
+  "tabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "status": "valid",
+  "originTabId": 574
+}
+[2026-01-04T20:04:52.180Z] [LOG  ] [Manager] HYDRATION_VALIDATION: {
+  "tabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "status": "valid",
+  "originTabId": 574
+}
+[2026-01-04T20:04:52.180Z] [LOG  ] [Manager] HYDRATION_COMPLETE: {
+  "originalCount": 2,
+  "resultingCount": 2,
+  "healthyTabs": 2,
+  "orphanedTabs": 0,
+  "blockedTabs": 0,
+  "delta": 0,
+  "timestamp": 1767557092180
+}
+[2026-01-04T20:04:52.180Z] [LOG  ] [Manager] v1.6.4 STATE_VERSION_INCREMENT: {
+  "newVersion": 6,
+  "source": "loadQuickTabsState",
+  "timestamp": 1767557092180
+}
+[2026-01-04T20:04:52.180Z] [LOG  ] [Manager] Loaded Quick Tabs state: {
+  "tabs": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "url": "https://en.wikipedia.org/wiki/Archipelago",
+      "title": "Archipelago - Wikipedia",
+      "left": 764,
+      "top": 529,
+      "width": 960,
+      "height": 540,
+      "zIndex": 1001,
+      "minimized": false,
+      "originTabId": 574,
+      "originContainerId": "firefox-container-9"
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "url": "https://en.wikipedia.org/wiki/Japanese_Paleolithic",
+      "title": "Japanese Paleolithic - Wikipedia",
+      "left": 343,
+      "top": 593,
+      "width": 960,
+      "height": 540,
+      "zIndex": 1003,
+      "minimized": false,
+      "originTabId": 574,
+      "originContainerId": "firefox-container-9"
+    }
+  ],
+  "timestamp": 1767557082146,
+  "saveId": "1767557082146-qhihub046",
+  "transactionId": "txn-1767557082146-574-6-9dd697f6",
+  "writingInstanceId": "inst-mk05tijf-22m-yqhs02-802ec58e",
+  "writingTabId": 574,
+  "_writeCorrelationId": "write-2026-01-04T20:04:42.146Z-m3h7jp"
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 105,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557092180,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557092180,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] Debounce render proceeding: hash changed {
+  "previousHash": -807902348,
+  "newHash": 1020844525
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_DEBUG: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "tabsToCheck": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "originContainerId": "firefox-container-9",
+      "hasOriginContainerId": true
+    },
+    {
+      "id": "qt-1794-1767557048430-10v0mo91qw4bmj",
+      "originContainerId": "firefox-container-7",
+      "hasOriginContainerId": true
+    }
+  ]
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [ContainerManager] CONTAINER_FILTER_APPLIED: {
+  "filter": "current",
+  "targetContainerId": "firefox-container-9",
+  "targetContainerName": "Technical/Advanced Research",
+  "totalTabs": 6,
+  "filteredTabs": 5
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] RENDER_DATA_SOURCE: {
+  "source": "port",
+  "unfilteredCount": 6,
+  "filteredCount": 5,
+  "containerFilter": "current",
+  "currentContainerId": "firefox-container-9"
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] RENDER_INPUT_DATA: {
+  "tabCount": 5,
+  "quickTabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ],
+  "originTabIds": [
+    574,
+    574,
+    575,
+    575,
+    575
+  ],
+  "dataSource": "port",
+  "timestamp": 1767557092285
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] RENDER_UI: entry {
+  "triggerReason": "direct",
+  "tabCount": 5,
+  "dataSource": "port",
+  "timestamp": 1767557092285
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] UI Rebuild starting: {
+  "totalTabs": 5,
+  "activeCount": 5,
+  "minimizedCount": 0,
+  "cacheCount": 2,
+  "lastRenderedHash": 1020844525,
+  "trigger": "_renderUIImmediate()",
+  "timestamp": 1767557092285
+}
+[2026-01-04T20:04:52.285Z] [LOG  ] [Manager] UI List contents: {
+  "activeTabIds": [
+    {
+      "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+      "url": "https://en.wikipedia.org/wiki/Archipelago"
+    },
+    {
+      "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+      "url": "https://en.wikipedia.org/wiki/Japanese_Paleolithic"
+    },
+    {
+      "id": "qt-575-1767557022475-sdmvn716se6h",
+      "url": "https://en.wikipedia.org/wiki/Livestreaming"
+    },
+    {
+      "id": "qt-575-1767557022948-nsnw5pgrjm1f",
+      "url": "https://en.wikipedia.org/wiki/Hololive_Production"
+    },
+    {
+      "id": "qt-1794-1767557047757-13k9xmd359hxf",
+      "url": "https://en.wikipedia.org/wiki/Serif#Old-style"
+    }
+  ],
+  "minimizedTabIds": []
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] Last sync updated: {
+  "timestamp": 1767557092180,
+  "formatted": "3:04:52 PM",
+  "totalTabs": 5
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_START: {
+  "totalTabsToGroup": 5,
+  "tabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp",
+    "qt-575-1767557022475-sdmvn716se6h",
+    "qt-575-1767557022948-nsnw5pgrjm1f",
+    "qt-1794-1767557047757-13k9xmd359hxf"
+  ]
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "originTabId": 574,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 574
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_TAB: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "originTabId": 575,
+  "originTabIdType": "number",
+  "isValidOriginTabId": true,
+  "assignedGroup": 575
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUPING_COMPLETE: {
+  "totalTabs": 5,
+  "groupCount": 2,
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupSummary": {
+    "574": {
+      "tabCount": 2,
+      "tabIds": [
+        "qt-574-1767557033432-1htn9r91cd5z0r",
+        "qt-574-1767557033870-1q9ulgfw9tkhp"
+      ]
+    },
+    "575": {
+      "tabCount": 3,
+      "tabIds": [
+        "qt-575-1767557022475-sdmvn716se6h",
+        "qt-575-1767557022948-nsnw5pgrjm1f",
+        "qt-1794-1767557047757-13k9xmd359hxf"
+      ]
+    }
+  }
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUP_ORDER_APPLYING: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "groupKeys": [
+    574,
+    575
+  ],
+  "groupKeyTypes": [
+    "number",
+    "number"
+  ]
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUP_ORDER_KEY_NOT_FOUND: {
+  "tabId": "1794",
+  "triedFormats": [
+    "1794",
+    1794,
+    "1794"
+  ],
+  "availableKeys": [
+    574,
+    575
+  ]
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] GROUP_ORDER_APPLIED: {
+  "userOrder": [
+    "575",
+    "1794"
+  ],
+  "resultOrder": [
+    575,
+    574
+  ],
+  "inputGroupCount": 2,
+  "outputGroupCount": 2,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager][Display] GROUPING: Organizing Quick Tabs by originTabId {
+  "totalQuickTabs": null,
+  "groups": [
+    {
+      "originTabId": 575
+    },
+    {
+      "originTabId": 574
+    }
+  ]
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] Issue #1: Rendering groups directly (no global header) {
+  "groupCount": 2,
+  "groupKeys": [
+    575,
+    574
+  ]
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] RESORT_SKIPPED: User group order is defined, preserving user order
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 3,
+  "minimizedCount": 0,
+  "hasBothSections": false,
+  "isOpen": true,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022475-sdmvn716se6h",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-575-1767557022948-nsnw5pgrjm1f",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-1794-1767557047757-13k9xmd359hxf",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:52.286Z] [LOG  ] [Manager] Creating group content sections: {
+  "activeCount": 2,
+  "minimizedCount": 0,
+  "hasBothSections": false,
+  "isOpen": true,
+  "timestamp": 1767557092286
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557092287
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] BUTTON_DOM_CREATION: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "isMinimized": false,
+  "isOrphaned": false,
+  "isRestorePending": false,
+  "timestamp": 1767557092287
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] BUTTONS_CREATED: {
+  "quickTabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "buttons": [
+    "goToTab",
+    "minimize",
+    "close"
+  ],
+  "buttonCount": 3
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] DRAG_DROP: Event listeners attached {
+  "tabGroups": 2,
+  "quickTabItems": 5,
+  "timestamp": 1767557092287
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [RENDER_PERF] Render completed: {
+  "totalDurationMs": 2,
+  "phases": {
+    "groupingMs": 0,
+    "collapseStateMs": 0,
+    "domManipulationMs": 1
+  },
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "isSlowRender": false
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] RENDER_UI: exit {
+  "triggerReason": "direct",
+  "tabsRendered": 5,
+  "groupsCreated": 2,
+  "durationMs": 2
+}
+[2026-01-04T20:04:52.287Z] [LOG  ] [Manager] UI Rebuild complete: {
+  "renderedActive": 5,
+  "renderedMinimized": 0,
+  "groupCount": 2,
+  "newHash": 1020844525,
+  "durationMs": 2
+}
+[2026-01-04T20:04:53.043Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557093043,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:53.043Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:53.845Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557093845,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:53.845Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:54.201Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:04:54.203Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 2
+}
+[2026-01-04T20:04:54.203Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:04:54.311Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 108,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:54.311Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557094203,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:54.311Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557094203,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:54.311Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:54.779Z] [LOG  ] [Manager] 🔄 TAB_SWITCH_DETECTED: {
+  "previousTabId": 574,
+  "currentTabId": 836,
+  "timestamp": 1767557094779
+}
+[2026-01-04T20:04:54.961Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 113,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:54.961Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557094848,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:54.961Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557094848,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:54.961Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:56.055Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096055,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.055Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.089Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096089,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.090Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.224Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:04:56.226Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 2
+}
+[2026-01-04T20:04:56.226Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:04:56.334Z] [LOG  ] [Manager] 🔄 TAB_SWITCH_DETECTED: {
+  "previousTabId": 836,
+  "currentTabId": 837,
+  "timestamp": 1767557096334
+}
+[2026-01-04T20:04:56.334Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 108,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:56.334Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557096226,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:56.334Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557096226,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:56.334Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:56.416Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096416,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.416Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.421Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096421,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.421Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.578Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 111,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:56.578Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557096467,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:56.578Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557096467,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:56.578Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:56.627Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096627,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.627Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.662Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096662,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.662Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:56.692Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557096692,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:56.692Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.081Z] [LOG  ] [Manager] 🔄 TAB_SWITCH_DETECTED: {
+  "previousTabId": 837,
+  "currentTabId": 834,
+  "timestamp": 1767557097081
+}
+[2026-01-04T20:04:57.165Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097165,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.165Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.167Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097167,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.167Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.194Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097194,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.194Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.196Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097196,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.196Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.197Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097197,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.197Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.198Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097198,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.198Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.202Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097202,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.202Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.203Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097203,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.203Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.204Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097204,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.204Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.206Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097206,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.206Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.209Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097209,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.209Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.330Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097329,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.330Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.330Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097330,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.330Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.436Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097436,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.436Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.436Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097436,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.436Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.443Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097443,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.443Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.443Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097443,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.443Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:57.446Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 120,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:57.446Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557097326,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:57.446Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557097326,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:57.446Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:57.920Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557097919,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:57.920Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:58.230Z] [LOG  ] [Manager] CACHE_STALENESS_CHECK: {
+  "timestamp": 1767557098230,
+  "lastCacheSyncFromStorage": 1767557092179,
+  "cacheStalenessMs": 6051,
+  "alertThresholdMs": 30000,
+  "autoSyncThresholdMs": 60000,
+  "isStale": false,
+  "needsAutoSync": false
+}
+[2026-01-04T20:04:58.231Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:04:58.231Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 1
+}
+[2026-01-04T20:04:58.232Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:04:58.324Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557098324,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:58.324Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:58.341Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 109,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:04:58.341Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557098232,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:04:58.341Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557098232,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:04:58.341Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:04:59.103Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557099103,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:59.103Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:59.259Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557099259,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:59.259Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:04:59.408Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557099408,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:04:59.408Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:05:00.272Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:05:00.273Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 1
+}
+[2026-01-04T20:05:00.273Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:05:00.382Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 108,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:05:00.382Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557100274,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:05:00.382Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557100274,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:05:00.382Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:05:00.748Z] [LOG  ] [Content] ✓ Content script loaded, starting initialization
+[2026-01-04T20:05:00.748Z] [LOG  ] [IDENTITY_INIT] SCRIPT_LOAD: Content script loaded, identity not yet initialized {
+  "timestamp": "2026-01-04T20:05:00.748Z",
+  "phase": "SCRIPT_LOAD"
+}
+[2026-01-04T20:05:00.748Z] [LOG  ] [Copy-URL-on-Hover] Script loaded! @ 2026-01-04T20:05:00.748Z
+[2026-01-04T20:05:00.748Z] [LOG  ] [Copy-URL-on-Hover] Debug marker set successfully
+[2026-01-04T20:05:00.748Z] [LOG  ] [Copy-URL-on-Hover] Global error handlers installed
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] Starting module imports...
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] All module imports completed successfully
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] Initializing core systems...
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] ConfigManager initialized
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] StateManager initialized
+[2026-01-04T20:05:00.749Z] [LOG  ] [EventBus] Instance created: eventbus-1-1767557100749
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] EventBus initialized
+[2026-01-04T20:05:00.749Z] [LOG  ] [Copy-URL-on-Hover] URLHandlerRegistry initialized
+[2026-01-04T20:05:00.749Z] [LOG  ] [Content] v1.6.3.12 Quick Tabs port API initialized
+[2026-01-04T20:05:00.749Z] [LOG  ] [Content] ✓ Message listener registered
+[2026-01-04T20:05:00.764Z] [LOG  ] [Copy-URL-on-Hover] ✓ Filter settings loaded (source: storage)
+[2026-01-04T20:05:00.764Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting extension initialization...
+[2026-01-04T20:05:00.764Z] [LOG  ] [ContentScript][Init] Page loaded: {
+  "url": "https://github.com/copilot/agents",
+  "tabId": "pending",
+  "container": "firefox-default"
+}
+[2026-01-04T20:05:00.764Z] [LOG  ] [Copy-URL-on-Hover] Content Script Identity: tab ID unavailable (running in background context?)
+[2026-01-04T20:05:00.764Z] [LOG  ] [Copy-URL-on-Hover] STEP: Loading user configuration...
+[2026-01-04T20:05:00.764Z] [LOG  ] [ConfigManager] Starting configuration load...
+[2026-01-04T20:05:00.764Z] [LOG  ] [ConfigManager] Calling browser.storage.local.get...
+[2026-01-04T20:05:00.771Z] [LOG  ] [ConfigManager] Storage get completed, processing result...
+[2026-01-04T20:05:00.771Z] [LOG  ] [ConfigManager] Configuration loaded successfully
+[2026-01-04T20:05:00.771Z] [LOG  ] [ConfigManager] Config summary: {
+  "debugMode": true,
+  "totalKeys": 38
+}
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] ✓ Configuration loaded successfully
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] Config values: {
+  "debugMode": true,
+  "hasDefaultConfig": true
+}
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] STEP: Enabling debug mode...
+[2026-01-04T20:05:00.771Z] [LOG  ] [DEBUG] Debug mode enabled
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] ✓ Debug mode activated
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing state...
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] ✓ State initialized
+[2026-01-04T20:05:00.771Z] [LOG  ] [Copy-URL-on-Hover] STEP: Initializing feature modules...
+[2026-01-04T20:05:00.771Z] [LOG  ] [INIT][Content] PHASE_START: Quick Tabs initialization beginning {
+  "timestamp": "2026-01-04T20:05:00.771Z",
+  "isWritingTabIdInitialized": false
+}
+[2026-01-04T20:05:00.771Z] [LOG  ] [ContentScript][Init] Sending GET_QUICK_TABS_STATE
+[2026-01-04T20:05:00.771Z] [LOG  ] [INIT][Content] TAB_ID_ACQUISITION_START: {
+  "isWritingTabIdInitialized": false,
+  "timestamp": "2026-01-04T20:05:00.771Z"
+}
+[2026-01-04T20:05:00.771Z] [DEBUG] Debug mode enabled
+[2026-01-04T20:05:00.772Z] [LOG  ] [IDENTITY_INIT] TAB_ID_REQUEST: Requesting tab ID from background {
+  "timestamp": "2026-01-04T20:05:00.772Z",
+  "phase": "TAB_ID_REQUEST"
+}
+[2026-01-04T20:05:00.772Z] [LOG  ] [Content][TabID][INIT] BEGIN: Starting tab ID acquisition with retry {
+  "maxRetries": 4,
+  "retryDelays": [
+    200,
+    500,
+    1500,
+    5000
+  ],
+  "timestamp": "2026-01-04T20:05:00.772Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Content][TabID][INIT] ATTEMPT_SUCCESS: {
+  "attempt": 1,
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "responseFormat": "v2 (data.currentTabId)",
+  "durationMs": 143
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [IDENTITY_INIT] TAB_ID_RESPONSE: Tab ID received on first attempt {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "durationMs": 143,
+  "timestamp": "2026-01-04T20:05:00.915Z",
+  "phase": "TAB_ID_RESPONSE"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Content][TabID][INIT] COMPLETE: Tab ID acquired on first attempt {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "totalDurationMs": 143
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [ContentScript][Init] Received response: {
+  "success": true,
+  "cookieStoreId": "firefox-container-9",
+  "tabCountStatus": "awaiting-hydration"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [INIT][Content] TAB_ID_ACQUISITION_COMPLETE: {
+  "currentTabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "durationMs": 144,
+  "success": true,
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_RESULT: Tab ID acquired {
+  "currentTabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "source": "background messaging (GET_CURRENT_TAB_ID)",
+  "success": true
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Identity] State transitioning: INITIALIZING → READY
+[2026-01-04T20:05:00.915Z] [LOG  ] [Storage-Init] setWritingTabId CALLED: {
+  "tabId": 834,
+  "callerContext": "content-script",
+  "previousTabId": null,
+  "previousIdentityMode": "INITIALIZING",
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Storage-Init] setWritingTabId COMPLETE: {
+  "oldTabId": "NONE",
+  "newTabId": 834,
+  "source": "setWritingTabId()",
+  "callerContext": "content-script",
+  "isValidContext": true,
+  "durationMs": 0,
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Storage-Init] setWritingContainerId CALLED: {
+  "containerId": "firefox-container-9",
+  "previousContainerId": null,
+  "previousIdentityMode": "INITIALIZING",
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Storage-Init] setWritingContainerId COMPLETE: {
+  "oldContainerId": "NONE",
+  "newContainerId": "firefox-container-9",
+  "source": "setWritingContainerId()",
+  "durationMs": 0,
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [IDENTITY_ACQUIRED] Container ID acquired: firefox-container-9 {
+  "previousValue": "NONE",
+  "currentTabId": 834,
+  "identityStateMode": "INITIALIZING",
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Identity] Container ID set: firefox-container-9
+[2026-01-04T20:05:00.915Z] [LOG  ] [Identity] Initialization duration: 0ms
+[2026-01-04T20:05:00.915Z] [LOG  ] [Identity] Tab ID acquired: 834
+[2026-01-04T20:05:00.915Z] [LOG  ] [Identity] Container ID acquired: firefox-container-9
+[2026-01-04T20:05:00.915Z] [LOG  ] [IDENTITY_INIT] IDENTITY_READY: Tab identity fully initialized {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "phase": "IDENTITY_READY",
+  "timestamp": "2026-01-04T20:05:00.915Z"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Copy-URL-on-Hover][TabID] v1.6.3.10-v6 INIT_COMPLETE: Writing tab ID set {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "isWritingTabIdInitializedAfter": true
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [IDENTITY_STATE] Ready state transitioned: false → true, tabId=834, cookieStoreId=firefox-container-9
+[2026-01-04T20:05:00.915Z] [LOG  ] [INIT][Content] PORT_CONNECTION_START: {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-04T20:05:00.915Z] [LOG  ] [Content] PORT_STATE_TRANSITION: {
+  "from": "DISCONNECTED",
+  "to": "CONNECTING",
+  "reason": "connect-attempt",
+  "attempts": 0,
+  "timestamp": 1767557100915
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] PORT_LIFECYCLE [content-tab-834] [open]: {
+  "tabId": 834,
+  "timestamp": 1767557100916,
+  "portName": "quicktabs-content-834"
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] PORT_STATE_TRANSITION: {
+  "from": "CONNECTING",
+  "to": "CONNECTED",
+  "reason": "connection-established",
+  "attempts": 0,
+  "timestamp": 1767557100916
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] Port connection established
+[2026-01-04T20:05:00.916Z] [LOG  ] [INIT][Content] PORT_CONNECTION_INITIATED: {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [INIT][Content] QUICK_TABS_PORT_START: {
+  "tabId": 834,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] Initializing Quick Tabs port connection
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] Connected to background via quick-tabs-port
+[2026-01-04T20:05:00.916Z] [LOG  ] [Content] Sending message to background: HYDRATE_ON_LOAD {
+  "requestId": 1
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [INIT][Content] QUICKTABS_MANAGER_INIT_START: {
+  "currentTabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "timestamp": "2026-01-04T20:05:00.916Z"
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [ContentScript][Hydration] Filtering by originTabId: 834
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabs] Initializing Quick Tabs feature module...
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabs] Options received: {
+  "currentTabId": 834,
+  "cookieStoreId": "firefox-container-9",
+  "hasWindowFactory": false
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabs] Creating new QuickTabsManager instance with options: {
+  "currentTabId": 834,
+  "cookieStoreId": "firefox-container-9"
+}
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabsManager] Using pre-fetched currentTabId: 834
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabsManager] Using pre-fetched cookieStoreId: firefox-container-9
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabsManager] Initializing facade...
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabsManager] STEP 1: Container ID already set (from options): firefox-container-9
+[2026-01-04T20:05:00.916Z] [LOG  ] [QuickTabsManager] STEP 1: Tab ID already set (from options): 834
+[2026-01-04T20:05:00.917Z] [LOG  ] [ZINDEX_RESTORE] No stored value found, using default: 1000000
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 1: Z-index counter restored: 1000000
+[2026-01-04T20:05:00.917Z] [LOG  ] [STORAGE_LISTENER] Registered: {
+  "listenerAddress": "listener-1767557100917",
+  "timestamp": "2026-01-04T20:05:00.917Z"
+}
+[2026-01-04T20:05:00.917Z] [LOG  ] [STORAGE_HEARTBEAT] Sent: {
+  "timestamp": "2026-01-04T20:05:00.917Z"
+}
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 1: Storage health monitor: started
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 1 Complete - currentTabId: 834
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 2: Initializing managers...
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 2 Complete
+[2026-01-04T20:05:00.917Z] [LOG  ] [QuickTabsManager] STEP 3: Initializing handlers...
+[2026-01-04T20:05:00.917Z] [LOG  ] [CreateHandler] Received eventBus instances: {
+  "externalEventBus": "eventbus-1-1767557100749",
+  "internalEventBus": "a",
+  "hasInternalBus": true
+}
+[2026-01-04T20:05:00.918Z] [LOG  ] [CreateHandler] Loaded showDebugId from storage.local: true
+[2026-01-04T20:05:00.918Z] [LOG  ] [CreateHandler] Storage listener setup complete
+[2026-01-04T20:05:00.918Z] [LOG  ] [QuickTabsManager] STEP 3 Complete
+[2026-01-04T20:05:00.918Z] [LOG  ] [QuickTabsManager] STEP 4: Initializing coordinators...
+[2026-01-04T20:05:00.919Z] [LOG  ] [MapTransactionManager] Initialized for renderedTabs
+[2026-01-04T20:05:00.919Z] [LOG  ] [UICoordinator][Tab 834] Received eventBus: {
+  "busType": "a",
+  "hasOn": true,
+  "hasEmit": true
+}
+[2026-01-04T20:05:00.919Z] [LOG  ] [UICoordinator][Tab 834] Handlers set: {
+  "hasUpdateHandler": true,
+  "hasVisibilityHandler": true,
+  "hasDestroyHandler": true
+}
+[2026-01-04T20:05:00.919Z] [LOG  ] [QuickTabsManager] STEP 4 Complete
+[2026-01-04T20:05:00.919Z] [LOG  ] [QuickTabsManager] STEP 5: Setting up components...
+[2026-01-04T20:05:00.919Z] [LOG  ] [QuickTabsManager] _setupComponents starting...
+[2026-01-04T20:05:00.919Z] [LOG  ] [EventManager] Emergency save handlers attached
+[2026-01-04T20:05:00.919Z] [LOG  ] [UICoordinator] Initializing...
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] Loaded showDebugId from storage.local: true
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] Setting up state listeners
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] ✓ State listeners setup complete
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] Rendering all visible tabs
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] Rendered 0 tabs
+[2026-01-04T20:05:00.920Z] [LOG  ] [UICoordinator] Initialized
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] ✓ Event bridge setup complete
+[2026-01-04T20:05:00.920Z] [WARN ] [MemoryGuard] performance.memory not available, monitoring disabled
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] MemoryGuard monitoring started
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] ✓ _setupComponents complete
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] STEP 5 Complete
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] STEP 6: Attempting to hydrate state from storage...
+[2026-01-04T20:05:00.920Z] [LOG  ] [HYDRATION_DOMAIN_CHECK] Current page domain: {
+  "domain": "github.com",
+  "url": "https://github.com/copilot/agents",
+  "currentTabId": 834
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [HYDRATION][INITIATION] Page load trigger detected, starting hydration {
+  "currentTabId": 834,
+  "currentDomain": "github.com",
+  "cookieStoreId": "firefox-container-9",
+  "trigger": "page_load",
+  "timestamp": "2026-01-04T20:05:00.920Z"
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [Content][Hydration] START: Beginning Quick Tab hydration process {
+  "currentTabId": 834,
+  "currentDomain": "github.com",
+  "timestamp": 1767557100920
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability {
+  "storageLocalAvailable": true,
+  "hydrationMethod": "port-based (Option 4 architecture)",
+  "note": "Quick Tabs state is stored in background memory and storage.local (session-scoped)"
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] storage.local available, attempting read
+[2026-01-04T20:05:00.920Z] [LOG  ] [QuickTabsManager] Storage read result: {
+  "found": true,
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "transactionId": "txn-1767557082146-574-6-9dd697f6"
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [HYDRATION][STORAGE_FETCH] Fetch completed {
+  "tabCount": 2,
+  "fetchDurationMs": 0,
+  "timestamp": "2026-01-04T20:05:00.920Z"
+}
+[2026-01-04T20:05:00.920Z] [LOG  ] [HYDRATION] START: Retrieving 2 tabs from storage {
+  "tabIds": [
+    "qt-574-1767557033432-1htn9r91cd5z0r",
+    "qt-574-1767557033870-1q9ulgfw9tkhp"
+  ],
+  "currentTabId": 834,
+  "timestamp": "2026-01-04T20:05:00.920Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] Found 2 Quick Tab(s) in storage to hydrate
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] Skipping hydration - tab originated from different tab: {
+  "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "originTabId": 574,
+  "currentTabId": 834
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [HYDRATION][FILTER] Tab qt-574-1767557033432-1htn9r91cd5z0r: originTabId=574, currentTabId=834, match=FALSE, ACTION=SKIP {
+  "tabId": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "status": "failed",
+  "reason": "differentTab",
+  "originTabId": 574,
+  "currentTabId": 834,
+  "match": false,
+  "action": "SKIP",
+  "timestamp": "2026-01-04T20:05:00.921Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [Content][Hydration] FILTER: Evaluating Quick Tab for hydration {
+  "id": "qt-574-1767557033432-1htn9r91cd5z0r",
+  "originTabId": 574,
+  "currentTabId": 834,
+  "result": "REJECT",
+  "reason": "differentTab"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] Skipping hydration - tab originated from different tab: {
+  "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "originTabId": 574,
+  "currentTabId": 834
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [HYDRATION][FILTER] Tab qt-574-1767557033870-1q9ulgfw9tkhp: originTabId=574, currentTabId=834, match=FALSE, ACTION=SKIP {
+  "tabId": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "status": "failed",
+  "reason": "differentTab",
+  "originTabId": 574,
+  "currentTabId": 834,
+  "match": false,
+  "action": "SKIP",
+  "timestamp": "2026-01-04T20:05:00.921Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [Content][Hydration] FILTER: Evaluating Quick Tab for hydration {
+  "id": "qt-574-1767557033870-1q9ulgfw9tkhp",
+  "originTabId": 574,
+  "currentTabId": 834,
+  "result": "REJECT",
+  "reason": "differentTab"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] TAB SCOPE ISOLATION VALIDATION: {
+  "total": 2,
+  "passed": 0,
+  "filtered": 2,
+  "currentTabId": 834,
+  "filterReasons": {
+    "invalidData": 0,
+    "noOriginTabId": 0,
+    "noCurrentTabId": 0,
+    "differentTab": 2,
+    "alreadyExists": 0,
+    "noHandler": 0,
+    "error": 0
+  }
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [Content][Hydration] COMPLETE: Hydration finished {
+  "totalInStorage": 2,
+  "hydratedCount": 0,
+  "filteredOutCount": 2,
+  "currentTabId": 834
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [HYDRATION][RESTORATION_COMPLETE] All tabs processed {
+  "totalFromStorage": 2,
+  "successfullyRestored": 0,
+  "filteredOrFailed": 2,
+  "currentTabId": 834,
+  "timing": {
+    "totalDurationMs": 1,
+    "fetchDurationMs": 0,
+    "filterDurationMs": 0,
+    "restorationDurationMs": 1
+  },
+  "timestamp": "2026-01-04T20:05:00.921Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [HYDRATION] COMPLETE: total=2, success=0, failed=2 {
+  "totalFromStorage": 2,
+  "successfullyHydrated": 0,
+  "failedOrFiltered": 2,
+  "currentTabId": 834,
+  "timestamp": "2026-01-04T20:05:00.921Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] STEP 6: Hydrated 0 Quick Tab(s) from storage
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] STEP 6 Complete
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] STEP 7: Exposing manager globally...
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] Manager exposed globally as window.quickTabsManager
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] Current tab ID available: 834
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] STEP 7 Complete
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabsManager] ✓✓✓ Facade initialized successfully ✓✓✓
+[2026-01-04T20:05:00.921Z] [LOG  ] [QuickTabs] Quick Tabs feature module initialized
+[2026-01-04T20:05:00.921Z] [LOG  ] [ContentScript][Hydration] Rendering Quick Tabs: 0
+[2026-01-04T20:05:00.921Z] [LOG  ] [INIT][Content] PHASE_COMPLETE: {
+  "success": true,
+  "currentTabId": 834,
+  "totalDurationMs": 150,
+  "hasManager": true,
+  "timestamp": "2026-01-04T20:05:00.921Z"
+}
+[2026-01-04T20:05:00.921Z] [LOG  ] [Copy-URL-on-Hover] ✓ Quick Tabs feature initialized successfully
+[2026-01-04T20:05:00.921Z] [LOG  ] [Copy-URL-on-Hover] Manager has createQuickTab: function
+[2026-01-04T20:05:00.921Z] [LOG  ] [Copy-URL-on-Hover] Manager currentTabId: 834
+[2026-01-04T20:05:00.921Z] [LOG  ] [Notifications] Initializing Notifications feature module...
+[2026-01-04T20:05:00.921Z] [LOG  ] [NotificationManager] Initializing...
+[2026-01-04T20:05:00.921Z] [LOG  ] [NotificationManager] Styles injected from CSS module
+[2026-01-04T20:05:00.921Z] [LOG  ] [NotificationManager] Initialized successfully
+[2026-01-04T20:05:00.921Z] [LOG  ] [Notifications] Notifications feature module initialized
+[2026-01-04T20:05:00.921Z] [LOG  ] [Copy-URL-on-Hover] ✓ Notifications feature initialized
+[2026-01-04T20:05:00.925Z] [LOG  ] [DEBUG] Extension initialized successfully
+[2026-01-04T20:05:00.925Z] [LOG  ] [Copy-URL-on-Hover] STEP: Starting main features...
+[2026-01-04T20:05:00.925Z] [LOG  ] [DEBUG] Loading main features...
+[2026-01-04T20:05:00.925Z] [LOG  ] [ContentScript][Ready] Hydration complete, listeners attached
+[2026-01-04T20:05:00.925Z] [LOG  ] [Copy-URL-on-Hover] ✓✓✓ EXTENSION FULLY INITIALIZED ✓✓✓
+[2026-01-04T20:05:00.925Z] [LOG  ] [Copy-URL-on-Hover] Extension is ready for use!
+[2026-01-04T20:05:00.925Z] [DEBUG] Extension initialized successfully
+[2026-01-04T20:05:00.925Z] [DEBUG] Loading main features...
+[2026-01-04T20:05:00.951Z] [LOG  ] [STORAGE_HEARTBEAT] RESULT_RECORDED: {
+  "success": true,
+  "windowSize": 1,
+  "timestamp": "2026-01-04T20:05:00.950Z"
+}
+[2026-01-04T20:05:00.951Z] [LOG  ] [STORAGE_HEARTBEAT] Received: {
+  "latencyMs": 33,
+  "windowSize": 1,
+  "timestamp": "2026-01-04T20:05:00.951Z"
+}
+[2026-01-04T20:05:00.951Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_EVENT: {
+  "timestamp": 1767557100951,
+  "areaName": "local",
+  "changedKeys": [
+    "_storage_heartbeat_"
+  ],
+  "hasStateKey": false
+}
+[2026-01-04T20:05:00.951Z] [LOG  ] [Sidebar] STORAGE_ONCHANGED_SKIPPED: {
+  "reason": "no_state_key",
+  "areaName": "local",
+  "expectedArea": "local"
+}
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] PORT_LIFECYCLE [content-tab-834] [message]: {
+  "tabId": 834,
+  "timestamp": 1767557100961,
+  "type": "BACKGROUND_HANDSHAKE"
+}
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] v1.6.3.10-v4 Background startup time recorded: 1767556701815
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] v1.6.3.10-v7 Background handshake received: {
+  "startupTime": 1767556701815,
+  "uptime": 399110,
+  "portId": "port-1767557100925-77",
+  "isReadyForCommands": true,
+  "latencyMs": 46,
+  "previousReadyState": false
+}
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] BACKGROUND_READY: Transitioned from INITIALIZING to READY: {
+  "latencyMs": 46,
+  "timestamp": 1767557100961
+}
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "BACKGROUND_HANDSHAKE",
+  "requestId": "none",
+  "hasQuickTabId": false,
+  "quickTabId": "none",
+  "isCommand": false,
+  "isStateUpdate": false,
+  "isTransfer": false,
+  "timestamp": 1767557100961
+}
+[2026-01-04T20:05:00.961Z] [LOG  ] [Content] Received Quick Tabs message: BACKGROUND_HANDSHAKE {
+  "type": "BACKGROUND_HANDSHAKE",
+  "startupTime": 1767556701815,
+  "restartCount": 0,
+  "uptime": 399110,
+  "isInitialized": true,
+  "isReadyForCommands": true,
+  "portId": "port-1767557100925-78",
+  "tabId": null,
+  "timestamp": 1767557100925
+}
+[2026-01-04T20:05:00.964Z] [LOG  ] [Content] PORT_MESSAGE_RECEIVED: {
+  "type": "HYDRATE_ON_LOAD_RESPONSE",
+  "requestId": "none",
+  "hasQuickTabId": false,
+  "quickTabId": "none",
+  "isCommand": false,
+  "isStateUpdate": false,
+  "isTransfer": false,
+  "timestamp": 1767557100964
+}
+[2026-01-04T20:05:00.964Z] [LOG  ] [Content] Received Quick Tabs message: HYDRATE_ON_LOAD_RESPONSE {
+  "type": "HYDRATE_ON_LOAD_RESPONSE",
+  "quickTabs": [],
+  "tabCount": 0,
+  "timestamp": 1767557100960,
+  "sessionId": "6bfe9fa8-5a5d-48e5-8367-c0ef390daa32",
+  "sessionStartTime": 1767556701814
+}
+[2026-01-04T20:05:02.300Z] [LOG  ] [Manager] Reading Quick Tab state from storage...
+[2026-01-04T20:05:02.301Z] [LOG  ] [Manager] Storage read result: {
+  "tabCount": 2,
+  "saveId": "1767557082146-qhihub046",
+  "timestamp": 1767557082146,
+  "source": "storage.local",
+  "durationMs": 1
+}
+[2026-01-04T20:05:02.301Z] [LOG  ] [Manager] Storage state unchanged (hash match), skipping update
+[2026-01-04T20:05:02.410Z] [LOG  ] [Manager] RENDER_DEBOUNCE_COMPLETE: {
+  "totalWaitMs": 109,
+  "extensions": 0,
+  "finalDebounceMs": 100
+}
+[2026-01-04T20:05:02.410Z] [LOG  ] [Manager] PORT_DATA_FRESH_CHECK: Port data exists, treating as fresh {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557102301,
+  "note": "Port data is source of truth in Option 4 architecture"
+}
+[2026-01-04T20:05:02.410Z] [LOG  ] [Manager] STALE_CHECK_SKIPPED: Port data exists, using as source of truth {
+  "portTabCount": 6,
+  "lastEventReceivedTime": 1767557090629,
+  "debounceSetTimestamp": 1767557102301,
+  "note": "Option 4 architecture: port data is authoritative"
+}
+[2026-01-04T20:05:02.410Z] [LOG  ] [Manager] Skipping render - state hash AND version unchanged {
+  "hash": 1020844525,
+  "stateVersion": 6,
+  "tabCount": 2
+}
+[2026-01-04T20:05:03.080Z] [LOG  ] [Manager] PORT_LIFECYCLE [sidebar] [MESSAGE_ACK_PENDING]: {
+  "event": "MESSAGE_ACK_PENDING",
+  "tabId": 834,
+  "portState": "connected",
+  "circuitBreakerState": "closed",
+  "timestamp": 1767557103080,
+  "timeSinceLastSuccess": 14936,
+  "messageType": "HEARTBEAT",
+  "correlationId": "corr-1767557103079-ar73j9ub7",
+  "timeoutMs": 2000
+}
+[2026-01-04T20:05:03.083Z] [LOG  ] [Manager] PORT_LIFECYCLE [sidebar] [message]: {
+  "event": "message",
+  "tabId": 834,
+  "portState": "connected",
+  "circuitBreakerState": "closed",
+  "timestamp": 1767557103083,
+  "timeSinceLastSuccess": 14939,
+  "type": "ACKNOWLEDGMENT",
+  "correlationId": "corr-1767557103079-ar73j9ub7"
+}
+[2026-01-04T20:05:03.083Z] [LOG  ] [Manager] ✅ Acknowledgment received: {
+  "correlationId": "corr-1767557103079-ar73j9ub7",
+  "originalType": "HEARTBEAT",
+  "success": true,
+  "roundTripMs": 3
+}
+[2026-01-04T20:05:03.084Z] [LOG  ] [Manager] PORT_LIFECYCLE [sidebar] [HEARTBEAT_SENT]: {
+  "event": "HEARTBEAT_SENT",
+  "tabId": 834,
+  "portState": "connected",
+  "circuitBreakerState": "closed",
+  "timestamp": 1767557103084,
+  "timeSinceLastSuccess": 1,
+  "roundTripMs": 4,
+  "backgroundAlive": true,
+  "isInitialized": true,
+  "adaptiveInterval": 15000
+}
+[2026-01-04T20:05:03.332Z] [LOG  ] [Content] Message received: {
+  "action": "GET_CONTENT_LOGS",
+  "type": "none",
+  "hasData": false
+}
+[2026-01-04T20:05:03.332Z] [LOG  ] [Content] Dispatching to ACTION_HANDLERS: GET_CONTENT_LOGS
+[2026-01-04T20:05:03.332Z] [LOG  ] [Content] Received GET_CONTENT_LOGS request
+================================================================================
+End of Logs
+================================================================================
