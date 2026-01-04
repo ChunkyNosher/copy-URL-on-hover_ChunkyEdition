@@ -1428,13 +1428,13 @@ making it appear like nothing happened.
 
 **After Action A (Go to Tab):**
 
-| Component    | Expected State                                    |
-| ------------ | ------------------------------------------------- |
-| Active Tab   | WP 2 is now the active tab (visible)              |
-| Tab Switch   | Browser properly switches from WP 1 to WP 2       |
-| Main Content | WP 2's content is displayed in main browser area  |
-| Sidebar      | Closes automatically for reliable focus transfer  |
-| Container    | Now viewing Research container context            |
+| Component    | Expected State                                   |
+| ------------ | ------------------------------------------------ |
+| Active Tab   | WP 2 is now the active tab (visible)             |
+| Tab Switch   | Browser properly switches from WP 1 to WP 2      |
+| Main Content | WP 2's content is displayed in main browser area |
+| Sidebar      | Closes automatically for reliable focus transfer |
+| Container    | Now viewing Research container context           |
 
 ### Root Cause Analysis
 
@@ -1573,5 +1573,6 @@ newly-active tab.
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 4, 2026  
+**Last
+Review Date:** January 4, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v4)
