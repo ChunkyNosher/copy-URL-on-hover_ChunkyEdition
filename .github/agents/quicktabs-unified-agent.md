@@ -3,10 +3,10 @@ name: quicktabs-unified-specialist
 description: |
   Unified specialist combining all Quick Tab domains - handles complete Quick Tab
   lifecycle, manager integration, port messaging (`quick-tabs-port`), Background-as-Coordinator
-  sync with Single Writer Authority (v1.6.4-v3), memory-based state (`quickTabsSessionState`),
+  sync with Single Writer Authority (v1.6.4-v4), memory-based state (`quickTabsSessionState`),
   circuit breaker pattern, priority queue, QUICKTAB_REMOVED handler, optimistic UI, render lock,
   button operation fix, state version tracking, UPDATE_QUICK_TAB title updates,
-  STATE_CHANGED safety timeout (500ms), Live Metrics Footer
+  STATE_CHANGED safety timeout (500ms), Live Metrics Footer, Container Filter
 tools: ['*']
 ---
 
@@ -38,7 +38,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v4 - Option 4 Architecture (Port Messaging + Memory State)
 
 **Complete Quick Tab System:**
 
@@ -48,42 +48,24 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 - **Background Memory State** - `quickTabsSessionState` object (no storage API)
 - **Single Writer Authority** - Manager sends commands, background writes state
 - **Session-Only Quick Tabs** - Cleared on browser restart (no persistence)
+- **Container Filter** - Filter by Firefox Container in Manager (v1.6.4-v4)
 
-**v1.6.4-v3 Bug Fixes (NEW):**
+**v1.6.4-v4 Features (NEW):**
 
-- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
-  iframe load events
-- **State Version Race Fix** - Fixed race condition in render tracking by
-  properly synchronizing state versions
-- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
-  last Quick Tab close scenarios
-- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
-  `closeQuickTabViaPort()`
-- **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
-  caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
-- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
-  smooth close animation
-- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
-  Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
-  STATE_CHANGED not received
-- **Bug #8d Cross-Tab Transfer Race Fix** - Immediate
-  `requestAllQuickTabsViaPort()` after ACK replaces safety timeout for "Move to
-  Current Tab" and drag transfer
-- **Bug #9d Total Logs Count Reset Fix** - settings.js sends
-  `CLEAR_LOG_ACTION_COUNTS` postMessage to iframe
-- **Bug #10d-#12d Transfer/Duplicate Not Appearing** - Removed setTimeout
-  wrapper around `requestAllQuickTabsViaPort()` in ACK handlers for immediate
-  synchronous state refresh
-- **Bug #13d Duplicate Metrics Footer** - Removed duplicate footer from
-  quick-tabs-manager.html (single footer in settings.html sends postMessage)
-- **Bug #14d Excessive Console Logging** - Removed verbose
-  DEBOUNCE[DRAG_EVENT_QUEUED] logs on every mouse move (kept completion logs)
-- **Bug #15d Critical State Refresh** - Added `_pendingCriticalStateRefresh`
-  flag to force immediate render after transfer/duplicate ACK
-- **Bug #16d Stale QUICKTAB_REMOVED** - Background ignores QUICKTAB_REMOVED from
-  old tab after transfer (5-second grace period via `_shouldIgnoreRemovalDueToTransfer`)
+- **Container Filter Dropdown** - `_filterQuickTabsByContainer()` filters by
+  originContainerId
+- **Container Name Resolution** - `_getContainerNameByIdAsync()` and
+  `_getContainerNameSync()`
+- **Dynamic Container Indicator** - `_onContainerContextChanged()` updates UI
+- **Filter Persistence** - `quickTabsContainerFilter` storage key
 
-**v1.6.4-v3 Features (NEW):**
+**v1.6.4-v3 Bug Fixes:** Title Update from Iframe, State Version Race Fix,
+forceEmpty Fix, Open in New Tab Close, Cross-Tab Transfer Duplicate Messages,
+Open in New Tab UI Flicker, STATE_CHANGED Safety Timeout, Bug #8d-#16d (transfer
+race, total logs reset, setTimeout removal, duplicate footer, excessive logging,
+critical state refresh, stale QUICKTAB_REMOVED)
+
+**v1.6.4-v3 Features:**
 
 - **Live Metrics Footer** - Sidebar footer shows live Quick Tab count, log
   actions per second, total log actions. Configurable interval (500ms-30s)
@@ -132,18 +114,20 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 **Key Architecture Components:**
 
-| Component                      | Purpose                           |
-| ------------------------------ | --------------------------------- |
-| `quickTabsSessionState`        | Memory-based state in background  |
-| `contentScriptPorts`           | Tab ID → Port mapping             |
-| `sidebarPort`                  | Manager sidebar port              |
-| `notifySidebarOfStateChange()` | Push updates to sidebar           |
-| `_isRenderInProgress`          | Render lock flag                  |
-| `_stateVersion`                | State version for consistency     |
-| `_logActionsByCategory`        | Per-category log tracking         |
-| `_detectCategoryFromLog()`     | Extracts category from log prefix |
-| `_loadLiveFilterSettings()`    | Loads Live Console Output Filter  |
-| `_isCategoryFilterEnabled()`   | Checks if category is enabled     |
+| Component                       | Purpose                           |
+| ------------------------------- | --------------------------------- |
+| `quickTabsSessionState`         | Memory-based state in background  |
+| `contentScriptPorts`            | Tab ID → Port mapping             |
+| `sidebarPort`                   | Manager sidebar port              |
+| `notifySidebarOfStateChange()`  | Push updates to sidebar           |
+| `_isRenderInProgress`           | Render lock flag                  |
+| `_stateVersion`                 | State version for consistency     |
+| `_filterQuickTabsByContainer()` | Filters by originContainerId      |
+| `_getContainerNameByIdAsync()`  | Async container name resolution   |
+| `_logActionsByCategory`         | Per-category log tracking         |
+| `_detectCategoryFromLog()`      | Extracts category from log prefix |
+| `_loadLiveFilterSettings()`     | Loads Live Console Output Filter  |
+| `_isCategoryFilterEnabled()`    | Checks if category is enabled     |
 
 **Key Modules:**
 
@@ -205,8 +189,10 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ---
 
-**Your strength: Complete Quick Tab system with v1.6.4-v3 title updates, state
-version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED race fix (Bug #8d),
-total logs reset (Bug #9d), expandable category breakdown, filter-aware log
-counting, Live Metrics Footer, and comprehensive validation.**
+**Your strength: Complete Quick Tab system with v1.6.4-v4 container filter
+dropdown, container name resolution, dynamic container indicator, filter
+persistence, v1.6.4-v3 title updates, state version race fix, forceEmpty fix,
+Open in New Tab close, cross-tab transfer duplicate fix, Open in New Tab UI
+flicker fix, STATE_CHANGED race fix, total logs reset, expandable category
+breakdown, filter-aware log counting, Live Metrics Footer, and comprehensive
+validation.**

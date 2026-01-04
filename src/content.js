@@ -242,10 +242,12 @@ import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.j
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.11-v11 - FIX Issue #47: Import setWritingContainerId for container isolation
 // v1.6.3.12-v3 - FIX Issue E: Import TAB_ID_CALLER_CONTEXT to identify caller context
+// v1.6.4-v4 - FIX Issue #47 Container Filter: Import getWritingContainerId for originContainerId in Quick Tab creation
 import {
   setWritingTabId,
   isWritingTabIdInitialized,
   setWritingContainerId,
+  getWritingContainerId,
   TAB_ID_CALLER_CONTEXT
 } from './utils/storage-utils.js';
 
@@ -1949,42 +1951,68 @@ function _validateTransferredInMessage(message) {
 }
 
 /**
+ * Store minimized snapshot for transferred Quick Tab
+ * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {boolean} isMinimized - Whether Quick Tab is minimized
+ * @param {Object|null} minimizedSnapshot - Snapshot data from transfer message
+ */
+function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSnapshot) {
+  if (!isMinimized) return;
+
+  if (minimizedSnapshot && quickTabsManager?.minimizedManager) {
+    const stored = quickTabsManager.minimizedManager.storeTransferredSnapshot(
+      quickTabId,
+      minimizedSnapshot
+    );
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Stored minimized snapshot:', {
+      quickTabId,
+      stored,
+      snapshot: minimizedSnapshot
+    });
+  } else {
+    console.warn('[Content] QUICK_TAB_TRANSFERRED_IN: Minimized Quick Tab has no snapshot:', {
+      quickTabId,
+      hasMinimizedSnapshot: !!minimizedSnapshot,
+      hasMinimizedManager: !!quickTabsManager?.minimizedManager
+    });
+  }
+}
+
+/**
  * Handle QUICK_TAB_TRANSFERRED_IN message - create Quick Tab on this tab
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
  * v1.6.4-v3 - FIX BUG #1: Add deduplication check to prevent duplicate creation
- *   - Uses sessionQuickTabs Map to detect if Quick Tab already exists
- *   - Guards against rare timing issues if both port and fallback messages arrive
- * When a Quick Tab is transferred to this tab, create it with the received properties.
+ * v1.6.4-v6 - FIX BUG #2 (Minimized Drag Restore): Store minimizedSnapshot for restore
  * @private
  * @param {Object} message - Transfer in message
  * @param {Object} message.quickTab - Full Quick Tab data to create
- * @param {number} message.oldOriginTabId - The previous tab where Quick Tab came from (logged for debugging)
+ * @param {number} message.oldOriginTabId - The previous tab where Quick Tab came from
+ * @param {Object} message.minimizedSnapshot - Snapshot for restore if minimized
  */
 function _handleQuickTabTransferredIn(message) {
   const validation = _validateTransferredInMessage(message);
   if (!validation.valid) return;
 
   const { quickTab } = validation;
+  const { minimizedSnapshot } = message;
 
-  // v1.6.4-v3 - FIX BUG #1: Deduplication check to prevent duplicate creation
-  // This guards against the rare case where the same Quick Tab is transferred multiple times
-  // or if both port message and fallback arrive before the first creation completes
+  // Deduplication check
   const existingQuickTab = sessionQuickTabs.get(quickTab.id);
   if (existingQuickTab) {
-    console.log(
-      '[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate - Quick Tab already exists:',
-      {
-        quickTabId: quickTab.id,
-        existingOriginTabId: existingQuickTab.originTabId,
-        timestamp: Date.now()
-      }
-    );
+    console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Skipping duplicate:', {
+      quickTabId: quickTab.id,
+      existingOriginTabId: existingQuickTab.originTabId
+    });
     return;
   }
 
-  // Create the Quick Tab with received properties, updating originTabId to this tab
-  // v1.6.4 - FIX BUG #2: Add skipInitialOverlay flag so transferred Quick Tabs are immediately interactive
+  // Store snapshot for minimized Quick Tabs before creation
+  _storeTransferredMinimizedSnapshot(quickTab.id, quickTab.minimized, minimizedSnapshot);
+
+  // Create the Quick Tab with received properties
   const createOptions = {
     id: quickTab.id,
     url: quickTab.url,
@@ -1995,15 +2023,21 @@ function _handleQuickTabTransferredIn(message) {
     height: quickTab.height,
     minimized: quickTab.minimized || false,
     zIndex: quickTab.zIndex,
-    originTabId: quickTabsManager.currentTabId, // Set to this tab
-    skipInitialOverlay: true // v1.6.4 - FIX BUG #2: Make transferred Quick Tab immediately interactive
+    originTabId: quickTabsManager.currentTabId,
+    skipInitialOverlay: true
   };
 
   console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Creating with options:', createOptions);
+  _executeTransferredQuickTabCreation(quickTab, createOptions);
+}
 
+/**
+ * Execute Quick Tab creation for transfer
+ * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn lines
+ * @private
+ */
+function _executeTransferredQuickTabCreation(quickTab, createOptions) {
   try {
-    // v1.6.4-v3 - Add to session cache BEFORE creation to prevent race condition
-    // This ensures the deduplication check works even if another message arrives during creation
     const cachedQuickTab = {
       id: quickTab.id,
       url: quickTab.url,
@@ -2014,14 +2048,15 @@ function _handleQuickTabTransferredIn(message) {
       height: quickTab.height,
       minimized: quickTab.minimized,
       zIndex: quickTab.zIndex,
-      originTabId: quickTabsManager.currentTabId // New owner tab
+      originTabId: quickTabsManager.currentTabId
     };
     sessionQuickTabs.set(quickTab.id, cachedQuickTab);
 
     quickTabsManager.createQuickTab(createOptions);
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
+
+    _trackAdoptedQuickTab(quickTab.id, quickTabsManager.currentTabId);
   } catch (err) {
-    // v1.6.4-v3 - If creation fails, remove from session cache to allow retry
     sessionQuickTabs.delete(quickTab.id);
     console.error('[Content] QUICK_TAB_TRANSFERRED_IN: Failed to create Quick Tab:', {
       quickTabId: quickTab.id,
@@ -3365,6 +3400,13 @@ function buildQuickTabData(options) {
   // cachedTabId is set during background port connection and contains the current tab ID
   const originTabId = cachedTabId ?? null;
 
+  // v1.6.4-v4 - FIX Issue #47 Container Filter: Get container ID from Identity system
+  // getWritingContainerId() returns the current container ID set during content script initialization
+  // This ensures Quick Tabs inherit the correct Firefox Container context
+  const identityContainerId = getWritingContainerId();
+  // v1.6.4-v4 - Use CONSTANTS.DEFAULT_CONTAINER for consistency with codebase
+  const originContainerId = identityContainerId ?? CONSTANTS.DEFAULT_CONTAINER;
+
   // v1.6.3.10-v7 - FIX Issue #11: Diagnostic logging for originTabId in creation payload
   if (originTabId === null) {
     console.warn(
@@ -3377,11 +3419,17 @@ function buildQuickTabData(options) {
       }
     );
   } else {
-    console.log('[Content] QUICK_TAB_CREATE: Including originTabId in creation payload', {
-      url,
-      id,
-      originTabId
-    });
+    // v1.6.4-v4 - FIX Issue #47: Enhanced logging to include container context
+    console.log(
+      '[Content] QUICK_TAB_CREATE: Including originTabId and originContainerId in creation payload',
+      {
+        url,
+        id,
+        originTabId,
+        originContainerId,
+        identityContainerId
+      }
+    );
   }
 
   return {
@@ -3392,11 +3440,15 @@ function buildQuickTabData(options) {
     width: size.width,
     height: size.height,
     title,
-    cookieStoreId: 'firefox-default',
+    // v1.6.4-v4 - FIX Issue #47 Container Filter: Use actual container ID from Identity system
+    // cookieStoreId is Firefox's field for container identity (from contextualIdentities API)
+    cookieStoreId: originContainerId,
     minimized: false,
     pinnedToUrl: null,
     // v1.6.3.10-v7 - FIX Issues #3, #11: Pass originTabId to background
-    originTabId
+    originTabId,
+    // v1.6.4-v4 - FIX Issue #47 Container Filter: Include originContainerId for Manager filtering
+    originContainerId
   };
 }
 

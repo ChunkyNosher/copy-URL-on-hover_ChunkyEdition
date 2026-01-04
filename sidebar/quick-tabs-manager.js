@@ -2,6 +2,54 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v6 CROSS-CONTAINER GO TO TAB FIX ===
+ * v1.6.4-v6 - FIX: Go to Tab button now properly switches focus across containers
+ *   - ROOT CAUSE: Firefox sidebars retain focus even after blur() calls
+ *   - FIX: Use browser.sidebarAction.close() to force-close sidebar, then reopen after delay
+ *   - This is more aggressive than v1.6.4-v5's blur() approach which was insufficient
+ *
+ * === v1.6.4-v6 MINIMIZE ALL IN TAB FEATURE ===
+ * v1.6.4-v6 - FEATURE: Add "Minimize All" button for each tab group header
+ *   - Added _handleMinimizeAllInTabGroup() handler function
+ *   - Added minimize all button (⏬) in _createGroupActions() next to Close All button
+ *
+ * === v1.6.4-v6 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
+ * v1.6.4-v6 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
+ *   - Modified _dispatchMoveToCurrentTab() to accept shiftKey parameter
+ *   - When shiftKey=true, calls _duplicateQuickTabToTab() instead of _transferQuickTabToTab()
+ *
+ * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
+ * v1.6.4-v5 - FIX: Go to Tab button now properly switches focus across containers
+ *   - ROOT CAUSE: Firefox sidebars retain focus after browser.tabs.update() succeeds
+ *   - FIX: Blur activeElement and window after tab switch to release sidebar focus
+ *   - Added document.activeElement.blur() and window.blur() in _handleGoToTabGroup()
+ *   - This is a known Firefox WebExtension sidebar limitation workaround
+ *
+ * === v1.6.4-v5 PERFORMANCE OPTIMIZATIONS ===
+ * v1.6.4-v5 - PERF: Reduce log volume for high-frequency operations
+ *   - Consolidated duplicate logs in _logRenderSkipped() (was 2 logs, now 1)
+ *   - Removed per-badge debug logging in _createContainerBadge() (fires per group)
+ *   - _logHashComputation() now only logs when hash actually changed
+ *   - Removed unused _buildStateSummary() function
+ *
+ * v1.6.4-v5 - PERF: Code Health improvements for better maintainability
+ *   - Extracted _validateStateUpdateInput() from _handleQuickTabsStateUpdate() (cc reduction)
+ *   - Extracted _executeRenderForStateUpdate() from _handleQuickTabsStateUpdate() (cc: 9 → 5)
+ *   - Extracted _shouldShowContainerBadge() for cleaner conditional in _createGroupHeader()
+ *   - Added windowId validation in _handleGoToTabGroup() (code review feedback)
+ *
+ * === v1.6.4-v4 CONTAINER ISOLATION & FILTERING ===
+ * v1.6.4-v4 - FEATURE: Container-based filtering for Quick Tabs
+ *   - Quick Tabs filtered by Firefox Container (cookieStoreId/originContainerId)
+ *   - Default view: Only Quick Tabs from current container are shown
+ *   - Container dropdown in Manager header for filter selection
+ *   - Options: "Current Container" (default), "All Containers", or specific container
+ *   - Container names resolved from browser.contextualIdentities API
+ *   - Dynamic update when user switches to a different container tab
+ *   - State variables: _currentContainerId, _selectedContainerFilter
+ *   - Key functions: _filterQuickTabsByContainer(), initializeContainerIsolation()
+ *   - Preference persisted to storage (quickTabsContainerFilter)
+ *
  * === v1.6.4-v3 TRANSFER/DUPLICATE STATE SYNC FIX ===
  * v1.6.4-v3 - FIX BUG #15d: Added _pendingCriticalStateRefresh flag to force immediate render
  *            after transfer/duplicate operations to ensure Manager displays correct state
@@ -197,6 +245,23 @@
 
 // ==================== IMPORTS ====================
 // v1.6.4 - Code Health: Import extracted manager modules first
+// v1.6.4-v4 - Import ContainerManager for container isolation (extracted for code health)
+import {
+  DEFAULT_CONTAINER_ID,
+  getContainerIcon,
+  getContainerNameSync as _getContainerNameSync,
+  getContainerIconSync as _getContainerIconSync,
+  getCurrentContainerId as _getCurrentContainerId,
+  getSelectedContainerFilter as _getSelectedContainerFilter,
+  updateCurrentContainerId as _updateCurrentContainerId,
+  filterQuickTabsByContainer as _filterQuickTabsByContainer,
+  onContainerContextChanged as _onContainerContextChanged,
+  shouldShowContainerBadge as _shouldShowContainerBadge,
+  createContainerBadge as _createContainerBadge,
+  initializeContainerIsolation as _initializeContainerIsolationFromCM,
+  initializeContainerManagerDeps as _initializeContainerManagerDeps,
+  updateContainersData as _updateContainersDataInCM
+} from './managers/ContainerManager.js';
 import {
   initialize as initializeDragDrop,
   attachDragDropEventListeners,
@@ -344,6 +409,8 @@ const CACHE_STALENESS_AUTO_SYNC_MS = 60000; // Request state sync if stale for >
 const CACHE_STALENESS_CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
 // FIX Issue #1: Sliding-window debounce maximum wait time
 const RENDER_DEBOUNCE_MAX_WAIT_MS = 300; // Maximum wait time even with extensions
+// v1.6.4-v5 - FIX: Sidebar reopen delay after Go to Tab (code review feedback)
+const SIDEBAR_REOPEN_DELAY_MS = 300; // Wait for tab switch to complete before reopening sidebar
 
 // ==================== v1.6.3.10-v7 CONSTANTS ====================
 // FIX Bug #1: quickTabHostInfo memory leak prevention
@@ -416,6 +483,10 @@ let currentBrowserTabId = null;
 
 // v1.6.3.7-v1 - FIX ISSUE #1: Track tab switches for real-time filtering
 let previousBrowserTabId = null;
+
+// v1.6.4-v4 - FEATURE: Container isolation and filtering
+// NOTE: Container state (_currentContainerId, _selectedContainerFilter, _containerFilterDropdown)
+// now managed by ContainerManager.js module
 
 // v1.6.3.4-v6 - FIX Issue #5: Track last rendered state hash to avoid unnecessary re-renders
 let lastRenderedStateHash = 0;
@@ -1097,6 +1168,12 @@ function cleanupMetrics() {
 
 // ==================== END LIVE METRICS FUNCTIONS ====================
 
+// ==================== v1.6.4-v4 CONTAINER ISOLATION ====================
+// Container isolation functions have been extracted to managers/ContainerManager.js
+// See ContainerManager.js for: initializeContainerIsolation, filterQuickTabsByContainer,
+// getContainerNameSync, getContainerIconSync, populateContainerDropdown, etc.
+// ==================== END CONTAINER ISOLATION ====================
+
 // ==================== v1.6.3.6-v11 PORT CONNECTION ====================
 // FIX Issue #11: Persistent port connection to background script
 // FIX Issue #10: Message acknowledgment tracking
@@ -1643,23 +1720,16 @@ function _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId) {
 }
 
 /**
- * Handle Quick Tabs state update from background
- * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
- * v1.6.3.12 - Gap #7: End-to-end state sync path logging
- * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
- * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
- * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
+ * Validate and log state update input
+ * v1.6.4-v5 - PERF: Extracted from _handleQuickTabsStateUpdate for code health (cc reduction)
  * @private
- * @param {Array} quickTabs - Quick Tabs array
- * @param {string} renderReason - Reason for render scheduling
- * @param {string} [correlationId=null] - Correlation ID for async tracing
+ * @param {*} quickTabs - Input to validate
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID
+ * @param {number} receiveTime - Timestamp of receive
+ * @returns {boolean} True if input is valid, false to early exit
  */
-function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
-  const receiveTime = Date.now();
-
-  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
-  _clearStateChangedSafetyTimeout();
-
+function _validateStateUpdateInput(quickTabs, renderReason, correlationId, receiveTime) {
   // v1.6.3.12 - Gap #7: Log Manager received update with correlationId
   console.log('[Sidebar] STATE_SYNC_PATH_MANAGER_RECEIVED:', {
     timestamp: receiveTime,
@@ -1678,6 +1748,56 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
       reason: 'quickTabs is not an array',
       receivedType: typeof quickTabs
     });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Execute render based on state refresh status
+ * v1.6.4-v5 - PERF: Extracted from _handleQuickTabsStateUpdate for code health (cc reduction)
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render
+ * @param {string|null} correlationId - Correlation ID
+ */
+function _executeRenderForStateUpdate(quickTabs, renderReason, correlationId) {
+  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
+  if (_pendingCriticalStateRefresh) {
+    _pendingCriticalStateRefresh = false;
+    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
+      renderReason,
+      tabCount: quickTabs.length,
+      timestamp: Date.now()
+    });
+    _forceImmediateRender('critical-state-refresh');
+  } else {
+    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
+    scheduleRender(renderReason, correlationId);
+  }
+}
+
+/**
+ * Handle Quick Tabs state update from background
+ * v1.6.3.12-v2 - FIX Code Health: Extract duplicate state update logic
+ * v1.6.3.12 - Gap #7: End-to-end state sync path logging
+ * v1.6.3.12-v4 - Gap #5: Accept and propagate correlationId through entire chain
+ * v1.6.4 - FIX Issue #11/#14: Add cross-tab aggregation logging (extracted to helper)
+ * v1.6.4 - FIX BUG #4: Extract empty state handling to reduce complexity
+ * v1.6.4-v5 - PERF: Extracted validation and render decision to helpers (cc: 9 → 5)
+ * @private
+ * @param {Array} quickTabs - Quick Tabs array
+ * @param {string} renderReason - Reason for render scheduling
+ * @param {string} [correlationId=null] - Correlation ID for async tracing
+ */
+function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = null) {
+  const receiveTime = Date.now();
+
+  // v1.6.4-v3 - FIX BUG #1/#2/#3: Clear any pending safety timeout since STATE_CHANGED arrived
+  _clearStateChangedSafetyTimeout();
+
+  // v1.6.4-v5 - PERF: Extracted validation to helper for code health
+  if (!_validateStateUpdateInput(quickTabs, renderReason, correlationId, receiveTime)) {
     return;
   }
 
@@ -1721,19 +1841,8 @@ function _handleQuickTabsStateUpdate(quickTabs, renderReason, correlationId = nu
   // v1.6.4 - FIX BUG #4: Log transitions involving 1 Quick Tab for debugging
   _logLowQuickTabCount(quickTabs, wasNotEmpty, correlationId);
 
-  // v1.6.4-v3 - FIX BUG #15d: Force immediate render if critical state refresh is pending
-  if (_pendingCriticalStateRefresh) {
-    _pendingCriticalStateRefresh = false;
-    console.log('[Sidebar] CRITICAL_STATE_REFRESH_EXECUTING: Forcing immediate render', {
-      renderReason,
-      tabCount: quickTabs.length,
-      timestamp: Date.now()
-    });
-    _forceImmediateRender('critical-state-refresh');
-  } else {
-    // v1.6.3.12-v4 - Gap #5: Pass correlationId to scheduleRender
-    scheduleRender(renderReason, correlationId);
-  }
+  // v1.6.4-v5 - PERF: Extracted render decision to helper for code health
+  _executeRenderForStateUpdate(quickTabs, renderReason, correlationId);
 }
 
 /**
@@ -4243,56 +4352,39 @@ function _handleStateSyncResponse(response) {
 /**
  * Log hash computation for render scheduling
  * v1.6.3.12-v7 - Extracted for complexity reduction
+ * v1.6.4-v5 - PERF: Only log when hash actually changed to reduce log volume
  * @private
  */
 function _logHashComputation(scheduleTimestamp, source, currentHash) {
+  const hashChanged = currentHash !== lastRenderedStateHash;
+  // v1.6.4-v5 - PERF: Skip logging when hash unchanged (reduces log volume significantly)
+  if (!hashChanged) {
+    return;
+  }
   console.log('[Sidebar] DEBOUNCE_HASH_COMPUTED:', {
     timestamp: scheduleTimestamp,
     source,
     hashValue: currentHash,
     previousHash: lastRenderedStateHash,
-    hashChanged: currentHash !== lastRenderedStateHash,
-    stateTabCount: quickTabsState?.tabs?.length || 0,
-    fieldsInHash: ['id', 'url', 'left', 'top', 'width', 'height', 'minimized', 'saveId']
+    hashChanged,
+    stateTabCount: quickTabsState?.tabs?.length || 0
   });
-}
-
-/**
- * Log when render is skipped due to hash match
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * @private
- */
-/**
- * Build state summary for logging
- * v1.6.3.12-v7 - Extracted for complexity reduction
- * @private
- */
-function _buildStateSummary() {
-  const tabs = quickTabsState?.tabs || [];
-  return {
-    totalTabs: tabs.length,
-    minimizedTabs: tabs.filter(t => t.minimized).length
-  };
 }
 
 /**
  * Log when render is skipped due to hash match
  * v1.6.3.12-v4 - Gap #5: Include correlationId for tracing
+ * v1.6.4-v5 - PERF: Consolidated duplicate logs into single log entry
  * @private
  */
 function _logRenderSkipped(scheduleTimestamp, source, currentHash, correlationId = null) {
-  console.log('[Manager] RENDER_DEDUPLICATION: prevented duplicate render (hash unchanged)', {
-    source,
-    hash: currentHash,
-    correlationId: correlationId || null
-  });
-  console.log('[Sidebar] DEBOUNCE_SKIPPED_HASH_MATCH:', {
+  // v1.6.4-v5 - PERF: Single consolidated log entry (was 2 separate logs)
+  console.log('[Manager] RENDER_SKIPPED: Hash and version unchanged', {
     timestamp: scheduleTimestamp,
     source,
-    correlationId: correlationId || null,
     hash: currentHash,
-    tabCount: quickTabsState?.tabs?.length || 0,
-    stateSummary: _buildStateSummary()
+    correlationId: correlationId || null,
+    tabCount: quickTabsState?.tabs?.length || 0
   });
 }
 
@@ -4774,7 +4866,7 @@ async function _getTabContainerId(tabId) {
 
   try {
     const tab = await browser.tabs.get(tabId);
-    return tab?.cookieStoreId || 'firefox-default';
+    return tab?.cookieStoreId || DEFAULT_CONTAINER_ID;
   } catch (err) {
     // Tab may not exist anymore
     console.log('[Manager] CONTAINER_ID_LOOKUP_FAILED:', {
@@ -6580,6 +6672,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Load container information from Firefox API
   await loadContainerInfo();
 
+  // v1.6.4-v4 - FEATURE: Initialize ContainerManager dependencies BEFORE container isolation
+  _initializeContainerManagerDeps({
+    containersData: containersData,
+    renderUI: renderUI,
+    incrementStateVersion: _incrementStateVersion,
+    requestAllQuickTabsViaPort: requestAllQuickTabsViaPort,
+    getCurrentBrowserTabId: () => currentBrowserTabId
+  });
+
+  // v1.6.4-v4 - FEATURE: Initialize container isolation AFTER container info loaded and deps set
+  await _initializeContainerIsolationFromCM(currentBrowserTabId);
+
   // Load Quick Tabs state from storage
   await loadQuickTabsState();
 
@@ -6628,7 +6732,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _requestImmediateSync();
 
   console.log(
-    '[Manager] v1.6.4 Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit + Scroll persistence initialized'
+    '[Manager] v1.6.4-v4 Container isolation + Port connection + Quick Tabs port + Host info maintenance + Cache staleness monitor + Browser tab cache audit + Scroll persistence initialized'
   );
 });
 
@@ -6898,6 +7002,8 @@ async function loadContainerInfo() {
         color: 'grey',
         cookieStoreId: 'firefox-default'
       };
+      // v1.6.4-v4 - Sync with ContainerManager
+      _updateContainersDataInCM(containersData);
       return;
     }
 
@@ -6925,34 +7031,16 @@ async function loadContainerInfo() {
       cookieStoreId: 'firefox-default'
     };
 
+    // v1.6.4-v4 - Sync with ContainerManager
+    _updateContainersDataInCM(containersData);
+
     console.log('Loaded container info:', containersData);
   } catch (err) {
     console.error('Error loading container info:', err);
   }
 }
 
-/**
- * Convert Firefox container icon identifier to emoji
- */
-function getContainerIcon(icon) {
-  const iconMap = {
-    fingerprint: '🔒',
-    briefcase: '💼',
-    dollar: '💰',
-    cart: '🛒',
-    circle: '⭕',
-    gift: '🎁',
-    vacation: '🏖️',
-    food: '🍴',
-    fruit: '🍎',
-    pet: '🐾',
-    tree: '🌳',
-    chill: '❄️',
-    fence: '🚧'
-  };
-
-  return iconMap[icon] || '📁';
-}
+// v1.6.4-v4 - NOTE: getContainerIcon() moved to managers/ContainerManager.js
 
 /**
  * Check if storage read should be debounced
@@ -7739,35 +7827,47 @@ function _handlePendingRerender() {
 }
 
 /**
- * Get all Quick Tabs from port data or storage fallback
+ * Get all Quick Tabs from port data or storage fallback, with container filtering
  * v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
+ * v1.6.4-v4 - FEATURE: Container isolation - filter by container based on user setting
  * Port data (`_allQuickTabsFromPort`) contains ALL Quick Tabs from ALL browser tabs,
  * while storage-based state may be filtered. Always prefer port data when available.
  * @private
  * @returns {{ allTabs: Array, latestTimestamp: number, source: string }}
  */
 function _getAllQuickTabsForRender() {
+  let allTabs;
+  let source;
+
   // v1.6.3.12-v11 - FIX Issue #1: Prioritize port data for cross-tab visibility
   // Simplified: arrays are truthy when they have length > 0
   if (_allQuickTabsFromPort?.length) {
-    console.log('[Manager] RENDER_DATA_SOURCE: Using port data (cross-tab)', {
-      portTabCount: _allQuickTabsFromPort.length,
-      storageTabCount: quickTabsState?.tabs?.length ?? 0
-    });
-    return {
-      allTabs: _allQuickTabsFromPort,
-      latestTimestamp: lastLocalUpdateTime || Date.now(),
-      source: 'port'
-    };
+    allTabs = [..._allQuickTabsFromPort]; // Clone to avoid mutation
+    source = 'port';
+  } else {
+    // Fallback to storage-based state extraction
+    const extracted = extractTabsFromState(quickTabsState);
+    allTabs = extracted.allTabs;
+    source = 'storage';
   }
 
-  // Fallback to storage-based state extraction
-  const { allTabs, latestTimestamp } = extractTabsFromState(quickTabsState);
-  console.log('[Manager] RENDER_DATA_SOURCE: Using storage fallback', {
-    portTabCount: _allQuickTabsFromPort?.length ?? 0,
-    storageTabCount: allTabs.length
+  // v1.6.4-v4 - FEATURE: Container isolation - Apply container filter
+  const unfilteredCount = allTabs.length;
+  allTabs = _filterQuickTabsByContainer(allTabs);
+
+  console.log('[Manager] RENDER_DATA_SOURCE:', {
+    source,
+    unfilteredCount,
+    filteredCount: allTabs.length,
+    containerFilter: _getSelectedContainerFilter(),
+    currentContainerId: _getCurrentContainerId()
   });
-  return { allTabs, latestTimestamp, source: 'storage' };
+
+  return {
+    allTabs,
+    latestTimestamp: lastLocalUpdateTime || Date.now(),
+    source
+  };
 }
 
 /**
@@ -8218,6 +8318,15 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
   animateCountBadgeIfChanged(groupKey, group.quickTabs.length, count);
   summary.appendChild(count);
 
+  // v1.6.4-v4 - FEATURE Issue #1: Container indicator badge in "All Containers" view
+  // v1.6.4-v5 - PERF: Extracted visibility check to helper for code health
+  if (_shouldShowContainerBadge(isOrphaned, group.quickTabs.length)) {
+    const containerBadge = _createContainerBadge(group.quickTabs);
+    if (containerBadge) {
+      summary.appendChild(containerBadge);
+    }
+  }
+
   // v1.6.4 - FEATURE #4: Add group action buttons (Go to Tab, Close All in Tab)
   const groupActions = _createGroupActions(groupKey, isOrphaned);
   summary.appendChild(groupActions);
@@ -8228,6 +8337,7 @@ function _createGroupHeader(groupKey, group, isOrphaned, isClosedTab) {
 /**
  * Create group action buttons (Go to Tab, Close All in Tab)
  * v1.6.4 - FEATURE #4: New tab buttons for each group header
+ * v1.6.4-v6 - FEATURE #2: Added "Minimize All" button
  * @private
  * @param {number|string} groupKey - Group key (origin tab ID)
  * @param {boolean} isOrphaned - Whether this is the orphaned group
@@ -8255,6 +8365,19 @@ function _createGroupActions(groupKey, isOrphaned) {
   });
   actionsContainer.appendChild(goToTabBtn);
 
+  // v1.6.4-v6 - FEATURE #2: Minimize All in Tab button - minimizes all Quick Tabs in this group
+  const minimizeAllBtn = document.createElement('button');
+  minimizeAllBtn.className = 'btn-icon btn-minimize-all-in-tab';
+  minimizeAllBtn.textContent = '⏬';
+  minimizeAllBtn.title = `Minimize all Quick Tabs in Tab ${groupKey}`;
+  minimizeAllBtn.dataset.action = 'minimizeAllInTab';
+  minimizeAllBtn.dataset.tabId = String(groupKey);
+  minimizeAllBtn.addEventListener('click', e => {
+    e.stopPropagation(); // Prevent toggle of details
+    _handleMinimizeAllInTabGroup(groupKey);
+  });
+  actionsContainer.appendChild(minimizeAllBtn);
+
   // Close All in Tab button - closes all Quick Tabs in this group
   const closeAllBtn = document.createElement('button');
   closeAllBtn.className = 'btn-icon btn-close-all-in-tab';
@@ -8271,9 +8394,16 @@ function _createGroupActions(groupKey, isOrphaned) {
   return actionsContainer;
 }
 
+// v1.6.4-v4 - NOTE: _shouldShowContainerBadge() and _createContainerBadge() moved to managers/ContainerManager.js
+
 /**
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
+ * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
+ * v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus (NO auto-reopen)
+ *   - blur() calls were insufficient for cross-container tab switching
+ *   - browser.sidebarAction.close() forces focus to transfer to main window
+ *   - Sidebar stays closed - reopening would retain original container context
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
@@ -8285,9 +8415,76 @@ async function _handleGoToTabGroup(tabId) {
     timestamp: Date.now()
   });
 
+  // v1.6.4-v6 - FIX BUG #1: Call sidebarAction.close() SYNCHRONOUSLY before any await
+  // Firefox only allows sidebarAction.close() from user input handler context.
+  // Any await breaks the call chain and Firefox rejects with:
+  // "sidebarAction.close may only be called from a user input handler"
+  // Solution: Close sidebar FIRST (fire-and-forget), then do async tab switching.
+  browser.sidebarAction
+    .close()
+    .then(() => {
+      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED_SYNC:', {
+        tabId: numTabId,
+        timestamp: Date.now()
+      });
+    })
+    .catch(err => {
+      // If sidebarAction.close() fails, fall back to blur approach
+      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_SYNC_FAILED:', {
+        error: err.message,
+        tabId: numTabId
+      });
+      _fallbackBlurForFocusRelease();
+    });
+
   try {
+    // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
+    // This ensures proper tab switching when the target tab is in a different window
+    const tab = await browser.tabs.get(numTabId);
+    // v1.6.4-v4 - FIX: Validate windowId before using (code review feedback)
+    // browser.tabs.get() throws if tab doesn't exist; this validates the returned object structure
+    const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+
+    // v1.6.4-v4 - Container context logging for cross-container switches
+    const originContainerId = tab?.cookieStoreId || 'unknown';
+    const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+    const currentContainerId = currentTab?.cookieStoreId || 'unknown';
+    const isCrossContainerSwitch = originContainerId !== currentContainerId;
+
+    // v1.6.4-v5 - FIX BUG #1: Enhanced cross-container logging for debugging Zen Browser
+    console.log('[Manager] GO_TO_TAB_CONTAINER_CONTEXT:', {
+      targetTabId: numTabId,
+      targetContainerId: originContainerId,
+      currentContainerId,
+      isCrossContainerSwitch,
+      currentTabId: currentTab?.id,
+      targetWindowId: windowId,
+      currentWindowId: currentTab?.windowId
+    });
+
+    // v1.6.4-v5 - FIX BUG #1: Log cross-container switch warning for debugging
+    if (isCrossContainerSwitch) {
+      console.log(
+        '[Manager] GO_TO_TAB: Cross-container switch detected, current=' +
+          currentContainerId +
+          ', target=' +
+          originContainerId
+      );
+    }
+
+    if (windowId !== null) {
+      await browser.windows.update(windowId, { focused: true });
+    }
     await browser.tabs.update(numTabId, { active: true });
-    console.log('[Manager] GO_TO_TAB_SUCCESS:', { tabId: numTabId });
+
+    // v1.6.4-v6 - Sidebar already closed synchronously above, just log success
+    console.log('[Manager] GO_TO_TAB_SUCCESS:', {
+      tabId: numTabId,
+      windowId,
+      targetContainerId: originContainerId,
+      isCrossContainerSwitch,
+      sidebarAction: 'closed_sync'
+    });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
       tabId: numTabId,
@@ -8295,6 +8492,87 @@ async function _handleGoToTabGroup(tabId) {
     });
     // Tab might have been closed
     _showErrorNotification(`Cannot switch to tab: ${err.message}`);
+  }
+}
+
+/**
+ * Release sidebar focus to allow tab switch to take effect
+ * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce complexity
+ * v1.6.4-v4 - FIX: Sidebar stays closed after Go to Tab for cross-container support
+ *   - Reopening sidebar would retain original container context, defeating the purpose
+ *   - User can manually reopen sidebar when needed
+ * v1.6.4-v5 - FIX BUG #1: Enhanced logging for cross-container switch
+ *
+ * @deprecated v1.6.4-v6 - No longer used. Sidebar is now closed synchronously at the
+ * start of _handleGoToTabGroup() to fix Firefox user input handler requirement.
+ * Firefox requires sidebarAction.close() to be called synchronously from user input
+ * handler - any await before it breaks the call chain. Retained for reference.
+ *
+ * @private
+ * @param {number} tabId - Tab ID for logging
+ * @param {number|null} windowId - Window ID for logging
+ * @param {boolean} isCrossContainerSwitch - Whether this is a cross-container switch
+ */
+async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerSwitch = false) {
+  // Firefox sidebars aggressively retain focus even after browser.tabs.update() and blur() calls.
+  // The only reliable way to force focus to the main window is to close the sidebar.
+  // v1.6.4-v4 - FIX: Do NOT reopen sidebar - it would reopen in the original container context,
+  // which defeats the purpose of cross-container tab switching.
+  try {
+    // Close the sidebar - this forces focus to transfer to the main browser window
+    await browser.sidebarAction.close();
+    console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
+      tabId,
+      windowId,
+      isCrossContainerSwitch,
+      note: isCrossContainerSwitch
+        ? 'Sidebar stays closed for cross-container focus transfer (Zen Browser compatibility)'
+        : 'Sidebar stays closed for reliable focus transfer'
+    });
+  } catch (sidebarErr) {
+    // If sidebarAction API fails, fall back to blur approach
+    console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
+      error: sidebarErr.message,
+      fallback: 'blur',
+      isCrossContainerSwitch
+    });
+    _fallbackBlurForFocusRelease();
+  }
+}
+
+/**
+ * Schedule sidebar reopen after delay (fire-and-forget)
+ * v1.6.4-v4 - Extracted helper function
+ *
+ * @deprecated Not currently used - retained for potential future sidebar operations
+ * that may need delayed reopen after temporary close. The Go to Tab flow no longer
+ * uses this because sidebars must stay closed for reliable cross-container focus transfer.
+ *
+ * @private
+ * @param {number} tabId - Tab ID for logging
+ */
+function _scheduleDelayedSidebarReopen(tabId) {
+  setTimeout(() => {
+    browser.sidebarAction
+      .open()
+      .then(() => console.log('[Manager] GO_TO_TAB_SIDEBAR_REOPENED:', { tabId }))
+      .catch(err =>
+        console.warn('[Manager] GO_TO_TAB_SIDEBAR_REOPEN_SKIPPED:', { reason: err.message })
+      );
+  }, SIDEBAR_REOPEN_DELAY_MS);
+}
+
+/**
+ * Fallback blur approach when sidebarAction API is unavailable
+ * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce nesting depth
+ * @private
+ */
+function _fallbackBlurForFocusRelease() {
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
+  if (typeof window.blur === 'function') {
+    window.blur();
   }
 }
 
@@ -8329,6 +8607,45 @@ function _handleCloseAllInTabGroup(tabId) {
   // Close each Quick Tab via port
   for (const qt of quickTabsInGroup) {
     closeQuickTabViaPort(qt.id);
+  }
+}
+
+/**
+ * Handle "Minimize All in Tab" button click - minimizes all Quick Tabs in this group
+ * v1.6.4-v6 - FEATURE #2: Minimize all Quick Tabs in a specific tab group
+ * @private
+ * @param {number|string} tabId - The browser tab ID whose Quick Tabs to minimize
+ */
+function _handleMinimizeAllInTabGroup(tabId) {
+  const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
+
+  console.log('[Manager] MINIMIZE_ALL_IN_TAB_CLICKED:', {
+    tabId: numTabId,
+    timestamp: Date.now()
+  });
+
+  // Get all Quick Tabs for this origin tab that are NOT already minimized
+  const quickTabsInGroup = _allQuickTabsFromPort.filter(
+    qt => qt.originTabId === numTabId && qt.minimized !== true
+  );
+
+  if (quickTabsInGroup.length === 0) {
+    console.log('[Manager] MINIMIZE_ALL_IN_TAB_NO_TABS:', {
+      tabId: numTabId,
+      reason: 'No active Quick Tabs to minimize'
+    });
+    return;
+  }
+
+  console.log('[Manager] MINIMIZE_ALL_IN_TAB_SENDING:', {
+    tabId: numTabId,
+    count: quickTabsInGroup.length,
+    quickTabIds: quickTabsInGroup.map(qt => qt.id)
+  });
+
+  // Minimize each Quick Tab via port
+  for (const qt of quickTabsInGroup) {
+    minimizeQuickTabViaPort(qt.id);
   }
 }
 
@@ -8821,15 +9138,19 @@ function _appendActiveTabActions(actions, tab, context) {
 
   // v1.6.4 - FIX: Replaced "Go to Tab" with "Move to Current Tab" button
   // This moves the Quick Tab to the current active browser tab
-  // If modifier key is held, it duplicates instead of moving
+  // v1.6.4-v6 - FIX Bug #4: Shift+click duplicates instead of moving
   if (tab.originTabId) {
-    const moveToCurrentTabBtn = _createActionButton('📥', 'Move to Current Tab', {
-      action: 'moveToCurrentTab',
-      quickTabId: tab.id,
-      originTabId: tab.originTabId,
-      url: tab.url,
-      title: tab.title
-    });
+    const moveToCurrentTabBtn = _createActionButton(
+      '📥',
+      'Move to Current Tab (Shift+click to duplicate)',
+      {
+        action: 'moveToCurrentTab',
+        quickTabId: tab.id,
+        originTabId: tab.originTabId,
+        url: tab.url,
+        title: tab.title
+      }
+    );
     moveToCurrentTabBtn.classList.add('btn-move-to-current-tab');
     actions.appendChild(moveToCurrentTabBtn);
   }
@@ -9294,11 +9615,12 @@ function _checkAndTrackPendingOperation(action, quickTabId) {
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
  * v1.6.4-v2 - Refactored to use options object to reduce argument count
  * v1.6.4 - FIX Issue #48/#10: Check PENDING_OPERATIONS before dispatching state-dependent operations
+ * v1.6.4-v6 - FIX Bug #4: Pass shiftKey for duplicate-on-shift feature
  * @private
  * @param {QuickTabActionOptions} options - Action options
  */
 async function _dispatchQuickTabAction(options) {
-  const { action, quickTabId, tabId, button, clickTimestamp } = options;
+  const { action, quickTabId, tabId, button, clickTimestamp, shiftKey } = options;
 
   // v1.6.4 - FIX Issue #48/#10: Check for pending operations on state-dependent actions
   if (!_checkAndTrackPendingOperation(action, quickTabId)) {
@@ -9308,7 +9630,8 @@ async function _dispatchQuickTabAction(options) {
   // v1.6.4 - Refactored to dispatch table for reduced line count
   const dispatcher = _getActionDispatcher(action);
   if (dispatcher) {
-    await dispatcher({ quickTabId, tabId, button, clickTimestamp });
+    // v1.6.4-v6 - Pass shiftKey for moveToCurrentTab duplicate feature
+    await dispatcher({ quickTabId, tabId, button, clickTimestamp, shiftKey });
   } else {
     console.warn('[Manager] UNKNOWN_ACTION:', { action, quickTabId, tabId, timestamp: Date.now() });
   }
@@ -9399,35 +9722,69 @@ async function _dispatchAdoptToCurrentTab({ quickTabId, button, clickTimestamp }
 }
 
 /**
+ * Execute move or duplicate operation for Move to Current Tab
+ * v1.6.4-v6 - Extracted from _dispatchMoveToCurrentTab to reduce complexity
+ * @private
+ * @param {string} quickTabId - Quick Tab ID
+ * @param {number} targetTabId - Target tab ID
+ * @param {boolean} shouldDuplicate - True to duplicate, false to move
+ * @returns {boolean} True if operation was executed, false if blocked
+ */
+function _executeMoveOrDuplicate(quickTabId, targetTabId, shouldDuplicate) {
+  if (shouldDuplicate) {
+    const quickTabData = _allQuickTabsFromPort.find(qt => qt.id === quickTabId);
+    if (!quickTabData) {
+      console.error('[Manager] DUPLICATE_TO_CURRENT_TAB: Quick Tab not found', { quickTabId });
+      _showErrorNotification('Cannot duplicate: Quick Tab not found');
+      return false;
+    }
+    _duplicateQuickTabToTab(quickTabData, targetTabId);
+    console.log('[Manager] DUPLICATE_TO_CURRENT_TAB: Duplicate sent', {
+      quickTabId,
+      toTabId: targetTabId
+    });
+  } else {
+    _transferQuickTabToTab(quickTabId, targetTabId);
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
+      quickTabId,
+      toTabId: targetTabId
+    });
+  }
+  return true;
+}
+
+/**
  * Dispatch "Move to Current Tab" action
  * v1.6.4 - FIX: Replacement for "Go to Tab" - moves Quick Tab to current active tab
- * NOTE: Button click always moves. Use drag-and-drop with Shift key to duplicate.
+ * v1.6.4-v6 - FIX Bug #4: Shift+click duplicates instead of moves
  * @private
  */
-async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp }) {
+async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp, shiftKey }) {
   const originTabId = parseInt(button.dataset.originTabId, 10);
+  const operation = shiftKey ? 'duplicate' : 'move';
 
   console.log('[Manager] ACTION_DISPATCH: moveToCurrentTab', {
     quickTabId,
     originTabId,
+    shiftKey,
+    operation,
     timestamp: Date.now()
   });
 
   try {
-    // Get the current active browser tab
     const [activeTab] = await browser.tabs.query({ active: true, currentWindow: true });
-
     if (!activeTab) {
       console.error('[Manager] MOVE_TO_CURRENT_TAB: No active tab found');
-      _showErrorNotification('Cannot move: No active tab found');
+      _showErrorNotification(`Cannot ${operation}: No active tab found`);
       return;
     }
 
     const currentTabId = activeTab.id;
+    // For move: skip if already on same tab. For duplicate: allow same-tab duplication
+    const isMovingToSameTab = originTabId === currentTabId && !shiftKey;
 
-    // Don't move if already on the same tab
-    if (originTabId === currentTabId) {
-      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab, no action needed', {
+    if (isMovingToSameTab) {
+      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab', {
         quickTabId,
         tabId: currentTabId
       });
@@ -9437,26 +9794,26 @@ async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp })
     console.log('[Manager] MOVE_TO_CURRENT_TAB: Operation', {
       quickTabId,
       fromTabId: originTabId,
-      toTabId: currentTabId
+      toTabId: currentTabId,
+      operation,
+      shiftKey
     });
 
-    // Button click always moves (use drag-and-drop with modifier key to duplicate)
-    _transferQuickTabToTab(quickTabId, currentTabId);
-    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
-      quickTabId,
-      toTabId: currentTabId
-    });
-
-    console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
-      quickTabId,
-      durationMs: Date.now() - clickTimestamp
-    });
+    const success = _executeMoveOrDuplicate(quickTabId, currentTabId, shiftKey);
+    if (success) {
+      console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
+        quickTabId,
+        operation,
+        durationMs: Date.now() - clickTimestamp
+      });
+    }
   } catch (err) {
     console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', {
       quickTabId,
+      operation,
       error: err.message
     });
-    _showErrorNotification(`Failed to move Quick Tab: ${err.message}`);
+    _showErrorNotification(`Failed to ${operation} Quick Tab: ${err.message}`);
   }
 }
 
@@ -9510,6 +9867,7 @@ async function _handleOpenInNewTab(url, quickTabId) {
 /**
  * Handle delegated click on Quick Tab action buttons
  * v1.6.3.12-v9 - Extracted from setupEventListeners to reduce function length
+ * v1.6.4-v6 - FIX Bug #4: Capture shiftKey for moveToCurrentTab duplicate feature
  * @private
  * @param {Event} e - Click event
  */
@@ -9533,11 +9891,14 @@ async function _handleQuickTabActionClick(e) {
   const quickTabId = button.dataset.quickTabId;
   const tabId = button.dataset.tabId;
   const clickTimestamp = Date.now();
+  // v1.6.4-v6 - FIX Bug #4: Capture modifier keys for duplicate-on-shift feature
+  const shiftKey = e.shiftKey;
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
   console.log('[Manager] │ QUICK_TAB_ACTION_BUTTON_CLICKED');
   console.log('[Manager] │ Action:', action);
   console.log('[Manager] │ QuickTabId:', quickTabId);
+  console.log('[Manager] │ ShiftKey:', shiftKey);
   console.log('[Manager] │ Timestamp:', new Date(clickTimestamp).toISOString());
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
@@ -9545,6 +9906,7 @@ async function _handleQuickTabActionClick(e) {
     action,
     quickTabId,
     tabId,
+    shiftKey,
     buttonText: button.textContent,
     buttonTitle: button.title,
     buttonDisabled: button.disabled,
@@ -9554,7 +9916,7 @@ async function _handleQuickTabActionClick(e) {
   });
 
   _applyOptimisticUIUpdate(action, quickTabId, button);
-  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp });
+  await _dispatchQuickTabAction({ action, quickTabId, tabId, button, clickTimestamp, shiftKey });
 }
 
 /**
@@ -9668,17 +10030,64 @@ function _setupStorageOnChangedListener() {
 }
 
 /**
+ * Handle tab or container switch
+ * v1.6.4-v4 - FEATURE: Container isolation - extracted to reduce nesting depth
+ * @private
+ * @param {number} newTabId - New browser tab ID
+ */
+async function _handleTabOrContainerSwitch(newTabId) {
+  const containerChanged = await _updateCurrentContainerId(newTabId);
+  if (containerChanged) {
+    // Container changed - update dropdown and potentially re-filter
+    await _onContainerContextChanged();
+  } else {
+    // v1.6.3.12-v10 - FIX Issue #48: Re-render UI to update browser tab context
+    renderUI();
+  }
+}
+
+/**
+ * Handle window focus change
+ * v1.6.4-v4 - FEATURE: Container isolation - extracted to reduce nesting depth
+ * @private
+ * @param {number} windowId - Window ID that received focus
+ */
+async function _handleWindowFocusChange(windowId) {
+  try {
+    // Get the active tab in the newly focused window
+    const tabs = await browser.tabs.query({ active: true, windowId });
+    if (tabs[0] && tabs[0].id !== currentBrowserTabId) {
+      previousBrowserTabId = currentBrowserTabId;
+      currentBrowserTabId = tabs[0].id;
+
+      console.log('[Manager] 🪟 WINDOW_FOCUS_CHANGED:', {
+        previousTabId: previousBrowserTabId,
+        currentTabId: currentBrowserTabId,
+        windowId
+      });
+
+      // v1.6.4-v4 - FEATURE: Container isolation - check if container changed
+      await _handleTabOrContainerSwitch(currentBrowserTabId);
+    }
+  } catch (err) {
+    console.warn('[Manager] Error handling window focus change:', err);
+  }
+}
+
+/**
  * Setup browser tab activation listener for real-time context updates
  * v1.6.3.7-v1 - FIX ISSUE #1: Manager Panel Shows Orphaned Quick Tabs
  * v1.6.3.12-v10 - FIX Issue #48: Clarified that Manager shows ALL Quick Tabs from ALL tabs
+ * v1.6.4-v4 - FEATURE: Container isolation - detect container changes on tab switch
  * When user switches between browser tabs, re-render the Manager UI to:
  * - Update the current browser tab context (for orphan detection)
  * - Refresh browser tab info cache
- * NOTE: Manager intentionally shows ALL Quick Tabs from ALL browser tabs (global view)
+ * - v1.6.4-v4: Update container filter dropdown if container changed
+ * NOTE: Manager shows Quick Tabs filtered by container based on user setting
  */
 function setupTabSwitchListener() {
   // Listen for tab activation (user switches to a different tab)
-  browser.tabs.onActivated.addListener(activeInfo => {
+  browser.tabs.onActivated.addListener(async activeInfo => {
     const newTabId = activeInfo.tabId;
 
     // Only process if tab actually changed
@@ -9698,9 +10107,8 @@ function setupTabSwitchListener() {
     // Clear browser tab info cache for the previous tab to ensure fresh data
     browserTabInfoCache.delete(previousBrowserTabId);
 
-    // v1.6.3.12-v10 - FIX Issue #48: Re-render UI to update browser tab context
-    // NOTE: Manager shows ALL Quick Tabs from ALL browser tabs (no filtering by current tab)
-    renderUI();
+    // v1.6.4-v4 - FEATURE: Container isolation - check if container changed
+    await _handleTabOrContainerSwitch(newTabId);
   });
 
   // Also listen for window focus changes (user switches browser windows)
@@ -9709,24 +10117,7 @@ function setupTabSwitchListener() {
       return; // Window lost focus
     }
 
-    try {
-      // Get the active tab in the newly focused window
-      const tabs = await browser.tabs.query({ active: true, windowId });
-      if (tabs[0] && tabs[0].id !== currentBrowserTabId) {
-        previousBrowserTabId = currentBrowserTabId;
-        currentBrowserTabId = tabs[0].id;
-
-        console.log('[Manager] 🪟 WINDOW_FOCUS_CHANGED:', {
-          previousTabId: previousBrowserTabId,
-          currentTabId: currentBrowserTabId,
-          windowId
-        });
-
-        renderUI();
-      }
-    } catch (err) {
-      console.warn('[Manager] Error handling window focus change:', err);
-    }
+    await _handleWindowFocusChange(windowId);
   });
 
   console.log('[Manager] Tab switch listener initialized');
@@ -10175,19 +10566,27 @@ async function _broadcastLegacyCloseMessage() {
  */
 async function closeAllTabs() {
   const startTime = Date.now();
+  const containerFilter = _getSelectedContainerFilter();
 
   console.log('[Manager] ┌─────────────────────────────────────────────────────────');
   console.log('[Manager] │ CLOSE_ALL_TABS function invoked');
+  console.log('[Manager] │ Container Filter:', containerFilter);
   console.log('[Manager] └─────────────────────────────────────────────────────────');
 
   try {
     const preActionState = _capturePreActionState();
     _logPreActionState(preActionState);
 
-    const response = await _sendClearAllMessage();
+    // v1.6.4-v4 - FEATURE: Close All respects container filter
+    // If filter is 'all', close all Quick Tabs
+    // If filter is 'current' or a specific container, only close Quick Tabs in that container
+    const response = await _sendClearAllMessage(containerFilter);
     _logClearAllResponse(response, startTime);
 
     const hostInfoBeforeClear = quickTabHostInfo.size;
+    // v1.6.4-v4: Clear local hostInfo cache entirely.
+    // Background script handles container-specific state updates and sends STATE_CHANGED.
+    // The UI will refresh with correct data after receiving the state update.
     quickTabHostInfo.clear();
 
     _logPostActionCleanup(preActionState.clearedIds, hostInfoBeforeClear, startTime);
@@ -10227,12 +10626,25 @@ function _logPreActionState({ clearedIds, originTabIds }) {
 /**
  * Send CLOSE_ALL_QUICK_TABS message to background via port
  * v1.6.3.12-v7 - FIX Issue #15: Use port messaging for Close All operation
+ * v1.6.4-v4 - FEATURE: Close All respects container filter
  * @private
+ * @param {string} [containerFilter='all'] - Container filter ('all', 'current', or specific cookieStoreId)
  * @returns {Promise<Object>} Response from background
  */
-function _sendClearAllMessage() {
+function _sendClearAllMessage(containerFilter = 'all') {
+  // v1.6.4-v4 - Resolve 'current' to actual container ID
+  let targetContainerId = null;
+  if (containerFilter && containerFilter !== 'all') {
+    targetContainerId = containerFilter === 'current' ? _getCurrentContainerId() : containerFilter;
+  }
+
+  // v1.6.4-v4 - Compute the resolved filter value once for reuse
+  const resolvedContainerFilter = containerFilter === 'all' ? 'all' : targetContainerId;
+
   console.log('[Manager] Close All: Dispatching CLOSE_ALL_QUICK_TABS via port...', {
     portConnected: !!quickTabsPort,
+    containerFilter,
+    targetContainerId,
     timestamp: Date.now()
   });
 
@@ -10248,14 +10660,18 @@ function _sendClearAllMessage() {
       correlationId
     });
 
+    // v1.6.4-v4 - Include container filter in message
     quickTabsPort.postMessage({
       type: 'CLOSE_ALL_QUICK_TABS',
       timestamp: sentAt,
-      correlationId
+      correlationId,
+      containerFilter: resolvedContainerFilter
     });
 
     console.log('[Sidebar] CLOSE_ALL_QUICK_TABS sent via port:', {
       correlationId,
+      containerFilter,
+      targetContainerId,
       timestamp: sentAt
     });
 
@@ -10267,7 +10683,8 @@ function _sendClearAllMessage() {
   // Fallback to runtime.sendMessage if port not connected
   console.warn('[Manager] Close All: Port not connected, falling back to runtime.sendMessage');
   return browser.runtime.sendMessage({
-    action: 'COORDINATED_CLEAR_ALL_QUICK_TABS'
+    action: 'COORDINATED_CLEAR_ALL_QUICK_TABS',
+    containerFilter: resolvedContainerFilter
   });
 }
 

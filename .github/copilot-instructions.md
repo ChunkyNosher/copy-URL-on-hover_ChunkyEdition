@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v3  
+**Version:** 1.6.4-v4  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -16,61 +16,38 @@
 - **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
 - **Tab Isolation** - Filter by `originTabId` at hydration time
 - **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Container Filter** - Filter Quick Tabs by container in Manager (v1.6.4-v4)
+- **Context Menu** - Right-click context menu for bulk Quick Tab operations
 - **Ephemeral Storage** - Quick Tabs stored in-memory, NOT persisted to disk
 - **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
   automatically
 
-**v1.6.4-v3 Bug Fixes (NEW):**
+**v1.6.4-v4 Features (CURRENT):**
 
-- **BUG FIX #1d-#9d** - Title updates, state sync, forceEmpty, navigation,
-  open-and-close, duplicate messages, UI flicker, STATE_CHANGED race, total logs
-- **BUG FIX #10d-#14d** - Transfer/Duplicate sync (no setTimeout), single
-  metrics footer, reduced DEBOUNCE logging
-- **BUG FIX #15d** - Critical state refresh force immediate render
-- **BUG FIX #16d** - Ignore stale QUICKTAB_REMOVED after transfer (5s grace)
+- **Go to Tab Cross-Container Fix** - `sidebarAction.close()` called synchronously
+  FIRST for proper focus transfer; Zen Browser compatible
+- **Minimized Drag Restore Fix** - `minimizedSnapshot` transferred with Quick Tab
+  data; `storeTransferredSnapshot()` enables restore after cross-tab transfer
+- **Right-Click Context Menu** - "Close All" and "Minimize All" Quick Tabs via
+  `browser.menus` API (`_initializeContextMenus()` in background.js)
+- **Minimize All Button** - New ⏬ button in tab group headers
+- **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
+  duplicates instead of moving
+- **Duplicate Container Fix** - Duplicated Quick Tabs now have correct
+  `originContainerId` for proper filtering
 
-**v1.6.4-v3 Features (NEW):**
+**v1.6.4-v4 Container Features:** Container Filter Dropdown, Container Badge,
+Name Resolution via contextualIdentities, ContainerManager.js module, Filter
+Persistence (`quickTabsContainerFilter`), Go to Tab focus sequence
 
-- **Live Log Action Metrics Footer** - Quick Tab count, logs/sec, total logs.
-  Configurable interval (500ms-30s), toggle in settings.
-- **Expandable Category Breakdown** - Click metrics to expand/collapse
-  per-category counts
-- **Filter-Aware Log Counting** - Only counts logs for enabled filter categories
-- **Footer Visibility** - Save/Reset buttons hidden on Manager tab
-- **Export Console Logs includes Manager logs** - Full debugging with sidebar
+**v1.6.4-v4 Bug Fixes:** Container filter fix, dropdown cleanup, drag-drop
+bubble fix, container switch refresh, auto-detect indicator
 
-**v1.6.4-v3 Code Health:**
+**v1.6.4-v3:** Metrics footer, DEBOUNCE logging, title/state fixes
 
-- **window.js** - Code Health: 8.28 → 9.38 (10+ helpers)
-- **VisibilityHandler.js** - Code Health: 8.28 → 9.38 (6 helpers)
-- **StorageChangeAnalyzer.js** - New module (20 functions)
-- **content.js** - Code Health: 8.54 → 9.09
+**v1.6.4:** Drag-and-Drop, Cross-Tab Transfer, Duplicate via Shift+Drag
 
-**v1.6.4 Bug Fixes:**
-
-- **BUG FIX #1-2** - Transfer/Duplicate race fix (removed redundant port calls)
-- **BUG FIX #3** - Quick Tab reordering persistence
-  (`_userQuickTabOrderByGroup`)
-- **BUG FIX #4** - Last Quick Tab close fix (`_handleEmptyStateTransition()`)
-
-**v1.6.4 Code Health:**
-
-- **PortManager.js** - Port connection, circuit breaker (9.68)
-- **RenderManager.js** - Render scheduling, UI helpers (9.17)
-
-**v1.6.4 Features:**
-
-- Drag-and-Drop reordering, Cross-Tab Transfer, Duplicate via Shift+Drag
-- Click-to-Front, Move to Current Tab, Tab Group Actions, Open in New Tab
-- Duplicate Modifier Key setting: Shift (default), Ctrl, None
-
-**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
-**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
-**v1.6.3.12-v10:** Port Routing Fix (Issue #48), Code Health 9.09  
-**v1.6.3.12-v8 to v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close  
-**v1.6.3.12:** Option 4 In-Memory Architecture, Port-Based Messaging  
-**v1.6.3.11-v12:** Solo/Mute REMOVED
+**v1.6.3.12:** Option 4 Architecture, Port-Based Messaging, Solo/Mute REMOVED
 
 **Core Modules:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
@@ -106,7 +83,8 @@ const quickTabsSessionState = {
   contentScriptPorts: {}, // { [tabId]: port }
   sidebarPort: null,
   sessionId: generateUUID(),
-  sessionStartTime: Date.now()
+  sessionStartTime: Date.now(),
+  minimizedSnapshots: {} // { [quickTabId]: { left, top, width, height } }
 };
 ```
 
@@ -131,78 +109,80 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v3 Patterns (Current)
+### v1.6.4-v4 Patterns (Current)
 
-- **Title Update Fix** - Quick Tab title updates from link text to page title
-- **State Version Race Fix** - "Move to Current Tab" properly reflects in
-  Manager
-- **forceEmpty Fix** - VisibilityHandler handles last Quick Tab close
-- **Navigation Update** - Manager updates when navigating within Quick Tab
-  iframe
-- **Open-and-Close** - "Open in New Tab" closes Quick Tab after opening URL
-- **Direct State Refresh** - `requestAllQuickTabsViaPort()` called directly
-  after ACK (no setTimeout)
-- **Critical State Refresh** - `_pendingCriticalStateRefresh` flag forces
-  immediate render after transfer/duplicate response (bypass debounce)
-- **Single Metrics Footer** - Only settings.html has metrics (quick-tabs-manager
-  sends postMessage)
-- **Reduced Logging** - DEBOUNCE event-queuing logs removed, completion logs
-  retained
+- **Go to Tab Focus Fix** - `sidebarAction.close()` called synchronously FIRST
+  in `_handleGoToTabGroup()` before async ops; Zen Browser compatible
+- **Minimized Drag Restore** - `minimizedSnapshots` in `quickTabsSessionState`;
+  `storeTransferredSnapshot()` in MinimizedManager; snapshot sent via
+  `QUICKTAB_MINIMIZED` and included in `QUICK_TAB_TRANSFERRED_IN`
+- **Context Menu** - `_initializeContextMenus()` adds "Close All" and "Minimize
+  All" browser context menu items via `browser.menus` API
+- **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
+  in a tab group
+- **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
+  duplicate vs move
+- **Duplicate Container** - `_createDuplicateQuickTab()` sets
+  `originContainerId`
+- **Container Filter** - `_filterQuickTabsByContainer()`,
+  `_containerFilterDropdown` (default: "all")
+- **Container Badge** - `_createContainerBadge()` in ContainerManager.js
+- **Name Resolution** - `_getContainerNameByIdAsync()`,
+  `_getContainerNameSync()`
+- **Context Change** - `_onContainerContextChanged()` calls
+  `requestAllQuickTabsViaPort()` for fresh data
+- **Persistence** - `quickTabsContainerFilter` storage key
+- **Container Data** - `buildQuickTabData()` uses `getWritingContainerId()`
+- **Drag Bubble** - Tab-group drag events bubble past Quick Tab item handlers
+
+### v1.6.4-v3 Patterns
+
+- **Title/Navigation Update** - UPDATE_QUICK_TAB updates title from iframe
+- **State Fixes** - forceEmpty, State Version Race, Open-and-Close
+- **Transfer/Duplicate** - Direct state refresh, Critical State Refresh flag
+- **Metrics** - Single footer, reduced DEBOUNCE logging
 
 ### v1.6.4 Patterns
 
-- **Transfer/Duplicate Race Fix** - Removed redundant
-  `requestAllQuickTabsViaPort()` calls
-- **Quick Tab Order Persistence** - `_userQuickTabOrderByGroup` map
-- **Empty State Handling** - `_handleEmptyStateTransition()` helper
-- **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via drag
-- **Cross-Tab Transfer** - Drag Quick Tab to another tab group
-- **Duplicate via Modifier** - Hold Shift while dragging
-- **Click-to-Front** - Transparent overlay with `MAX_OVERLAY_Z_INDEX`
-- **Fallback Messaging** - `browser.tabs.sendMessage` fallback
+- **Race Fixes** - Removed redundant `requestAllQuickTabsViaPort()` calls
+- **Order Persistence** - `_userQuickTabOrderByGroup`,
+  `_handleEmptyStateTransition()`
+- **Drag Features** - Reordering, Cross-Tab Transfer, Duplicate, Click-to-Front
 
 ### v1.6.3.12 Patterns (Consolidated)
 
-- **v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction
-- **v12:** Button Operation Fix, Cross-Tab Render Fix, Fallback Messaging
-- **v11:** Cross-Tab Display, Options Page Guard, Tab Cache Invalidation
-- **v10:** Port Routing Fix, Manager Button Operations
-- **v8-v9:** Optimistic UI, Render Lock, Orphan UI, Bulk Close
-- **v5-v7:** Circuit Breaker, Priority Queue, Sequence Tracking
-
-### Previous Version Patterns
-
+- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync, Helper
+  Extraction
+- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock, Bulk
+  Close
 - **v1.6.3.12:** Option 4 Architecture, Port Messaging, storage.local Only
 - **v1.6.3.11-v12:** Solo/Mute REMOVED
 
 ### Key Timing Constants
 
-| Constant                                        | Value                           | Purpose                         |
-| ----------------------------------------------- | ------------------------------- | ------------------------------- |
-| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Quick Tab order persistence key |
-| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index (v1.6.4)  |
-| `OVERLAY_REACTIVATION_DELAY_MS`                 | 500                             | Pointer events re-enable delay  |
-| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before circuit trips   |
-| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`              | 30000                           | Test write interval             |
-| `QUICK_TABS_PORT_CIRCUIT_BREAKER_AUTO_RESET_MS` | 60000                           | Auto-reset circuit breaker      |
-| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnection attempts       |
-| `METRICS_DEFAULT_INTERVAL_MS`                   | 1000                            | Live metrics update interval    |
+| Constant                                        | Value                           | Purpose                     |
+| ----------------------------------------------- | ------------------------------- | --------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`                   | 'quickTabsManagerQuickTabOrder' | Order persistence key       |
+| `CONTAINER_FILTER_STORAGE_KEY`                  | 'quickTabsContainerFilter'      | Container filter preference |
+| `MAX_OVERLAY_Z_INDEX`                           | 2147483646                      | Click overlay z-index       |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD`         | 5                               | Failures before trip        |
+| `PORT_RECONNECT_MAX_ATTEMPTS`                   | 10                              | Max reconnect attempts      |
 
 ---
 
 ## Architecture Classes (Key Methods)
 
-| Class                | Methods                                  |
-| -------------------- | ---------------------------------------- |
-| QuickTabStateMachine | `canTransition()`, `transition()`        |
-| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`   |
-| TabStateManager      | `getTabState()`, `setTabState()`         |
-| MessageRouter        | ACTION-based routing                     |
-| EventBus             | `on()`, `off()`, `emit()`, `once()`      |
-| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()` |
-| Manager              | `scheduleRender()`                       |
-| CreateHandler        | `getWritingContainerId()` (v3)           |
-| TestBridge           | `getManagerState()` (v3)                 |
+| Class                | Methods                                             |
+| -------------------- | --------------------------------------------------- |
+| QuickTabStateMachine | `canTransition()`, `transition()`                   |
+| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`              |
+| TabStateManager      | `getTabState()`, `setTabState()`                    |
+| MessageRouter        | ACTION-based routing                                |
+| EventBus             | `on()`, `off()`, `emit()`, `once()`                 |
+| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`            |
+| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()` |
+| CreateHandler        | `getWritingContainerId()` (v3)                      |
+| TestBridge           | `getManagerState()` (v3)                            |
 
 ---
 
@@ -212,7 +192,8 @@ const quickTabsSessionState = {
 (not persisted to disk)
 
 **State Object:** `quickTabsSessionState` with `quickTabsByTab`,
-`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`
+`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`,
+`minimizedSnapshots`
 
 **Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
 `canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
@@ -223,6 +204,13 @@ const quickTabsSessionState = {
 ---
 
 ## 📝 Logging Prefixes
+
+**v1.6.4-v4 Logging:** `[Manager] GO_TO_TAB: Cross-container switch detected`,
+`[Background] CONTEXT_MENU:`, `[Background] SNAPSHOT_STORED:`,
+`[Background] SNAPSHOT_INCLUDED:`, `[Content] MINIMIZED_SNAPSHOT_STORED:`
+
+**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`,
+`[Manager] CONTAINER_NAME_RESOLVED:`
 
 **v1.6.4:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
 `[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
@@ -243,14 +231,9 @@ const quickTabsSessionState = {
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
 machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
-error telemetry, originTabId resolution, container isolation, z-index recycling,
-port messaging, factory patterns, lookup tables, generic wrapper functions,
-in-memory state, push notifications, port roundtrip tracking, circuit breaker,
-priority queue, timeout backoff, rolling heartbeat window, sequence number
-tracking, port reconnection circuit breaker, defensive input validation, circuit
-breaker auto-reset, listener registration guards, message timeout protection,
-optimistic UI updates, render lock, orphan recovery UI, state version tracking,
-port routing, sidebar URL detection.
+container isolation, container filter, z-index recycling, port messaging,
+factory patterns, lookup tables, in-memory state, push notifications, circuit
+breaker, port routing, sidebar URL detection, context menu.
 
 ---
 
@@ -312,22 +295,25 @@ documentation. Do NOT search for "Quick Tabs" - search for standard APIs like
 
 ### Key Files
 
-| File                                        | Features                                    |
-| ------------------------------------------- | ------------------------------------------- |
-| `src/constants.js`                          | Centralized constants                       |
-| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                   |
-| `src/utils/storage-utils.js`                | Storage utilities                           |
-| `src/background/tab-events.js`              | Tabs API listeners                          |
-| `src/utils/structured-logger.js`            | StructuredLogger class with contexts        |
-| `src/messaging/message-router.js`           | ACTION-based routing                        |
-| `background.js`                             | In-memory state, port handlers              |
-| `sidebar/quick-tabs-manager.js`             | Port-based queries to background            |
-| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)   |
-| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)      |
-| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)           |
-| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)  |
-| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2) |
-| `src/content.js`                            | Port messaging for Quick Tabs               |
+| File                                        | Features                                          |
+| ------------------------------------------- | ------------------------------------------------- |
+| `src/constants.js`                          | Centralized constants                             |
+| `src/utils/shadow-dom.js`                   | Shadow DOM link detection                         |
+| `src/utils/storage-utils.js`                | Storage utilities                                 |
+| `src/background/tab-events.js`              | Tabs API listeners                                |
+| `src/utils/structured-logger.js`            | StructuredLogger class with contexts              |
+| `src/messaging/message-router.js`           | ACTION-based routing                              |
+| `background.js`                             | In-memory state, port handlers, minimizedSnapshots|
+| `sidebar/quick-tabs-manager.js`             | Port-based queries, container filter (v1.6.4-v4)  |
+| `sidebar/managers/PortManager.js`           | Port connection, circuit breaker (v1.6.4)         |
+| `sidebar/managers/RenderManager.js`         | Render scheduling, UI helpers (v1.6.4)            |
+| `sidebar/managers/DragDropManager.js`       | Drag-and-drop reordering (v1.6.4)                 |
+| `sidebar/managers/OrderManager.js`          | Group/Quick Tab order persistence (v1.6.4)        |
+| `sidebar/managers/ContainerManager.js`      | Container isolation, filtering, badge (v1.6.4-v4) |
+| `sidebar/managers/StorageChangeAnalyzer.js` | Storage change analysis helpers (v1.6.4-v2)       |
+| `src/content.js`                            | Port messaging, storeTransferredSnapshot          |
+| `src/features/quick-tabs/minimized-manager.js` | Snapshot storage for minimize/restore          |
+| `src/features/quick-tabs/handlers/VisibilityHandler.js` | Sends minimizedSnapshot        |
 
 ### Storage (v1.6.3.12-v8+)
 

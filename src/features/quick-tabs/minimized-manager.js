@@ -1489,4 +1489,107 @@ export class MinimizedManager {
   hasAdoptionLock(quickTabId) {
     return this._adoptionLocks.has(quickTabId);
   }
+
+  /**
+   * Validate snapshot data for transfer
+   * v1.6.4-v6 - Extracted helper to reduce storeTransferredSnapshot complexity
+   * @private
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} snapshotData - Snapshot data to validate
+   * @returns {boolean} True if valid
+   */
+  _validateTransferredSnapshotData(quickTabId, snapshotData) {
+    if (!quickTabId || !snapshotData) {
+      console.warn('[MinimizedManager] storeTransferredSnapshot: Invalid parameters:', {
+        quickTabId,
+        hasSnapshotData: !!snapshotData
+      });
+      return false;
+    }
+
+    if (!snapshotData.position || !snapshotData.size) {
+      console.warn('[MinimizedManager] storeTransferredSnapshot: Invalid snapshot structure:', {
+        quickTabId,
+        hasPosition: !!snapshotData.position,
+        hasSize: !!snapshotData.size
+      });
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Build snapshot object from transfer data
+   * v1.6.4-v6 - Extracted helper to reduce storeTransferredSnapshot complexity
+   * @private
+   * @param {Object} snapshotData - Snapshot data from transfer
+   * @returns {Object} Formatted snapshot object
+   */
+  _buildTransferredSnapshot(snapshotData) {
+    return {
+      window: null,
+      savedPosition: {
+        left: snapshotData.position.left ?? DEFAULT_POSITION_LEFT,
+        top: snapshotData.position.top ?? DEFAULT_POSITION_TOP
+      },
+      savedSize: {
+        width: snapshotData.size.width ?? DEFAULT_SIZE_WIDTH,
+        height: snapshotData.size.height ?? DEFAULT_SIZE_HEIGHT
+      },
+      savedOriginTabId: snapshotData.originTabId ?? null,
+      savedOriginContainerId: snapshotData.originContainerId ?? null,
+      isRestoring: false,
+      isTransferred: true
+    };
+  }
+
+  /**
+   * Store a transferred snapshot for a minimized Quick Tab
+   * v1.6.4-v6 - FIX BUG #2: Enable restore after cross-tab transfer of minimized Quick Tabs
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} snapshotData - Snapshot data from transfer message
+   * @returns {boolean} True if snapshot was stored successfully
+   */
+  storeTransferredSnapshot(quickTabId, snapshotData) {
+    if (!this._validateTransferredSnapshotData(quickTabId, snapshotData)) {
+      return false;
+    }
+
+    const snapshot = this._buildTransferredSnapshot(snapshotData);
+    this.minimizedTabs.set(quickTabId, snapshot);
+    this._updateLocalTimestamp();
+
+    console.log('[MinimizedManager] TRANSFERRED_SNAPSHOT_STORED:', {
+      quickTabId,
+      savedPosition: snapshot.savedPosition,
+      savedSize: snapshot.savedSize,
+      savedOriginTabId: snapshot.savedOriginTabId,
+      savedOriginContainerId: snapshot.savedOriginContainerId
+    });
+
+    return true;
+  }
+
+  /**
+   * Update the window reference for a transferred snapshot
+   * v1.6.4-v6 - FIX BUG #2: After Quick Tab creation, update snapshot with window reference
+   * @param {string} quickTabId - Quick Tab ID
+   * @param {Object} tabWindow - QuickTabWindow instance
+   * @returns {boolean} True if window reference was updated
+   */
+  updateTransferredSnapshotWindow(quickTabId, tabWindow) {
+    const snapshot = this.minimizedTabs.get(quickTabId);
+    if (!snapshot || !snapshot.isTransferred) {
+      return false;
+    }
+
+    snapshot.window = tabWindow;
+    console.log('[MinimizedManager] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:', {
+      quickTabId,
+      hasWindow: !!tabWindow
+    });
+
+    return true;
+  }
 }

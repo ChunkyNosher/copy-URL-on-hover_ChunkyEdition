@@ -1,8 +1,8 @@
-# Quick Tabs – Comprehensive Behavior Scenarios (v1.6.3+)
+# Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 3.0 (Tab-Scoped)  
-**Last Updated:** December 12, 2025  
-**Extension Version:** v1.6.3+
+**Document Version:** 4.2 (v1.6.4-v4 Features)  
+**Last Updated:** January 4, 2026  
+**Extension Version:** v1.6.4-v4
 
 ---
 
@@ -861,6 +861,332 @@ operations.
 
 ---
 
+## Scenario 26: Container Filter Dropdown (v1.6.4-v4)
+
+**Purpose:** Verify the container filter dropdown filters Quick Tabs by Firefox
+Container correctly.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Default container, create QT 1; Open WP 2 in Personal
+     container, create QT 2; Open WP 3 in Work container, create QT 3
+   - Expected: Three Quick Tabs in three different containers
+
+2. **Open Manager and verify default filter**
+   - Action: Press Ctrl+Alt+Z
+   - Expected: Manager shows container dropdown with "🌐 All Containers"
+     selected (v1.6.4-v4 default)
+   - Expected: All three Quick Tabs visible (QT 1, QT 2, QT 3)
+
+3. **Change filter to "Current Container"**
+   - Action: Click container dropdown, select current container option
+   - Expected: Manager shows only Quick Tabs from the current container
+   - Expected: Dropdown label updates to show current container name
+
+4. **Filter by specific container**
+   - Action: Click dropdown, select "Personal" container
+   - Expected: Manager shows only QT 2 (Personal container)
+
+5. **Switch to different container tab while filtering by current**
+   - Action: Set filter to "Current Container", switch to WP 2 (Personal
+     container tab)
+   - Expected: Dropdown label updates to show "💼 Personal" as current container
+   - Expected: Quick Tabs list updates to show only Personal container Quick
+     Tabs
+
+6. **Verify filter preference persists**
+   - Action: Set filter to "Personal" container, close and reopen Manager
+   - Expected: Filter still set to "Personal" after reopening
+
+---
+
+## Scenario 27: Container Name Resolution (v1.6.4-v4)
+
+**Purpose:** Verify container names are properly resolved from
+contextualIdentities API instead of showing numeric IDs.
+
+### Steps:
+
+1. **Open Manager with Quick Tabs in named containers**
+   - Action: Create Quick Tabs in containers named "Shopping", "Research",
+     "Work"
+   - Expected: Container dropdown shows actual names (Shopping, Research, Work)
+     NOT "Firefox Container 1, 2, 3"
+
+2. **Verify container icons display**
+   - Action: Check container dropdown options
+   - Expected: Each container shows its configured icon (🛒, 📚, 💼 etc.)
+
+3. **Verify console logs show container names**
+   - Action: Open browser console, switch containers
+   - Expected: Logs show `currentContainerName: "Shopping"` instead of just
+     `currentContainerId: "firefox-container-1"`
+
+---
+
+## Scenario 28: Container Filter Properly Includes originContainerId (v1.6.4-v4)
+
+**Purpose:** Verify Quick Tabs include `originContainerId` field so container
+filter works correctly.
+
+### Steps:
+
+1. **Open WP 1 in Personal container, create QT 1**
+   - Action: Right-click new tab → "Personal" container, navigate to Wikipedia,
+     press Q
+   - Expected: QT 1 created with `originContainerId: "firefox-container-X"`
+     (where X is Personal container ID)
+
+2. **Open Manager and set filter to "Personal" container**
+   - Action: Press Ctrl+Alt+Z, click container dropdown, select "Personal"
+   - Expected: QT 1 appears in filtered list (container filter matches
+     originContainerId)
+
+3. **Open WP 2 in Work container, create QT 2**
+   - Action: Right-click new tab → "Work" container, navigate to Wikipedia,
+     press Q
+   - Expected: QT 2 created with different `originContainerId`
+
+4. **Verify Personal filter excludes Work Quick Tab**
+   - Action: With Personal filter still active, observe Manager list
+   - Expected: Only QT 1 visible (QT 2 filtered out because originContainerId
+     doesn't match)
+
+5. **Verify Quick Tab data in console**
+   - Action: Open browser console, check Quick Tab object
+   - Expected: `originContainerId` field is present and correctly populated (not
+     undefined or 'firefox-default' for container tabs)
+
+---
+
+## Scenario 29: "Default" Container Not in Dropdown (v1.6.4-v4)
+
+**Purpose:** Verify "firefox-default" container does not appear as a separate
+dropdown option since "All Containers" already includes it.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in default and named containers**
+   - Action: Open WP 1 in default (no container), create QT 1; Open WP 2 in
+     Personal container, create QT 2
+   - Expected: Two Quick Tabs created
+
+2. **Open Manager container dropdown**
+   - Action: Press Ctrl+Alt+Z, click container filter dropdown
+   - Expected: Dropdown shows "🌐 All Containers" and named containers
+     (Personal, Work, etc.)
+
+3. **Verify "Default" or "firefox-default" NOT in list**
+   - Action: Scan all dropdown options
+   - Expected: NO option labeled "Default", "firefox-default", or "No Container"
+     appears
+
+4. **Verify default container Quick Tabs visible under "All Containers"**
+   - Action: Select "🌐 All Containers" filter
+   - Expected: QT 1 (default container) AND QT 2 (Personal) both visible
+
+5. **Verify filtering to named container excludes default**
+   - Action: Select "Personal" from dropdown
+   - Expected: Only QT 2 visible; QT 1 (default container) NOT shown
+
+---
+
+## Scenario 30: Tab Group Drag-Drop on Full Element (v1.6.4-v4)
+
+**Purpose:** Verify tab groups can be reordered by dragging anywhere on the
+group element, not just the header.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in multiple tabs**
+   - Action: Open WP 1, create QT 1; Open YT 1, create QT 2; Open GH 1, create
+     QT 3
+   - Expected: Three tab groups in Manager (Wikipedia, YouTube, GitHub)
+
+2. **Open Manager**
+   - Action: Press Ctrl+Alt+Z
+   - Expected: Manager shows three tab groups in default order
+
+3. **Drag tab group by its Quick Tab item area**
+   - Action: Drag the Wikipedia group by clicking on the QT 1 item area (NOT the
+     group header)
+   - Expected: Drag operation initiates for the TAB GROUP (not just the Quick
+     Tab item)
+
+4. **Drop tab group onto another group**
+   - Action: Drop Wikipedia group onto YouTube group's drop zone
+   - Expected: Tab groups reorder successfully (Wikipedia moves to new position)
+
+5. **Verify Quick Tab item drag still works**
+   - Action: Drag QT 1 from Wikipedia group to GitHub group (cross-tab transfer)
+   - Expected: QT 1 transfers to GitHub group (Quick Tab item-level drag still
+     functional)
+
+6. **Verify no console errors during drag operations**
+   - Action: Open browser console, perform several drag operations
+   - Expected: No errors related to `stopPropagation` or event bubbling
+
+---
+
+## Scenario 31: Auto-Detect Indicator in Current Container Option (v1.6.4-v4)
+
+**Purpose:** Verify the Current Container dropdown option shows "(auto-detect)"
+indicator to clarify dynamic behavior.
+
+### Steps:
+
+1. **Open Manager and view container dropdown**
+   - Action: Press Ctrl+Alt+Z, click on container filter dropdown
+   - Expected: Dropdown opens showing available options
+
+2. **Verify Current Container option shows auto-detect indicator**
+   - Action: Locate the "Current Container" option in dropdown
+   - Expected: Option text shows "Container Name (auto-detect)" format (e.g.,
+     "💼 Work (auto-detect)")
+   - Expected: NOT just "Current Container" or plain container name
+
+3. **Verify tooltip mentions auto-detection**
+   - Action: Hover over Current Container option
+   - Expected: Tooltip explains dynamic behavior (container changes when
+     switching tabs)
+
+4. **Verify other container options do NOT have indicator**
+   - Action: Check "All Containers" and specific named container options
+   - Expected: "All Containers" and static container options do NOT show
+     "(auto-detect)"
+
+5. **Verify indicator updates with container context**
+   - Action: Switch to tab in Personal container, open dropdown
+   - Expected: Current Container option shows "👤 Personal (auto-detect)"
+
+---
+
+## Scenario 32: Quick Tabs List Auto-Updates on Container Switch (v1.6.4-v4)
+
+**Purpose:** Verify Quick Tabs list refreshes automatically when switching
+containers while "Current Container" filter is active.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Personal container, create QT 1; Open WP 2 in Work
+     container, create QT 2
+   - Expected: Two Quick Tabs in two different containers
+
+2. **Open Manager and set filter to "Current Container"**
+   - Action: Press Ctrl+Alt+Z in Personal container tab, select "Current
+     Container" from dropdown
+   - Expected: Manager shows only QT 1 (Personal container Quick Tab)
+
+3. **Switch to Work container tab**
+   - Action: Click on WP 2 tab (Work container)
+   - Expected: Manager automatically refreshes and shows QT 2 (Work container)
+   - Expected: QT 1 (Personal) no longer visible in list
+
+4. **Verify no stale data displayed**
+   - Action: Rapidly switch between Personal and Work container tabs
+   - Expected: Each switch triggers fresh data fetch via
+     `requestAllQuickTabsViaPort()`
+   - Expected: List always reflects Quick Tabs for current container
+
+5. **Verify container indicator updates in header**
+   - Action: Observe dropdown label during container switches
+   - Expected: Dropdown label updates to show new container name (e.g., "💼 Work
+     (auto-detect)" → "👤 Personal (auto-detect)")
+
+6. **Verify other filters not affected by container switch**
+   - Action: Set filter to "All Containers", switch between container tabs
+   - Expected: All Quick Tabs remain visible regardless of which tab is active
+
+---
+
+## Scenario 33: Container Indicator Badge in "All Containers" View (v1.6.4-v4)
+
+**Purpose:** Verify container indicator badge displays Firefox Container name
+with color for each tab group when "All Containers" filter is selected.
+
+### Steps:
+
+1. **Setup: Create Quick Tabs in different containers**
+   - Action: Open WP 1 in Default container, create QT 1; Open WP 2 in Shopping
+     container (blue), create QT 2; Open WP 3 in Work container (orange), create
+     QT 3
+   - Expected: Three Quick Tabs in three different containers
+
+2. **Open Manager with "All Containers" filter**
+   - Action: Press Ctrl+Alt+Z, ensure "🌐 All Containers" is selected in
+     dropdown
+   - Expected: Manager shows all three tab groups (Wikipedia 1, Wikipedia 2,
+     Wikipedia 3)
+
+3. **Verify container badge appears on each tab group**
+   - Action: Observe tab group headers
+   - Expected: Each tab group header shows a colored badge next to the tab title
+   - Expected: Badge shows container name (e.g., "Shopping", "Work") NOT numeric
+     ID
+   - Expected: Badge color matches Firefox container color (blue, orange, etc.)
+
+4. **Verify Default container tabs have no badge**
+   - Action: Observe WP 1 tab group (Default container)
+   - Expected: No container badge shown for Default container (clean appearance)
+
+5. **Verify badge visibility when switching filters**
+   - Action: Change filter from "All Containers" to "Shopping"
+   - Expected: Container badge NOT shown when filtering by specific container
+     (redundant)
+   - Action: Switch back to "All Containers"
+   - Expected: Container badges reappear on non-default container tab groups
+
+6. **Verify badge color scheme**
+   - Action: Create Quick Tabs in containers with different colors (blue,
+     turquoise, green, yellow, orange, red, pink, purple)
+   - Expected: Each badge displays correct Firefox container color
+
+---
+
+## Scenario 34: Go to Tab Button Works for Cross-Container Tabs (v1.6.4-v4)
+
+**Purpose:** Verify "Go to Tab" button properly focuses cross-container tabs by
+first focusing the window, then activating the tab.
+
+### Steps:
+
+1. **Setup: Create Quick Tab in different container**
+   - Action: Open WP 1 in Personal container, create QT 1
+   - Expected: QT 1 visible in WP 1
+
+2. **Switch to tab in different container**
+   - Action: Open YT 1 in Work container, switch to YT 1
+   - Expected: YT 1 is active, WP 1 (Personal) is inactive
+
+3. **Open Manager from YT 1**
+   - Action: Press Ctrl+Alt+Z in YT 1
+   - Expected: Manager shows QT 1 under "Wikipedia Tab 1" with Personal
+     container badge
+
+4. **Click "Go to Tab" button on QT 1's tab group**
+   - Action: Find WP 1 tab group header, click "Go to Tab" button (→ icon)
+   - Expected: Browser focus switches to WP 1 tab (Personal container)
+
+5. **Verify window.update called before tabs.update**
+   - Action: Open browser console, check for focus sequence logs
+   - Expected: Logs show `browser.windows.update()` called first (if
+     cross-window), then `browser.tabs.update()` to activate tab
+
+6. **Verify cross-window scenario**
+   - Action: Open WP 2 in different browser window (same container), create QT 2
+   - Action: From original window, click "Go to Tab" on WP 2 group
+   - Expected: Focus switches to second browser window, WP 2 tab activated
+
+7. **Verify "Go to Tab" works from Manager in any container context**
+   - Action: With Manager open in Work container, click "Go to Tab" on Personal
+     container tab group
+   - Expected: Browser correctly navigates to Personal container tab without
+     errors
+
+---
+
 ## Implementation Notes for Testing
 
 ### Test Bridge API Usage
@@ -913,52 +1239,6 @@ Before marking scenario as PASS:
 
 ---
 
-## v1.6.4 User Feedback Bugs (December 2025)
-
-**Added from User Feedback:** December 30, 2025
-
-### Bug 1b: Click to Bring Quick Tab to Front (FIXED)
-
-**Issue:** Clicking inside a Quick Tab's content area didn't bring it to front.
-**Fix:** Added transparent click overlay with `MAX_OVERLAY_Z_INDEX` constant
-(2147483646) and `OVERLAY_REACTIVATION_DELAY_MS` (500ms) for pointer-events
-toggling. The overlay captures mousedown events, brings window to front via
-`onFocus()`, and temporarily disables pointer-events to allow click
-pass-through. **Status:** ✅ FIXED in v1.6.4
-
-### Bug 2b: "Open in New Tab" Button Broken (FIXED)
-
-**Issue:** Both Quick Tab UI button and Manager button didn't work. **Root
-Cause:** `openTab` action was missing from `VALID_MESSAGE_ACTIONS` allowlist in
-MessageRouter.js. **Fix:** Added `openTab`, `saveQuickTabState`,
-`getQuickTabState`, `clearQuickTabState`, `createQuickTab` to allowlist.
-**Status:** ✅ FIXED in v1.6.4
-
-### Bug 3b: Cross-Tab Transfer/Duplicate Not Working (FIXED)
-
-**Issue:** Dragging Quick Tabs between tabs didn't trigger transfer/duplicate.
-**Root Cause:** Target tabs without Quick Tabs may not have a port connection.
-**Fix:** Added fallback messaging via `browser.tabs.sendMessage` when port is
-unavailable. Added `_sendTransferInMessageFallback()` and
-`_sendDuplicateMessageFallback()` in background.js. Added handlers for
-`QUICK_TAB_TRANSFERRED_IN`, `QUICK_TAB_TRANSFERRED_OUT`, and
-`CREATE_QUICK_TAB_FROM_DUPLICATE` in content.js TYPE_HANDLERS. **Status:** ✅
-FIXED in v1.6.4
-
-### Bug 4b: Manager Reordering Resets (FIXED)
-
-**Issue:** Reordering tabs/Quick Tabs in Manager reverted after operations.
-**Fix:** Added `_userGroupOrder` persistence and enhanced
-`_applyUserGroupOrder()` with stricter numeric type validation. Extracted
-`_findMatchingGroupKey()` helper. **Status:** ✅ FIXED in v1.6.4
-
-### Bug 5b: Alt Key Modifier Not Working (FIXED)
-
-**Issue:** Alt key for duplicate on drag didn't work. **Fix:** Removed Alt from
-options, changed default to Shift key. **Status:** ✅ FIXED in v1.6.4
-
----
-
 ## v1.6.4 New Features (December 2025)
 
 ### Feature 1: Drag-and-Drop Reordering
@@ -1006,381 +1286,417 @@ indicator. **CSS Changes:** font-size: 11px → 13px, padding: 4px 10px → 2px 
 
 ---
 
-## v1.6.4 Bug Fixes (December 2025)
+## Scenario 35: Close All Respects Container Filter (v1.6.4-v4)
 
-**Added from User Feedback:** December 31, 2025
+**Feature:** The "Close All" button in the Manager respects the current
+container filter setting. When viewing a specific container, Close All only
+closes Quick Tabs in that container, leaving Quick Tabs in other containers
+untouched.
 
-### Bug 1c & 2c: Transferred/Duplicated Quick Tabs Not Appearing (FIXED)
+### Setup
 
-**Issue:** Quick Tabs transferred or duplicated via drag-and-drop didn't appear
-in Manager. **Root Cause:** Redundant `requestAllQuickTabsViaPort()` calls
-caused race conditions - STATE_CHANGED message already contains the correct
-updated state. **Fix:** Removed redundant `requestAllQuickTabsViaPort()` calls
-after transfer/duplicate operations. STATE_CHANGED push notification from
-background is sufficient. **Status:** ✅ FIXED in v1.6.4
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 and WP QT 2 in WP 1
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open WP QT 3 and WP QT 4 in WP 2
+5. Open Manager (Ctrl+Alt+Z)
+6. Set container filter to "Shopping" container
 
-### Bug 3c: Quick Tab Reordering Within Groups Resets (FIXED)
+### Actions
 
-**Issue:** Reordering Quick Tabs within a tab group via drag-and-drop would
-reset when state changes occurred. **Root Cause:** No persistence of user's
-Quick Tab order within groups. **Fix:** Added `_userQuickTabOrderByGroup` map
-(originTabId → quickTabId array) for per-group ordering. Added
-`QUICK_TAB_ORDER_STORAGE_KEY` ('quickTabsManagerQuickTabOrder') for persistence.
-Added `_applyUserQuickTabOrder()` to preserve order during renders. Added
-`_saveUserQuickTabOrder()` to capture DOM order after reorder. **Status:** ✅
-FIXED in v1.6.4
+**Action A:** Click "Close All" button in Manager header
 
-### Bug 4c: Last Quick Tab Close Not Reflected in Manager (FIXED)
+### Expected Behavior
 
-**Issue:** Closing the last Quick Tab in a tab group didn't properly update the
-Manager UI to show empty state. **Root Cause:** Edge case handling for
-transitioning to empty state was missing. **Fix:** Extracted
-`_handleEmptyStateTransition()` helper for handling last Quick Tab close
-scenarios. Added `_logLowQuickTabCount()` for monitoring when Quick Tab count
-drops to low values (0-1). **Status:** ✅ FIXED in v1.6.4
+**After Action A:**
 
----
+| Component        | Expected State                            |
+| ---------------- | ----------------------------------------- |
+| WP QT 1          | ❌ CLOSED (was in Shopping container)     |
+| WP QT 2          | ❌ CLOSED (was in Shopping container)     |
+| WP QT 3          | ✅ STILL OPEN (in Research container)     |
+| WP QT 4          | ✅ STILL OPEN (in Research container)     |
+| Manager List     | Shows only WP 2 group with QT 3 and QT 4  |
+| Container Filter | Still set to "Shopping" (now shows empty) |
 
-## v1.6.4-v2 Bug Fixes (January 2026)
+### Implementation Details
 
-**Added from User Feedback:** January 1, 2026
+**Sidebar (`quick-tabs-manager.js`):**
 
-### Bug 1d: Quick Tab Title Shows Link Text Instead of Page Title (FIXED)
+1. `closeAllTabs()` reads `_getSelectedContainerFilter()`
+2. Resolves "current" to actual container ID via `_getCurrentContainerId()`
+3. Passes `containerFilter` to `_sendClearAllMessage()`
+4. Message includes `containerFilter` field for background processing
 
-**Issue:** When opening a Quick Tab of a link, the title shows the link text
-(e.g., "11th most populous country") instead of the actual page title (e.g.,
-"List of countries and dependencies by population - Wikipedia"). **Root Cause:**
-Title was set from `targetElement.textContent` in content.js line 3550 and never
-updated after iframe loaded. **Fix:** Modified
-`_notifyBackgroundOfStateChange()` in window.js to send UPDATE_QUICK_TAB message
-with both URL and title when iframe loads. Background updates session state and
-sends STATE_CHANGED to sidebar. **Status:** ✅ FIXED in v1.6.4-v2
+**Background (`background.js`):**
 
-### Bug 2d: "Move to Current Tab" Quick Tab Doesn't Appear in Manager (FIXED)
+1. `handleSidebarCloseAllQuickTabs()` extracts `containerFilter` from message
+2. Uses `_filterQuickTabsByContainerForClose()` to get matching Quick Tabs
+3. Only notifies content scripts for Quick Tabs in the target container
+4. Uses `_removeQuickTabsFromSessionStateByContainer()` to update state
+5. Quick Tabs in other containers remain in session state
 
-**Issue:** After pressing "Move to Current Tab" button in Manager, the Quick Tab
-transfers to the active tab and appears on screen, but doesn't appear in the
-Manager and doesn't respond to "Close All" button. **Root Cause:** State version
-race condition during render - when ACK triggers `_forceImmediateRender()`,
-STATE_CHANGED may arrive during render, but the render completion was setting
-`_lastRenderedStateVersion = _stateVersion` after it had already been
-incremented. **Fix:** Added `stateVersionAtRenderStart` capture at beginning of
-render, updated `_lastRenderedStateVersion` to use captured version. Extracted
-`_updateRenderTrackers()` helper. **Status:** ✅ FIXED in v1.6.4-v2
+**Key Messages:**
 
-### Bug 3d: Last Quick Tab Close Not Reflected in Manager (FIXED)
-
-**Issue:** When closing all Quick Tabs one by one via UI close button, the last
-Quick Tab closes on screen but still appears in Manager. **Root Cause:**
-VisibilityHandler's `_persistToStorage()` was calling `persistStateToStorage()`
-without `forceEmpty=true` when state had 0 tabs, causing the empty write to be
-blocked. **Fix:** Modified VisibilityHandler's `_persistToStorage()` to detect
-when `state.tabs.length === 0` and pass `forceEmpty=true` to allow empty state
-writes. **Status:** ✅ FIXED in v1.6.4-v2
-
-### Bug 4d: Manager Doesn't Update When Navigating Within Quick Tab (FIXED)
-
-**Issue:** When user clicks a different link inside a Quick Tab iframe
-(navigation), the Manager doesn't update to show the new page title. **Root
-Cause:** The iframe load handler in window.js updated local titlebar but didn't
-send UPDATE_QUICK_TAB message to background. **Fix:** Modified
-`setupIframeLoadHandler()` to capture previous title, compare with new title,
-and send UPDATE_QUICK_TAB message if either URL or title changed. **Status:** ✅
-FIXED in v1.6.4-v2
-
-### Bug 5d: "Open in New Tab" Button Doesn't Close Quick Tab (FIXED)
-
-**Issue:** Clicking "Open in New Tab" button in Manager opens the URL in a new
-browser tab correctly, but doesn't close the Quick Tab from the origin tab or
-remove it from Manager. **Root Cause:** `_handleOpenInNewTab()` only opened the
-URL but didn't trigger a close operation. **Fix:** Added
-`closeQuickTabViaPort(quickTabId)` call after successfully opening URL in new
-tab. Added logging for the close operation. **Status:** ✅ FIXED in v1.6.4-v2
+- `CLOSE_ALL_QUICK_TABS` now includes `containerFilter` field
+- `containerFilter: 'all'` closes all Quick Tabs (default)
+- `containerFilter: 'firefox-container-X'` closes only that container
 
 ---
 
-## v1.6.4-v2 Code Health Refactoring (January 2026)
+## Scenario 36: Cross-Container Quick Tab Transfer Updates Container ID (v1.6.4-v4)
 
-### window.js Refactoring (Code Health: 8.28 → 9.38)
+**Feature:** When transferring a Quick Tab from a tab in Container 1 to a tab in
+Container 2, the Quick Tab's `originContainerId` is updated to match the new
+container. This ensures the Quick Tab appears in the correct container's
+filtered view after the transfer.
 
-- Extracted 8 helpers from `_createClickOverlay` (CC=12 → resolved)
-- Extracted 2 helpers from `_tryGetIframeUrl` (CC=10 → resolved)
-- Extracted 2 predicate helpers for complex conditionals
+### Setup
 
-### VisibilityHandler.js Refactoring (Code Health: 8.28 → 9.38)
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 in WP 1 (originContainerId = "firefox-container-1" for Shopping)
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open Manager (Ctrl+Alt+Z)
+5. Set container filter to "All Containers"
 
-- Extracted 4 helpers from `_validateContainerForOperation` (CC=13 → resolved)
-- Extracted 2 helpers from `handleFocus` (CC=9 → resolved)
+### Actions
 
-### quick-tabs-manager.js Refactoring
+**Action A:** Drag WP QT 1 from WP 1 group to WP 2 group in Manager
 
-- Created `StorageChangeAnalyzer.js` module with 20 extracted functions
-- Reduced function count from 367 to 347
+**Action B:** Switch container filter to "Research" container
 
-### content.js Refactoring (v1.6.4-v2 update)
+### Expected Behavior
 
-- Extracted `_isValidQuickTabObject()` helper (CC=10 → resolved)
-- Extracted `_isAckMessage()` helper (CC=9 → resolved)
-- Code Health: 8.54 → 9.09
+**After Action A (Transfer):**
 
----
+| Component         | Expected State                              |
+| ----------------- | ------------------------------------------- |
+| WP QT 1 location  | Now belongs to WP 2 (originTabId changed)   |
+| WP QT 1 container | Now in Research (originContainerId changed) |
+| Manager List      | WP QT 1 now appears in WP 2 group           |
+| Container Badge   | Shows "Research" for WP QT 1 in All view    |
 
-## v1.6.4-v2 Additional Bug Fixes (January 2026)
+**After Action B (Filter Change):**
 
-**Added from User Feedback:** January 1, 2026
+| Component    | Expected State                          |
+| ------------ | --------------------------------------- |
+| Manager List | Shows WP 2 group with WP QT 1           |
+| WP QT 1      | ✅ VISIBLE (now in Research container)  |
+| WP 1 group   | Not visible (no Quick Tabs in Research) |
 
-### Bug 6d: Cross-Tab Transfer Duplicate Messages (FIXED)
+### Implementation Details
 
-**Issue:** When dragging Quick Tab to another tab, duplicate
-`QUICK_TAB_TRANSFERRED_IN` messages caused UI desyncs where Quick Tab appeared
-on target tab but not in Manager. **Root Cause:** `_notifyNewTabOfTransfer()`
-and `_notifyTargetTabOfDuplicate()` always sent fallback
-`browser.tabs.sendMessage` even when port messaging succeeded, causing duplicate
-Quick Tab creation attempts. **Fix:** Added check `!portSucceeded` before
-sending fallback messages. Added deduplication guard in
-`_handleQuickTabTransferredIn()` using session cache. **Status:** ✅ FIXED in
-v1.6.4-v2
+**Background (`background.js`):**
 
-### Bug 7d: "Open in New Tab" UI Flicker (FIXED)
+1. `handleSidebarTransferQuickTab()` is now async
+2. Calls `_getTargetTabContainerId()` to get target tab's container ID
+3. `_updateStateForTransfer()` now accepts `newContainerId` parameter
+4. Updates `quickTabData.originContainerId` and `quickTabData.cookieStoreId`
+5. Updates `globalQuickTabState.tabs[].originContainerId` and `.cookieStoreId`
+6. `TRANSFER_QUICK_TAB_ACK` includes `newContainerId` field
 
-**Issue:** Clicking "Open in New Tab" button caused Quick Tab to flicker in
-Manager before disappearing (or sometimes persisting). **Root Cause:**
-`openInNewTab` action was missing from `_optimisticUIActionConfig` lookup table,
-so no immediate visual feedback was applied. **Fix:** Added
-`openInNewTab: { class: 'closing', title: 'Opening...' }` to config. Added CSS
-rules for `.operation-pending`, `.closing`, `.minimizing`, `.restoring` states
-with smooth transitions. **Status:** ✅ FIXED in v1.6.4-v2
+**Key Logs:**
 
-### Bug 8d: Cross-Tab Transfer STATE_CHANGED Race Condition (FIXED)
-
-**Issue:** After transferring Quick Tab via "Move to Current Tab" or drag
-transfer, the Quick Tab appeared on target tab but not in Manager. "Close All"
-couldn't close transferred Quick Tabs. **Root Cause:** `STATE_CHANGED` messages
-from background to sidebar were being dropped when
-`quickTabsSessionState.sidebarPort` was null or disconnected. The v1.6.4 fix
-removed `requestAllQuickTabsViaPort()` from ACK handlers to prevent race
-conditions, but left no fallback. **Fix:** Added
-`STATE_CHANGED_SAFETY_TIMEOUT_MS` (500ms) safety mechanism - after receiving
-`TRANSFER_QUICK_TAB_ACK` or `DUPLICATE_QUICK_TAB_ACK`, if no `STATE_CHANGED` is
-received within 500ms, sidebar requests full state via
-`requestAllQuickTabsViaPort()`. **Final Fix (v1.6.4-v3):** Replaced safety
-timeout with immediate `requestAllQuickTabsViaPort()` call after ACK - ensures
-state is always refreshed regardless of STATE_CHANGED broadcast success.
-**Status:** ✅ FIXED in v1.6.4-v3
-
-### Bug 9d: Total Logs Count Reset Fix (FIXED)
-
-**Issue:** Total logs count in metrics footer didn't reset when clicking "Clear
-Log History" button in Settings. **Root Cause:** settings.js cleared log history
-but didn't notify the quick-tabs-manager.js iframe to reset its counters.
-**Fix:** Added `CLEAR_LOG_ACTION_COUNTS` postMessage from settings.js to iframe.
-quick-tabs-manager.js handles message and resets `_totalLogActions`,
-`_lastLogActionTimestamps`, and category counters. **Status:** ✅ FIXED in
-v1.6.4-v3
+- `[Background] TRANSFER_TARGET_TAB_INFO` shows target tab's container
+- `[Background] TRANSFER_CONTAINER_UPDATE` logs when container changes
+- `[Background] TRANSFER_QUICK_TAB_EXIT` includes `newContainerId`
 
 ---
 
-## v1.6.4-v3 Bug Fixes (January 2026)
+## Scenario 37: Go to Tab Cross-Container Focus Fix (v1.6.4-v4)
 
-### Bug Fix #10d: "Move to Current Tab" Quick Tab Not Appearing in Manager
+**Feature:** When clicking "Go to Tab" button in the Manager sidebar for a tab
+in a different Firefox Container, the browser now properly switches focus to
+that tab. Previously, the API calls succeeded but the sidebar retained focus,
+making it appear like nothing happened. This fix also ensures compatibility with
+Zen Browser, which has similar focus retention issues.
 
-**Description:** When clicking the "Move to Current Tab" button on a Quick Tab
-in the Manager, the Quick Tab would transfer to the active browser tab and
-appear visually, but it would NOT appear in the Manager's list. Additionally,
-the transferred Quick Tab couldn't be closed via "Close All" button.
+### Setup
 
-**Root Cause:** The `_handleSuccessfulTransferAck()` function wrapped
-`requestAllQuickTabsViaPort()` in a `setTimeout(0)` which caused a race
-condition. The ACK handler would complete before the fresh state request, and
-the subsequent STATE_CHANGED broadcast could be dropped if the sidebar port was
-in a transitional state.
+1. Open WP 1 in Firefox Container "Shopping" (FX Shopping)
+2. Open WP QT 1 in WP 1
+3. Open WP 2 in Firefox Container "Research" (FX Research)
+4. Open WP QT 2 in WP 2
+5. Open Manager sidebar (Ctrl+Alt+Z)
+6. Set container filter to "All Containers"
+7. Have WP 1 (Shopping) as the active tab
 
-**Fix:** Removed the `setTimeout(0)` wrapper and made
-`requestAllQuickTabsViaPort()` a direct synchronous call after the ACK
-processing. This ensures the Manager immediately requests and receives the
-updated Quick Tab list.
+### Actions
 
-**Files Changed:** `sidebar/quick-tabs-manager.js`
+**Action A:** Click "Go to Tab" button for WP 2 (Research container tab)
 
-**Status:** ✅ FIXED in v1.6.4-v3
+### Expected Behavior
 
-### Bug Fix #11d: Dragged Quick Tab (Transfer) Not Appearing in Manager
+**After Action A (Go to Tab):**
 
-**Description:** When dragging a Quick Tab from one browser tab group to another
-(transfer without duplicate), the Quick Tab would appear on the target tab but
-disappear from the Manager. The transferred Quick Tab also couldn't be closed
-via "Close All" button.
+| Component    | Expected State                                   |
+| ------------ | ------------------------------------------------ |
+| Active Tab   | WP 2 is now the active tab (visible)             |
+| Tab Switch   | Browser properly switches from WP 1 to WP 2      |
+| Main Content | WP 2's content is displayed in main browser area |
+| Sidebar      | Closes automatically for reliable focus transfer |
+| Container    | Now viewing Research container context           |
 
-**Root Cause:** Same as Bug Fix #10d - the `setTimeout(0)` wrapper caused
-inconsistent state refresh timing.
+### Root Cause Analysis
 
-**Fix:** Same as Bug Fix #10d - direct call to `requestAllQuickTabsViaPort()`
-after ACK processing.
+Firefox WebExtension sidebars have a known limitation where they retain focus
+even after `browser.tabs.update()` and `browser.windows.update()` calls succeed.
+The API calls work correctly (logs show `GO_TO_TAB_SUCCESS`), but the sidebar
+panel keeps input focus, which prevents the user from interacting with the
+newly-active tab. Zen Browser exhibits the same behavior as it is built on
+Firefox.
 
-**Files Changed:** `sidebar/quick-tabs-manager.js`
+**Critical Finding:** `browser.sidebarAction.close()` must be called
+synchronously from a user input handler. Previous code did `await` calls first
+(tabs.get, tabs.query, windows.update, tabs.update), which broke the user input
+chain and caused `sidebarAction.close()` to fail silently.
 
-**Status:** ✅ FIXED in v1.6.4-v3
+### Implementation Details
 
-### Bug Fix #12d: Duplicate Quick Tab (Duplicate) Handler Race Condition
+**Manager (`sidebar/quick-tabs-manager.js`):**
 
-**Description:** The DUPLICATE_QUICK_TAB_ACK handler had the same issue as the
-transfer handler, causing duplicated Quick Tabs to not appear properly in the
-Manager.
+1. `_handleGoToTabGroup()` calls `sidebarAction.close()` synchronously FIRST
+2. Sidebar closes immediately on click, before any async operations
+3. Async tab switching (window focus + tab activate) happens after sidebar close
+4. Cross-container logging preserved for debugging Zen Browser compatibility
 
-**Root Cause:** Same `setTimeout(0)` pattern issue.
+**Key Logs:**
 
-**Fix:** Removed `setTimeout(0)` wrapper from duplicate ACK handler as well.
-
-**Files Changed:** `sidebar/quick-tabs-manager.js`
-
-**Status:** ✅ FIXED in v1.6.4-v3
-
-### Bug Fix #13d: Duplicate Metrics Footer in Quick Tab Manager
-
-**Description:** Two metrics footers were displayed when viewing the Quick Tab
-Manager - one in the iframe (`quick-tabs-manager.html`) and one in the parent
-window (`settings.html`). This caused visual redundancy and confusion.
-
-**Fix:** Removed the metrics footer HTML, CSS, and associated DOM update logic
-from `quick-tabs-manager.html/css/js`. Kept only the expandable metrics footer
-in `settings.html` parent window. The `_updateMetrics()` function still sends
-metrics data to the parent via postMessage.
-
-**Files Changed:** `sidebar/quick-tabs-manager.html`,
-`sidebar/quick-tabs-manager.css`, `sidebar/quick-tabs-manager.js`
-
-**Status:** ✅ FIXED in v1.6.4-v3
-
-### Bug Fix #14d: Excessive Console Logging During Drag Operations
-
-**Description:** When dragging a Quick Tab (move or resize), up to 60-150
-console logs were generated per second. The `[DEBOUNCE][DRAG_EVENT_QUEUED]` and
-`[DEBOUNCE][MAIN_EVENT_QUEUED]` logs fired on every mouse move event, causing
-excessive noise and resource consumption.
-
-**Root Cause:** The debounce mechanism logged EVERY queued event, not just the
-final result.
-
-**Fix:** Removed the verbose event-queuing logs while keeping the debounce
-summary logs (`[DEBOUNCE][DRAG_COMPLETE]` and `[DEBOUNCE][MAIN_COMPLETE]`) that
-report how many write operations were prevented.
-
-**Files Changed:** `src/features/quick-tabs/handlers/UpdateHandler.js`
-
-**Status:** ✅ FIXED in v1.6.4-v3
-
-### Bug Fix #15d: State Refresh Response Using Debounced Render
-
-**Description:** Even after fixing Bug #10d-#12d, transferred/dragged Quick Tabs
-still didn't appear in the Manager. The Quick Tab would visually appear on the
-target tab but the Manager list wouldn't update, and "Close All" couldn't close
-the transferred Quick Tab.
-
-**Root Cause:** When `GET_ALL_QUICK_TABS_RESPONSE` arrived after
-transfer/duplicate operations, it went through `_handleQuickTabsStateUpdate()`
-which called `scheduleRender()` - a debounced render function. The debounce
-mechanism could delay or skip the render because:
-
-1. The previous immediate render from the ACK updated `lastRenderedStateHash`
-2. The hash comparison in `scheduleRender()` could skip the render
-3. Even if not skipped, the debounce timer would delay the update
-
-**Fix:** Added `_pendingCriticalStateRefresh` flag to force immediate render:
-
-1. Set flag before `requestAllQuickTabsViaPort()` in transfer/duplicate ACK
-   handlers
-2. Check flag in `_handleQuickTabsStateUpdate()` and call
-   `_forceImmediateRender('critical-state-refresh')` instead of
-   `scheduleRender()`
-3. Clear flag after forcing immediate render
-
-**Files Changed:** `sidebar/quick-tabs-manager.js`
-
-**Status:** ✅ FIXED in v1.6.4-v3
+- `[Manager] GO_TO_TAB_CLICKED` shows click registered with container context
+- `[Manager] GO_TO_TAB: Cross-container switch detected` logs container IDs
+- `[Manager] GO_TO_TAB_SUCCESS` confirms API calls succeeded
+- Browser focus now properly transfers to the selected tab
 
 ---
 
-## v1.6.4-v3 New Features (January 2026)
+## Scenario 38: Minimize All Quick Tabs in Tab Group (v1.6.4-v4)
 
-### Feature 8: Live Log Action Metrics Footer in Quick Tab Manager
+**Category:** Quick Tabs Manager - Bulk Actions  
+**Feature:** Minimize All button in tab group header  
+**Version:** v1.6.4-v4
 
-**Description:** Quick Tab Manager sidebar footer now shows live updating
-metrics for log action tracking (changed from storage/memory tracking):
+### Setup
 
-- 📑 Quick Tab count
-- 📊 Log actions per second (real-time rate)
-- 📈 Total log actions since last clear
+1. Open browser tab WP 1 and create 3 Quick Tabs (WP QT 1, WP QT 2, WP QT 3)
+2. All Quick Tabs are visible on screen
 
-**Settings:**
+### Test Steps
 
-- Toggle to enable/disable live metrics (default: enabled)
-- Update interval setting: 500ms to 30 seconds (default: 1 second)
-- When metrics are disabled, footer shows extension name only
+1. Open Quick Tabs Manager (Ctrl+Alt+Z)
+2. In the WP 1 tab group header, click the "Minimize All" button (⏬)
+3. Observe the Quick Tabs
 
-**Implementation:** Added console interceptors for `console.log`,
-`console.warn`, `console.error` to track log actions. Uses sliding window for
-accurate per-second rate calculation. Added `_trackLogAction()`,
-`_calculateLogsPerSecond()`, `_installConsoleInterceptors()`,
-`_clearLogActionCounts()` functions.
+### Expected Behavior
 
-### Feature 9: Footer Visibility Based on Active Tab
+| Step | Result                                             |
+| ---- | -------------------------------------------------- |
+| 2    | All 3 Quick Tabs in WP 1 are minimized             |
+| 2    | Quick Tabs disappear from screen but stay in state |
+| 2    | Manager shows minimized state for all Quick Tabs   |
+| 2    | Other tab groups' Quick Tabs remain unchanged      |
 
-**Description:** Save Settings and Reset to Defaults buttons in sidebar footer
-are now hidden when the Quick Tab Manager tab is active. They only appear when
-on the Settings tabs.
+### Key Implementation Details
 
-**Implementation:** Added CSS display toggle in `_switchToManagerTab()` and
-`_switchToSettingsTab()` functions in settings.js.
+- `_handleMinimizeAllInTabGroup()` function in quick-tabs-manager.js
+- Sends `SIDEBAR_MINIMIZE_QUICK_TAB` for each Quick Tab in the group
+- Button uses ⏬ icon and appears alongside Close All and Go to Tab buttons
 
-**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+---
 
-### Feature 10: Metrics Footer on All Tabs (v1.6.4-v3)
+## Scenario 39: Shift+Move to Current Tab Duplicates Quick Tab (v1.6.4-v4)
 
-**Description:** Metrics footer is now visible on both Quick Tab Manager tab AND
-Settings tabs in the sidebar, not just when viewing the Manager.
+**Category:** Quick Tabs Manager - Quick Tab Actions  
+**Feature:** Duplicate on Shift+Move to Current Tab  
+**Version:** v1.6.4-v4
 
-**Implementation:**
+### Setup
 
-- Added metrics footer HTML/CSS to settings.html parent window
-- Added postMessage communication from iframe (quick-tabs-manager.js) to parent
-  (settings.js)
-- Parent window receives METRICS_UPDATE messages and updates its own metrics
-  display
-- Both displays update simultaneously using same data source
+1. Open browser tab WP 1 and create WP QT 1
+2. Open browser tab YT 1 (current active tab)
+3. Open Quick Tabs Manager
 
-**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+### Test Steps
 
-### Feature 11: Expandable Category Breakdown (v1.6.4-v3)
+1. In Manager, find WP QT 1 listed under WP 1
+2. Hold Shift and click "Move to Current Tab" button (➡️ 📋)
+3. Observe the results
 
-**Description:** Click on the metrics footer to expand/collapse a category
-breakdown showing log counts per category:
+### Expected Behavior
 
-- **User Actions:** URL Detection, Hover Events, Clipboard, Keyboard, Quick
-  Tabs, Quick Tab Manager
-- **System Operations:** Event Bus, Config, State, Storage, Messaging, Web
-  Requests, Tabs
-- **Diagnostics:** Performance, Errors, Initialization
+| Step | Result                                                 |
+| ---- | ------------------------------------------------------ |
+| 2    | WP QT 1 remains on WP 1 (original not moved)           |
+| 2    | A new duplicate Quick Tab appears on YT 1              |
+| 2    | Manager shows Quick Tabs on both WP 1 and YT 1         |
+| 2    | `DUPLICATE_QUICK_TAB` message sent instead of transfer |
 
-**Implementation:** Added `_categoryLogCounts` tracking object,
-`_metricsExpanded` toggle state, `_renderCategoryBreakdown()` function.
-Categories match the Advanced settings tab categorization for consistency.
+### Key Implementation Details
 
-**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+- `_handleQuickTabActionClick()` captures `shiftKey` from event
+- `_dispatchMoveToCurrentTab()` checks for Shift modifier
+- `_executeMoveOrDuplicate()` helper for clean conditional dispatch
+- Button tooltip shows "(Shift+click to duplicate)"
 
-### Feature 12: Filter-Aware Log Counting (v1.6.4-v3)
+---
 
-**Description:** Metrics only count logs for categories enabled in Live Console
-Output Filters. If URL Detection or Hover Events are toggled OFF in settings,
-those logs won't be counted in the metrics.
+## Scenario 40: Duplicate Quick Tab Updates Container ID (v1.6.4-v4)
 
-**Implementation:**
+**Category:** Quick Tabs Manager - Duplicate  
+**Feature:** Duplicated Quick Tabs have correct container ID  
+**Version:** v1.6.4-v4
 
-- Added `_enabledLogFilters` object synced with storage.onChanged
-- Modified `_trackLogAction()` to check filter state before counting
-- Loads initial filter state from storage at startup
-- Real-time sync when user toggles filters in Settings
+### Setup
 
-**Status:** ✅ IMPLEMENTED in v1.6.4-v3
+1. Open browser tab WP 1 in Firefox Container "Work" (FX 1)
+2. Open browser tab YT 1 in Firefox Container "Personal" (FX 2)
+3. Create WP QT 1 on WP 1
+4. Open Quick Tabs Manager
+
+### Test Steps
+
+1. Set filter to "All Containers" to see all Quick Tabs
+2. Shift+Drag WP QT 1 to YT 1 tab group (or Shift+click Move to Current Tab)
+3. Set filter to "Personal" container (FX 2)
+4. Observe the Quick Tabs list
+
+### Expected Behavior
+
+| Step | Result                                                   |
+| ---- | -------------------------------------------------------- |
+| 2    | Duplicate Quick Tab created on YT 1                      |
+| 2    | Duplicate has `originContainerId: "firefox-container-2"` |
+| 3    | Filter shows only the duplicate Quick Tab (on YT 1)      |
+| 3    | Original WP QT 1 is filtered out (it's in FX 1)          |
+
+### Key Implementation Details
+
+- `handleSidebarDuplicateQuickTab()` lookups target tab's container ID
+- `_createDuplicateQuickTab()` sets `originContainerId` and `cookieStoreId`
+- Ensures duplicated Quick Tabs appear in correct container filter view
+- Fixes "ghost Quick Tab" bug where duplicates appeared in wrong container
+
+---
+
+## Scenario 41: Right-Click Context Menu for Quick Tab Management (v1.6.4-v4)
+
+**Category:** Quick Tabs Management - Browser Integration  
+**Feature:** Right-click context menu for bulk Quick Tab operations  
+**Version:** v1.6.4-v4
+
+### Setup
+
+1. Open browser tab WP 1 and create 3 Quick Tabs (WP QT 1, WP QT 2, WP QT 3)
+2. All Quick Tabs are visible on screen
+
+### Test Steps
+
+1. Right-click anywhere on the WP 1 page content
+2. Observe the browser context menu
+3. Click "Close All Quick Tabs on This Tab" menu item
+4. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 2    | Context menu shows "Close All Quick Tabs on This Tab" option    |
+| 2    | Context menu shows "Minimize All Quick Tabs on This Tab" option |
+| 3    | All 3 Quick Tabs on WP 1 are closed                             |
+| 3    | Quick Tabs on other browser tabs remain unaffected              |
+| 3    | Manager shows WP 1 group is now empty or removed                |
+
+### Minimize All via Context Menu
+
+1. Open WP 2 and create 2 Quick Tabs (WP QT 4, WP QT 5)
+2. Right-click and select "Minimize All Quick Tabs on This Tab"
+3. All Quick Tabs minimize (disappear from viewport, shown in Manager)
+4. Quick Tabs in WP 1 remain unaffected
+
+### Key Implementation Details
+
+**Background (`background.js`):**
+
+1. `_initializeContextMenus()` called during extension initialization
+2. Uses `browser.menus` API (manifest already has "menus" permission)
+3. Creates two menu items: "Close All Quick Tabs on This Tab" and "Minimize All
+   Quick Tabs on This Tab"
+4. Menu items only appear when right-clicking on page content (not links,
+   images)
+5. Click handlers send close/minimize commands to the current tab only
+
+**Key Logs:**
+
+- `[Background] CONTEXT_MENU: Initializing context menu items`
+- `[Background] CONTEXT_MENU: Close all clicked for tabId={id}`
+- `[Background] CONTEXT_MENU: Minimize all clicked for tabId={id}`
+
+---
+
+## Scenario 42: Minimized Quick Tab Restore After Cross-Tab Transfer (v1.6.4-v4)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** Transferred minimized Quick Tabs can be restored correctly  
+**Version:** v1.6.4-v4
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Minimize WP QT 1 (click minimize button or via Manager)
+3. Open browser tab YT 1
+4. Open Quick Tabs Manager
+
+### Test Steps
+
+1. In Manager, drag WP QT 1 from WP 1 group to YT 1 group (transfer)
+2. Observe WP QT 1 now appears under YT 1 group in Manager
+3. Click "Restore" button on WP QT 1 in the YT 1 group
+4. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                      |
+| ---- | ----------------------------------------------------------- |
+| 1    | WP QT 1 transfers from WP 1 to YT 1 successfully            |
+| 2    | WP QT 1 listed under YT 1 group with minimized indicator 🟡 |
+| 3    | WP QT 1 appears visible in YT 1 viewport                    |
+| 3    | WP QT 1 shows active indicator 🟢 in Manager                |
+| 3    | No console errors about missing Quick Tab tracking          |
+
+### Root Cause Analysis
+
+When a Quick Tab is transferred between tabs while minimized, the receiving
+tab's content script needs the Quick Tab's minimized snapshot (saved position
+and size from before minimizing) to restore it correctly. Previously,
+transferred Quick Tabs didn't have their snapshot, causing restore to fail with
+"Snapshot not found" because the content script couldn't determine where to
+position the restored Quick Tab.
+
+### Key Implementation Details
+
+**VisibilityHandler (`src/features/quick-tabs/handlers/VisibilityHandler.js`):**
+
+1. Sends `minimizedSnapshot` (left, top, width, height) with `QUICKTAB_MINIMIZED`
+   message
+2. Snapshot captured before minimize operation removes DOM element
+
+**Background Script (`background.js`):**
+
+1. Stores snapshots in `quickTabsSessionState.minimizedSnapshots` map
+2. `minimizedSnapshots: { [quickTabId]: { left, top, width, height } }`
+3. `QUICK_TAB_TRANSFERRED_IN` message includes `minimizedSnapshot` field
+4. Logs: `[Background] SNAPSHOT_STORED:`, `[Background] SNAPSHOT_INCLUDED:`
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` extracts `minimizedSnapshot` from message
+2. Calls `MinimizedManager.storeTransferredSnapshot()` with snapshot data
+3. Logs: `[Content] MINIMIZED_SNAPSHOT_STORED: quickTabId={id}`
+
+**MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
+
+1. Added `storeTransferredSnapshot(quickTabId, snapshot)` method
+2. Stores snapshot in local map for later restore operation
+3. Enables restore to use correct position/size from original tab
 
 ---
 
@@ -1389,5 +1705,5 @@ those logs won't be counted in the metrics.
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
 **Last
-Review Date:** January 1, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v3)
+Review Date:** January 4, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v4)
