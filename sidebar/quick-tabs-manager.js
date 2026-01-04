@@ -817,7 +817,11 @@ function _debouncedSaveTotalLogActions() {
     browser.storage.local.set({ [TOTAL_LOG_ACTIONS_KEY]: _totalLogActions }).catch(err => {
       // Use original console to avoid recursion
       if (console._originalWarn) {
-        console._originalWarn('[Manager] METRICS: Failed to persist total log actions', err);
+        console._originalWarn('[Manager] METRICS: Failed to persist total log actions', {
+          key: TOTAL_LOG_ACTIONS_KEY,
+          value: _totalLogActions,
+          error: err
+        });
       }
     });
   }, TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS);
@@ -890,7 +894,10 @@ function _clearLogActionCounts() {
   }
   browser.storage.local.remove(TOTAL_LOG_ACTIONS_KEY).catch(err => {
     if (console._originalWarn) {
-      console._originalWarn('[Manager] METRICS: Failed to clear persisted total', err);
+      console._originalWarn('[Manager] METRICS: Failed to clear persisted total log actions', {
+        key: TOTAL_LOG_ACTIONS_KEY,
+        error: err
+      });
     }
   });
 
