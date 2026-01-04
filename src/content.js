@@ -2061,15 +2061,16 @@ function _executeTransferredQuickTabCreation(quickTab, createOptions) {
 
     // v1.6.4-v5 - FIX BUG #3: Update transferred snapshot with window reference
     // This is critical for minimized Quick Tabs to be restorable after transfer
-    if (quickTab.minimized && result?.tabWindow && quickTabsManager?.minimizedManager) {
+    // NOTE: createQuickTab() returns result.tabWindow directly, NOT an object containing tabWindow
+    if (quickTab.minimized && result && quickTabsManager?.minimizedManager) {
       const updated = quickTabsManager.minimizedManager.updateTransferredSnapshotWindow(
         quickTab.id,
-        result.tabWindow
+        result // result IS the tabWindow (see src/features/quick-tabs/index.js line 1606)
       );
       console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Updated snapshot window:', {
         quickTabId: quickTab.id,
         updated,
-        hasWindow: !!result.tabWindow
+        hasWindow: !!result
       });
     }
 

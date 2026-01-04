@@ -8369,9 +8369,16 @@ function _createGroupActions(groupKey, isOrphaned) {
   goToTabBtn.title = `Go to Tab ${groupKey}`;
   goToTabBtn.dataset.action = 'goToTab';
   goToTabBtn.dataset.tabId = String(groupKey);
+  // v1.6.4-v5 - FIX Bug #2: Add error handling for async function to prevent silent failures
   goToTabBtn.addEventListener('click', e => {
     e.stopPropagation(); // Prevent toggle of details
-    _handleGoToTabGroup(groupKey);
+    _handleGoToTabGroup(groupKey).catch(err => {
+      console.error('[Manager] GO_TO_TAB_CLICK_HANDLER_ERROR:', {
+        groupKey,
+        error: err.message,
+        stack: err.stack
+      });
+    });
   });
   actionsContainer.appendChild(goToTabBtn);
 
@@ -9681,9 +9688,10 @@ function _getActionDispatcher(action) {
   return dispatchers[action];
 }
 
+// v1.6.4-v5 - FIX Bug #2: Use _handleGoToTabGroup for container-aware tab switching
 async function _dispatchGoToTab({ tabId, clickTimestamp }) {
   console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
-  await goToTab(parseInt(tabId));
+  await _handleGoToTabGroup(parseInt(tabId, 10));
   console.log('[Manager] ACTION_COMPLETE: goToTab', {
     tabId,
     durationMs: Date.now() - clickTimestamp
@@ -10891,15 +10899,14 @@ function _logOperationResult({
 
 /**
  * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
+ * @deprecated v1.6.4-v5 - Use _handleGoToTabGroup() instead for container-aware switching
+ * Retained for backwards compatibility with any code that may still call this function.
  */
+// eslint-disable-next-line no-unused-vars
 async function goToTab(tabId) {
-  try {
-    await browser.tabs.update(tabId, { active: true });
-    console.log(`Switched to tab ${tabId}`);
-  } catch (err) {
-    console.error(`Error switching to tab ${tabId}:`, err);
-    alert('Could not switch to tab - it may have been closed.');
-  }
+  console.warn('[Manager] DEPRECATED: goToTab() called - use _handleGoToTabGroup() instead');
+  // v1.6.4-v5 - FIX Bug #2: Delegate to container-aware function
+  await _handleGoToTabGroup(tabId);
 }
 
 /**
