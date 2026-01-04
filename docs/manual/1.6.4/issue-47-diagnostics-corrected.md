@@ -3,16 +3,23 @@
 **Report Version:** 2.0 (CORRECTED)  
 **Date:** January 3, 2026  
 **Main Branch Version Analyzed:** v1.6.4  
-**Container Logic Branch:** copilot/update-quick-tab-container-logic (v1.6.4-v6)  
-**Scope:** Diagnostic gaps in main branch; comparison with container-logic branch implementation  
+**Container Logic Branch:** copilot/update-quick-tab-container-logic
+(v1.6.4-v6)  
+**Scope:** Diagnostic gaps in main branch; comparison with container-logic
+branch implementation
 
 ---
 
 ## Executive Summary
 
-Analysis of the main branch (v1.6.4) reveals **critical logging gaps**, **event propagation vulnerabilities in drag-drop**, **missing container awareness**, and **incomplete cross-container navigation handling**. 
+Analysis of the main branch (v1.6.4) reveals **critical logging gaps**, **event
+propagation vulnerabilities in drag-drop**, **missing container awareness**, and
+**incomplete cross-container navigation handling**.
 
-The container-logic branch (v1.6.4-v6) implements a workaround using `browser.sidebarAction.close()` + reopen delay for cross-container Go To Tab, but this is a band-aid fix that bypasses the actual root cause: **missing `originContainerId` storage and proper cross-container detection**.
+The container-logic branch (v1.6.4-v6) implements a workaround using
+`browser.sidebarAction.close()` + reopen delay for cross-container Go To Tab,
+but this is a band-aid fix that bypasses the actual root cause: **missing
+`originContainerId` storage and proper cross-container detection**.
 
 ---
 
@@ -25,13 +32,16 @@ The container-logic branch (v1.6.4-v6) implements a workaround using `browser.si
 **Problem:**
 
 Button click handlers for critical user interactions lack logging:
+
 - `goToTab` button clicks (before and after execution)
 - `minimize` button clicks (before visibility state change)
 - `restore` button clicks
 - `closeAll` button clicks
 - `closeMinimized` button clicks
 
-The DragDropManager and other extracted modules have comprehensive logging (`[Manager] DRAG_DROP:`, `[Manager] DRAG_START:`, `[Manager] DROP:`), but the primary Manager's button handlers lack similar coverage.
+The DragDropManager and other extracted modules have comprehensive logging
+(`[Manager] DRAG_DROP:`, `[Manager] DRAG_START:`, `[Manager] DROP:`), but the
+primary Manager's button handlers lack similar coverage.
 
 **Why This Matters:**
 
@@ -54,6 +64,7 @@ console.log('[Manager] BUTTON_ACTION:', {
 **Current State (Main Branch):**
 
 Button handlers exist but lack logging for:
+
 - Initiation of button click
 - Success/failure of operation
 - Any intermediate state changes
@@ -62,6 +73,7 @@ Button handlers exist but lack logging for:
 **Required Fix:**
 
 Add comprehensive logging to button click handlers:
+
 1. Log when button is clicked with Quick Tab/origin tab context
 2. Log before attempting operation (minimize, close, restore, go to tab)
 3. Log success/failure result
@@ -78,14 +90,18 @@ Add comprehensive logging to button click handlers:
 The container-logic branch (v1.6.4-v4) includes a fix documented in the header:
 
 > "v1.6.4-v4 - FIX: Tab group reordering now works on full tab group element"
-> "Root cause: Quick Tab item handlers blocked tab-group drags with stopPropagation"
-> "Fix: _handleQuickTabDragOver, _handleQuickTabDrop, _handleQuickTabDragLeave now let tab-group drags bubble up"
+> "Root cause: Quick Tab item handlers blocked tab-group drags with
+> stopPropagation" "Fix: \_handleQuickTabDragOver, \_handleQuickTabDrop,
+> \_handleQuickTabDragLeave now let tab-group drags bubble up"
 
 **Main Branch Status:** Does NOT include this fix
 
 **Problem (Main Branch):**
 
-The `_handleQuickTabDrop` function calls `event.stopPropagation()` unconditionally, which prevents parent tab-group handlers from processing tab-group drag operations when the user drops a tab group over Quick Tab content.
+The `_handleQuickTabDrop` function calls `event.stopPropagation()`
+unconditionally, which prevents parent tab-group handlers from processing
+tab-group drag operations when the user drops a tab group over Quick Tab
+content.
 
 ```javascript
 function _handleQuickTabDrop(event) {
@@ -108,10 +124,12 @@ function _handleQuickTabDrop(event) {
 function _handleQuickTabDrop(event) {
   // v1.6.4-v4 FIX: Let tab-group drags bubble up to parent
   if (_dragState.dragType === 'tab-group') {
-    console.log('[Manager] DROP: Tab-group drag over quick-tab-item, bubbling to parent');
+    console.log(
+      '[Manager] DROP: Tab-group drag over quick-tab-item, bubbling to parent'
+    );
     return; // Don't preventDefault - let it bubble to .tab-group handler
   }
-  
+
   event.preventDefault();
   event.stopPropagation(); // Only for quick-tab drags
   // ... rest of logic
@@ -120,17 +138,22 @@ function _handleQuickTabDrop(event) {
 
 **Why This Matters:**
 
-- Cross-container drag operations may be silently failing due to propagation issues
+- Cross-container drag operations may be silently failing due to propagation
+  issues
 - Logging added shows parent handlers ARE involved in cross-tab transfer
 - Event propagation guard is critical for both same-tab and cross-tab operations
 
 **Research Evidence:**
 
-[MDN: Event.stopPropagation()](https://developer.mozilla.org/en-US/docs/Web/API/Event/stopPropagation) states that `stopPropagation()` prevents events from reaching parent handlers, but there's no documentation of sidebar-specific quirks. However, Firefox sidebars have known issues with event handling in nested DOM structures.
+[MDN: Event.stopPropagation()](https://developer.mozilla.org/en-US/docs/Web/API/Event/stopPropagation)
+states that `stopPropagation()` prevents events from reaching parent handlers,
+but there's no documentation of sidebar-specific quirks. However, Firefox
+sidebars have known issues with event handling in nested DOM structures.
 
 **Required Fix (Main Branch Only):**
 
 Implement the same guard logic from container-logic branch:
+
 1. Check `_dragState.dragType` at start of `_handleQuickTabDrop`
 2. If `tab-group`, return early WITHOUT calling `stopPropagation()`
 3. Only call `stopPropagation()` for `quick-tab` drag operations
@@ -144,12 +167,17 @@ Implement the same guard logic from container-logic branch:
 
 **Problem:**
 
-While DragDropManager logs drag operations, there are logging gaps for cross-tab transfer completion:
+While DragDropManager logs drag operations, there are logging gaps for cross-tab
+transfer completion:
 
-1. **Transfer Callback Execution:** Logs show drag-drop "DROP: Cross-tab operation" but no confirmation that callback actually succeeded
-2. **Transfer State Change:** No logging of whether the Quick Tab actually transferred
-3. **Source/Target Tab Status:** No verification that origin/target tabs are in expected state
-4. **Error Handling:** Callbacks may fail silently if `_callbacks.transferQuickTab` is null
+1. **Transfer Callback Execution:** Logs show drag-drop "DROP: Cross-tab
+   operation" but no confirmation that callback actually succeeded
+2. **Transfer State Change:** No logging of whether the Quick Tab actually
+   transferred
+3. **Source/Target Tab Status:** No verification that origin/target tabs are in
+   expected state
+4. **Error Handling:** Callbacks may fail silently if
+   `_callbacks.transferQuickTab` is null
 
 **Current Logging (Partial):**
 
@@ -168,12 +196,15 @@ console.log('[Manager] DROP: Cross-tab operation', {
 **Why This Matters:**
 
 - Cross-container transfers may fail but leave no evidence in logs
-- If background script doesn't receive the transfer message, sidebar shows success but transfer never happens
-- Debugging cross-container issues requires knowing if transfer reached background
+- If background script doesn't receive the transfer message, sidebar shows
+  success but transfer never happens
+- Debugging cross-container issues requires knowing if transfer reached
+  background
 
 **Required Fix:**
 
 Add logging wrapper around transfer/duplicate callbacks:
+
 1. Log callback execution with quickTabId, source, destination
 2. Log callback result (success/failure)
 3. Log if callback is null/undefined (indicate missing handler)
@@ -189,6 +220,7 @@ Add logging wrapper around transfer/duplicate callbacks:
 **Problem (Main Branch):**
 
 The main branch has NO container awareness implementation:
+
 - No storage of `originContainerId` in Quick Tab metadata
 - No detection of cross-container navigation scenarios
 - No filtering of Quick Tabs by container
@@ -199,13 +231,17 @@ The main branch has NO container awareness implementation:
 The container-logic branch adds:
 
 1. **ContainerManager.js (NEW MODULE)**
-   - Extracted container functions: `getContainerNameSync()`, `getContainerIconSync()`, `getCurrentContainerId()`, `filterQuickTabsByContainer()`
+   - Extracted container functions: `getContainerNameSync()`,
+     `getContainerIconSync()`, `getCurrentContainerId()`,
+     `filterQuickTabsByContainer()`
    - Tracks `_currentContainerId` and `_selectedContainerFilter`
    - Provides `initializeContainerIsolation()` for startup
 
 2. **Quick Tab Filtering**
-   - `_filterQuickTabsByContainer()` - shows only Quick Tabs from current container
-   - Container dropdown in Manager header: "Current Container" (default), "All Containers", or specific container
+   - `_filterQuickTabsByContainer()` - shows only Quick Tabs from current
+     container
+   - Container dropdown in Manager header: "Current Container" (default), "All
+     Containers", or specific container
    - Container names resolved from `browser.contextualIdentities` API
    - Dynamic update when user switches to different container tab
 
@@ -221,7 +257,8 @@ The container-logic branch adds:
 
 **Why This Matters for Main Branch:**
 
-- Without `originContainerId`, cross-container navigation cannot be properly validated
+- Without `originContainerId`, cross-container navigation cannot be properly
+  validated
 - Go To Tab cannot determine if operation requires container switching
 - Silent failures occur because cross-container scenarios are not detected
 - Filtering provides UI workaround but doesn't solve the underlying issue
@@ -230,11 +267,15 @@ The container-logic branch adds:
 
 [Mozilla Hacks: Containers for add-on developers](https://hacks.mozilla.org/2017/10/containers-for-add-on-developers/):
 
-> "The cookies permission provides access to the `cookieStoreId` property needed for container tab management... Each container tab has a unique `cookieStoreId` that persists for the lifetime of the tab."
+> "The cookies permission provides access to the `cookieStoreId` property needed
+> for container tab management... Each container tab has a unique
+> `cookieStoreId` that persists for the lifetime of the tab."
 
 [MDN: tabs.Tab](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/Tab):
 
-> "The `cookieStoreId` of a tab is immutable. A tab created in a particular cookie store will always use that cookie store. You cannot move a tab from one container to another."
+> "The `cookieStoreId` of a tab is immutable. A tab created in a particular
+> cookie store will always use that cookie store. You cannot move a tab from one
+> container to another."
 
 **Required Fix for Main Branch:**
 
@@ -270,6 +311,7 @@ The container-logic branch adds:
 The container-logic branch implements an aggressive workaround:
 
 **v1.6.4-v5 Approach (DEPRECATED):**
+
 ```javascript
 // Attempt to blur sidebar focus
 document.activeElement.blur();
@@ -277,6 +319,7 @@ window.blur();
 ```
 
 **v1.6.4-v6 Approach (CURRENT):**
+
 ```javascript
 // Close sidebar, reopen after delay
 browser.sidebarAction.close();
@@ -287,9 +330,13 @@ setTimeout(() => {
 
 **Why This is a Workaround, Not a Fix:**
 
-The real issue is that `tabs.update()` successfully activates the tab BUT does not switch the browser's cookie storage context when crossing container boundaries. Firefox maintains the sidebar's focus in the previous container's context.
+The real issue is that `tabs.update()` successfully activates the tab BUT does
+not switch the browser's cookie storage context when crossing container
+boundaries. Firefox maintains the sidebar's focus in the previous container's
+context.
 
 The close/reopen approach forces Firefox to reset the sidebar context by:
+
 1. Closing the sidebar (releases all focus)
 2. Tab switch completes in the meantime
 3. Reopening sidebar reconnects in the new container context
@@ -305,16 +352,19 @@ The close/reopen approach forces Firefox to reset the sidebar context by:
 
 [MDN: tabs.update()](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/tabs/update):
 
-> "The tab's `cookieStoreId` cannot be modified. A tab created in a container will always use that container's cookie store."
+> "The tab's `cookieStoreId` cannot be modified. A tab created in a container
+> will always use that container's cookie store."
 
 [sidebarAction.close() documentation](https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/sidebarAction/close):
 
-> "Closes the sidebar in the active window. You can only call this function from inside the handler for a user action."
+> "Closes the sidebar in the active window. You can only call this function from
+> inside the handler for a user action."
 
 **Why This Matters:**
 
 - Workaround creates flickering UX and doesn't solve underlying issue
-- If user is in Firefox Container A and clicks Go To Tab for origin in Container B:
+- If user is in Firefox Container A and clicks Go To Tab for origin in Container
+  B:
   - Tab activates in Container B ✓
   - But sidebar cookie context may remain in Container A ✗
   - Workaround: close and reopen sidebar to reset context
@@ -325,7 +375,8 @@ The close/reopen approach forces Firefox to reset the sidebar context by:
 Rather than attempting sidebar gymnastics:
 
 1. **Detect cross-container scenarios** (requires originContainerId storage)
-2. **Notify user of container switch** (optional: show notification or badge update)
+2. **Notify user of container switch** (optional: show notification or badge
+   update)
 3. **Accept that tabs.update() is container-aware but sidebar is not**
    - Acknowledge Firefox limitation: sidebar focus may remain in old container
    - Consider whether close/reopen workaround is acceptable UX trade-off
@@ -335,7 +386,8 @@ Rather than attempting sidebar gymnastics:
    - Close original tab
    - This is the only way to guarantee container context switch
 
-**No changes needed in DragDropManager or ContainerManager** - this is a sidebar API limitation that requires architectural decision about acceptable UX.
+**No changes needed in DragDropManager or ContainerManager** - this is a sidebar
+API limitation that requires architectural decision about acceptable UX.
 
 ---
 
@@ -346,6 +398,7 @@ Rather than attempting sidebar gymnastics:
 **Problem:**
 
 When Quick Tab transfer/duplicate callbacks are invoked, there's no logging of:
+
 1. Whether callback executed successfully
 2. What the callback returned
 3. Whether the operation reached the background script
@@ -356,16 +409,23 @@ When Quick Tab transfer/duplicate callbacks are invoked, there's no logging of:
 ```javascript
 if (isDuplicate) {
   if (_callbacks.duplicateQuickTab) {
-    _callbacks.duplicateQuickTab(_dragState.quickTabData, parseInt(targetOriginTabId, 10));
+    _callbacks.duplicateQuickTab(
+      _dragState.quickTabData,
+      parseInt(targetOriginTabId, 10)
+    );
   }
 } else {
   if (_callbacks.transferQuickTab) {
-    _callbacks.transferQuickTab(_dragState.quickTabId, parseInt(targetOriginTabId, 10));
+    _callbacks.transferQuickTab(
+      _dragState.quickTabId,
+      parseInt(targetOriginTabId, 10)
+    );
   }
 }
 ```
 
 **Missing:**
+
 - Try-catch error handling
 - Logging of callback result
 - Verification that callback is not null before calling
@@ -380,6 +440,7 @@ if (isDuplicate) {
 **Required Fix:**
 
 Wrap callbacks with error handling and logging:
+
 1. Check if callback exists before calling
 2. Wrap in try-catch to capture errors
 3. Log success/failure result
@@ -392,10 +453,11 @@ Wrap callbacks with error handling and logging:
 
 ### Fixed Issue: Tab Group Reordering Over Quick Tab Items
 
-**Container-Logic Status: FIXED (v1.6.4-v4)**
-**Main Branch Status: UNFIXED**
+**Container-Logic Status: FIXED (v1.6.4-v4)** **Main Branch Status: UNFIXED**
 
-The container-logic branch fixes event propagation that prevented tab group reordering when dropping over Quick Tab content areas. The fix:
+The container-logic branch fixes event propagation that prevented tab group
+reordering when dropping over Quick Tab content areas. The fix:
+
 - Checks drag type before calling `stopPropagation()`
 - Allows tab-group drags to bubble to parent
 - Adds logging for intentional propagation
@@ -410,19 +472,20 @@ These files need modifications to address issues identified:
 
 ### sidebar/quick-tabs-manager.js
 
-- **Button click handlers** (goToTab, minimize, restore, closeAll, closeMinimized):
+- **Button click handlers** (goToTab, minimize, restore, closeAll,
+  closeMinimized):
   - Add initiation logging with Quick Tab ID and context
   - Add success/failure logging
   - Add container context (originContainerId if available)
 
-- **_handleGoToTabGroup() function:**
+- **\_handleGoToTabGroup() function:**
   - Check if cross-container navigation will occur
   - Add logging of container context
   - Document sidebar focus limitations (v1.6.4-v5/v6 workaround)
 
 ### sidebar/managers/DragDropManager.js
 
-- **_handleQuickTabDrop() function:**
+- **\_handleQuickTabDrop() function:**
   - Add tab-group drag detection at start (like v1.6.4-v4)
   - Only call stopPropagation() for quick-tab drags
   - Add logging when tab-group drags bubble
@@ -460,18 +523,20 @@ These files need modifications to address issues identified:
 
 ## Comparison: Main Branch vs Container-Logic Branch
 
-| Feature | Main Branch | Container-Logic (v1.6.4-v6) |
-|---------|-------------|---------------------------|
-| **Container Awareness** | None | Partial (filtering added) |
-| **originContainerId Storage** | No | No (filtered, not stored) |
-| **Cross-Container Detection** | No | No |
-| **Button Click Logging** | Missing | Likely improved |
-| **Drag-Drop Event Guard** | No (Issue #2) | Yes (v1.6.4-v4) |
-| **Go To Tab Cross-Container** | No implementation | Workaround (v1.6.4-v6) |
-| **Container UI Badges** | No | Yes |
-| **Extracted Managers** | Yes | Yes (same) |
+| Feature                       | Main Branch       | Container-Logic (v1.6.4-v6) |
+| ----------------------------- | ----------------- | --------------------------- |
+| **Container Awareness**       | None              | Partial (filtering added)   |
+| **originContainerId Storage** | No                | No (filtered, not stored)   |
+| **Cross-Container Detection** | No                | No                          |
+| **Button Click Logging**      | Missing           | Likely improved             |
+| **Drag-Drop Event Guard**     | No (Issue #2)     | Yes (v1.6.4-v4)             |
+| **Go To Tab Cross-Container** | No implementation | Workaround (v1.6.4-v6)      |
+| **Container UI Badges**       | No                | Yes                         |
+| **Extracted Managers**        | Yes               | Yes (same)                  |
 
-**Key Finding:** Container-logic branch implements UI filtering but NOT proper container-aware architecture. Both branches lack originContainerId storage, which is the root cause of cross-container detection failures.
+**Key Finding:** Container-logic branch implements UI filtering but NOT proper
+container-aware architecture. Both branches lack originContainerId storage,
+which is the root cause of cross-container detection failures.
 
 ---
 
@@ -479,9 +544,12 @@ These files need modifications to address issues identified:
 
 ### Severity: **MEDIUM → HIGH** (with cross-container usage)
 
-- **For single-container users:** Issues are masked by lack of cross-container operations
-- **For multi-container users:** Cross-container Go To Tab fails silently; no feedback
-- **For heavy drag-drop users:** Event propagation issues may prevent tab group reordering
+- **For single-container users:** Issues are masked by lack of cross-container
+  operations
+- **For multi-container users:** Cross-container Go To Tab fails silently; no
+  feedback
+- **For heavy drag-drop users:** Event propagation issues may prevent tab group
+  reordering
 - **For debuggers:** Logging gaps make all issues invisible
 
 ### Affected Scenarios:
@@ -499,17 +567,22 @@ These files need modifications to address issues identified:
 **Priority Order:**
 
 1. **Add logging to button click handlers** (Quick fix, high diagnostic value)
-2. **Fix drag-drop event propagation** (Copy v1.6.4-v4 fix from container-logic branch)
-3. **Implement originContainerId storage** (Architectural requirement for proper fixes)
+2. **Fix drag-drop event propagation** (Copy v1.6.4-v4 fix from container-logic
+   branch)
+3. **Implement originContainerId storage** (Architectural requirement for proper
+   fixes)
 4. **Add cross-container detection and logging** (Requires originContainerId)
-5. **Consider container-aware Go To Tab** (Requires architectural decision on UX)
+5. **Consider container-aware Go To Tab** (Requires architectural decision on
+   UX)
 6. **Add error handling to drag-drop callbacks** (Reliability improvement)
 
 ---
 
 **End of Report**
 
-**Report prepared for:** GitHub Copilot Coding Agent (Diagnostic Analysis & Correction)  
+**Report prepared for:** GitHub Copilot Coding Agent (Diagnostic Analysis &
+Correction)  
 **Related Issue:** Issue #47 – Additional Diagnostics Report  
-**Source:** Corrected analysis comparing main branch vs copilot/update-quick-tab-container-logic branch  
+**Source:** Corrected analysis comparing main branch vs
+copilot/update-quick-tab-container-logic branch  
 **Research Date:** January 3, 2026

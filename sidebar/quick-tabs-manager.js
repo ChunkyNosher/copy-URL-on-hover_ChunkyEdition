@@ -8481,7 +8481,9 @@ function _scheduleDelayedSidebarReopen(tabId) {
     browser.sidebarAction
       .open()
       .then(() => console.log('[Manager] GO_TO_TAB_SIDEBAR_REOPENED:', { tabId }))
-      .catch(err => console.warn('[Manager] GO_TO_TAB_SIDEBAR_REOPEN_SKIPPED:', { reason: err.message }));
+      .catch(err =>
+        console.warn('[Manager] GO_TO_TAB_SIDEBAR_REOPEN_SKIPPED:', { reason: err.message })
+      );
   }, SIDEBAR_REOPEN_DELAY_MS);
 }
 
@@ -9662,10 +9664,16 @@ function _executeMoveOrDuplicate(quickTabId, targetTabId, shouldDuplicate) {
       return false;
     }
     _duplicateQuickTabToTab(quickTabData, targetTabId);
-    console.log('[Manager] DUPLICATE_TO_CURRENT_TAB: Duplicate sent', { quickTabId, toTabId: targetTabId });
+    console.log('[Manager] DUPLICATE_TO_CURRENT_TAB: Duplicate sent', {
+      quickTabId,
+      toTabId: targetTabId
+    });
   } else {
     _transferQuickTabToTab(quickTabId, targetTabId);
-    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', { quickTabId, toTabId: targetTabId });
+    console.log('[Manager] MOVE_TO_CURRENT_TAB: Transfer sent', {
+      quickTabId,
+      toTabId: targetTabId
+    });
   }
   return true;
 }
@@ -9681,7 +9689,11 @@ async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp, s
   const operation = shiftKey ? 'duplicate' : 'move';
 
   console.log('[Manager] ACTION_DISPATCH: moveToCurrentTab', {
-    quickTabId, originTabId, shiftKey, operation, timestamp: Date.now()
+    quickTabId,
+    originTabId,
+    shiftKey,
+    operation,
+    timestamp: Date.now()
   });
 
   try {
@@ -9697,22 +9709,35 @@ async function _dispatchMoveToCurrentTab({ quickTabId, button, clickTimestamp, s
     const isMovingToSameTab = originTabId === currentTabId && !shiftKey;
 
     if (isMovingToSameTab) {
-      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab', { quickTabId, tabId: currentTabId });
+      console.log('[Manager] MOVE_TO_CURRENT_TAB: Already on current tab', {
+        quickTabId,
+        tabId: currentTabId
+      });
       return;
     }
 
     console.log('[Manager] MOVE_TO_CURRENT_TAB: Operation', {
-      quickTabId, fromTabId: originTabId, toTabId: currentTabId, operation, shiftKey
+      quickTabId,
+      fromTabId: originTabId,
+      toTabId: currentTabId,
+      operation,
+      shiftKey
     });
 
     const success = _executeMoveOrDuplicate(quickTabId, currentTabId, shiftKey);
     if (success) {
       console.log('[Manager] ACTION_COMPLETE: moveToCurrentTab', {
-        quickTabId, operation, durationMs: Date.now() - clickTimestamp
+        quickTabId,
+        operation,
+        durationMs: Date.now() - clickTimestamp
       });
     }
   } catch (err) {
-    console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', { quickTabId, operation, error: err.message });
+    console.error('[Manager] MOVE_TO_CURRENT_TAB_FAILED:', {
+      quickTabId,
+      operation,
+      error: err.message
+    });
     _showErrorNotification(`Failed to ${operation} Quick Tab: ${err.message}`);
   }
 }

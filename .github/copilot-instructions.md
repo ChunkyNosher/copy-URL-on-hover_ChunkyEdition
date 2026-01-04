@@ -131,11 +131,12 @@ const quickTabsSessionState = {
 
 - **Go to Tab Focus Fix** - `_releaseSidebarFocusForGoToTab()` uses
   `browser.sidebarAction.close()` then delayed re-open
-- **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs in
-  a tab group
+- **Minimize All** - `_handleMinimizeAllInTabGroup()` minimizes all Quick Tabs
+  in a tab group
 - **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey for
   duplicate vs move
-- **Duplicate Container** - `_createDuplicateQuickTab()` sets `originContainerId`
+- **Duplicate Container** - `_createDuplicateQuickTab()` sets
+  `originContainerId`
 
 ### v1.6.4-v4 Patterns
 

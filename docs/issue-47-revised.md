@@ -1481,12 +1481,12 @@ newly-active tab.
 
 ### Expected Behavior
 
-| Step | Result                                              |
-| ---- | --------------------------------------------------- |
-| 2    | All 3 Quick Tabs in WP 1 are minimized              |
-| 2    | Quick Tabs disappear from screen but stay in state  |
-| 2    | Manager shows minimized state for all Quick Tabs    |
-| 2    | Other tab groups' Quick Tabs remain unchanged       |
+| Step | Result                                             |
+| ---- | -------------------------------------------------- |
+| 2    | All 3 Quick Tabs in WP 1 are minimized             |
+| 2    | Quick Tabs disappear from screen but stay in state |
+| 2    | Manager shows minimized state for all Quick Tabs   |
+| 2    | Other tab groups' Quick Tabs remain unchanged      |
 
 ### Key Implementation Details
 
@@ -1516,12 +1516,12 @@ newly-active tab.
 
 ### Expected Behavior
 
-| Step | Result                                                  |
-| ---- | ------------------------------------------------------- |
-| 2    | WP QT 1 remains on WP 1 (original not moved)            |
-| 2    | A new duplicate Quick Tab appears on YT 1               |
-| 2    | Manager shows Quick Tabs on both WP 1 and YT 1          |
-| 2    | `DUPLICATE_QUICK_TAB` message sent instead of transfer  |
+| Step | Result                                                 |
+| ---- | ------------------------------------------------------ |
+| 2    | WP QT 1 remains on WP 1 (original not moved)           |
+| 2    | A new duplicate Quick Tab appears on YT 1              |
+| 2    | Manager shows Quick Tabs on both WP 1 and YT 1         |
+| 2    | `DUPLICATE_QUICK_TAB` message sent instead of transfer |
 
 ### Key Implementation Details
 
@@ -1554,12 +1554,12 @@ newly-active tab.
 
 ### Expected Behavior
 
-| Step | Result                                                  |
-| ---- | ------------------------------------------------------- |
-| 2    | Duplicate Quick Tab created on YT 1                     |
+| Step | Result                                                   |
+| ---- | -------------------------------------------------------- |
+| 2    | Duplicate Quick Tab created on YT 1                      |
 | 2    | Duplicate has `originContainerId: "firefox-container-2"` |
-| 3    | Filter shows only the duplicate Quick Tab (on YT 1)     |
-| 3    | Original WP QT 1 is filtered out (it's in FX 1)         |
+| 3    | Filter shows only the duplicate Quick Tab (on YT 1)      |
+| 3    | Original WP QT 1 is filtered out (it's in FX 1)          |
 
 ### Key Implementation Details
 
@@ -1574,5 +1574,6 @@ newly-active tab.
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 3, 2026  
+**Last
+Review Date:** January 3, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v5)
