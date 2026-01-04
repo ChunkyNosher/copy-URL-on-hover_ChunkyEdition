@@ -28,6 +28,14 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 - ✅ **Minimized Quick Tab Transfer Restore** - Minimized Quick Tabs can now be
   restored after cross-tab transfer (previously required
   restore-minimize-restore)
+- ✅ **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
+  since `createQuickTab()` returns `tabWindow` directly
+- ✅ **Go to Tab Error Handling** - Added `.catch()` error handler; uses
+  container-aware `_handleGoToTabGroup()` for consistency
+- ✅ **Clear Log History Confirmation** - Added `confirm()` dialog before
+  clearing logs with detailed warning message
+- ✅ **Clear Log History Counts** - Shows "X background logs" and "logs from Y
+  tabs" or "No cached logs were present"
 - ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
   browsers with custom "spaces" features
 
@@ -95,37 +103,18 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.4
 
-**🔧 Drag-and-Drop Manager + Cross-Tab Transfer + Bug Fixes ✅**
+**🔧 Drag-and-Drop Manager + Cross-Tab Transfer ✅**
 
-- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs in Manager via
-  drag-and-drop
-- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another to transfer
-  it
+- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via drag-and-drop
+- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another
 - ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
-  instead of move
 - ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items
-- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" buttons per
-  group
-- ✅ **Open in New Tab Button** - Per Quick Tab (↗️) in Manager
-- ✅ **Click-to-Front** - Quick Tabs come to front on click (not just drag)
-- ✅ **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
-- ✅ **Manager Reordering Persistence** - Tab group order now persists
-- ✅ **Smaller count indicator** - Bigger number in smaller container
-
-**Settings Changes:**
-
-- New "Duplicate Modifier Key" dropdown: Shift (default), Ctrl, None
-- Alt option removed (doesn't work reliably)
+- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" per group
+- ✅ **Click-to-Front** - Quick Tabs come to front on click
 
 ---
 
 ## 🎉 Previous Releases
-
-**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
-**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
-**v1.6.3.12-v10:** Port Routing Fix, Manager Button Operations  
-**v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -239,6 +228,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.4-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.4-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)

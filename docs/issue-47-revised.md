@@ -1933,6 +1933,180 @@ work correctly.
 
 ---
 
+## Scenario 47: Minimized Transfer Restore Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** Fixed `result?.tabWindow` to `result` since `createQuickTab()`
+returns `tabWindow` directly  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Move WP QT 1 to position (300, 200)
+3. Minimize WP QT 1 (snapshot captured at 300, 200)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1
+
+### Expected Behavior
+
+| Step | Result                                                     |
+| ---- | ---------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 successfully                     |
+| 3    | WP QT 1 appears at (300, 200) in YT 1 viewport             |
+| 3    | `updateTransferredSnapshotWindow()` called with correct window |
+| 3    | No "Cannot read property 'tabWindow' of undefined" errors  |
+
+### Root Cause Analysis
+
+The content.js code was checking `result?.tabWindow` but `createQuickTab()`
+returns the `tabWindow` object directly, not an object with a `tabWindow`
+property. The fix changed `result?.tabWindow` to just `result`.
+
+### Key Implementation Details
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` receives minimizedSnapshot from background
+2. Calls `createQuickTab()` which returns `tabWindow` directly
+3. Passes `result` (not `result?.tabWindow`) to `updateTransferredSnapshotWindow()`
+4. Snapshot window reference is properly updated for restore
+
+**Key Logs:**
+
+- `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED: quickTabId={id}`
+
+---
+
+## Scenario 48: Go to Tab Error Handling (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Navigation  
+**Feature:** Added `.catch()` error handler and container-aware routing  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Personal"
+2. Create WP QT 1 in WP 1
+3. Open Quick Tabs Manager
+
+### Test Steps
+
+1. Close WP 1 browser tab (but keep Manager open)
+2. Click "Go to Tab" button for the now-closed WP 1 tab group
+3. Observe error handling
+
+### Expected Behavior
+
+| Step | Result                                                |
+| ---- | ----------------------------------------------------- |
+| 2    | Error is caught by `.catch()` handler                 |
+| 2    | No unhandled promise rejection in console             |
+| 2    | Error logged with context (tabId, containerId)        |
+| 2    | UI remains responsive and doesn't freeze              |
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. Go to Tab button click listener has `.catch(err => {...})` handler
+2. `_dispatchGoToTab()` delegates to `_handleGoToTabGroup()` for consistency
+3. Old `goToTab()` function now calls `_handleGoToTabGroup()` internally
+4. All code paths use the same container-aware routing logic
+
+---
+
+## Scenario 49: Clear Log History Confirmation Dialog (v1.6.4-v5)
+
+**Category:** Settings - Log Management  
+**Feature:** Confirmation dialog before clearing all logs  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open several browser tabs and create Quick Tabs
+2. Perform various actions to generate logs
+3. Open Quick Tabs Manager → Settings tab
+
+### Test Steps
+
+1. Click "Clear Log History" button
+2. Observe the confirmation dialog
+3. Click "Cancel" in the dialog
+4. Click "Clear Log History" again
+5. Click "OK" in the dialog
+6. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                              |
+| ---- | ------------------------------------------------------------------- |
+| 2    | `confirm()` dialog appears with message about clearing logs         |
+| 2    | Message: "Clear all log history? This will clear background logs,   |
+|      | content script logs, and manager logs. This cannot be undone."      |
+| 3    | Logs are NOT cleared (cancel respected)                             |
+| 5    | Logs are cleared                                                    |
+| 5    | Status message shows actual counts (see Scenario 50)                |
+
+### Key Implementation Details
+
+**Settings (`sidebar/settings.js`):**
+
+1. `_handleClearLogHistory()` calls `confirm()` BEFORE any clearing
+2. Returns early if user cancels (clicks Cancel or presses Escape)
+3. Only proceeds with clearing if user confirms (clicks OK)
+
+---
+
+## Scenario 50: Clear Log History Accurate Count (v1.6.4-v5)
+
+**Category:** Settings - Log Management  
+**Feature:** Status message shows actual log counts  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Open browser tab YT 1 and create YT QT 1
+3. Perform various actions to generate logs
+4. Open Quick Tabs Manager → Settings tab
+
+### Test Steps
+
+1. Click "Clear Log History" button and confirm
+2. Observe the status message
+
+### Expected Behavior
+
+| Step | Result                                                        |
+| ---- | ------------------------------------------------------------- |
+| 2    | Status shows "Cleared X background logs"                      |
+| 2    | Status shows "and logs from Y tabs" where Y is the tab count  |
+| 2    | If no logs existed: "No cached logs were present"             |
+
+### Key Implementation Details
+
+**Settings (`sidebar/settings.js`):**
+
+1. `_buildClearLogStatusMessage()` helper constructs detailed message
+2. Counts background logs from `cachedBackgroundLogs` array
+3. Counts tabs with logs from `cachedContentScriptLogs` object keys
+4. `_clearManagerLogsViaIframe()` clears Manager logs via iframe message
+
+**Example Messages:**
+
+- "Cleared 42 background logs and logs from 3 tabs"
+- "Cleared 15 background logs (no content script logs)"
+- "Cleared logs from 2 tabs (no background logs)"
+- "No cached logs were present"
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  

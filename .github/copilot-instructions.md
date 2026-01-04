@@ -32,28 +32,27 @@
   item using `browser.sidebarAction.toggle()`
 - **Minimized Transfer Window Fix** - `updateTransferredSnapshotWindow()`
   enables restore after cross-container transfer
+- **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
+  since `createQuickTab()` returns `tabWindow` directly
+- **Go to Tab Error Handling** - Added `.catch()` handler; uses container-aware
+  `_handleGoToTabGroup()`
+- **Clear Log History Confirmation** - `confirm()` dialog before clearing logs
+- **Clear Log History Counts** - Status message shows "X background logs" and
+  "logs from Y tabs"
 
 **v1.6.4-v4 Features:**
 
 - **Go to Tab Cross-Container Fix** - `sidebarAction.close()` called
-  synchronously FIRST for proper focus transfer; Zen Browser compatible
+  synchronously FIRST; Zen Browser compatible
 - **Minimized Drag Restore Fix** - `minimizedSnapshot` transferred with Quick
-  Tab data; `storeTransferredSnapshot()` enables restore after cross-tab
-  transfer
-- **Right-Click Context Menu** - "Close All" and "Minimize All" Quick Tabs via
-  `browser.menus` API (`_initializeContextMenus()` in background.js)
-- **Minimize All Button** - New ⏬ button in tab group headers
-- **Shift+Move Duplicates** - Holding Shift while clicking "Move to Current Tab"
-  duplicates instead of moving
-- **Duplicate Container Fix** - Duplicated Quick Tabs now have correct
-  `originContainerId` for proper filtering
+  Tab data
+- **Right-Click Context Menu** - "Close All" and "Minimize All" via
+  `browser.menus` API
+- **Minimize All Button** - ⏬ button in tab group headers
+- **Shift+Move Duplicates** - Shift+click "Move to Current Tab" duplicates
 
-**v1.6.4-v4 Container Features:** Container Filter Dropdown, Container Badge,
-Name Resolution via contextualIdentities, ContainerManager.js module, Filter
-Persistence (`quickTabsContainerFilter`), Go to Tab focus sequence
-
-**v1.6.4-v4 Bug Fixes:** Container filter fix, dropdown cleanup, drag-drop
-bubble fix, container switch refresh, auto-detect indicator
+**v1.6.4-v4 Container Features:** Container Filter Dropdown, Badge, Name
+Resolution, ContainerManager.js, Filter Persistence (`quickTabsContainerFilter`)
 
 **v1.6.4-v3:** Metrics footer, DEBOUNCE logging, title/state fixes
 
@@ -131,33 +130,29 @@ const quickTabsSessionState = {
   `browser.sidebarAction.toggle()`
 - **Minimized Transfer Window** - `updateTransferredSnapshotWindow()` updates
   snapshot window reference after cross-container transfer
+- **Transfer Restore Fix** - `result` (not `result?.tabWindow`) from
+  `createQuickTab()` for snapshot update
+- **Clear Logs UX** - `_buildClearLogStatusMessage()`,
+  `_clearManagerLogsViaIframe()` helper functions
 
 ### v1.6.4-v4 Patterns
 
 - **Go to Tab Focus Fix** - `sidebarAction.close()` FIRST; Zen Browser
   compatible
-- **Minimized Drag Restore** - `minimizedSnapshots`,
-  `storeTransferredSnapshot()`
+- **Minimized Drag Restore** - `minimizedSnapshots`, `storeTransferredSnapshot()`
 - **Context Menu** - `_initializeContextMenus()` for "Close All"/"Minimize All"
-- **Minimize All** - `_handleMinimizeAllInTabGroup()`
-- **Shift+Move Duplicate** - `_executeMoveOrDuplicate()` checks shiftKey
-- **Container Filter/Badge** - `_filterQuickTabsByContainer()`,
-  ContainerManager.js
-- **Name Resolution** - `_getContainerNameByIdAsync()`,
-  `_getContainerNameSync()`
+- **Container Filter/Badge** - `_filterQuickTabsByContainer()`, ContainerManager
 
 ### v1.6.4-v3 Patterns
 
 - **Title/Navigation Update** - UPDATE_QUICK_TAB updates title from iframe
 - **State Fixes** - forceEmpty, State Version Race, Open-and-Close
-- **Transfer/Duplicate** - Direct state refresh, Critical State Refresh flag
 - **Metrics** - Single footer, reduced DEBOUNCE logging
 
 ### v1.6.4 Patterns
 
 - **Race Fixes** - Removed redundant `requestAllQuickTabsViaPort()` calls
-- **Order Persistence** - `_userQuickTabOrderByGroup`,
-  `_handleEmptyStateTransition()`
+- **Order Persistence** - `_userQuickTabOrderByGroup`
 - **Drag Features** - Reordering, Cross-Tab Transfer, Duplicate, Click-to-Front
 
 ### v1.6.3.12 Patterns (Consolidated)
@@ -216,26 +211,15 @@ const quickTabsSessionState = {
 
 ## 📝 Logging Prefixes
 
-**v1.6.4-v5 Logging:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
-`[Manager] GO_TO_TAB_CROSS_CONTAINER:`, `[Manager] GO_TO_TAB_SIDEBAR_REOPEN:`,
-`[Background] CONTEXT_MENU: Toggle sidebar clicked`
+**v1.6.4-v5:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
+`GO_TO_TAB_CROSS_CONTAINER:`, `GO_TO_TAB_SIDEBAR_REOPEN:`,
+`[Settings] CLEAR_LOG_HISTORY:`, `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`
 
-**v1.6.4-v4 Logging:** `[Manager] GO_TO_TAB: Cross-container switch detected`,
-`[Background] CONTEXT_MENU:`, `[Background] SNAPSHOT_STORED:`,
-`[Background] SNAPSHOT_INCLUDED:`, `[Content] MINIMIZED_SNAPSHOT_STORED:`
+**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`, `CONTAINER_NAME_RESOLVED:`,
+`[Background] CONTEXT_MENU:`, `SNAPSHOT_STORED:`, `SNAPSHOT_INCLUDED:`
 
-**v1.6.4-v4:** `[Manager] CONTAINER_FILTER:`,
-`[Manager] CONTAINER_NAME_RESOLVED:`
-
-**v1.6.4:** `[Manager] TRANSFER_RACE_FIX:`, `[Manager] QUICKTAB_ORDER:`,
-`[Manager] EMPTY_STATE_TRANSITION:`, `[Manager] LOW_QUICKTAB_COUNT:`
-
-**v1.6.4:** `[Manager] DRAG_DROP:`, `[Manager] TRANSFER_QUICK_TAB:`,
-`[Manager] DUPLICATE_QUICK_TAB:`, `[Manager] MOVE_TO_CURRENT_TAB:`
-
-**v1.6.3.12:** `[Background] _updateQuickTabProperty:`,
-`[Manager] OPTIMISTIC_TIMEOUT:`, `[Manager] RENDER_DATA_SOURCE:`,
-`[Background] QUICK_TABS_PORT_CONNECT:`, `[Manager] BUTTON_CLICKED:`
+**v1.6.4:** `[Manager] DRAG_DROP:`, `TRANSFER_QUICK_TAB:`, `DUPLICATE_QUICK_TAB:`,
+`MOVE_TO_CURRENT_TAB:`, `QUICKTAB_ORDER:`, `EMPTY_STATE_TRANSITION:`
 
 **Core:** `[STORAGE_ONCHANGED]`, `[STATE_SYNC]`, `[MSG_ROUTER]`, `[HYDRATION]`,
 `[CIRCUIT_BREAKER_*]`, `[PORT_RECONNECT_*]`
