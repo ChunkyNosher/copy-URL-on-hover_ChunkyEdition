@@ -2,6 +2,15 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
+ * === v1.6.4-v5 LOG METRICS FOOTER PERSISTENCE FIX ===
+ * v1.6.4-v5 - FIX: Log metrics footer now persists total count across sidebar close/reopen
+ *   - ROOT CAUSE: _totalLogActions was a module-level variable that reset on page reload
+ *   - FIX: Persist _totalLogActions to browser.storage.local with debounced writes
+ *   - Added TOTAL_LOG_ACTIONS_KEY storage constant
+ *   - Added _debouncedSaveTotalLogActions() with 2000ms debounce
+ *   - _loadMetricsSettings() now loads persisted total on startup
+ *   - _clearLogActionCounts() now clears both variable and storage
+ *
  * === v1.6.4-v5 SMART GO TO TAB FIX ===
  * v1.6.4-v5 - FIX BUG #1/#2: Go to Tab now only closes sidebar for cross-container switches
  *   - ROOT CAUSE (Bug #1): Cross-container tabs in "All Containers" view didn't properly transfer focus
@@ -462,6 +471,9 @@ const METRICS_DEFAULT_INTERVAL_MS = 1000; // 1 second
 const METRICS_MIN_INTERVAL_MS = 500; // Minimum 500ms
 const METRICS_MAX_INTERVAL_MS = 30000; // Maximum 30 seconds
 // v1.6.4-v3 - Removed ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES (no longer using memory tracking)
+// v1.6.4-v5 - FIX: Persist total log actions across sidebar reloads
+const TOTAL_LOG_ACTIONS_KEY = 'quickTabsTotalLogActions';
+const TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS = 2000; // Debounce storage writes
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -577,6 +589,8 @@ let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
 
 // v1.6.4-v3 - Log action tracking state
 let _totalLogActions = 0;
+// v1.6.4-v5 - FIX: Debounce timer for persisting total log actions
+let _totalLogActionsSaveTimer = null;
 // Log actions in the current sliding window (for calculating actions per second)
 let _logActionsWindow = [];
 // Window size in milliseconds for calculating logs per second
@@ -611,12 +625,17 @@ function _incrementStateVersion(source) {
 /**
  * Load metrics settings from storage
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v5 - FIX: Also load persisted total log actions
  * @private
  * @returns {Promise<void>}
  */
 async function _loadMetricsSettings() {
   try {
-    const result = await browser.storage.local.get([METRICS_ENABLED_KEY, METRICS_INTERVAL_KEY]);
+    const result = await browser.storage.local.get([
+      METRICS_ENABLED_KEY,
+      METRICS_INTERVAL_KEY,
+      TOTAL_LOG_ACTIONS_KEY
+    ]);
 
     _metricsEnabled =
       result[METRICS_ENABLED_KEY] !== undefined
@@ -631,9 +650,17 @@ async function _loadMetricsSettings() {
           )
         : METRICS_DEFAULT_INTERVAL_MS;
 
+    // v1.6.4-v5 - FIX: Load persisted total log actions to survive sidebar reloads
+    // Only load if value exists and is positive (0 is the default, no need to load it)
+    const persistedTotal = result[TOTAL_LOG_ACTIONS_KEY];
+    if (typeof persistedTotal === 'number' && persistedTotal > 0) {
+      _totalLogActions = persistedTotal;
+    }
+
     console.log('[Manager] METRICS: Settings loaded', {
       enabled: _metricsEnabled,
-      intervalMs: _metricsIntervalMs
+      intervalMs: _metricsIntervalMs,
+      persistedTotalLogActions: persistedTotal || 0
     });
   } catch (err) {
     console.warn('[Manager] METRICS: Failed to load settings, using defaults', err.message);
@@ -748,6 +775,7 @@ function _isCategoryFilterEnabled(category) {
 /**
  * Track a log action (called when console.log, console.warn, console.error are invoked)
  * v1.6.4-v3 - FEATURE: Log action tracking with category detection and filtering
+ * v1.6.4-v5 - FIX: Debounced persistence to survive sidebar reloads
  * @private
  * @param {Array} args - Arguments passed to the console method
  */
@@ -769,6 +797,30 @@ function _trackLogAction(args) {
 
   // Remove old entries outside the window
   _pruneLogActionsWindow(now);
+
+  // v1.6.4-v5 - FIX: Debounced save of total log actions to storage
+  _debouncedSaveTotalLogActions();
+}
+
+/**
+ * Debounced save of total log actions to storage
+ * v1.6.4-v5 - FIX: Persist total log actions across sidebar reloads
+ * Uses debouncing to avoid excessive storage writes during high log activity
+ * @private
+ */
+function _debouncedSaveTotalLogActions() {
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+  }
+  _totalLogActionsSaveTimer = setTimeout(() => {
+    _totalLogActionsSaveTimer = null;
+    browser.storage.local.set({ [TOTAL_LOG_ACTIONS_KEY]: _totalLogActions }).catch(err => {
+      // Use original console to avoid recursion
+      if (console._originalWarn) {
+        console._originalWarn('[Manager] METRICS: Failed to persist total log actions', err);
+      }
+    });
+  }, TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS);
 }
 
 /**
@@ -821,6 +873,7 @@ function _calculateLogsPerSecond() {
 /**
  * Clear log action counts (resets total and window)
  * v1.6.4-v3 - FEATURE: Log action tracking
+ * v1.6.4-v5 - FIX: Also clear persisted total from storage
  * Called on page refresh or via explicit reset
  * Note: Uses original console to avoid triggering the interceptor
  */
@@ -829,6 +882,18 @@ function _clearLogActionCounts() {
   _logActionsWindow = [];
   // v1.6.4-v3 - Task 2: Also reset category breakdown
   _logActionsByCategory = {};
+
+  // v1.6.4-v5 - FIX: Clear any pending save timer and persisted value
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+    _totalLogActionsSaveTimer = null;
+  }
+  browser.storage.local.remove(TOTAL_LOG_ACTIONS_KEY).catch(err => {
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Failed to clear persisted total', err);
+    }
+  });
+
   // Use original console to avoid incrementing counter during clear
   if (console._originalLog) {
     console._originalLog('[Manager] METRICS: Log action counts cleared');
