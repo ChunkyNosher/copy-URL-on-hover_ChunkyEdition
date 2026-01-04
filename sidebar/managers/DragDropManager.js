@@ -8,7 +8,13 @@
  * - Cross-tab transfer via drag-and-drop
  * - Duplicate via modifier key + drag
  *
- * @version 1.6.4
+ * @version 1.6.4-v4
+ *
+ * v1.6.4-v4 - FIX: Tab group reordering now works on full tab group element
+ *   - Previously, dragging a tab group over the Quick Tab content area did not work
+ *   - Root cause: Quick Tab item handlers blocked tab-group drags with stopPropagation
+ *   - Fix: _handleQuickTabDragOver, _handleQuickTabDrop, _handleQuickTabDragLeave
+ *     now let tab-group drags bubble up to the parent .tab-group element
  *
  * v1.6.4 - Extracted from quick-tabs-manager.js for code health improvement
  *   - FEATURE #2: Drag-and-drop reordering for tabs and Quick Tabs
@@ -338,31 +344,121 @@ function _handleTabGroupDrop(event) {
  */
 function _handleTabGroupReorder(targetGroup) {
   const draggedGroup = _dragState.draggedElement;
-  if (!draggedGroup || draggedGroup === targetGroup) return;
 
-  const container = draggedGroup.parentElement;
-  const groups = Array.from(container.children);
-  const draggedIndex = groups.indexOf(draggedGroup);
-  const targetIndex = groups.indexOf(targetGroup);
+  // Early exit conditions
+  if (!_canReorderTabGroup(draggedGroup, targetGroup)) {
+    return;
+  }
+
+  // v1.6.4-v4 - FIX BUG #2: Handle stale DOM references after re-render
+  // Instead of using element references directly, find groups by originTabId
+  const draggedOriginTabId = draggedGroup.dataset.originTabId;
+  const targetOriginTabId = targetGroup.dataset.originTabId;
+
+  // Find the current container (tab-groups-container)
+  const container = document.querySelector('.tab-groups-container');
+  if (!container) {
+    console.warn('[Manager] REORDER_FAILED: No tab-groups-container found');
+    return;
+  }
+
+  // v1.6.4-v4 - FIX: Use CSS.escape to safely handle special characters in originTabId
+  const escapedDraggedId = CSS.escape(draggedOriginTabId);
+  const escapedTargetId = CSS.escape(targetOriginTabId);
+
+  // Find current DOM elements by their originTabId
+  const currentDraggedGroup = container.querySelector(
+    `.tab-group[data-origin-tab-id="${escapedDraggedId}"]`
+  );
+  const currentTargetGroup = container.querySelector(
+    `.tab-group[data-origin-tab-id="${escapedTargetId}"]`
+  );
+
+  if (!currentDraggedGroup || !currentTargetGroup) {
+    console.warn('[Manager] REORDER_FAILED: Could not find groups by originTabId', {
+      draggedOriginTabId,
+      targetOriginTabId,
+      draggedFound: !!currentDraggedGroup,
+      targetFound: !!currentTargetGroup
+    });
+    return;
+  }
+
+  const groups = Array.from(container.querySelectorAll('.tab-group'));
+  const draggedIndex = groups.indexOf(currentDraggedGroup);
+  const targetIndex = groups.indexOf(currentTargetGroup);
+  const groupCount = groups.length;
+
+  // Validate indexes before reorder
+  if (!_areReorderIndexesValid(draggedIndex, targetIndex, groupCount)) {
+    return;
+  }
 
   console.log('[Manager] REORDER: Tab groups', {
     fromIndex: draggedIndex,
     toIndex: targetIndex,
-    fromTabId: draggedGroup.dataset.originTabId,
-    toTabId: targetGroup.dataset.originTabId
+    fromTabId: draggedOriginTabId,
+    toTabId: targetOriginTabId,
+    groupCount
   });
 
-  // Move in DOM
+  // Move in DOM using current references
   if (draggedIndex < targetIndex) {
-    targetGroup.after(draggedGroup);
+    currentTargetGroup.after(currentDraggedGroup);
   } else {
-    targetGroup.before(draggedGroup);
+    currentTargetGroup.before(currentDraggedGroup);
   }
 
   // v1.6.4 - FIX BUG #4: Save user's preferred group order
   if (_callbacks.saveGroupOrder) {
     _callbacks.saveGroupOrder(container);
   }
+}
+
+/**
+ * Check if tab group reorder can proceed
+ * v1.6.4-v4 - Extracted to reduce complexity
+ * @private
+ * @param {HTMLElement|null} draggedGroup - Element being dragged
+ * @param {HTMLElement} targetGroup - Drop target
+ * @returns {boolean} True if reorder can proceed
+ */
+function _canReorderTabGroup(draggedGroup, targetGroup) {
+  if (!draggedGroup || draggedGroup === targetGroup) {
+    const reason = !draggedGroup ? 'no dragged element' : 'same element';
+    console.log('[Manager] REORDER_SKIPPED: Tab groups', {
+      reason,
+      timestamp: Date.now()
+    });
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Validate reorder indexes
+ * v1.6.4-v4 - Extracted to reduce complexity
+ * @private
+ * @param {number} draggedIndex - Index of dragged element
+ * @param {number} targetIndex - Index of target element
+ * @param {number} groupCount - Total number of groups
+ * @returns {boolean} True if indexes are valid
+ */
+function _areReorderIndexesValid(draggedIndex, targetIndex, groupCount) {
+  const isInvalidIndex = draggedIndex === -1 || targetIndex === -1;
+  const isOutOfBounds = draggedIndex >= groupCount || targetIndex >= groupCount;
+
+  if (isInvalidIndex || isOutOfBounds) {
+    const reason = isInvalidIndex ? 'index not found' : 'out of bounds';
+    console.warn('[Manager] REORDER_FAILED: Invalid indexes', {
+      draggedIndex,
+      targetIndex,
+      groupCount,
+      reason
+    });
+    return false;
+  }
+  return true;
 }
 
 // ==================== QUICK TAB DRAG HANDLERS ====================
@@ -422,10 +518,20 @@ function _handleQuickTabDragStart(event, item) {
 /**
  * Handle drag over for Quick Tab items (for reordering within group)
  * v1.6.4 - FEATURE #2: Reorder visual feedback
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
+ *   Previously, tab-group drags over quick-tab-items were silently ignored,
+ *   preventing tab group reordering when dragging over the content area.
  * @private
  * @param {DragEvent} event - Drag event
  */
 function _handleQuickTabDragOver(event) {
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  // Don't preventDefault or handle the event - let it propagate to .tab-group
+  if (_dragState.dragType === 'tab-group') {
+    // Don't call preventDefault here - let it bubble to tab group handler
+    return;
+  }
+
   event.preventDefault();
 
   if (_dragState.dragType !== 'quick-tab') return;
@@ -452,10 +558,16 @@ function _handleQuickTabDragOver(event) {
 /**
  * Handle drag leave for Quick Tab items
  * v1.6.4 - FEATURE #2: Remove reorder visual feedback
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
  * @private
  * @param {DragEvent} event - Drag event
  */
 function _handleQuickTabDragLeave(event) {
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  if (_dragState.dragType === 'tab-group') {
+    return;
+  }
+
   const targetItem = event.currentTarget;
   targetItem.classList.remove('drag-over', 'drag-over-bottom');
 }
@@ -526,19 +638,44 @@ function _handleSameGroupReorder(event, targetItem, draggedItem, targetGroup) {
  * v1.6.4 - FIX BUG #3b: Handle cross-tab transfer here since stopPropagation prevents tab group handler
  * v1.6.4 - FIX BUG #3: Save Quick Tab order after same-group reorder
  * v1.6.4 - FIX Code Health: Extracted helpers to reduce complexity (cc=11 -> cc=5)
+ * v1.6.4-v4 - FIX: Allow tab-group drags to bubble up to parent .tab-group element
+ *   Previously, tab-group drags over quick-tab-items were swallowed by stopPropagation,
+ *   preventing tab group reordering when dropping on the content area.
  * @private
  * @param {DragEvent} event - Drop event
  */
 function _handleQuickTabDrop(event) {
-  event.preventDefault();
-  event.stopPropagation(); // Prevent bubbling to tab group
+  // v1.6.4-v4 - FIX: Let tab-group drags bubble up to parent for reordering
+  // Don't preventDefault or stopPropagation - let it propagate to .tab-group handler
+  if (_dragState.dragType === 'tab-group') {
+    console.log('[Manager] DROP: Tab-group drag over quick-tab-item, bubbling to parent', {
+      timestamp: Date.now()
+    });
+    return;
+  }
 
-  if (_dragState.dragType !== 'quick-tab') return;
+  event.preventDefault();
+  event.stopPropagation(); // Prevent bubbling to tab group (only for quick-tab drags)
+
+  if (_dragState.dragType !== 'quick-tab') {
+    console.log('[Manager] DROP_SKIPPED: Not a quick-tab drag', {
+      dragType: _dragState.dragType,
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   const targetItem = event.currentTarget;
   const draggedItem = _dragState.draggedElement;
 
-  if (!draggedItem || targetItem === draggedItem) return;
+  if (!draggedItem || targetItem === draggedItem) {
+    const skipReason = !draggedItem ? 'no dragged element' : 'same element';
+    console.log('[Manager] DROP_SKIPPED: Invalid elements', {
+      reason: skipReason,
+      timestamp: Date.now()
+    });
+    return;
+  }
 
   targetItem.classList.remove('drag-over', 'drag-over-bottom');
 

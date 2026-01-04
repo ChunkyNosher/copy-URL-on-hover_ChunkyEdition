@@ -58,7 +58,8 @@ await searchMemories({ query: '[keywords]', limit: 5 });
   Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
   STATE_CHANGED not received
 - **Bug #16d Stale QUICKTAB_REMOVED** - Background ignores QUICKTAB_REMOVED from
-  old tab after transfer (5-second grace period via `_shouldIgnoreRemovalDueToTransfer`)
+  old tab after transfer (5-second grace period via
+  `_shouldIgnoreRemovalDueToTransfer`)
 
 **New Module:**
 

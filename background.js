@@ -183,6 +183,12 @@ let _startupCleanupCompleted = false;
 const QUICK_TABS_STORAGE_KEY = 'quick_tabs_state_v2';
 
 /**
+ * Default Firefox container ID (no container / private browsing)
+ * v1.6.4-v4 - Used for container-aware Quick Tab transfers and filtering
+ */
+const DEFAULT_CONTAINER_ID = 'firefox-default';
+
+/**
  * Session storage key used by QuickTabStateManager
  * v1.6.3.12-v4 - Must match QuickTabStateManager sessionKey
  */
@@ -3734,6 +3740,177 @@ async function _handleOpenToSettingsTab() {
 }
 // ==================== END KEYBOARD COMMANDS ====================
 
+// ==================== CONTEXT MENU ====================
+// v1.6.4-v5 - FIX BUG #3: Right-click context menu for Quick Tab management
+// Create context menu items for closing and minimizing Quick Tabs on the current tab
+
+/**
+ * Initialize context menus for Quick Tab management
+ * v1.6.4-v5 - FIX BUG #3: Add right-click context menu options
+ */
+function _initializeContextMenus() {
+  // Check if menus API is available
+  if (typeof browser === 'undefined' || !browser.menus) {
+    console.log('[Background] CONTEXT_MENU: Menus API not available');
+    return;
+  }
+
+  // Remove existing menus first (in case of extension update/reload)
+  browser.menus.removeAll().then(() => {
+    // Create "Close All Quick Tabs on This Tab" menu item
+    browser.menus.create({
+      id: 'close-all-quick-tabs',
+      title: 'Close All Quick Tabs on This Tab',
+      contexts: ['page']
+    });
+
+    // Create "Minimize All Quick Tabs on This Tab" menu item
+    browser.menus.create({
+      id: 'minimize-all-quick-tabs',
+      title: 'Minimize All Quick Tabs on This Tab',
+      contexts: ['page']
+    });
+
+    console.log('[Background] CONTEXT_MENU: Menu items created');
+  }).catch(err => {
+    console.error('[Background] CONTEXT_MENU: Failed to create menus:', err.message);
+  });
+}
+
+/**
+ * Handle context menu click
+ * v1.6.4-v5 - FIX BUG #3: Process menu item clicks
+ * @param {Object} info - Menu click info
+ * @param {browser.tabs.Tab} tab - Tab where menu was clicked
+ */
+function _handleContextMenuClick(info, tab) {
+  const tabId = tab?.id;
+  if (!tabId) {
+    console.warn('[Background] CONTEXT_MENU_CLICK: No tab ID available');
+    return;
+  }
+
+  console.log('[Background] CONTEXT_MENU_CLICK:', {
+    menuItemId: info.menuItemId,
+    tabId,
+    timestamp: Date.now()
+  });
+
+  // Get Quick Tabs for this tab from session state
+  const quickTabsInTab = quickTabsSessionState.quickTabsByTab?.[tabId] ?? [];
+  
+  if (quickTabsInTab.length === 0) {
+    console.log('[Background] CONTEXT_MENU: No Quick Tabs on this tab:', { tabId });
+    return;
+  }
+
+  if (info.menuItemId === 'close-all-quick-tabs') {
+    _closeAllQuickTabsOnTab(tabId, quickTabsInTab);
+  } else if (info.menuItemId === 'minimize-all-quick-tabs') {
+    _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab);
+  }
+}
+
+/**
+ * Close all Quick Tabs on a specific tab
+ * v1.6.4-v5 - FIX BUG #3: Context menu close all handler
+ * Note: Uses fire-and-forget operations via _notifyContentScriptOfCommand
+ * @param {number} tabId - Tab ID
+ * @param {Array} quickTabsInTab - Quick Tabs on this tab
+ */
+function _closeAllQuickTabsOnTab(tabId, quickTabsInTab) {
+  console.log('[Background] CONTEXT_MENU_CLOSE_ALL:', {
+    tabId,
+    quickTabCount: quickTabsInTab.length
+  });
+
+  // Send close commands to content script for each Quick Tab (fire-and-forget)
+  for (const quickTab of quickTabsInTab) {
+    _notifyContentScriptOfCommand(tabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+  }
+
+  // Remove from session state
+  delete quickTabsSessionState.quickTabsByTab[tabId];
+  
+  // Update global state
+  const closedIds = new Set(quickTabsInTab.map(qt => qt.id));
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => !closedIds.has(qt.id));
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Update host tracking
+  for (const quickTab of quickTabsInTab) {
+    quickTabHostTabs.delete(quickTab.id);
+  }
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  console.log('[Background] CONTEXT_MENU_CLOSE_ALL_COMPLETE:', {
+    tabId,
+    closedCount: quickTabsInTab.length
+  });
+}
+
+/**
+ * Minimize all Quick Tabs on a specific tab
+ * v1.6.4-v5 - FIX BUG #3: Context menu minimize all handler
+ * Note: Uses fire-and-forget operations via _notifyContentScriptOfCommand
+ * @param {number} tabId - Tab ID
+ * @param {Array} quickTabsInTab - Quick Tabs on this tab
+ */
+function _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab) {
+  console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL:', {
+    tabId,
+    quickTabCount: quickTabsInTab.length
+  });
+
+  // Filter to only non-minimized Quick Tabs
+  const nonMinimized = quickTabsInTab.filter(qt => !qt.minimized);
+  
+  if (nonMinimized.length === 0) {
+    console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL: All Quick Tabs already minimized');
+    return;
+  }
+
+  // Send minimize commands to content script for each non-minimized Quick Tab
+  for (const quickTab of nonMinimized) {
+    // Update state
+    quickTab.minimized = true;
+    quickTab.minimizedAt = Date.now();
+    
+    // Update global state
+    const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTab.id);
+    if (globalQt) {
+      globalQt.minimized = true;
+      globalQt.minimizedAt = Date.now();
+    }
+    
+    // Notify content script
+    _notifyContentScriptOfCommand(tabId, true, 'MINIMIZE_QUICK_TAB_COMMAND', quickTab.id);
+  }
+
+  globalQuickTabState.lastUpdate = Date.now();
+
+  // Notify sidebar of state change
+  notifySidebarOfStateChange();
+
+  console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL_COMPLETE:', {
+    tabId,
+    minimizedCount: nonMinimized.length
+  });
+}
+
+// Initialize context menus
+_initializeContextMenus();
+
+// Add context menu click listener
+if (typeof browser !== 'undefined' && browser.menus) {
+  browser.menus.onClicked.addListener(_handleContextMenuClick);
+  console.log('[Background] CONTEXT_MENU: Click listener registered');
+}
+
+// ==================== END CONTEXT MENU ====================
+
 // ==================== BROWSER ACTION HANDLER ====================
 // Toggle sidebar when toolbar button is clicked (Firefox only)
 // Chrome will continue using popup.html since it doesn't support sidebar_action
@@ -5635,15 +5812,18 @@ function _shouldIgnoreRemovalDueToTransfer(quickTabData, senderTabId, quickTabId
   const TRANSFER_GRACE_PERIOD_MS = 5000; // 5 second grace period
 
   if (isFromOldTab && timeSinceTransfer < TRANSFER_GRACE_PERIOD_MS) {
-    console.log('[Background] v1.6.4-v3 QUICKTAB_REMOVED IGNORED: Quick Tab was recently transferred', {
-      quickTabId,
-      senderTabId,
-      transferredFrom: quickTabData.transferredFrom,
-      transferredAt: quickTabData.transferredAt,
-      timeSinceTransfer,
-      currentOriginTabId: quickTabData.originTabId,
-      reason: 'stale_removal_from_old_tab'
-    });
+    console.log(
+      '[Background] v1.6.4-v3 QUICKTAB_REMOVED IGNORED: Quick Tab was recently transferred',
+      {
+        quickTabId,
+        senderTabId,
+        transferredFrom: quickTabData.transferredFrom,
+        transferredAt: quickTabData.transferredAt,
+        timeSinceTransfer,
+        currentOriginTabId: quickTabData.originTabId,
+        reason: 'stale_removal_from_old_tab'
+      }
+    );
     return true;
   }
 
@@ -7132,83 +7312,177 @@ function handleSidebarRestoreQuickTab(quickTabId, sidebarPort) {
 }
 
 /**
+ * Filter Quick Tabs by container ID
+ * v1.6.4-v4 - Helper for container-aware Close All
+ * @param {Array} allQuickTabs - All Quick Tabs
+ * @param {string} containerFilter - Container filter ('all' or specific cookieStoreId)
+ * @returns {Array} Filtered Quick Tabs
+ */
+function _filterQuickTabsByContainerForClose(allQuickTabs, containerFilter) {
+  if (containerFilter === 'all') {
+    return allQuickTabs;
+  }
+  const filtered = allQuickTabs.filter(qt => {
+    const tabContainerId = qt.originContainerId || 'firefox-default';
+    return tabContainerId === containerFilter;
+  });
+  console.log('[Background] CLOSE_ALL_CONTAINER_FILTER:', {
+    containerFilter,
+    totalQuickTabs: allQuickTabs.length,
+    quickTabsToClose: filtered.length
+  });
+  return filtered;
+}
+
+/**
+ * Remove Quick Tabs from session state by container
+ * v1.6.4-v4 - Helper for container-aware Close All
+ * @param {string} containerFilter - Container to remove ('all' removes all)
+ */
+function _removeQuickTabsFromSessionStateByContainer(containerFilter) {
+  if (containerFilter === 'all') {
+    quickTabsSessionState.quickTabsByTab = {};
+    globalQuickTabState.tabs = [];
+    return;
+  }
+  // Filter Quick Tabs by container from each tab
+  for (const tabId of Object.keys(quickTabsSessionState.quickTabsByTab)) {
+    const quickTabsInTab = quickTabsSessionState.quickTabsByTab[tabId];
+    const remaining = quickTabsInTab.filter(qt => {
+      const tabContainerId = qt.originContainerId || 'firefox-default';
+      return tabContainerId !== containerFilter;
+    });
+    if (remaining.length === 0) {
+      delete quickTabsSessionState.quickTabsByTab[tabId];
+    } else {
+      quickTabsSessionState.quickTabsByTab[tabId] = remaining;
+    }
+  }
+  globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => {
+    const tabContainerId = qt.originContainerId || 'firefox-default';
+    return tabContainerId !== containerFilter;
+  });
+}
+
+/**
  * Handle sidebar request to close all Quick Tabs
  * v1.6.3.12-v7 - FIX Issue #15: Implement Close All button via port messaging
+ * v1.6.4-v4 - FEATURE: Support container filtering (only close Quick Tabs in specified container)
  * @param {Object} msg - Message from sidebar
+ * @param {string} [msg.containerFilter] - Container filter ('all' or specific cookieStoreId)
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
 function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   const handlerStartTime = performance.now();
-  // Use msg.correlationId if available, otherwise generate a new one
   const correlationId = msg.correlationId || `close-all-${Date.now()}`;
+  const containerFilter = msg.containerFilter || 'all';
 
   console.log('[Background] SIDEBAR_CLOSE_ALL_QUICK_TABS:', {
     correlationId,
+    containerFilter,
     timestamp: Date.now(),
     currentQuickTabCount: getAllQuickTabsFromMemory().length
   });
 
-  // Count Quick Tabs before clearing
+  // Get Quick Tabs to close (filtered by container if specified)
   const allQuickTabs = getAllQuickTabsFromMemory();
-  const closedCount = allQuickTabs.length;
-  const quickTabIds = allQuickTabs.map(qt => qt.id);
+  const quickTabsToClose = _filterQuickTabsByContainerForClose(allQuickTabs, containerFilter);
+  const closedCount = quickTabsToClose.length;
+  const quickTabIds = quickTabsToClose.map(qt => qt.id);
 
-  // Notify all content scripts to close their Quick Tabs
-  for (const quickTab of allQuickTabs) {
-    const ownerTabId = quickTab.originTabId;
-    if (ownerTabId) {
-      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
-    }
-  }
+  // Notify content scripts to close their Quick Tabs
+  _notifyContentScriptsToCloseQuickTabs(quickTabsToClose);
 
-  // Clear all Quick Tabs from session state
-  quickTabsSessionState.quickTabsByTab = {};
-
-  // Clear global state
-  globalQuickTabState.tabs = [];
+  // Update session state
+  _removeQuickTabsFromSessionStateByContainer(containerFilter);
   globalQuickTabState.lastUpdate = Date.now();
   globalQuickTabState.saveId = `close-all-${Date.now()}`;
 
-  // Clear Quick Tab host tracking
-  quickTabHostTabs.clear();
+  // Update host tracking
+  _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds);
 
   // Send ACK to sidebar
-  // v1.6.4 - ADD fallback messaging: Wrap in try-catch
-  if (sidebarPort) {
-    const ackMessage = {
-      type: 'CLOSE_ALL_QUICK_TABS_ACK',
-      success: true,
-      closedCount,
-      quickTabIds,
-      correlationId,
-      timestamp: Date.now()
-    };
-    try {
-      sidebarPort.postMessage(ackMessage);
-      console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', {
-        correlationId,
-        closedCount
-      });
-    } catch (err) {
-      console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
-        error: err.message,
-        correlationId,
-        closedCount
-      });
-    }
-  }
+  _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds);
 
-  // Notify sidebar of state change (empty state)
+  // Notify sidebar of state change
   notifySidebarOfStateChange();
 
   // Log completion
   const durationMs = performance.now() - handlerStartTime;
   console.log('[Background] CLOSE_ALL_QUICK_TABS completed:', {
     correlationId,
+    containerFilter,
     closedCount,
     durationMs: durationMs.toFixed(2),
     globalTabsRemaining: globalQuickTabState.tabs.length
   });
+}
+
+/**
+ * Notify content scripts to close their Quick Tabs
+ * v1.6.4-v4 - Helper for Close All
+ * @param {Array} quickTabsToClose - Quick Tabs to close
+ */
+function _notifyContentScriptsToCloseQuickTabs(quickTabsToClose) {
+  for (const quickTab of quickTabsToClose) {
+    const ownerTabId = quickTab.originTabId;
+    if (ownerTabId) {
+      _notifyContentScriptOfCommand(ownerTabId, true, 'CLOSE_QUICK_TAB_COMMAND', quickTab.id);
+    }
+  }
+}
+
+/**
+ * Update host tracking after Close All
+ * v1.6.4-v4 - Helper for Close All
+ * @param {string} containerFilter - Container filter
+ * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ */
+function _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds) {
+  if (containerFilter === 'all') {
+    quickTabHostTabs.clear();
+  } else {
+    for (const quickTabId of quickTabIds) {
+      quickTabHostTabs.delete(quickTabId);
+    }
+  }
+}
+
+/**
+ * Send Close All ACK to sidebar
+ * v1.6.4-v4 - Helper for Close All
+ * @param {browser.runtime.Port} sidebarPort - Sidebar port
+ * @param {string} correlationId - Correlation ID
+ * @param {string} containerFilter - Container filter
+ * @param {number} closedCount - Number of closed Quick Tabs
+ * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ */
+function _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds) {
+  if (!sidebarPort) return;
+
+  const ackMessage = {
+    type: 'CLOSE_ALL_QUICK_TABS_ACK',
+    success: true,
+    closedCount,
+    quickTabIds,
+    containerFilter,
+    correlationId,
+    timestamp: Date.now()
+  };
+  try {
+    sidebarPort.postMessage(ackMessage);
+    console.log('[Background] CLOSE_ALL_QUICK_TABS_ACK sent via port:', {
+      correlationId,
+      containerFilter,
+      closedCount
+    });
+  } catch (err) {
+    console.warn('[Background] CLOSE_ALL_QUICK_TABS_ACK port failed:', {
+      error: err.message,
+      correlationId,
+      closedCount
+    });
+  }
 }
 
 /**
@@ -7398,17 +7672,41 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
 /**
  * Update session and global state for Quick Tab transfer
  * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
+ * v1.6.4-v4 - FIX: Also update originContainerId when transferring to different container
  * @private
  * @param {Object} quickTabData - Quick Tab data to transfer
  * @param {string} quickTabId - Quick Tab ID
  * @param {number} newOriginTabId - New origin tab ID
  * @param {number} oldOriginTabId - Old origin tab ID
+ * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId) {
+function _updateStateForTransfer(
+  quickTabData,
+  quickTabId,
+  newOriginTabId,
+  oldOriginTabId,
+  newContainerId
+) {
+  const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
+
   // Update the Quick Tab's origin tab ID
   quickTabData.originTabId = newOriginTabId;
   quickTabData.transferredAt = Date.now();
   quickTabData.transferredFrom = oldOriginTabId;
+
+  // v1.6.4-v4 - FIX: Update originContainerId when transferring to different container
+  // This ensures container-filtered views show the Quick Tab in the correct container
+  // Both fields must be updated: originContainerId (for filtering) and cookieStoreId (for Firefox API compatibility)
+  if (newContainerId && newContainerId !== oldContainerId) {
+    quickTabData.originContainerId = newContainerId;
+    quickTabData.cookieStoreId = newContainerId;
+    console.log('[Background] TRANSFER_CONTAINER_UPDATE:', {
+      quickTabId,
+      oldContainerId,
+      newContainerId,
+      timestamp: Date.now()
+    });
+  }
 
   // Add to new tab's Quick Tabs array
   if (!quickTabsSessionState.quickTabsByTab[newOriginTabId]) {
@@ -7421,6 +7719,11 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
   if (globalIndex >= 0) {
     globalQuickTabState.tabs[globalIndex].originTabId = newOriginTabId;
     globalQuickTabState.tabs[globalIndex].transferredAt = Date.now();
+    // v1.6.4-v4 - FIX: Also update container ID in global state (both fields for consistency)
+    if (newContainerId) {
+      globalQuickTabState.tabs[globalIndex].originContainerId = newContainerId;
+      globalQuickTabState.tabs[globalIndex].cookieStoreId = newContainerId;
+    }
   }
   globalQuickTabState.lastUpdate = Date.now();
 
@@ -7429,13 +7732,44 @@ function _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOr
 }
 
 /**
+ * Get the container ID for a target tab during transfer
+ * v1.6.4-v4 - Extracted to reduce handleSidebarTransferQuickTab line count
+ * @private
+ * @param {string} quickTabId - Quick Tab ID (for logging)
+ * @param {number} newOriginTabId - Target tab ID
+ * @returns {Promise<string>} Container ID or DEFAULT_CONTAINER_ID if lookup fails
+ */
+async function _getTargetTabContainerId(quickTabId, newOriginTabId) {
+  try {
+    const targetTab = await browser.tabs.get(newOriginTabId);
+    const containerId = targetTab?.cookieStoreId || DEFAULT_CONTAINER_ID;
+    console.log('[Background] TRANSFER_TARGET_TAB_INFO:', {
+      quickTabId,
+      newOriginTabId,
+      newContainerId: containerId,
+      timestamp: Date.now()
+    });
+    return containerId;
+  } catch (err) {
+    console.warn('[Background] TRANSFER_GET_TAB_FAILED:', {
+      quickTabId,
+      newOriginTabId,
+      error: err.message,
+      timestamp: Date.now()
+    });
+    return DEFAULT_CONTAINER_ID;
+  }
+}
+
+/**
  * Handle sidebar request to transfer a Quick Tab to a different browser tab
  * v1.6.4 - FEATURE #3: Cross-tab Quick Tab transfer
  * v1.6.4 - FIX Code Health: Extracted helpers to reduce line count (85 -> ~40)
+ * v1.6.4-v4 - FIX: Made async to get target tab's container ID for container-aware transfer
  * @param {Object} msg - Message with quickTabId and newOriginTabId
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
-function handleSidebarTransferQuickTab(msg, sidebarPort) {
+async function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const { quickTabId, newOriginTabId } = msg;
   const handlerStartTime = performance.now();
   const correlationId = sidebarPort._lastCorrelationId || `transfer-${quickTabId}-${Date.now()}`;
@@ -7467,8 +7801,11 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
     return;
   }
 
-  // Update all state
-  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId);
+  // v1.6.4-v4 - FIX: Get target tab's container ID for container-aware transfer
+  const newContainerId = await _getTargetTabContainerId(quickTabId, newOriginTabId);
+
+  // Update all state (including container ID)
+  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId);
 
   // Send success ACK to sidebar
   _sendTransferAck(
@@ -7479,6 +7816,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
       quickTabId,
       oldOriginTabId,
       newOriginTabId,
+      newContainerId, // v1.6.4-v4 - Include new container ID in ACK
       correlationId
     },
     quickTabId,
@@ -7489,6 +7827,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
   console.log('[Background] TRANSFER_PRE_NOTIFY:', {
     quickTabId,
     newOriginTabId,
+    newContainerId,
     sidebarPortConnected: !!quickTabsSessionState.sidebarPort,
     timestamp: Date.now()
   });
@@ -7502,6 +7841,7 @@ function handleSidebarTransferQuickTab(msg, sidebarPort) {
     quickTabId,
     oldOriginTabId,
     newOriginTabId,
+    newContainerId,
     success: true,
     durationMs: durationMs.toFixed(2),
     correlationId
@@ -7682,14 +8022,16 @@ function _generateQuickTabId() {
 /**
  * Create Quick Tab object for duplication
  * v1.6.4 - Extracted to reduce handleSidebarDuplicateQuickTab complexity
+ * v1.6.4-v6 - FIX Bug #3: Add originContainerId parameter for container-aware duplication
  * @private
  * @param {Object} msg - Message with Quick Tab properties
  * @param {string} newQuickTabId - New Quick Tab ID
+ * @param {string} [newContainerId] - Target container ID (optional, for container-aware duplication)
  * @returns {Object} New Quick Tab object
  */
-function _createDuplicateQuickTab(msg, newQuickTabId) {
+function _createDuplicateQuickTab(msg, newQuickTabId, newContainerId) {
   const { url, title, left, top, width, height, minimized, newOriginTabId } = msg;
-  return {
+  const quickTab = {
     id: newQuickTabId,
     url,
     title: title || 'Duplicated Quick Tab',
@@ -7702,6 +8044,14 @@ function _createDuplicateQuickTab(msg, newQuickTabId) {
     createdAt: Date.now(),
     duplicatedFrom: msg.sourceQuickTabId || null
   };
+
+  // v1.6.4-v6 - FIX Bug #3: Include container ID for proper container filtering in Manager
+  if (newContainerId) {
+    quickTab.originContainerId = newContainerId;
+    quickTab.cookieStoreId = newContainerId;
+  }
+
+  return quickTab;
 }
 
 /**
@@ -7794,10 +8144,11 @@ function _notifyTargetTabOfDuplicate(newOriginTabId, newQuickTab) {
 /**
  * Handle sidebar request to duplicate a Quick Tab to a different browser tab
  * v1.6.4 - FEATURE #5: Alt+drag duplicate
+ * v1.6.4-v6 - FIX Bug #3: Made async to lookup target container ID for proper filtering
  * @param {Object} msg - Message with Quick Tab properties and newOriginTabId
  * @param {browser.runtime.Port} sidebarPort - Sidebar port for response
  */
-function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
+async function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   const { newOriginTabId } = msg;
   const handlerStartTime = performance.now();
   const correlationId = sidebarPort._lastCorrelationId || `duplicate-${Date.now()}`;
@@ -7809,26 +8160,44 @@ function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
     timestamp: Date.now()
   });
 
-  // Create new Quick Tab with unique ID
+  // v1.6.4-v6 - FIX Bug #3: Get target tab's container ID for container-aware duplication
+  // Note: Passing 'duplicate-operation' as first param for logging clarity (source Quick Tab ID
+  // is in msg.sourceQuickTabId but _getTargetTabContainerId uses it only for logging)
+  const newContainerId = await _getTargetTabContainerId(
+    msg.sourceQuickTabId || 'duplicate',
+    newOriginTabId
+  );
+
+  console.log('[Background] DUPLICATE_TARGET_CONTAINER:', {
+    newOriginTabId,
+    newContainerId,
+    correlationId,
+    timestamp: Date.now()
+  });
+
+  // Create new Quick Tab with unique ID and container info
   const newQuickTabId = _generateQuickTabId();
-  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId);
+  const newQuickTab = _createDuplicateQuickTab(msg, newQuickTabId, newContainerId);
 
   // Add to state
   _addQuickTabToState(newQuickTab, newOriginTabId);
 
   // Send ACK to sidebar
   // v1.6.4 - ADD fallback messaging: Wrap in try-catch
+  // v1.6.4-v6 - Include newContainerId in ACK for Manager to use immediately
   const ackMessage = {
     type: 'DUPLICATE_QUICK_TAB_ACK',
     success: true,
     newQuickTabId,
     newOriginTabId,
+    newContainerId, // v1.6.4-v6 - Include container ID for proper filtering
     correlationId
   };
   try {
     sidebarPort.postMessage(ackMessage);
     console.log('[Background] DUPLICATE_QUICK_TAB_ACK sent via port:', {
       newQuickTabId,
+      newContainerId,
       correlationId
     });
   } catch (err) {
@@ -7847,6 +8216,7 @@ function handleSidebarDuplicateQuickTab(msg, sidebarPort) {
   console.log('[Background] DUPLICATE_QUICK_TAB_EXIT:', {
     newQuickTabId,
     newOriginTabId,
+    newContainerId,
     success: true,
     durationMs: durationMs.toFixed(2),
     correlationId
