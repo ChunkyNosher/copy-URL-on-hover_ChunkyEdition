@@ -1955,6 +1955,9 @@ function _validateTransferredInMessage(message) {
  * v1.6.4-v4 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
  * v1.6.4-v5 - Note: After storing, updateTransferredSnapshotWindow must be called
  *   with the created window to enable restore
+ * v1.6.4-v5 - FIX: Pass currentTabId as newOriginTabId to update savedOriginTabId to destination tab
+ *   This fixes the bug where minimized Quick Tabs transferred to another tab could not be restored
+ *   because the snapshot still contained the OLD origin tab ID from the source tab
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {boolean} isMinimized - Whether Quick Tab is minimized
@@ -1964,13 +1967,18 @@ function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSn
   if (!isMinimized) return;
 
   if (minimizedSnapshot && quickTabsManager?.minimizedManager) {
+    // v1.6.4-v5 - FIX: Pass currentTabId (destination tab) as newOriginTabId
+    // This updates savedOriginTabId to the NEW destination tab instead of keeping the OLD source tab
     const stored = quickTabsManager.minimizedManager.storeTransferredSnapshot(
       quickTabId,
-      minimizedSnapshot
+      minimizedSnapshot,
+      quickTabsManager.currentTabId  // Pass destination tab ID to update savedOriginTabId
     );
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Stored minimized snapshot:', {
       quickTabId,
       stored,
+      newOriginTabId: quickTabsManager.currentTabId,
+      oldOriginTabId: minimizedSnapshot.originTabId,
       snapshot: minimizedSnapshot
     });
   } else {
