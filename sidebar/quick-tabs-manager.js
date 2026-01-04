@@ -8415,6 +8415,28 @@ async function _handleGoToTabGroup(tabId) {
     timestamp: Date.now()
   });
 
+  // v1.6.4-v6 - FIX BUG #1: Call sidebarAction.close() SYNCHRONOUSLY before any await
+  // Firefox only allows sidebarAction.close() from user input handler context.
+  // Any await breaks the call chain and Firefox rejects with:
+  // "sidebarAction.close may only be called from a user input handler"
+  // Solution: Close sidebar FIRST (fire-and-forget), then do async tab switching.
+  browser.sidebarAction
+    .close()
+    .then(() => {
+      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED_SYNC:', {
+        tabId: numTabId,
+        timestamp: Date.now()
+      });
+    })
+    .catch(err => {
+      // If sidebarAction.close() fails, fall back to blur approach
+      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_SYNC_FAILED:', {
+        error: err.message,
+        tabId: numTabId
+      });
+      _fallbackBlurForFocusRelease();
+    });
+
   try {
     // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
     // This ensures proper tab switching when the target tab is in a different window
@@ -8455,16 +8477,13 @@ async function _handleGoToTabGroup(tabId) {
     }
     await browser.tabs.update(numTabId, { active: true });
 
-    // v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus to main window
-    // v1.6.4-v5 - FIX BUG #1: Sidebar stays closed for cross-container switches to ensure focus transfer
-    await _releaseSidebarFocusForGoToTab(numTabId, windowId, isCrossContainerSwitch);
-
+    // v1.6.4-v6 - Sidebar already closed synchronously above, just log success
     console.log('[Manager] GO_TO_TAB_SUCCESS:', {
       tabId: numTabId,
       windowId,
       targetContainerId: originContainerId,
       isCrossContainerSwitch,
-      sidebarAction: 'closed'
+      sidebarAction: 'closed_sync'
     });
   } catch (err) {
     console.error('[Manager] GO_TO_TAB_FAILED:', {
@@ -8483,6 +8502,12 @@ async function _handleGoToTabGroup(tabId) {
  *   - Reopening sidebar would retain original container context, defeating the purpose
  *   - User can manually reopen sidebar when needed
  * v1.6.4-v5 - FIX BUG #1: Enhanced logging for cross-container switch
+ *
+ * @deprecated v1.6.4-v6 - No longer used. Sidebar is now closed synchronously at the
+ * start of _handleGoToTabGroup() to fix Firefox user input handler requirement.
+ * Firefox requires sidebarAction.close() to be called synchronously from user input
+ * handler - any await before it breaks the call chain. Retained for reference.
+ *
  * @private
  * @param {number} tabId - Tab ID for logging
  * @param {number|null} windowId - Window ID for logging

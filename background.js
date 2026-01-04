@@ -5723,24 +5723,44 @@ function notifySidebarOfStateChange() {
 }
 
 /**
+ * Update minimized snapshot on a Quick Tab object
+ * v1.6.4-v6 - Extracted helper to reduce handleQuickTabMinimizedMessage complexity
+ * @private
+ * @param {Object} quickTab - Quick Tab object to update
+ * @param {boolean} minimized - New minimized state
+ * @param {Object|null} minimizedSnapshot - Snapshot data
+ * @param {string} quickTabId - Quick Tab ID for logging
+ */
+function _updateQuickTabSnapshot(quickTab, minimized, minimizedSnapshot, quickTabId) {
+  if (minimized && minimizedSnapshot) {
+    quickTab.minimizedSnapshot = minimizedSnapshot;
+    console.log('[Background] MINIMIZE_SNAPSHOT_STORED:', { quickTabId, snapshot: minimizedSnapshot });
+  } else if (!minimized) {
+    delete quickTab.minimizedSnapshot;
+  }
+}
+
+/**
  * Handle QUICKTAB_MINIMIZED message from VisibilityHandler
  * v1.6.3.12-v2 - FIX Issue #1 (issue-47-extended-analysis): Add missing QUICKTAB_MINIMIZED handler
  *
  * When a Quick Tab is minimized or restored in a content script, the VisibilityHandler
  * sends a QUICKTAB_MINIMIZED message. This handler:
  * 1. Updates the in-memory state with the new minimized status
- * 2. Notifies the sidebar via STATE_CHANGED to update its UI immediately
+ * 2. Stores minimizedSnapshot for later transfer operations (v1.6.4-v6)
+ * 3. Notifies the sidebar via STATE_CHANGED to update its UI immediately
  *
  * @param {Object} message - Message payload
  * @param {string} message.quickTabId - Quick Tab ID
  * @param {boolean} message.minimized - New minimized state
  * @param {number} message.originTabId - Tab where Quick Tab resides
  * @param {string} message.source - Source of the action
+ * @param {Object} message.minimizedSnapshot - Snapshot data for restore (v1.6.4-v6)
  * @param {Object} sender - Message sender info
  * @returns {{success: boolean, error?: string}}
  */
 function handleQuickTabMinimizedMessage(message, sender) {
-  const { quickTabId, minimized, originTabId, source, timestamp } = message;
+  const { quickTabId, minimized, originTabId, source, timestamp, minimizedSnapshot } = message;
   const senderTabId = sender?.tab?.id ?? originTabId;
 
   console.log('[Background] v1.6.3.12-v2 QUICKTAB_MINIMIZED received:', {
@@ -5749,51 +5769,46 @@ function handleQuickTabMinimizedMessage(message, sender) {
     originTabId,
     senderTabId,
     source,
-    timestamp
+    timestamp,
+    hasSnapshot: !!minimizedSnapshot
   });
 
   // Find and update the Quick Tab in session state
   const quickTabs = quickTabsSessionState.quickTabsByTab[senderTabId] || [];
   const quickTab = quickTabs.find(qt => qt.id === quickTabId);
 
-  if (quickTab) {
-    const previousMinimized = quickTab.minimized;
-    quickTab.minimized = minimized;
-
-    console.log('[Background] v1.6.3.12-v2 Quick Tab minimized state updated:', {
+  if (!quickTab) {
+    console.warn('[Background] v1.6.3.12-v2 Quick Tab not found for QUICKTAB_MINIMIZED:', {
       quickTabId,
-      previousMinimized,
-      newMinimized: minimized,
-      originTabId: senderTabId
+      senderTabId,
+      availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
     });
-
-    // Update globalQuickTabState as well for backward compatibility
-    const globalQuickTab = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
-    if (globalQuickTab) {
-      globalQuickTab.minimized = minimized;
-    }
-
-    // Notify sidebar of state change for immediate UI update
-    notifySidebarOfStateChange();
-
-    return { success: true, quickTabId, minimized };
+    return { success: false, error: 'Quick Tab not found in session state', quickTabId };
   }
 
-  console.warn('[Background] v1.6.3.12-v2 Quick Tab not found for QUICKTAB_MINIMIZED:', {
+  const previousMinimized = quickTab.minimized;
+  quickTab.minimized = minimized;
+  _updateQuickTabSnapshot(quickTab, minimized, minimizedSnapshot, quickTabId);
+
+  console.log('[Background] v1.6.3.12-v2 Quick Tab minimized state updated:', {
     quickTabId,
-    senderTabId,
-    availableTabIds: Object.keys(quickTabsSessionState.quickTabsByTab)
+    previousMinimized,
+    newMinimized: minimized,
+    originTabId: senderTabId,
+    hasSnapshot: !!quickTab.minimizedSnapshot
   });
 
-  // v1.6.3.12-v2 - Do NOT notify sidebar when Quick Tab not found
-  // Notifying on failure could cause unnecessary sidebar updates and
-  // potential UI flickering when the Quick Tab genuinely doesn't exist
+  // Update globalQuickTabState as well for backward compatibility
+  const globalQuickTab = globalQuickTabState.tabs.find(qt => qt.id === quickTabId);
+  if (globalQuickTab) {
+    globalQuickTab.minimized = minimized;
+    _updateQuickTabSnapshot(globalQuickTab, minimized, minimizedSnapshot, quickTabId);
+  }
 
-  return {
-    success: false,
-    error: 'Quick Tab not found in session state',
-    quickTabId
-  };
+  // Notify sidebar of state change for immediate UI update
+  notifySidebarOfStateChange();
+
+  return { success: true, quickTabId, minimized };
 }
 
 /**
@@ -6427,11 +6442,13 @@ function _handleQuickTabUpdate({ tabId, quickTabId, port, operation, ackType, up
  * Handle MINIMIZE_QUICK_TAB message from content script
  * v1.6.3.12-v2 - FIX Code Health: Use unified helpers
  * v1.6.3.12-v8 - FIX Code Health: Use generic handler to reduce duplication
+ * v1.6.4-v6 - FIX BUG #2: Store minimizedSnapshot for cross-tab transfer restore
  * @param {number} tabId - Origin tab ID
  * @param {string} quickTabId - Quick Tab ID to minimize
+ * @param {Object|null} minimizedSnapshot - Snapshot data for restore (position, size)
  * @param {browser.runtime.Port} port - Source port for response
  */
-function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
+function handleMinimizeQuickTabPort(tabId, quickTabId, minimizedSnapshot, port) {
   _handleQuickTabUpdate({
     tabId,
     quickTabId,
@@ -6441,6 +6458,16 @@ function handleMinimizeQuickTabPort(tabId, quickTabId, port) {
     updateFn: qt => {
       qt.minimized = true;
       qt.minimizedAt = Date.now();
+      // v1.6.4-v6 - FIX BUG #2: Store snapshot for cross-tab transfer
+      // When a minimized Quick Tab is transferred, the destination needs the snapshot
+      // to restore it to the correct position/size
+      if (minimizedSnapshot) {
+        qt.minimizedSnapshot = minimizedSnapshot;
+        console.log('[Background] MINIMIZE_SNAPSHOT_STORED:', {
+          quickTabId,
+          snapshot: minimizedSnapshot
+        });
+      }
     }
   });
 }
@@ -6731,7 +6758,9 @@ function handleSidebarReady(port) {
  */
 const _contentScriptMessageHandlers = {
   CREATE_QUICK_TAB: (tabId, msg, port) => handleCreateQuickTab(tabId, msg.quickTab, port),
-  MINIMIZE_QUICK_TAB: (tabId, msg, port) => handleMinimizeQuickTabPort(tabId, msg.quickTabId, port),
+  // v1.6.4-v6 - FIX BUG #2: Pass minimizedSnapshot for cross-tab transfer restore
+  MINIMIZE_QUICK_TAB: (tabId, msg, port) =>
+    handleMinimizeQuickTabPort(tabId, msg.quickTabId, msg.minimizedSnapshot, port),
   RESTORE_QUICK_TAB: (tabId, msg, port) => handleRestoreQuickTabPort(tabId, msg.quickTabId, port),
   DELETE_QUICK_TAB: (tabId, msg, port) => handleDeleteQuickTabPort(tabId, msg.quickTabId, port),
   QUERY_MY_QUICK_TABS: (tabId, _msg, port) => handleQueryMyQuickTabs(tabId, port),
@@ -7915,16 +7944,32 @@ function _notifyOldTabOfTransfer(oldOriginTabId, quickTabId, newOriginTabId) {
  * v1.6.4-v3 - FIX BUG #1: Only use fallback when port fails to prevent duplicate creation
  *   - Previous behavior: ALWAYS sent fallback, causing duplicate QUICK_TAB_TRANSFERRED_IN messages
  *   - New behavior: Only send fallback if port message fails or port doesn't exist
+ * v1.6.4-v6 - FIX BUG #2: Include minimizedSnapshot for cross-tab transfer restore
+ *   - When a minimized Quick Tab is transferred, include the snapshot so destination can restore
  * @private
  */
 function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
   const newPort = quickTabsSessionState.contentScriptPorts[newOriginTabId];
+
+  // v1.6.4-v6 - FIX BUG #2: Include minimizedSnapshot if Quick Tab is minimized
   const message = {
     type: 'QUICK_TAB_TRANSFERRED_IN',
     quickTab: quickTabData,
     oldOriginTabId,
+    // Include minimizedSnapshot for restore capability on destination tab
+    minimizedSnapshot: quickTabData?.minimized ? quickTabData?.minimizedSnapshot : null,
     timestamp: Date.now()
   };
+
+  // Log if transferring minimized Quick Tab with/without snapshot
+  if (quickTabData?.minimized) {
+    console.log('[Background] TRANSFER_IN_MINIMIZED:', {
+      quickTabId: quickTabData?.id,
+      hasSnapshot: !!quickTabData?.minimizedSnapshot,
+      snapshotPosition: quickTabData?.minimizedSnapshot?.position,
+      snapshotSize: quickTabData?.minimizedSnapshot?.size
+    });
+  }
 
   const portSucceeded = _tryPortSend(newPort, message, 'new tab of transfer in', newOriginTabId);
 
@@ -7932,22 +7977,30 @@ function _notifyNewTabOfTransfer(newOriginTabId, quickTabData, oldOriginTabId) {
   // Previously, fallback was ALWAYS sent which caused duplicate QUICK_TAB_TRANSFERRED_IN messages
   // when the target tab received both port message AND sendMessage fallback
   if (!portSucceeded) {
+    // v1.6.4-v6 - FIX BUG #2: Include minimizedSnapshot in fallback payload
+    const fallbackPayload = { quickTab: quickTabData, oldOriginTabId };
+    if (quickTabData?.minimized && quickTabData?.minimizedSnapshot) {
+      fallbackPayload.minimizedSnapshot = quickTabData.minimizedSnapshot;
+    }
+
     _sendContentMessageFallback({
       tabId: newOriginTabId,
       messageType: 'QUICK_TAB_TRANSFERRED_IN',
-      payload: { quickTab: quickTabData, oldOriginTabId },
+      payload: fallbackPayload,
       operationName: 'TRANSFER_IN',
       quickTabId: quickTabData?.id
     });
 
     console.log('[Background] TRANSFER_IN sent via fallback (port unavailable):', {
       newOriginTabId,
-      quickTabId: quickTabData?.id
+      quickTabId: quickTabData?.id,
+      hasMinimizedSnapshot: !!fallbackPayload.minimizedSnapshot
     });
   } else {
     console.log('[Background] TRANSFER_IN sent via port successfully:', {
       newOriginTabId,
-      quickTabId: quickTabData?.id
+      quickTabId: quickTabData?.id,
+      hasMinimizedSnapshot: !!message.minimizedSnapshot
     });
   }
 }

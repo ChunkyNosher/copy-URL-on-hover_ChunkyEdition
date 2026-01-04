@@ -760,8 +760,31 @@ export class VisibilityHandler {
   }
 
   /**
+   * Get minimized snapshot data for sending to background
+   * v1.6.4-v6 - Extracted helper to reduce _sendMinimizeMessage nesting depth
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {boolean} minimized - Whether Quick Tab is being minimized
+   * @returns {Object|null} Snapshot data or null
+   */
+  _getMinimizedSnapshotForMessage(id, minimized) {
+    if (!minimized || !this.minimizedManager) return null;
+
+    const snapshot = this.minimizedManager.getSnapshot(id);
+    if (!snapshot) return null;
+
+    return {
+      position: snapshot.position,
+      size: snapshot.size,
+      originTabId: snapshot.originTabId,
+      originContainerId: snapshot.originContainerId
+    };
+  }
+
+  /**
    * Send QUICKTAB_MINIMIZED message to background for sidebar notification
    * v1.6.3.11-v12 - FIX Issue #2 & #5: Direct message to sidebar via background
+   * v1.6.4-v6 - FIX BUG #2: Include minimizedSnapshot for cross-tab transfer restore
    * @private
    * @param {string} id - Quick Tab ID
    * @param {boolean} minimized - New minimized state
@@ -769,11 +792,14 @@ export class VisibilityHandler {
    */
   async _sendMinimizeMessage(id, minimized, source) {
     try {
+      const minimizedSnapshot = this._getMinimizedSnapshotForMessage(id, minimized);
+
       console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sending QUICKTAB_MINIMIZED:`, {
         id,
         minimized,
         source,
-        originTabId: this.currentTabId
+        originTabId: this.currentTabId,
+        hasSnapshot: !!minimizedSnapshot
       });
 
       await browser.runtime.sendMessage({
@@ -782,12 +808,16 @@ export class VisibilityHandler {
         minimized,
         originTabId: this.currentTabId,
         source: source || 'VisibilityHandler',
+        minimizedSnapshot,
         timestamp: Date.now()
       });
 
-      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`, { id, minimized });
+      console.log(`${this._logPrefix} [MINIMIZE_MESSAGE] Sent successfully:`, {
+        id,
+        minimized,
+        hasSnapshot: !!minimizedSnapshot
+      });
     } catch (err) {
-      // Background may not be available - this is non-critical
       console.debug(`${this._logPrefix} [MINIMIZE_MESSAGE] Could not send:`, {
         id,
         error: err.message
