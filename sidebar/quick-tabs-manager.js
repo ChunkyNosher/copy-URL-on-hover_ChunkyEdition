@@ -8442,7 +8442,12 @@ async function _handleGoToTabGroup(tabId) {
 
     // v1.6.4-v5 - FIX BUG #1: Log cross-container switch warning for debugging
     if (isCrossContainerSwitch) {
-      console.log('[Manager] GO_TO_TAB: Cross-container switch detected, current=' + currentContainerId + ', target=' + originContainerId);
+      console.log(
+        '[Manager] GO_TO_TAB: Cross-container switch detected, current=' +
+          currentContainerId +
+          ', target=' +
+          originContainerId
+      );
     }
 
     if (windowId !== null) {
@@ -8495,7 +8500,7 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerS
       tabId,
       windowId,
       isCrossContainerSwitch,
-      note: isCrossContainerSwitch 
+      note: isCrossContainerSwitch
         ? 'Sidebar stays closed for cross-container focus transfer (Zen Browser compatibility)'
         : 'Sidebar stays closed for reliable focus transfer'
     });

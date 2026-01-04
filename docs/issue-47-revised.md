@@ -1593,13 +1593,13 @@ Firefox.
 
 ### Expected Behavior
 
-| Step | Result                                                        |
-| ---- | ------------------------------------------------------------- |
-| 2    | Context menu shows "Close All Quick Tabs on This Tab" option  |
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 2    | Context menu shows "Close All Quick Tabs on This Tab" option    |
 | 2    | Context menu shows "Minimize All Quick Tabs on This Tab" option |
-| 3    | All 3 Quick Tabs on WP 1 are closed                           |
-| 3    | Quick Tabs on other browser tabs remain unaffected            |
-| 3    | Manager shows WP 1 group is now empty or removed              |
+| 3    | All 3 Quick Tabs on WP 1 are closed                             |
+| 3    | Quick Tabs on other browser tabs remain unaffected              |
+| 3    | Manager shows WP 1 group is now empty or removed                |
 
 ### Minimize All via Context Menu
 
@@ -1614,8 +1614,10 @@ Firefox.
 
 1. `_initializeContextMenus()` called during extension initialization
 2. Uses `browser.menus` API (manifest already has "menus" permission)
-3. Creates two menu items: "Close All Quick Tabs on This Tab" and "Minimize All Quick Tabs on This Tab"
-4. Menu items only appear when right-clicking on page content (not links, images)
+3. Creates two menu items: "Close All Quick Tabs on This Tab" and "Minimize All
+   Quick Tabs on This Tab"
+4. Menu items only appear when right-clicking on page content (not links,
+   images)
 5. Click handlers send close/minimize commands to the current tab only
 
 **Key Logs:**
@@ -1660,8 +1662,8 @@ Firefox.
 
 When a Quick Tab is transferred between tabs while minimized, the receiving
 tab's content script needs to track the Quick Tab for future restore commands.
-Previously, transferred Quick Tabs weren't tracked, causing restore commands
-to fail silently because the content script didn't know about the Quick Tab.
+Previously, transferred Quick Tabs weren't tracked, causing restore commands to
+fail silently because the content script didn't know about the Quick Tab.
 
 ### Key Implementation Details
 

@@ -37,8 +37,8 @@
   `originContainerId` for proper filtering
 
 **v1.6.4-v4 Container Features:** Container Filter Dropdown, Container Badge,
-Name Resolution via contextualIdentities, ContainerManager.js module,
-Filter Persistence (`quickTabsContainerFilter`), Go to Tab focus sequence
+Name Resolution via contextualIdentities, ContainerManager.js module, Filter
+Persistence (`quickTabsContainerFilter`), Go to Tab focus sequence
 
 **v1.6.4-v4 Bug Fixes:** Container filter fix, dropdown cleanup, drag-drop
 bubble fix, container switch refresh, auto-detect indicator
@@ -232,9 +232,9 @@ const quickTabsSessionState = {
 
 Promise sequencing, debounced drag, orphan recovery, per-tab scoping, state
 machine, ownership validation, Single Writer Authority, Shadow DOM traversal,
-container isolation, container filter, z-index recycling, port messaging, factory
-patterns, lookup tables, in-memory state, push notifications, circuit breaker,
-port routing, sidebar URL detection, context menu.
+container isolation, container filter, z-index recycling, port messaging,
+factory patterns, lookup tables, in-memory state, push notifications, circuit
+breaker, port routing, sidebar URL detection, context menu.
 
 ---
 

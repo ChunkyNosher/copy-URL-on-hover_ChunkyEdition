@@ -3756,25 +3756,28 @@ function _initializeContextMenus() {
   }
 
   // Remove existing menus first (in case of extension update/reload)
-  browser.menus.removeAll().then(() => {
-    // Create "Close All Quick Tabs on This Tab" menu item
-    browser.menus.create({
-      id: 'close-all-quick-tabs',
-      title: 'Close All Quick Tabs on This Tab',
-      contexts: ['page']
-    });
+  browser.menus
+    .removeAll()
+    .then(() => {
+      // Create "Close All Quick Tabs on This Tab" menu item
+      browser.menus.create({
+        id: 'close-all-quick-tabs',
+        title: 'Close All Quick Tabs on This Tab',
+        contexts: ['page']
+      });
 
-    // Create "Minimize All Quick Tabs on This Tab" menu item
-    browser.menus.create({
-      id: 'minimize-all-quick-tabs',
-      title: 'Minimize All Quick Tabs on This Tab',
-      contexts: ['page']
-    });
+      // Create "Minimize All Quick Tabs on This Tab" menu item
+      browser.menus.create({
+        id: 'minimize-all-quick-tabs',
+        title: 'Minimize All Quick Tabs on This Tab',
+        contexts: ['page']
+      });
 
-    console.log('[Background] CONTEXT_MENU: Menu items created');
-  }).catch(err => {
-    console.error('[Background] CONTEXT_MENU: Failed to create menus:', err.message);
-  });
+      console.log('[Background] CONTEXT_MENU: Menu items created');
+    })
+    .catch(err => {
+      console.error('[Background] CONTEXT_MENU: Failed to create menus:', err.message);
+    });
 }
 
 /**
@@ -3798,7 +3801,7 @@ function _handleContextMenuClick(info, tab) {
 
   // Get Quick Tabs for this tab from session state
   const quickTabsInTab = quickTabsSessionState.quickTabsByTab?.[tabId] ?? [];
-  
+
   if (quickTabsInTab.length === 0) {
     console.log('[Background] CONTEXT_MENU: No Quick Tabs on this tab:', { tabId });
     return;
@@ -3831,7 +3834,7 @@ function _closeAllQuickTabsOnTab(tabId, quickTabsInTab) {
 
   // Remove from session state
   delete quickTabsSessionState.quickTabsByTab[tabId];
-  
+
   // Update global state
   const closedIds = new Set(quickTabsInTab.map(qt => qt.id));
   globalQuickTabState.tabs = globalQuickTabState.tabs.filter(qt => !closedIds.has(qt.id));
@@ -3866,7 +3869,7 @@ function _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab) {
 
   // Filter to only non-minimized Quick Tabs
   const nonMinimized = quickTabsInTab.filter(qt => !qt.minimized);
-  
+
   if (nonMinimized.length === 0) {
     console.log('[Background] CONTEXT_MENU_MINIMIZE_ALL: All Quick Tabs already minimized');
     return;
@@ -3877,14 +3880,14 @@ function _minimizeAllQuickTabsOnTab(tabId, quickTabsInTab) {
     // Update state
     quickTab.minimized = true;
     quickTab.minimizedAt = Date.now();
-    
+
     // Update global state
     const globalQt = globalQuickTabState.tabs.find(qt => qt.id === quickTab.id);
     if (globalQt) {
       globalQt.minimized = true;
       globalQt.minimizedAt = Date.now();
     }
-    
+
     // Notify content script
     _notifyContentScriptOfCommand(tabId, true, 'MINIMIZE_QUICK_TAB_COMMAND', quickTab.id);
   }
