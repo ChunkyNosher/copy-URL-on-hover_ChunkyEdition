@@ -667,6 +667,12 @@ const DEFAULT_SETTINGS = {
   // v1.6.3.4-v10 - Quick Tab Debug UID Display setting
   quickTabShowDebugId: false,
 
+  // v1.6.4-v6 - Sidebar gradient settings
+  sidebarGradientEnabled: false,
+  sidebarGradientStartColor: '#1e1e1e',
+  sidebarGradientEndColor: '#2a2a2a',
+  sidebarGradientDirection: 'to bottom',
+
   // v1.6.0.11 - Added filter defaults (stored separately in storage but reset together)
   // These are stored as liveConsoleCategoriesEnabled and exportLogCategoriesEnabled
   // but included here for documentation and reset functionality
@@ -699,7 +705,18 @@ function validateHexColor(color, fallback = DEFAULT_SETTINGS.tooltipColor) {
 const COLOR_INPUTS = [
   { textId: 'tooltipColor', pickerId: 'tooltipColorPicker', settingKey: 'tooltipColor' },
   { textId: 'notifColor', pickerId: 'notifColorPicker', settingKey: 'notifColor' },
-  { textId: 'notifBorderColor', pickerId: 'notifBorderColorPicker', settingKey: 'notifBorderColor' }
+  { textId: 'notifBorderColor', pickerId: 'notifBorderColorPicker', settingKey: 'notifBorderColor' },
+  // v1.6.4-v6 - Gradient color inputs
+  {
+    textId: 'gradientStartColor',
+    pickerId: 'gradientStartColorPicker',
+    settingKey: 'sidebarGradientStartColor'
+  },
+  {
+    textId: 'gradientEndColor',
+    pickerId: 'gradientEndColorPicker',
+    settingKey: 'sidebarGradientEndColor'
+  }
 ];
 
 // Sync text input with color picker
@@ -780,8 +797,20 @@ function loadSettings() {
     // v1.6.3.4-v10 - Quick Tab Debug UID Display setting
     document.getElementById('quickTabShowDebugId').checked = items.quickTabShowDebugId;
 
+    // v1.6.4-v6 - Gradient settings
+    document.getElementById('sidebarGradientEnabled').checked = items.sidebarGradientEnabled;
+    document.getElementById('gradientStartColor').value = items.sidebarGradientStartColor;
+    document.getElementById('gradientStartColorPicker').value = items.sidebarGradientStartColor;
+    document.getElementById('gradientEndColor').value = items.sidebarGradientEndColor;
+    document.getElementById('gradientEndColorPicker').value = items.sidebarGradientEndColor;
+    document.getElementById('gradientDirection').value = items.sidebarGradientDirection;
+    updateGradientPreview();
+    toggleGradientControls(items.sidebarGradientEnabled);
+
     applyTheme(items.darkMode);
     applyMenuSize(items.menuSize || 'medium');
+    // v1.6.4-v6 - Apply sidebar gradient
+    applySidebarGradient(items);
   });
 }
 
@@ -802,6 +831,50 @@ function applyMenuSize(size) {
   } else if (size === 'large') {
     document.body.classList.add('menu-large');
   }
+}
+
+// v1.6.4-v6 - Toggle gradient controls visibility
+function toggleGradientControls(enabled) {
+  const wrapper = document.getElementById('gradientControlsWrapper');
+  if (wrapper) {
+    wrapper.style.opacity = enabled ? '1' : '0.5';
+    wrapper.style.pointerEvents = enabled ? 'auto' : 'none';
+  }
+}
+
+// v1.6.4-v6 - Update gradient preview in real-time
+function updateGradientPreview() {
+  const preview = document.getElementById('gradientPreview');
+  const startColor = document.getElementById('gradientStartColor')?.value || '#1e1e1e';
+  const endColor = document.getElementById('gradientEndColor')?.value || '#2a2a2a';
+  const direction =
+    document.getElementById('gradientDirection')?.value || DEFAULT_SETTINGS.sidebarGradientDirection;
+
+  if (preview) {
+    const validStart = validateHexColor(startColor, DEFAULT_SETTINGS.sidebarGradientStartColor);
+    const validEnd = validateHexColor(endColor, DEFAULT_SETTINGS.sidebarGradientEndColor);
+    preview.style.background = `linear-gradient(${direction}, ${validStart}, ${validEnd})`;
+  }
+}
+
+// v1.6.4-v6 - Apply sidebar gradient background
+function applySidebarGradient(settings) {
+  if (!settings.sidebarGradientEnabled) {
+    document.body.style.background = DEFAULT_SETTINGS.sidebarGradientStartColor;
+    return;
+  }
+
+  const startColor = validateHexColor(
+    settings.sidebarGradientStartColor,
+    DEFAULT_SETTINGS.sidebarGradientStartColor
+  );
+  const endColor = validateHexColor(
+    settings.sidebarGradientEndColor,
+    DEFAULT_SETTINGS.sidebarGradientEndColor
+  );
+  const direction = settings.sidebarGradientDirection || DEFAULT_SETTINGS.sidebarGradientDirection;
+
+  document.body.style.background = `linear-gradient(${direction}, ${startColor}, ${endColor})`;
 }
 
 // Toggle custom position fields visibility
@@ -957,6 +1030,26 @@ function _gatherGeneralSettings() {
 }
 
 /**
+ * v1.6.4-v6 - Gather gradient settings from form
+ * @returns {Object} Gradient settings
+ */
+function _gatherGradientSettings() {
+  return {
+    sidebarGradientEnabled: document.getElementById('sidebarGradientEnabled').checked,
+    sidebarGradientStartColor: validateHexColor(
+      document.getElementById('gradientStartColor').value,
+      DEFAULT_SETTINGS.sidebarGradientStartColor
+    ),
+    sidebarGradientEndColor: validateHexColor(
+      document.getElementById('gradientEndColor').value,
+      DEFAULT_SETTINGS.sidebarGradientEndColor
+    ),
+    sidebarGradientDirection:
+      document.getElementById('gradientDirection').value || DEFAULT_SETTINGS.sidebarGradientDirection
+  };
+}
+
+/**
  * Gather all settings from the form
  * Combines all settings groups into a single object
  * @returns {Object} Complete settings object
@@ -970,7 +1063,8 @@ function gatherSettingsFromForm() {
     ..._gatherNotificationSettings(),
     ..._gatherTooltipSettings(),
     ..._gatherNotificationAppearanceSettings(),
-    ..._gatherGeneralSettings()
+    ..._gatherGeneralSettings(),
+    ..._gatherGradientSettings()
   };
 }
 
@@ -1140,6 +1234,39 @@ document.getElementById('menuSize').addEventListener('change', function () {
 // Quick Tab position change
 document.getElementById('quickTabPosition').addEventListener('change', function () {
   toggleCustomPosition(this.value);
+});
+
+// v1.6.4-v6 - Gradient enable/disable toggle
+document.getElementById('sidebarGradientEnabled').addEventListener('change', function () {
+  toggleGradientControls(this.checked);
+  updateGradientPreview();
+});
+
+// v1.6.4-v6 - Gradient direction change
+document.getElementById('gradientDirection').addEventListener('change', function () {
+  updateGradientPreview();
+});
+
+// v1.6.4-v6 - Gradient start color change (text input)
+document.getElementById('gradientStartColor').addEventListener('input', function () {
+  updateGradientPreview();
+});
+
+// v1.6.4-v6 - Gradient end color change (text input)
+document.getElementById('gradientEndColor').addEventListener('input', function () {
+  updateGradientPreview();
+});
+
+// v1.6.4-v6 - Gradient start color picker change
+document.getElementById('gradientStartColorPicker').addEventListener('input', function () {
+  document.getElementById('gradientStartColor').value = this.value.toUpperCase();
+  updateGradientPreview();
+});
+
+// v1.6.4-v6 - Gradient end color picker change
+document.getElementById('gradientEndColorPicker').addEventListener('input', function () {
+  document.getElementById('gradientEndColor').value = this.value.toUpperCase();
+  updateGradientPreview();
 });
 
 // ==================== TWO-LAYER TAB SYSTEM ====================

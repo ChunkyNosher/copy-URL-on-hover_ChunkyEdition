@@ -4,6 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Copy URL on Hover Settings</title>
+    <!-- v1.6.4-v6: Modern rounded font - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       * {
         margin: 0;
@@ -12,8 +19,9 @@
       }
 
       body {
+        /* v1.6.4-v6: Modern rounded font stack with Inter as primary */
         font-family:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
           sans-serif;
         background: #1e1e1e;
         color: #e0e0e0;
@@ -147,12 +155,13 @@
       }
 
       .setting-group {
-        margin-bottom: 24px;
+        margin-bottom: 20px;
+        padding: 4px 0;
       }
 
       .setting-group label {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: 6px;
         font-size: 13px;
         font-weight: 600;
         color: #e0e0e0;
@@ -161,34 +170,37 @@
       .setting-group input[type='text'],
       .setting-group input[type='color'] {
         width: 100%;
-        padding: 8px 10px;
+        padding: 10px 12px;
         background: #3a3a3a;
         border: 1px solid #4a4a4a;
         color: #e0e0e0;
-        border-radius: 4px;
-        font-size: 12px;
-        margin-bottom: 8px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+        margin-bottom: 6px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
       }
 
       .color-input-wrapper {
         display: flex;
-        gap: 8px;
+        gap: 10px;
         align-items: center;
       }
 
       .color-input-wrapper input[type='text'] {
         flex: 1;
+        margin-bottom: 0;
       }
 
       .color-input-wrapper input[type='color'] {
-        width: 50px;
-        height: 34px;
+        width: 48px;
+        height: 38px;
         border: 1px solid #4a4a4a;
-        border-radius: 4px;
+        border-radius: 6px;
         cursor: pointer;
         flex-shrink: 0;
         background: transparent;
-        padding: 2px;
+        padding: 3px;
       }
 
       .color-input-wrapper input[type='color']::-webkit-color-swatch-wrapper {
@@ -202,9 +214,9 @@
 
       .color-preview {
         width: 40px;
-        height: 34px;
+        height: 38px;
         border: 1px solid #4a4a4a;
-        border-radius: 4px;
+        border-radius: 6px;
         cursor: pointer;
         flex-shrink: 0;
       }
@@ -213,24 +225,57 @@
       .setting-group input[type='color']:focus {
         outline: none;
         border-color: #4caf50;
-        box-shadow: 0 0 4px rgba(76, 175, 80, 0.3);
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+      }
+
+      /* v1.6.4-v6: Styled select elements */
+      .setting-group select {
+        width: 100%;
+        padding: 10px 12px;
+        background: #3a3a3a;
+        border: 1px solid #4a4a4a;
+        color: #e0e0e0;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: inherit;
+        cursor: pointer;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23888' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        padding-right: 36px;
+      }
+
+      .setting-group select:focus {
+        outline: none;
+        border-color: #4caf50;
+        box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.2);
+      }
+
+      .setting-group select:hover {
+        border-color: #5a5a5a;
       }
 
       .checkbox-group {
         display: flex;
         align-items: center;
-        gap: 8px;
-        margin-bottom: 12px;
+        gap: 10px;
+        margin-bottom: 10px;
       }
 
       .checkbox-group input[type='checkbox'] {
         cursor: pointer;
+        width: 16px;
+        height: 16px;
+        accent-color: #4caf50;
       }
 
       .checkbox-group label {
         margin: 0;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
+        font-weight: 500;
       }
 
       .checkbox-inline-group {
@@ -240,21 +285,74 @@
       }
 
       .checkbox-separate {
-        margin-top: 8px;
+        margin-top: 10px;
       }
 
       .info-box {
         background: #2a4a2a;
         border-left: 3px solid #4caf50;
-        padding: 12px;
+        padding: 14px 16px;
         margin-bottom: 16px;
-        border-radius: 4px;
+        border-radius: 6px;
         font-size: 12px;
-        line-height: 1.4;
+        line-height: 1.5;
       }
 
       .info-box strong {
         color: #4caf50;
+      }
+
+      /* v1.6.4-v6: Gradient preview styles */
+      .gradient-preview-container {
+        margin-top: 16px;
+        padding: 16px;
+        background: #2a2a2a;
+        border-radius: 8px;
+        border: 1px solid #3a3a3a;
+      }
+
+      .gradient-preview-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+      }
+
+      .gradient-preview {
+        width: 100%;
+        height: 80px;
+        border-radius: 6px;
+        border: 1px solid #4a4a4a;
+        transition: background 0.3s ease;
+      }
+
+      .gradient-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+        margin-bottom: 12px;
+      }
+
+      .gradient-control-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .gradient-control-group label {
+        font-size: 12px;
+        color: #aaa;
+        margin-bottom: 0;
+      }
+
+      .gradient-control-group .color-input-wrapper {
+        margin-bottom: 0;
+      }
+
+      .gradient-direction-group {
+        margin-bottom: 12px;
       }
 
       /* CRITICAL: Footer stays at bottom */
@@ -766,18 +864,7 @@
 
           <div class="setting-group">
             <label>Window position:</label>
-            <select
-              id="quickTabPosition"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="quickTabPosition">
               <option value="follow-cursor">Follow Cursor</option>
               <option value="center">Center</option>
               <option value="top-left">Top Left</option>
@@ -812,18 +899,7 @@
 
           <div class="setting-group">
             <label>Duplicate Modifier Key:</label>
-            <select
-              id="quickTabDuplicateModifier"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="quickTabDuplicateModifier">
               <option value="shift" selected>Shift</option>
               <option value="ctrl">Ctrl</option>
               <option value="none">None (Disabled)</option>
@@ -849,18 +925,7 @@
 
           <div class="setting-group">
             <label>Metrics update interval:</label>
-            <select
-              id="quickTabsMetricsInterval"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="quickTabsMetricsInterval">
               <option value="500">Fast (500ms)</option>
               <option value="1000" selected>Normal (1 second)</option>
               <option value="2000">Slow (2 seconds)</option>
@@ -889,20 +954,76 @@
             </div>
           </div>
 
+          <!-- v1.6.4-v6: Sidebar Gradient Controls -->
+          <div class="setting-group">
+            <h4 style="margin-bottom: 12px; font-size: 13px; color: #4caf50">🎨 Sidebar Background Gradient</h4>
+            
+            <div class="checkbox-group" style="margin-bottom: 12px">
+              <input type="checkbox" id="sidebarGradientEnabled" />
+              <label for="sidebarGradientEnabled">Enable gradient background</label>
+            </div>
+
+            <div id="gradientControlsWrapper">
+              <div class="gradient-controls">
+                <div class="gradient-control-group">
+                  <label>Start Color:</label>
+                  <div class="color-input-wrapper">
+                    <input
+                      type="text"
+                      id="gradientStartColor"
+                      placeholder="#1e1e1e"
+                      value="#1e1e1e"
+                      pattern="^#[0-9A-Fa-f]{6}$"
+                    />
+                    <input type="color" id="gradientStartColorPicker" value="#1e1e1e" title="Pick start color" />
+                  </div>
+                </div>
+
+                <div class="gradient-control-group">
+                  <label>End Color:</label>
+                  <div class="color-input-wrapper">
+                    <input
+                      type="text"
+                      id="gradientEndColor"
+                      placeholder="#2a2a2a"
+                      value="#2a2a2a"
+                      pattern="^#[0-9A-Fa-f]{6}$"
+                    />
+                    <input type="color" id="gradientEndColorPicker" value="#2a2a2a" title="Pick end color" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="gradient-direction-group">
+                <label>Gradient Direction:</label>
+                <select id="gradientDirection">
+                  <option value="to bottom">Top to Bottom ↓</option>
+                  <option value="to top">Bottom to Top ↑</option>
+                  <option value="to right">Left to Right →</option>
+                  <option value="to left">Right to Left ←</option>
+                  <option value="to bottom right">Diagonal ↘</option>
+                  <option value="to bottom left">Diagonal ↙</option>
+                  <option value="to top right">Diagonal ↗</option>
+                  <option value="to top left">Diagonal ↖</option>
+                </select>
+              </div>
+
+              <div class="gradient-preview-container">
+                <div class="gradient-preview-label">Preview</div>
+                <div id="gradientPreview" class="gradient-preview" style="background: linear-gradient(to bottom, #1e1e1e, #2a2a2a);"></div>
+              </div>
+            </div>
+
+            <small style="display: block; margin-top: 8px; color: #888; font-size: 11px">
+              Customize the sidebar background with a gradient. Changes apply after saving.
+            </small>
+          </div>
+
+          <hr style="border: none; border-top: 1px solid #3a3a3a; margin: 20px 0" />
+
           <div class="setting-group">
             <label>Notification Display Mode:</label>
-            <select
-              id="notifDisplayMode"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="notifDisplayMode">
               <option value="tooltip">Tooltip</option>
               <option value="notification">Notification</option>
             </select>
@@ -929,18 +1050,7 @@
 
           <div class="setting-group">
             <label>Tooltip Animation:</label>
-            <select
-              id="tooltipAnimation"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="tooltipAnimation">
               <option value="fade">Fade</option>
               <option value="slide">Slide</option>
             </select>
@@ -967,18 +1077,7 @@
 
           <div class="setting-group">
             <label>Notification Position:</label>
-            <select
-              id="notifPosition"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="notifPosition">
               <option value="top-left">Top Left</option>
               <option value="top-right">Top Right</option>
               <option value="bottom-left">Bottom Left</option>
@@ -988,18 +1087,7 @@
 
           <div class="setting-group">
             <label>Notification Size:</label>
-            <select
-              id="notifSize"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="notifSize">
               <option value="small">Small</option>
               <option value="medium">Medium</option>
               <option value="large">Large</option>
@@ -1032,18 +1120,7 @@
 
           <div class="setting-group">
             <label>Notification Animation:</label>
-            <select
-              id="notifAnimation"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="notifAnimation">
               <option value="fade">Fade</option>
               <option value="slide">Slide</option>
             </select>
@@ -1619,18 +1696,7 @@
           <!-- Original Advanced Settings -->
           <div class="setting-group">
             <label>Extension Menu Size:</label>
-            <select
-              id="menuSize"
-              style="
-                width: 100%;
-                padding: 8px 10px;
-                background: #3a3a3a;
-                border: 1px solid #4a4a4a;
-                color: #e0e0e0;
-                border-radius: 4px;
-                font-size: 12px;
-              "
-            >
+            <select id="menuSize">
               <option value="small">Small (20% smaller)</option>
               <option value="medium">Medium (Default)</option>
               <option value="large">Large (20% larger)</option>

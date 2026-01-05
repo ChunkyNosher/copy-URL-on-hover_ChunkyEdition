@@ -99,11 +99,13 @@ function _isQuickTabParentFrame(parentFrame) {
 }
 
 /**
- * Check if we should skip initialization (inside Quick Tab iframe)
- * @returns {boolean} - True if initialization should be skipped
+ * Check if we are inside a Quick Tab iframe
+ * v1.6.4-v6 - FEATURE: Enable copy URL in Quick Tabs
+ * Instead of blocking ALL functionality, we now allow copy URL/text but prevent Quick Tab creation
+ * @returns {boolean} - True if inside Quick Tab iframe
  */
-function _checkShouldSkipInitialization() {
-  // Not in iframe - proceed normally
+function _checkIsInQuickTabIframe() {
+  // Not in iframe - not in Quick Tab
   if (window.self === window.top) {
     return false;
   }
@@ -112,30 +114,29 @@ function _checkShouldSkipInitialization() {
   try {
     const parentFrame = window.frameElement;
     if (_isQuickTabParentFrame(parentFrame)) {
-      console.log('[Content] Skipping initialization - inside Quick Tab iframe');
-      window.CUO_skipped = true;
-      window.CUO_skip_reason = 'quick-tab-iframe';
+      console.log(
+        '[Content] Running inside Quick Tab iframe - copy URL enabled, Quick Tab creation disabled'
+      );
       return true;
     }
     return false;
   } catch (_e) {
-    // Cross-origin error - err on side of caution
-    console.log('[Content] Skipping initialization - cross-origin iframe (safety measure)');
-    window.CUO_skipped = true;
-    window.CUO_skip_reason = 'cross-origin-iframe';
+    // Cross-origin error - err on side of caution (block Quick Tab creation)
+    console.log('[Content] Cross-origin iframe detected - Quick Tab creation will be disabled');
     return true;
   }
 }
 
-// GUARD: Do not run extension in Quick Tab iframes or nested frames
-const _shouldSkipInitialization = _checkShouldSkipInitialization();
+// v1.6.4-v6 - FEATURE: Track if running inside Quick Tab iframe
+// This flag is checked by handleCreateQuickTab to prevent nested Quick Tabs
+// but allows copy URL, copy text, and open in new tab to work
+const _isInQuickTabIframe = _checkIsInQuickTabIframe();
 
-// If inside Quick Tab iframe, stop all execution here
-if (_shouldSkipInitialization) {
-  // Export minimal marker for debugging and stop
-  window.CUO_debug_marker = 'CUO_QUICK_TAB_IFRAME_SKIPPED';
-  // Throw to prevent further module loading (caught by module loader)
-  throw new Error('[Content] Intentional halt - inside Quick Tab iframe');
+// Set window marker for debugging
+if (_isInQuickTabIframe) {
+  window.CUO_isInQuickTabIframe = true;
+  window.CUO_debug_marker = 'CUO_QUICK_TAB_IFRAME_COPY_ENABLED';
+  console.log('[Content] Copy URL functionality enabled inside Quick Tab iframe');
 }
 
 // v1.6.3.5-v10 - FIX Issue #2: Content script initialization logging
@@ -3600,12 +3601,25 @@ function isQuickTabOperationGated(operation) {
 /**
  * v1.6.0 Phase 2.4 - Refactored to reduce complexity from 18 to <9
  * v1.6.3.11-v10 - FIX Issue #13: Add identity ready gate
+ * v1.6.4-v6 - FEATURE: Block Quick Tab creation inside Quick Tab iframes (prevent recursion)
  */
 /**
  * Handle Quick Tab creation with identity gating
  * v1.6.3.11-v10 - FIX Code Health: Extracted helpers to reduce cyclomatic complexity
+ * v1.6.4-v6 - FEATURE: Block creation if inside Quick Tab iframe
  */
 async function handleCreateQuickTab(url, targetElement = null) {
+  // v1.6.4-v6 - FEATURE: Prevent Quick Tab nesting (recursion prevention)
+  // Copy URL/text still works, but Quick Tabs cannot be opened inside other Quick Tabs
+  if (_isInQuickTabIframe) {
+    console.log('[Quick Tab] BLOCKED: Cannot create Quick Tab inside another Quick Tab', {
+      url,
+      reason: 'Nested Quick Tabs would cause infinite recursion'
+    });
+    showNotification('✗ Quick Tabs cannot be opened inside Quick Tabs', 'error');
+    return;
+  }
+
   if (!url) {
     console.warn('[Quick Tab] Missing URL for creation');
     return;
