@@ -213,9 +213,10 @@ const quickTabsSessionState = {
 
 **v1.6.4-v5:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
 `GO_TO_TAB_CROSS_CONTAINER:`, `GO_TO_TAB_SIDEBAR_REOPEN:`,
-`[Settings] CLEAR_LOG_HISTORY:`, `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
-`[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`, `[Manager] METRICS_FOOTER_LOADED:`,
-`METRICS_FOOTER_SAVED:`
+`[Settings] CLEAR_LOG_HISTORY:`,
+`[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
+`[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`,
+`[Manager] METRICS_FOOTER_LOADED:`, `METRICS_FOOTER_SAVED:`
 
 **v1.6.4-v4:** `CONTAINER_FILTER:`, `CONTEXT_MENU:`, `SNAPSHOT_*:`
 
@@ -228,9 +229,9 @@ const quickTabsSessionState = {
 
 ## 🏗️ Key Patterns
 
-Promise sequencing, debounced drag, per-tab scoping, state machine, Single Writer
-Authority, container isolation, port messaging, in-memory state, circuit breaker,
-port routing, context menu.
+Promise sequencing, debounced drag, per-tab scoping, state machine, Single
+Writer Authority, container isolation, port messaging, in-memory state, circuit
+breaker, port routing, context menu.
 
 ---
 
@@ -272,7 +273,8 @@ port routing, context menu.
 
 **MCPs:** CodeScene, Context7 (JS API docs), Perplexity
 
-**Context7:** Search standard APIs (Map, Promise, storage.local) NOT "Quick Tabs"
+**Context7:** Search standard APIs (Map, Promise, storage.local) NOT "Quick
+Tabs"
 
 **Testing:** `npm test` | `npm run lint` | `npm run build`
 

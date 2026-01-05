@@ -1972,7 +1972,7 @@ function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSn
     const stored = quickTabsManager.minimizedManager.storeTransferredSnapshot(
       quickTabId,
       minimizedSnapshot,
-      quickTabsManager.currentTabId  // Pass destination tab ID to update savedOriginTabId
+      quickTabsManager.currentTabId // Pass destination tab ID to update savedOriginTabId
     );
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Stored minimized snapshot:', {
       quickTabId,

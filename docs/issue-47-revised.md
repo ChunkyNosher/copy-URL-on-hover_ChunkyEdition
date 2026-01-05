@@ -2111,7 +2111,8 @@ property. The fix changed `result?.tabWindow` to just `result`.
 ## Scenario 51: Minimized Quick Tab Transfer Restore - Destination Tab ID Fix (v1.6.4-v5)
 
 **Category:** Quick Tabs - Cross-Tab Transfer  
-**Feature:** `storeTransferredSnapshot()` uses destination tab ID, not old origin  
+**Feature:** `storeTransferredSnapshot()` uses destination tab ID, not old
+origin  
 **Version:** v1.6.4-v5
 
 ### Setup
@@ -2130,12 +2131,12 @@ property. The fix changed `result?.tabWindow` to just `result`.
 
 ### Expected Behavior
 
-| Step | Result                                                            |
-| ---- | ----------------------------------------------------------------- |
-| 1    | WP QT 1 transfers to YT 1 (originTabId updated)                   |
-| 3    | WP QT 1 appears in YT 1 viewport at (400, 300)                    |
-| 3    | Quick Tab stays on YT 1 after restore (does NOT revert to WP 1)   |
-| 3    | Snapshot's originTabId correctly points to YT 1                   |
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 (originTabId updated)                 |
+| 3    | WP QT 1 appears in YT 1 viewport at (400, 300)                  |
+| 3    | Quick Tab stays on YT 1 after restore (does NOT revert to WP 1) |
+| 3    | Snapshot's originTabId correctly points to YT 1                 |
 
 ### Root Cause Analysis
 
@@ -2150,13 +2151,15 @@ accepts the destination tab ID from the transfer message.
 
 **MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
 
-1. `storeTransferredSnapshot(quickTabId, snapshot, newOriginTabId)` - new parameter
+1. `storeTransferredSnapshot(quickTabId, snapshot, newOriginTabId)` - new
+   parameter
 2. Updates snapshot's `originTabId` to destination tab before storing
 3. Ensures restore operation uses correct tab context
 
 **Content Script (`src/content.js`):**
 
-1. `_handleQuickTabTransferredIn()` passes `newOriginTabId` from transfer message
+1. `_handleQuickTabTransferredIn()` passes `newOriginTabId` from transfer
+   message
 2. Calls `storeTransferredSnapshot(id, snapshot, newOriginTabId)`
 
 **Key Logs:**
