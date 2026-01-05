@@ -3,11 +3,19 @@
   <head>
     <meta charset="utf-8" />
     <title>Copy URL on Hover - Options</title>
+    <!-- v1.6.4-v6: Modern rounded font - Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <style>
       body {
+        /* v1.6.4-v6: Modern rounded font stack with Inter as primary */
         font-family:
-          -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu, Cantarell,
-          'Helvetica Neue', sans-serif;
+          'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen-Sans, Ubuntu,
+          Cantarell, 'Helvetica Neue', sans-serif;
         padding: 20px;
         max-width: 800px;
         margin: 0 auto;
@@ -165,23 +173,11 @@
         <div class="description">Default height for new Quick Tabs</div>
       </div>
 
-      <div class="setting">
-        <label>
-          <input type="checkbox" id="syncAcrossTabs" />
-          Sync Quick Tabs across all tabs
-        </label>
-        <div class="description">
-          Keep Quick Tab positions and sizes synchronized across all browser tabs
-        </div>
-      </div>
+      <!-- v1.6.4-v6: Removed obsolete "Sync Quick Tabs across all tabs" option
+           Quick Tabs are now ephemeral (in-memory only) per v1.6.3.12 Option 4 Architecture -->
 
-      <div class="setting">
-        <label>
-          <input type="checkbox" id="persistAcrossSessions" />
-          Persist Quick Tabs across browser restarts
-        </label>
-        <div class="description">Restore Quick Tabs when reopening the browser</div>
-      </div>
+      <!-- v1.6.4-v6: Removed obsolete "Persist Quick Tabs across browser restarts" option
+           Quick Tabs are now session-only and automatically clear on browser restart -->
 
       <div class="setting">
         <label>
