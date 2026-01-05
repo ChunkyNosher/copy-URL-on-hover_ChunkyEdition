@@ -40,6 +40,10 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
   tabs" or "No cached logs were present"
 - ✅ **Log Metrics Footer Persistence** - Total log count persists to
   `storage.local` with 2000ms debounce (survives sidebar close/reopen)
+- ✅ **Minimized Transfer Display Fix** - UICoordinator orphan recovery updates
+  `display: flex`, `visibility: visible`, `opacity: 1` after restore
+- ✅ **Metrics Flush on Sidebar Close** - `beforeunload` handler flushes pending
+  debounced saves immediately before sidebar closes
 - ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
   browsers with custom "spaces" features
 
@@ -62,48 +66,13 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.4-v3
 
-**🔧 Log Action Metrics + Transfer Sync Fix + Footer Visibility ✅**
-
-- ✅ **Live Log Action Metrics** - Quick Tab Manager shows Quick Tab count, log
-  actions per second, and total log actions
-- ✅ **Expandable Category Breakdown** - Click metrics to expand/collapse
-  per-category log counts (User Actions, System Ops, Diagnostics)
-- ✅ **Filter-Aware Log Counting** - Metrics only count logs for enabled filter
-  categories in Live Console Output Filters
-- ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30
-  seconds
-- ✅ **Metrics Toggle** - Enable/disable live metrics in settings
-- ✅ **Metrics on All Tabs** - Metrics footer visible on both Manager and
-  Settings tabs
-- ✅ **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown
-  only on Settings tabs
-- ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
-  transfer/duplicate ACK
-- ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
-- ✅ **Single Metrics Footer** - Metrics footer only in settings.html (no
-  duplicate in manager)
-- ✅ **Reduced Logging** - Removed verbose DEBOUNCE event-queuing logs
-- ✅ **Export Console Logs includes Manager** - Full debugging with Manager logs
-- ✅ **Stale QUICKTAB_REMOVED Fix** - Transferred Quick Tabs no longer disappear
+**🔧 Log Metrics + Transfer Fix ✅** - Live metrics footer, cross-tab transfer
+sync, single metrics display, reduced logging
 
 ## 🎉 What's New in v1.6.4-v2
 
-**🔧 Title Updates + State Sync + Bug Fixes ✅**
-
-- ✅ **Quick Tab Title Updates** - Titles now update from link text to actual
-  page title after iframe loads
-- ✅ **Move to Current Tab Fix** - Quick Tabs properly appear in Manager after
-  transfer
-- ✅ **Last Quick Tab Close Fix** - Manager properly reflects when all Quick
-  Tabs are closed
-- ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
-  Tab
-- ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
-- ✅ **Cross-Tab Transfer Fix** - Fixed duplicate messages causing UI desyncs
-- ✅ **UI Flicker Fix** - Optimistic UI for smooth close animations
-- ✅ **Code Health Improvements** - window.js, VisibilityHandler.js, content.js
-  all above 9.0
-- ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
+**🔧 Title Updates + State Sync ✅** - Quick Tab titles update from page,
+transfer/close fixes, UI flicker fix, Code Health 9.0+
 
 ## 🎉 What's New in v1.6.4
 

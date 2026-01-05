@@ -1,7 +1,7 @@
 # Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 4.3 (v1.6.4-v5 Features)  
-**Last Updated:** January 4, 2026  
+**Document Version:** 4.4 (v1.6.4-v5 Additional Bug Fixes)  
+**Last Updated:** January 5, 2026  
 **Extension Version:** v1.6.4-v5
 
 ---
@@ -2229,10 +2229,124 @@ storage key with debounced saves to avoid excessive writes.
 
 ---
 
+## Scenario 53: Minimized Quick Tab Transfer Restore Display Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** UICoordinator orphan recovery properly updates display CSS after
+restore  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Position WP QT 1 at (300, 200) and resize to 600x400
+3. Minimize WP QT 1 (snapshot captured at 300, 200, 600x400)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1 in Manager
+4. Observe the Quick Tab window in YT 1 viewport
+
+### Expected Behavior
+
+| Step | Result                                                             |
+| ---- | ------------------------------------------------------------------ |
+| 1    | WP QT 1 transfers to YT 1 successfully                             |
+| 3    | WP QT 1 appears VISIBLE at (300, 200) with 600x400 size            |
+| 3    | Quick Tab window has `display: flex` (NOT `display: none`)         |
+| 3    | Quick Tab window has `visibility: visible` and `opacity: 1`        |
+| 3    | No invisible/hidden Quick Tab window that requires re-minimization |
+
+### Root Cause Analysis
+
+When a minimized Quick Tab is transferred between tabs and then restored, the
+Quick Tab window's DOM container was being created with the CSS properties from
+the minimized state (`display: none`). The UICoordinator's orphan window
+recovery was re-attaching the window but not updating the display CSS, causing
+the restored Quick Tab to be invisible even though the restore operation
+succeeded.
+
+### Key Implementation Details
+
+**UICoordinator (`src/features/quick-tabs/coordinators/UICoordinator.js`):**
+
+1. `_updateRecoveredWindowDisplay()` method added for orphan window recovery
+2. Sets `container.style.display = 'flex'` after recovery
+3. Sets `container.style.visibility = 'visible'` for proper display
+4. Sets `container.style.opacity = '1'` for full visibility
+5. Called after `_recoverOrphanWindow()` re-attaches the window DOM
+
+**Key Logs:**
+
+- `[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED: quickTabId={id}`
+- `[UICoordinator] ORPHAN_WINDOW_RECOVERED: quickTabId={id}`
+
+---
+
+## Scenario 54: Metrics Persistence Flush Before Sidebar Close (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Settings  
+**Feature:** `beforeunload` handler flushes pending debounced saves immediately  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab and create several Quick Tabs
+2. Perform various actions (create, minimize, restore, close) to generate logs
+3. Open Quick Tabs Manager (Ctrl+Alt+Z)
+4. Navigate to Settings tab and observe the metrics footer
+
+### Test Steps
+
+1. Note the "📈 total" count in the metrics footer (e.g., "📈 42 total")
+2. Perform 10 more actions rapidly (e.g., minimize/restore Quick Tabs)
+3. Immediately close the sidebar (within 500ms of last action)
+4. Wait 1 second
+5. Reopen Quick Tabs Manager (Ctrl+Alt+Z)
+6. Observe the "📈 total" count
+
+### Expected Behavior
+
+| Step | Result                                                             |
+| ---- | ------------------------------------------------------------------ |
+| 2    | Metrics footer updates to show ~52 total (42 + 10 new actions)     |
+| 3    | `beforeunload` triggers `_saveTotalLogActionsNow()` immediately    |
+| 3    | Debounced save is flushed (not lost due to 2000ms debounce delay)  |
+| 5    | Total count is preserved at ~52 (all actions saved before close)   |
+| 5    | No lost log actions from rapid-close scenario                      |
+
+### Root Cause Analysis
+
+The 2000ms debounce for saving `_totalLogActions` meant that if the sidebar was
+closed within 2 seconds of the last log action, the updated count would be lost.
+The fix adds a `beforeunload` event handler that calls
+`_saveTotalLogActionsNow()` to immediately flush any pending debounced saves
+before the sidebar closes.
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. `_saveTotalLogActionsNow()` - Non-debounced immediate save function
+2. `_handleBeforeUnload()` - Event handler for `beforeunload` event
+3. `window.addEventListener('beforeunload', _handleBeforeUnload)` - Registered
+   on sidebar load
+4. Flushes pending `_totalLogActions` value to `storage.local` synchronously
+5. Prevents data loss when sidebar closes during debounce window
+
+**Key Logs:**
+
+- `[Manager] METRICS_FOOTER_FLUSHED: totalLogActions={count}`
+- `[Manager] BEFOREUNLOAD_FLUSH: pending totalLogActions saved`
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 4, 2026  
+**Last Review Date:** January 5, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v5)

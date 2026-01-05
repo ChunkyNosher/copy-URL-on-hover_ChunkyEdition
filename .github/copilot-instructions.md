@@ -43,6 +43,11 @@
   "logs from Y tabs"
 - **Log Metrics Footer Persistence** - `_totalLogActions` persisted to
   `storage.local` with 2000ms debounce; `TOTAL_LOG_ACTIONS_KEY`
+- **Minimized Transfer Display Fix** - UICoordinator orphan recovery sets
+  `display: flex`, `visibility: visible`, `opacity: 1` via
+  `_updateRecoveredWindowDisplay()`
+- **Metrics Flush on Sidebar Close** - `beforeunload` handler flushes debounced
+  saves via `_saveTotalLogActionsNow()`
 
 **v1.6.4-v4 Features:**
 
@@ -135,6 +140,8 @@ const quickTabsSessionState = {
 - **Clear Logs UX** - `_buildClearLogStatusMessage()`,
   `_clearManagerLogsViaIframe()` helper functions
 - **Metrics Persistence** - `TOTAL_LOG_ACTIONS_KEY`, debounced `storage.local`
+- **Transfer Display Fix** - `_updateRecoveredWindowDisplay()` in UICoordinator
+- **Metrics Flush** - `_handleBeforeUnload()`, `_saveTotalLogActionsNow()`
 
 ### v1.6.4-v4 Patterns
 
@@ -186,7 +193,8 @@ const quickTabsSessionState = {
 | MessageRouter        | ACTION-based routing                                                                 |
 | EventBus             | `on()`, `off()`, `emit()`, `once()`                                                  |
 | StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`                                             |
-| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_getGoToTabContainerContext()` |
+| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_handleBeforeUnload()`         |
+| UICoordinator        | `_updateRecoveredWindowDisplay()` for orphan window recovery                         |
 | CreateHandler        | `getWritingContainerId()` (v3)                                                       |
 | TestBridge           | `getManagerState()` (v3)                                                             |
 
@@ -216,7 +224,9 @@ const quickTabsSessionState = {
 `[Settings] CLEAR_LOG_HISTORY:`,
 `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
 `[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`,
-`[Manager] METRICS_FOOTER_LOADED:`, `METRICS_FOOTER_SAVED:`
+`[Manager] METRICS_FOOTER_LOADED:`, `METRICS_FOOTER_SAVED:`,
+`METRICS_FOOTER_FLUSHED:`,
+`[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED:`
 
 **v1.6.4-v4:** `CONTAINER_FILTER:`, `CONTEXT_MENU:`, `SNAPSHOT_*:`
 
@@ -291,37 +301,21 @@ Tabs"
 
 ### Key Files
 
-| File                                                    | Features                                           |
-| ------------------------------------------------------- | -------------------------------------------------- |
-| `src/constants.js`                                      | Centralized constants                              |
-| `src/utils/shadow-dom.js`                               | Shadow DOM link detection                          |
-| `src/utils/storage-utils.js`                            | Storage utilities                                  |
-| `src/background/tab-events.js`                          | Tabs API listeners                                 |
-| `src/utils/structured-logger.js`                        | StructuredLogger class with contexts               |
-| `src/messaging/message-router.js`                       | ACTION-based routing                               |
-| `background.js`                                         | In-memory state, port handlers, minimizedSnapshots |
-| `sidebar/quick-tabs-manager.js`                         | Port-based queries, container filter (v1.6.4-v4)   |
-| `sidebar/managers/PortManager.js`                       | Port connection, circuit breaker (v1.6.4)          |
-| `sidebar/managers/RenderManager.js`                     | Render scheduling, UI helpers (v1.6.4)             |
-| `sidebar/managers/DragDropManager.js`                   | Drag-and-drop reordering (v1.6.4)                  |
-| `sidebar/managers/OrderManager.js`                      | Group/Quick Tab order persistence (v1.6.4)         |
-| `sidebar/managers/ContainerManager.js`                  | Container isolation, filtering, badge (v1.6.4-v4)  |
-| `sidebar/managers/StorageChangeAnalyzer.js`             | Storage change analysis helpers (v1.6.4-v2)        |
-| `src/content.js`                                        | Port messaging, storeTransferredSnapshot           |
-| `src/features/quick-tabs/minimized-manager.js`          | Snapshot storage for minimize/restore              |
-| `src/features/quick-tabs/handlers/VisibilityHandler.js` | Sends minimizedSnapshot                            |
+| File                                                    | Features                                        |
+| ------------------------------------------------------- | ----------------------------------------------- |
+| `background.js`                                         | In-memory state, port handlers                  |
+| `sidebar/quick-tabs-manager.js`                         | Port queries, container filter (v1.6.4-v4)      |
+| `src/content.js`                                        | Port messaging, storeTransferredSnapshot        |
+| `src/features/quick-tabs/minimized-manager.js`          | Snapshot storage for minimize/restore           |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | Orphan recovery, display fix (v1.6.4-v5)        |
+| `sidebar/managers/ContainerManager.js`                  | Container isolation, filtering (v1.6.4-v4)      |
 
-### Storage (v1.6.3.12-v8+)
+### Storage (v1.6.3.12+)
 
 **In-Memory State:** `quickTabsSessionState` in background.js  
-**Persistence:** `browser.storage.local` with startup cleanup
-(`_clearQuickTabsOnStartup()`)  
-**Format:** `{ quickTabsByTab: {}, contentScriptPorts: {}, sidebarPort, sessionId, sessionStartTime }`
-**Circuit Breaker:** Trips after 5 failures, test write every 30s, fallback mode
-bypasses storage
-
-**Note:** `browser.storage.session` COMPLETELY REMOVED - uses `storage.local` +
-startup cleanup for session-only behavior.
+**Persistence:** `browser.storage.local` + startup cleanup
+**Note:** `browser.storage.session` REMOVED - uses `storage.local` + startup
+cleanup for session-only behavior.
 
 ### Port Messages (v1.6.4+)
 
