@@ -1388,13 +1388,72 @@ async function handleExportAllLogs() {
 }
 
 /**
+ * Build status message for cleared logs
+ * v1.6.4-v5 - Extracted from handleClearLogHistory to reduce complexity
+ * @param {number} backgroundEntries - Number of background log entries cleared
+ * @param {number} clearedTabs - Number of tabs where logs were cleared
+ * @returns {string} Status message to display
+ */
+function _buildClearLogStatusMessage(backgroundEntries, clearedTabs) {
+  const parts = [];
+  if (backgroundEntries > 0) {
+    parts.push(`${backgroundEntries} background log${backgroundEntries === 1 ? '' : 's'}`);
+  }
+  if (clearedTabs > 0) {
+    parts.push(`logs from ${clearedTabs} tab${clearedTabs === 1 ? '' : 's'}`);
+  }
+
+  if (parts.length > 0) {
+    return `✓ Cleared ${parts.join(' and ')}. Manager logs also cleared.`;
+  }
+  return '✓ Log buffers cleared. No cached logs were present.';
+}
+
+/**
+ * Send clear messages to manager iframe
+ * v1.6.4-v5 - Extracted from handleClearLogHistory to reduce complexity
+ */
+function _clearManagerLogsViaIframe() {
+  const iframe = document.querySelector('iframe');
+  if (!iframe?.contentWindow) {
+    return;
+  }
+
+  try {
+    // Clear log action counts for metrics
+    iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
+    console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
+
+    // v1.6.4-v3 - Clear Manager log buffer
+    iframe.contentWindow.postMessage({ type: 'CLEAR_MANAGER_LOGS' }, window.location.origin);
+    console.log('[Settings] handleClearLogHistory: Sent CLEAR_MANAGER_LOGS to iframe');
+  } catch (err) {
+    console.warn('[Settings] handleClearLogHistory: Failed to send message to iframe:', err);
+  }
+}
+
+/**
  * Handle clear logs button click
  * v1.6.1.4 - Extracted from DOMContentLoaded
  * v1.6.4 - FIX Issue 9: Added timeout protection
  * v1.6.4 - FIX Issue 7: Added comprehensive logging
+ * v1.6.4-v5 - Added confirmation dialog before clearing logs
+ * v1.6.4-v5 - Improved status message to show accurate counts
  */
 async function handleClearLogHistory() {
   console.log('[Settings] BUTTON_CLICKED: clearLogsBtn');
+
+  // v1.6.4-v5 - Add confirmation dialog before clearing
+  const confirmed = confirm(
+    'Clear all log history? This will clear background logs, content script logs, and manager logs. This cannot be undone.'
+  );
+
+  if (!confirmed) {
+    console.log('[Settings] Clear log history cancelled by user');
+    return;
+  }
+
+  console.log('[Settings] Clear log history confirmed by user');
   console.log('[Settings] handleClearLogHistory: Sending CLEAR_CONSOLE_LOGS to background...');
 
   const response = await sendMessageWithTimeout({
@@ -1407,24 +1466,10 @@ async function handleClearLogHistory() {
   const backgroundEntries = response?.clearedBackgroundEntries || 0;
 
   // v1.6.4-v3 - Also clear Manager log buffer
-  let managerCleared = 0;
-  const iframe = document.querySelector('iframe');
-  if (iframe && iframe.contentWindow) {
-    try {
-      // Clear log action counts for metrics
-      iframe.contentWindow.postMessage({ type: 'CLEAR_LOG_ACTION_COUNTS' }, window.location.origin);
-      console.log('[Settings] handleClearLogHistory: Sent CLEAR_LOG_ACTION_COUNTS to iframe');
+  _clearManagerLogsViaIframe();
 
-      // v1.6.4-v3 - Clear Manager log buffer
-      iframe.contentWindow.postMessage({ type: 'CLEAR_MANAGER_LOGS' }, window.location.origin);
-      console.log('[Settings] handleClearLogHistory: Sent CLEAR_MANAGER_LOGS to iframe');
-    } catch (err) {
-      console.warn('[Settings] handleClearLogHistory: Failed to send message to iframe:', err);
-    }
-  }
-
-  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-  const statusMsg = `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`;
+  // v1.6.4-v5 - Build accurate status message with all cleared sources
+  const statusMsg = _buildClearLogStatusMessage(backgroundEntries, clearedTabs);
   console.log('[Settings] handleClearLogHistory:', statusMsg);
   showStatus(statusMsg, true);
 }

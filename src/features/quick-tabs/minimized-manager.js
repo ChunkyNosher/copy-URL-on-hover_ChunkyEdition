@@ -1522,11 +1522,15 @@ export class MinimizedManager {
   /**
    * Build snapshot object from transfer data
    * v1.6.4-v6 - Extracted helper to reduce storeTransferredSnapshot complexity
+   * v1.6.4-v5 - FIX: Use newOriginTabId (destination tab) instead of snapshotData.originTabId (old source tab)
+   *   This fixes the bug where minimized Quick Tabs transferred to another tab could not be restored
+   *   because the snapshot still contained the OLD origin tab ID
    * @private
    * @param {Object} snapshotData - Snapshot data from transfer
+   * @param {number|null} newOriginTabId - The NEW destination tab ID where Quick Tab is being transferred TO
    * @returns {Object} Formatted snapshot object
    */
-  _buildTransferredSnapshot(snapshotData) {
+  _buildTransferredSnapshot(snapshotData, newOriginTabId) {
     return {
       window: null,
       savedPosition: {
@@ -1537,7 +1541,8 @@ export class MinimizedManager {
         width: snapshotData.size.width ?? DEFAULT_SIZE_WIDTH,
         height: snapshotData.size.height ?? DEFAULT_SIZE_HEIGHT
       },
-      savedOriginTabId: snapshotData.originTabId ?? null,
+      // v1.6.4-v5 - FIX: Use newOriginTabId (destination) instead of snapshotData.originTabId (old source)
+      savedOriginTabId: newOriginTabId ?? snapshotData.originTabId ?? null,
       savedOriginContainerId: snapshotData.originContainerId ?? null,
       isRestoring: false,
       isTransferred: true
@@ -1547,16 +1552,20 @@ export class MinimizedManager {
   /**
    * Store a transferred snapshot for a minimized Quick Tab
    * v1.6.4-v6 - FIX BUG #2: Enable restore after cross-tab transfer of minimized Quick Tabs
+   * v1.6.4-v5 - FIX: Accept newOriginTabId parameter to update savedOriginTabId to destination tab
+   *   This fixes the bug where minimized Quick Tabs transferred to another tab could not be restored
+   *   because the snapshot still contained the OLD origin tab ID from the source tab
    * @param {string} quickTabId - Quick Tab ID
    * @param {Object} snapshotData - Snapshot data from transfer message
+   * @param {number|null} newOriginTabId - The NEW destination tab ID where Quick Tab is being transferred TO
    * @returns {boolean} True if snapshot was stored successfully
    */
-  storeTransferredSnapshot(quickTabId, snapshotData) {
+  storeTransferredSnapshot(quickTabId, snapshotData, newOriginTabId = null) {
     if (!this._validateTransferredSnapshotData(quickTabId, snapshotData)) {
       return false;
     }
 
-    const snapshot = this._buildTransferredSnapshot(snapshotData);
+    const snapshot = this._buildTransferredSnapshot(snapshotData, newOriginTabId);
     this.minimizedTabs.set(quickTabId, snapshot);
     this._updateLocalTimestamp();
 
@@ -1565,6 +1574,8 @@ export class MinimizedManager {
       savedPosition: snapshot.savedPosition,
       savedSize: snapshot.savedSize,
       savedOriginTabId: snapshot.savedOriginTabId,
+      oldOriginTabId: snapshotData.originTabId,
+      newOriginTabId,
       savedOriginContainerId: snapshot.savedOriginContainerId
     });
 

@@ -1,8 +1,8 @@
 # Quick Tabs – Comprehensive Behavior Scenarios (v1.6.4+)
 
-**Document Version:** 4.2 (v1.6.4-v4 Features)  
-**Last Updated:** January 4, 2026  
-**Extension Version:** v1.6.4-v4
+**Document Version:** 4.4 (v1.6.4-v5 Additional Bug Fixes)  
+**Last Updated:** January 5, 2026  
+**Extension Version:** v1.6.4-v5
 
 ---
 
@@ -1675,8 +1675,8 @@ position the restored Quick Tab.
 
 **VisibilityHandler (`src/features/quick-tabs/handlers/VisibilityHandler.js`):**
 
-1. Sends `minimizedSnapshot` (left, top, width, height) with `QUICKTAB_MINIMIZED`
-   message
+1. Sends `minimizedSnapshot` (left, top, width, height) with
+   `QUICKTAB_MINIMIZED` message
 2. Snapshot captured before minimize operation removes DOM element
 
 **Background Script (`background.js`):**
@@ -1700,10 +1700,653 @@ position the restored Quick Tab.
 
 ---
 
+## Scenario 43: Go to Tab Same-Container Preserves Sidebar (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Navigation  
+**Feature:** Go to Tab button keeps sidebar open for same-container tabs  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Personal" (FX 1)
+2. Open WP QT 1 in WP 1
+3. Open browser tab YT 1 in the same Firefox Container "Personal" (FX 1)
+4. Open YT QT 1 in YT 1
+5. Open Quick Tabs Manager (Ctrl+Alt+Z) from WP 1
+
+### Test Steps
+
+1. In Manager, click "Go to Tab" button on the YT 1 tab group header
+2. Observe the sidebar and browser tab
+
+### Expected Behavior
+
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 1    | Browser switches to YT 1 tab                                    |
+| 1    | Sidebar remains OPEN (same container, no focus issue)           |
+| 1    | User can continue managing Quick Tabs without reopening sidebar |
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. `_handleGoToTabGroup()` uses `_getGoToTabContainerContext()` helper
+2. Helper compares current container ID with target tab container ID
+3. If containers match, skips `sidebarAction.close()` call
+4. Only cross-container switches trigger sidebar close/reopen
+5. Improves user experience for same-container tab navigation
+
+---
+
+## Scenario 44: Go to Tab Cross-Container Reopens Sidebar (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Navigation  
+**Feature:** Go to Tab closes sidebar, switches tab, then reopens sidebar for
+cross-container tabs  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Personal" (FX 1)
+2. Open WP QT 1 in WP 1
+3. Open browser tab YT 1 in Firefox Container "Work" (FX 2)
+4. Open Quick Tabs Manager (Ctrl+Alt+Z) from WP 1
+5. Set container filter to "All Containers"
+
+### Test Steps
+
+1. In Manager, click "Go to Tab" button on the YT 1 tab group header (different
+   container)
+2. Wait 300ms after tab switch
+3. Observe the sidebar and browser tab
+
+### Expected Behavior
+
+| Step | Result                                                     |
+| ---- | ---------------------------------------------------------- |
+| 1    | Sidebar closes immediately (synchronously from user input) |
+| 1    | Browser switches to YT 1 tab                               |
+| 2    | Sidebar reopens automatically after 300ms delay            |
+| 2    | User can continue managing Quick Tabs in new container     |
+
+### Root Cause Analysis
+
+Firefox WebExtension sidebars retain focus even after successful `tabs.update()`
+calls. For cross-container switches, the sidebar must close first to transfer
+focus to the main browser area. After the tab switch completes, the sidebar is
+reopened to enable continued Quick Tab management.
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. `_handleGoToTabGroup()` calls `_getGoToTabContainerContext()` to detect
+   cross-container switch
+2. For cross-container: `_handleGoToTabSidebarClose()` called synchronously
+   FIRST
+3. `_handleGoToTabSidebarClose()` uses `browser.sidebarAction.close()`
+   immediately
+4. After async tab switch completes, `setTimeout()` with 300ms delay triggers
+   `browser.sidebarAction.open()`
+5. This enables "Go to Tab → Continue Managing" workflow across containers
+
+**Key Logs:**
+
+- `[Manager] GO_TO_TAB: Cross-container switch detected, closing sidebar`
+- `[Manager] GO_TO_TAB: Same-container switch, keeping sidebar open`
+- `[Manager] GO_TO_TAB_SIDEBAR_REOPEN: Reopening sidebar after 300ms`
+
+---
+
+## Scenario 45: Toggle Quick Tabs Manager via Context Menu (v1.6.4-v5)
+
+**Category:** Browser Integration  
+**Feature:** Right-click context menu option to toggle sidebar  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open any browser tab (e.g., WP 1)
+2. Quick Tabs Manager sidebar is initially closed
+
+### Test Steps
+
+**Test A: Open Sidebar via Context Menu**
+
+1. Right-click anywhere on the page content
+2. Observe the browser context menu
+3. Click "Toggle Quick Tabs Manager" menu item
+4. Observe the sidebar
+
+**Test B: Close Sidebar via Context Menu**
+
+1. With sidebar open, right-click on page content
+2. Click "Toggle Quick Tabs Manager" menu item
+3. Observe the sidebar
+
+### Expected Behavior
+
+**Test A:**
+
+| Step | Result                                                |
+| ---- | ----------------------------------------------------- |
+| 2    | Context menu shows "Toggle Quick Tabs Manager" option |
+| 4    | Quick Tabs Manager sidebar opens                      |
+| 4    | Sidebar shows Quick Tabs from all tabs (if any exist) |
+
+**Test B:**
+
+| Step | Result                             |
+| ---- | ---------------------------------- |
+| 3    | Quick Tabs Manager sidebar closes  |
+| 3    | Main browser content regains focus |
+
+### Key Implementation Details
+
+**Background (`background.js`):**
+
+1. `_initializeContextMenus()` adds "Toggle Quick Tabs Manager" menu item
+2. Uses `browser.menus` API with `contexts: ["page"]`
+3. Click handler calls `browser.sidebarAction.toggle()` API
+4. Toggle API opens sidebar if closed, closes if open
+5. Menu item ID: `"toggle-quick-tabs-manager"`
+
+**Key Logs:**
+
+- `[Background] CONTEXT_MENU: Toggle Quick Tabs Manager clicked`
+
+---
+
+## Scenario 46: Minimized Quick Tab Restore After Cross-Container Transfer (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** Minimized Quick Tabs can be restored after transferring to a tab in
+a different container  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Personal" (FX 1)
+2. Create WP QT 1 in WP 1 and position it at (200, 200)
+3. Minimize WP QT 1 (snapshot captured at 200, 200)
+4. Open browser tab YT 1 in Firefox Container "Work" (FX 2)
+5. Open Quick Tabs Manager
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 group to YT 1 group (cross-container
+   transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1 in Manager
+
+### Expected Behavior
+
+| Step | Result                                                                |
+| ---- | --------------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 (originTabId and originContainerId updated) |
+| 1    | minimizedSnapshot transferred along with Quick Tab data               |
+| 3    | WP QT 1 appears visible in YT 1 viewport at (200, 200)                |
+| 3    | Window reference properly updated from snapshot                       |
+| 3    | No "Snapshot not found" errors in console                             |
+
+### Root Cause Analysis
+
+Previously, cross-container transfers of minimized Quick Tabs required a
+restore-minimize-restore cycle because the minimized snapshot was not
+transferred. Now, `updateTransferredSnapshotWindow()` in MinimizedManager
+ensures the snapshot's window reference is updated, allowing first-restore to
+work correctly.
+
+### Key Implementation Details
+
+**VisibilityHandler (`src/features/quick-tabs/handlers/VisibilityHandler.js`):**
+
+1. Sends `minimizedSnapshot` with `QUICKTAB_MINIMIZED` message
+2. Snapshot includes `left`, `top`, `width`, `height` and `window` reference
+
+**Background (`background.js`):**
+
+1. Stores snapshot in `quickTabsSessionState.minimizedSnapshots[quickTabId]`
+2. Includes snapshot in `QUICK_TAB_TRANSFERRED_IN` message
+3. Logs: `[Background] SNAPSHOT_INCLUDED: quickTabId={id}`
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` calls
+   `MinimizedManager.storeTransferredSnapshot()`
+2. Logs: `[Content] MINIMIZED_SNAPSHOT_STORED: quickTabId={id}`
+
+**MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
+
+1. `storeTransferredSnapshot(quickTabId, snapshot)` stores incoming snapshot
+2. `updateTransferredSnapshotWindow(quickTabId, window)` updates window
+   reference
+3. Enables restore to use correct position/size from original tab
+
+**Key Logs:**
+
+- `[Background] SNAPSHOT_STORED: quickTabId={id}`
+- `[Background] SNAPSHOT_INCLUDED: quickTabId={id} in QUICK_TAB_TRANSFERRED_IN`
+- `[Content] MINIMIZED_SNAPSHOT_STORED: quickTabId={id}`
+- `[MinimizedManager] SNAPSHOT_WINDOW_UPDATED: quickTabId={id}`
+
+---
+
+## Scenario 47: Minimized Transfer Restore Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** Fixed `result?.tabWindow` to `result` since `createQuickTab()`
+returns `tabWindow` directly  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Move WP QT 1 to position (300, 200)
+3. Minimize WP QT 1 (snapshot captured at 300, 200)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1
+
+### Expected Behavior
+
+| Step | Result                                                         |
+| ---- | -------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 successfully                         |
+| 3    | WP QT 1 appears at (300, 200) in YT 1 viewport                 |
+| 3    | `updateTransferredSnapshotWindow()` called with correct window |
+| 3    | No "Cannot read property 'tabWindow' of undefined" errors      |
+
+### Root Cause Analysis
+
+The content.js code was checking `result?.tabWindow` but `createQuickTab()`
+returns the `tabWindow` object directly, not an object with a `tabWindow`
+property. The fix changed `result?.tabWindow` to just `result`.
+
+### Key Implementation Details
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` receives minimizedSnapshot from background
+2. Calls `createQuickTab()` which returns `tabWindow` directly
+3. Passes `result` (not `result?.tabWindow`) to
+   `updateTransferredSnapshotWindow()`
+4. Snapshot window reference is properly updated for restore
+
+**Key Logs:**
+
+- `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED: quickTabId={id}`
+
+---
+
+## Scenario 48: Go to Tab Error Handling (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Navigation  
+**Feature:** Added `.catch()` error handler and container-aware routing  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 in Firefox Container "Personal"
+2. Create WP QT 1 in WP 1
+3. Open Quick Tabs Manager
+
+### Test Steps
+
+1. Close WP 1 browser tab (but keep Manager open)
+2. Click "Go to Tab" button for the now-closed WP 1 tab group
+3. Observe error handling
+
+### Expected Behavior
+
+| Step | Result                                         |
+| ---- | ---------------------------------------------- |
+| 2    | Error is caught by `.catch()` handler          |
+| 2    | No unhandled promise rejection in console      |
+| 2    | Error logged with context (tabId, containerId) |
+| 2    | UI remains responsive and doesn't freeze       |
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. Go to Tab button click listener has `.catch(err => {...})` handler
+2. `_dispatchGoToTab()` delegates to `_handleGoToTabGroup()` for consistency
+3. Old `goToTab()` function now calls `_handleGoToTabGroup()` internally
+4. All code paths use the same container-aware routing logic
+
+---
+
+## Scenario 49: Clear Log History Confirmation Dialog (v1.6.4-v5)
+
+**Category:** Settings - Log Management  
+**Feature:** Confirmation dialog before clearing all logs  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open several browser tabs and create Quick Tabs
+2. Perform various actions to generate logs
+3. Open Quick Tabs Manager → Settings tab
+
+### Test Steps
+
+1. Click "Clear Log History" button
+2. Observe the confirmation dialog
+3. Click "Cancel" in the dialog
+4. Click "Clear Log History" again
+5. Click "OK" in the dialog
+6. Observe the results
+
+### Expected Behavior
+
+| Step | Result                                                            |
+| ---- | ----------------------------------------------------------------- |
+| 2    | `confirm()` dialog appears with message about clearing logs       |
+| 2    | Message: "Clear all log history? This will clear background logs, |
+|      | content script logs, and manager logs. This cannot be undone."    |
+| 3    | Logs are NOT cleared (cancel respected)                           |
+| 5    | Logs are cleared                                                  |
+| 5    | Status message shows actual counts (see Scenario 50)              |
+
+### Key Implementation Details
+
+**Settings (`sidebar/settings.js`):**
+
+1. `_handleClearLogHistory()` calls `confirm()` BEFORE any clearing
+2. Returns early if user cancels (clicks Cancel or presses Escape)
+3. Only proceeds with clearing if user confirms (clicks OK)
+
+---
+
+## Scenario 50: Clear Log History Accurate Count (v1.6.4-v5)
+
+**Category:** Settings - Log Management  
+**Feature:** Status message shows actual log counts  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Open browser tab YT 1 and create YT QT 1
+3. Perform various actions to generate logs
+4. Open Quick Tabs Manager → Settings tab
+
+### Test Steps
+
+1. Click "Clear Log History" button and confirm
+2. Observe the status message
+
+### Expected Behavior
+
+| Step | Result                                                       |
+| ---- | ------------------------------------------------------------ |
+| 2    | Status shows "Cleared X background logs"                     |
+| 2    | Status shows "and logs from Y tabs" where Y is the tab count |
+| 2    | If no logs existed: "No cached logs were present"            |
+
+### Key Implementation Details
+
+**Settings (`sidebar/settings.js`):**
+
+1. `_buildClearLogStatusMessage()` helper constructs detailed message
+2. Counts background logs from `cachedBackgroundLogs` array
+3. Counts tabs with logs from `cachedContentScriptLogs` object keys
+4. `_clearManagerLogsViaIframe()` clears Manager logs via iframe message
+
+**Example Messages:**
+
+- "Cleared 42 background logs and logs from 3 tabs"
+- "Cleared 15 background logs (no content script logs)"
+- "Cleared logs from 2 tabs (no background logs)"
+- "No cached logs were present"
+
+---
+
+## Scenario 51: Minimized Quick Tab Transfer Restore - Destination Tab ID Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** `storeTransferredSnapshot()` uses destination tab ID, not old
+origin  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Move WP QT 1 to position (400, 300)
+3. Minimize WP QT 1 (snapshot captured: origin tab = WP 1)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1 in Manager
+4. Observe where QT 1 appears
+
+### Expected Behavior
+
+| Step | Result                                                          |
+| ---- | --------------------------------------------------------------- |
+| 1    | WP QT 1 transfers to YT 1 (originTabId updated)                 |
+| 3    | WP QT 1 appears in YT 1 viewport at (400, 300)                  |
+| 3    | Quick Tab stays on YT 1 after restore (does NOT revert to WP 1) |
+| 3    | Snapshot's originTabId correctly points to YT 1                 |
+
+### Root Cause Analysis
+
+Previously, `storeTransferredSnapshot()` stored the snapshot with the OLD origin
+tab ID. When restoring, the snapshot would reference the original tab (WP 1),
+causing the Quick Tab to either fail to restore or revert to the wrong tab.
+
+The fix adds a `newOriginTabId` parameter to `storeTransferredSnapshot()` that
+accepts the destination tab ID from the transfer message.
+
+### Key Implementation Details
+
+**MinimizedManager (`src/features/quick-tabs/minimized-manager.js`):**
+
+1. `storeTransferredSnapshot(quickTabId, snapshot, newOriginTabId)` - new
+   parameter
+2. Updates snapshot's `originTabId` to destination tab before storing
+3. Ensures restore operation uses correct tab context
+
+**Content Script (`src/content.js`):**
+
+1. `_handleQuickTabTransferredIn()` passes `newOriginTabId` from transfer
+   message
+2. Calls `storeTransferredSnapshot(id, snapshot, newOriginTabId)`
+
+**Key Logs:**
+
+- `[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID: quickTabId={id}, newTabId={newId}`
+- `[MinimizedManager] TRANSFERRED_SNAPSHOT_TAB_UPDATED: {id} -> {newId}`
+
+---
+
+## Scenario 52: Log Metrics Footer Persistence Across Sidebar Sessions (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Settings  
+**Feature:** Log metrics footer count persists across sidebar close/reopen  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab and create several Quick Tabs
+2. Perform various actions (create, minimize, restore, close) to generate logs
+3. Open Quick Tabs Manager (Ctrl+Alt+Z)
+4. Navigate to Settings tab and observe the metrics footer
+
+### Test Steps
+
+1. Note the "📈 total" count in the metrics footer (e.g., "📈 157 total")
+2. Close the Quick Tabs Manager sidebar
+3. Wait 5 seconds
+4. Reopen Quick Tabs Manager (Ctrl+Alt+Z)
+5. Observe the "📈 total" count in the metrics footer
+
+### Expected Behavior
+
+| Step | Result                                                     |
+| ---- | ---------------------------------------------------------- |
+| 1    | Metrics footer shows total log action count (e.g., 157)    |
+| 4    | Total count is preserved (still shows 157, not reset to 0) |
+| 4    | New log actions increment from persisted value             |
+
+### Root Cause Analysis
+
+Previously, `_totalLogActions` was a module-level variable that reset to 0 each
+time the sidebar was opened. This made the "total log actions" metric useless
+for tracking session-wide activity.
+
+The fix persists `_totalLogActions` to `browser.storage.local` using a new
+storage key with debounced saves to avoid excessive writes.
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. Added `TOTAL_LOG_ACTIONS_KEY = 'quickTabsTotalLogActions'` storage key
+2. Loads persisted value on sidebar open via `_loadTotalLogActions()`
+3. Saves value on change via `_saveTotalLogActions()` with 2000ms debounce
+4. Debounce prevents excessive storage writes during rapid log activity
+
+**Storage Format:**
+
+```javascript
+{ 'quickTabsTotalLogActions': 157 }
+```
+
+**Key Logs:**
+
+- `[Manager] METRICS_FOOTER_LOADED: totalLogActions={count}`
+- `[Manager] METRICS_FOOTER_SAVED: totalLogActions={count}`
+
+---
+
+## Scenario 53: Minimized Quick Tab Transfer Restore Display Fix (v1.6.4-v5)
+
+**Category:** Quick Tabs - Cross-Tab Transfer  
+**Feature:** UICoordinator orphan recovery properly updates display CSS after
+restore  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab WP 1 and create WP QT 1
+2. Position WP QT 1 at (300, 200) and resize to 600x400
+3. Minimize WP QT 1 (snapshot captured at 300, 200, 600x400)
+4. Open browser tab YT 1
+
+### Test Steps
+
+1. Drag minimized WP QT 1 from WP 1 to YT 1 (cross-tab transfer)
+2. Switch to YT 1 browser tab
+3. Click "Restore" button on WP QT 1 in Manager
+4. Observe the Quick Tab window in YT 1 viewport
+
+### Expected Behavior
+
+| Step | Result                                                             |
+| ---- | ------------------------------------------------------------------ |
+| 1    | WP QT 1 transfers to YT 1 successfully                             |
+| 3    | WP QT 1 appears VISIBLE at (300, 200) with 600x400 size            |
+| 3    | Quick Tab window has `display: flex` (NOT `display: none`)         |
+| 3    | Quick Tab window has `visibility: visible` and `opacity: 1`        |
+| 3    | No invisible/hidden Quick Tab window that requires re-minimization |
+
+### Root Cause Analysis
+
+When a minimized Quick Tab is transferred between tabs and then restored, the
+Quick Tab window's DOM container was being created with the CSS properties from
+the minimized state (`display: none`). The UICoordinator's orphan window
+recovery was re-attaching the window but not updating the display CSS, causing
+the restored Quick Tab to be invisible even though the restore operation
+succeeded.
+
+### Key Implementation Details
+
+**UICoordinator (`src/features/quick-tabs/coordinators/UICoordinator.js`):**
+
+1. `_updateRecoveredWindowDisplay()` method added for orphan window recovery
+2. Sets `container.style.display = 'flex'` after recovery
+3. Sets `container.style.visibility = 'visible'` for proper display
+4. Sets `container.style.opacity = '1'` for full visibility
+5. Called after `_recoverOrphanWindow()` re-attaches the window DOM
+
+**Key Logs:**
+
+- `[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED: quickTabId={id}`
+- `[UICoordinator] ORPHAN_WINDOW_RECOVERED: quickTabId={id}`
+
+---
+
+## Scenario 54: Metrics Persistence Flush Before Sidebar Close (v1.6.4-v5)
+
+**Category:** Quick Tabs Manager - Settings  
+**Feature:** `beforeunload` handler flushes pending debounced saves immediately  
+**Version:** v1.6.4-v5
+
+### Setup
+
+1. Open browser tab and create several Quick Tabs
+2. Perform various actions (create, minimize, restore, close) to generate logs
+3. Open Quick Tabs Manager (Ctrl+Alt+Z)
+4. Navigate to Settings tab and observe the metrics footer
+
+### Test Steps
+
+1. Note the "📈 total" count in the metrics footer (e.g., "📈 42 total")
+2. Perform 10 more actions rapidly (e.g., minimize/restore Quick Tabs)
+3. Immediately close the sidebar (within 500ms of last action)
+4. Wait 1 second
+5. Reopen Quick Tabs Manager (Ctrl+Alt+Z)
+6. Observe the "📈 total" count
+
+### Expected Behavior
+
+| Step | Result                                                             |
+| ---- | ------------------------------------------------------------------ |
+| 2    | Metrics footer updates to show ~52 total (42 + 10 new actions)     |
+| 3    | `beforeunload` triggers `_saveTotalLogActionsNow()` immediately    |
+| 3    | Debounced save is flushed (not lost due to 2000ms debounce delay)  |
+| 5    | Total count is preserved at ~52 (all actions saved before close)   |
+| 5    | No lost log actions from rapid-close scenario                      |
+
+### Root Cause Analysis
+
+The 2000ms debounce for saving `_totalLogActions` meant that if the sidebar was
+closed within 2 seconds of the last log action, the updated count would be lost.
+The fix adds a `beforeunload` event handler that calls
+`_saveTotalLogActionsNow()` to immediately flush any pending debounced saves
+before the sidebar closes.
+
+### Key Implementation Details
+
+**Manager (`sidebar/quick-tabs-manager.js`):**
+
+1. `_saveTotalLogActionsNow()` - Non-debounced immediate save function
+2. `_handleBeforeUnload()` - Event handler for `beforeunload` event
+3. `window.addEventListener('beforeunload', _handleBeforeUnload)` - Registered
+   on sidebar load
+4. Flushes pending `_totalLogActions` value to `storage.local` synchronously
+5. Prevents data loss when sidebar closes during debounce window
+
+**Key Logs:**
+
+- `[Manager] METRICS_FOOTER_FLUSHED: totalLogActions={count}`
+- `[Manager] BEFOREUNLOAD_FLUSH: pending totalLogActions saved`
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last
-Review Date:** January 4, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v4)
+**Last Review Date:** January 5, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v5)

@@ -3,9 +3,10 @@ name: quicktabs-cross-tab-specialist
 description: |
   Specialist for Quick Tab cross-tab synchronization - handles port messaging
   (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
-  (v1.6.4-v3), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  (v1.6.4-v5), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
   QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix,
-  UPDATE_QUICK_TAB title sync, state version race fix, STATE_CHANGED safety timeout (500ms)
+  UPDATE_QUICK_TAB title sync, state version race fix, STATE_CHANGED safety timeout (500ms),
+  Go to Tab cross-container transfer, updateTransferredSnapshotWindow()
 tools: ['*']
 ---
 
@@ -38,9 +39,18 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v3 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 1.6.4-v5 - Option 4 Architecture (Port Messaging + Memory State)
 
-**v1.6.4-v3 Bug Fixes (NEW):**
+**v1.6.4-v5 Features (NEW):**
+
+- **Go to Tab Cross-Container Transfer** - Sidebar close/reopen sequence with
+  300ms delay via `_handleGoToTabSidebarClose()` for cross-container switches
+- **updateTransferredSnapshotWindow()** - Updates minimized Quick Tab snapshot
+  window position after cross-tab transfer to enable proper restore behavior
+- **Toggle Sidebar Context Menu** - `browser.sidebarAction.toggle()` via context
+  menu for easy sidebar access
+
+**v1.6.4-v3 Bug Fixes:**
 
 - **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
   iframe load events and syncs across tabs
@@ -114,6 +124,9 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ## Testing Requirements
 
+- [ ] Go to Tab cross-container closes sidebar, switches, reopens after 300ms
+- [ ] updateTransferredSnapshotWindow() enables restore after cross-tab transfer
+- [ ] Toggle Sidebar context menu uses browser.sidebarAction.toggle()
 - [ ] Title updates from iframe load via UPDATE_QUICK_TAB
 - [ ] State version race condition fixed in render tracking
 - [ ] forceEmpty works for last Quick Tab close
@@ -138,8 +151,10 @@ const port = browser.runtime.connect({ name: 'quick-tabs-port' });
 
 ---
 
-**Your strength: Reliable cross-tab sync with v1.6.4-v3 title updates, state
-version race fix, forceEmpty fix, Open in New Tab close, cross-tab transfer
-duplicate fix, Open in New Tab UI flicker fix, STATE_CHANGED safety timeout,
-button operation fix, cross-tab render fix, fallback messaging, port messaging,
-and sequence tracking.**
+**Your strength: Reliable cross-tab sync with v1.6.4-v5 Go to Tab
+cross-container transfer (close/switch/reopen sidebar),
+updateTransferredSnapshotWindow() for minimized transfer restore, Toggle Sidebar
+context menu, v1.6.4-v3 title updates, state version race fix, forceEmpty fix,
+Open in New Tab close, cross-tab transfer duplicate fix, Open in New Tab UI
+flicker fix, STATE_CHANGED safety timeout, button operation fix, cross-tab
+render fix, fallback messaging, port messaging, and sequence tracking.**

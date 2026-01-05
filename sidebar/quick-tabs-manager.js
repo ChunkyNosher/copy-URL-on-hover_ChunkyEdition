@@ -2,37 +2,59 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v6 CROSS-CONTAINER GO TO TAB FIX ===
- * v1.6.4-v6 - FIX: Go to Tab button now properly switches focus across containers
+ * === v1.6.4-v5 BUG #2: LOG METRICS FOOTER PERSISTENCE FIX (ENHANCED) ===
+ * v1.6.4-v5 - FIX: Log metrics footer now persists total count across sidebar close/reopen
+ *   - ROOT CAUSE: _totalLogActions was a module-level variable that reset on page reload
+ *   - FIX: Persist _totalLogActions to browser.storage.local with debounced writes
+ *   - Added TOTAL_LOG_ACTIONS_KEY storage constant
+ *   - Added _debouncedSaveTotalLogActions() with 2000ms debounce
+ *   - _loadMetricsSettings() now loads persisted total on startup
+ *   - _clearLogActionCounts() now clears both variable and storage
+ *   - ENHANCEMENT: Added _handleBeforeUnload() to flush pending saves on sidebar close
+ *   - ENHANCEMENT: Added _saveTotalLogActionsNow() for immediate non-debounced saves
+ *   - This ensures the 2000ms debounce doesn't cause data loss when sidebar closes quickly
+ *
+ * === v1.6.4-v5 SMART GO TO TAB FIX ===
+ * v1.6.4-v5 - FIX BUG #1/#2: Go to Tab now only closes sidebar for cross-container switches
+ *   - ROOT CAUSE (Bug #1): Cross-container tabs in "All Containers" view didn't properly transfer focus
+ *   - ROOT CAUSE (Bug #2): Sidebar was ALWAYS closing, even for same-container tabs
+ *   - FIX: Only close sidebar for cross-container switches, keep open for same-container
+ *   - For cross-container in "All Containers" view: close → switch → reopen after delay
+ *   - For same-container: just activate tab without closing sidebar
+ *   - Added _isCrossContainerSwitch() helper for container comparison
+ *   - Added _shouldReopenSidebarAfterGoToTab() for "All Containers" view detection
+ *
+ * === v1.6.4-v4 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
+ * v1.6.4-v4 - FIX: Go to Tab button now properly switches focus across containers
  *   - ROOT CAUSE: Firefox sidebars retain focus even after blur() calls
  *   - FIX: Use browser.sidebarAction.close() to force-close sidebar, then reopen after delay
  *   - This is more aggressive than v1.6.4-v5's blur() approach which was insufficient
  *
- * === v1.6.4-v6 MINIMIZE ALL IN TAB FEATURE ===
- * v1.6.4-v6 - FEATURE: Add "Minimize All" button for each tab group header
+ * === v1.6.4-v4 MINIMIZE ALL IN TAB FEATURE ===
+ * v1.6.4-v4 - FEATURE: Add "Minimize All" button for each tab group header
  *   - Added _handleMinimizeAllInTabGroup() handler function
  *   - Added minimize all button (⏬) in _createGroupActions() next to Close All button
  *
- * === v1.6.4-v6 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
- * v1.6.4-v6 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
+ * === v1.6.4-v4 SHIFT+MOVE TO CURRENT TAB DUPLICATE FEATURE ===
+ * v1.6.4-v4 - FEATURE: Shift+click "Move to Current Tab" button now duplicates instead of moves
  *   - Modified _dispatchMoveToCurrentTab() to accept shiftKey parameter
  *   - When shiftKey=true, calls _duplicateQuickTabToTab() instead of _transferQuickTabToTab()
  *
- * === v1.6.4-v5 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
- * v1.6.4-v5 - FIX: Go to Tab button now properly switches focus across containers
+ * === v1.6.4-v3 CROSS-CONTAINER GO TO TAB FIX (DEPRECATED) ===
+ * v1.6.4-v3 - FIX: Go to Tab button now properly switches focus across containers
  *   - ROOT CAUSE: Firefox sidebars retain focus after browser.tabs.update() succeeds
  *   - FIX: Blur activeElement and window after tab switch to release sidebar focus
  *   - Added document.activeElement.blur() and window.blur() in _handleGoToTabGroup()
  *   - This is a known Firefox WebExtension sidebar limitation workaround
  *
- * === v1.6.4-v5 PERFORMANCE OPTIMIZATIONS ===
- * v1.6.4-v5 - PERF: Reduce log volume for high-frequency operations
+ * === v1.6.4-v3 PERFORMANCE OPTIMIZATIONS ===
+ * v1.6.4-v3 - PERF: Reduce log volume for high-frequency operations
  *   - Consolidated duplicate logs in _logRenderSkipped() (was 2 logs, now 1)
  *   - Removed per-badge debug logging in _createContainerBadge() (fires per group)
  *   - _logHashComputation() now only logs when hash actually changed
  *   - Removed unused _buildStateSummary() function
  *
- * v1.6.4-v5 - PERF: Code Health improvements for better maintainability
+ * v1.6.4-v3 - PERF: Code Health improvements for better maintainability
  *   - Extracted _validateStateUpdateInput() from _handleQuickTabsStateUpdate() (cc reduction)
  *   - Extracted _executeRenderForStateUpdate() from _handleQuickTabsStateUpdate() (cc: 9 → 5)
  *   - Extracted _shouldShowContainerBadge() for cleaner conditional in _createGroupHeader()
@@ -452,6 +474,9 @@ const METRICS_DEFAULT_INTERVAL_MS = 1000; // 1 second
 const METRICS_MIN_INTERVAL_MS = 500; // Minimum 500ms
 const METRICS_MAX_INTERVAL_MS = 30000; // Maximum 30 seconds
 // v1.6.4-v3 - Removed ESTIMATED_MEMORY_PER_QUICK_TAB_BYTES (no longer using memory tracking)
+// v1.6.4-v5 - FIX: Persist total log actions across sidebar reloads
+const TOTAL_LOG_ACTIONS_KEY = 'quickTabsTotalLogActions';
+const TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS = 2000; // Debounce storage writes
 
 // Pending operations tracking (for spam-click prevention)
 const PENDING_OPERATIONS = new Set();
@@ -567,6 +592,8 @@ let _metricsIntervalMs = METRICS_DEFAULT_INTERVAL_MS;
 
 // v1.6.4-v3 - Log action tracking state
 let _totalLogActions = 0;
+// v1.6.4-v5 - FIX: Debounce timer for persisting total log actions
+let _totalLogActionsSaveTimer = null;
 // Log actions in the current sliding window (for calculating actions per second)
 let _logActionsWindow = [];
 // Window size in milliseconds for calculating logs per second
@@ -601,12 +628,17 @@ function _incrementStateVersion(source) {
 /**
  * Load metrics settings from storage
  * v1.6.4-v2 - FEATURE: Live metrics footer
+ * v1.6.4-v5 - FIX: Also load persisted total log actions
  * @private
  * @returns {Promise<void>}
  */
 async function _loadMetricsSettings() {
   try {
-    const result = await browser.storage.local.get([METRICS_ENABLED_KEY, METRICS_INTERVAL_KEY]);
+    const result = await browser.storage.local.get([
+      METRICS_ENABLED_KEY,
+      METRICS_INTERVAL_KEY,
+      TOTAL_LOG_ACTIONS_KEY
+    ]);
 
     _metricsEnabled =
       result[METRICS_ENABLED_KEY] !== undefined
@@ -621,9 +653,17 @@ async function _loadMetricsSettings() {
           )
         : METRICS_DEFAULT_INTERVAL_MS;
 
+    // v1.6.4-v5 - FIX: Load persisted total log actions to survive sidebar reloads
+    // Only load if value exists and is positive (0 is the default, no need to load it)
+    const persistedTotal = result[TOTAL_LOG_ACTIONS_KEY];
+    if (typeof persistedTotal === 'number' && persistedTotal > 0) {
+      _totalLogActions = persistedTotal;
+    }
+
     console.log('[Manager] METRICS: Settings loaded', {
       enabled: _metricsEnabled,
-      intervalMs: _metricsIntervalMs
+      intervalMs: _metricsIntervalMs,
+      persistedTotalLogActions: persistedTotal || 0
     });
   } catch (err) {
     console.warn('[Manager] METRICS: Failed to load settings, using defaults', err.message);
@@ -738,6 +778,7 @@ function _isCategoryFilterEnabled(category) {
 /**
  * Track a log action (called when console.log, console.warn, console.error are invoked)
  * v1.6.4-v3 - FEATURE: Log action tracking with category detection and filtering
+ * v1.6.4-v5 - FIX: Debounced persistence to survive sidebar reloads
  * @private
  * @param {Array} args - Arguments passed to the console method
  */
@@ -759,6 +800,60 @@ function _trackLogAction(args) {
 
   // Remove old entries outside the window
   _pruneLogActionsWindow(now);
+
+  // v1.6.4-v5 - FIX: Debounced save of total log actions to storage
+  _debouncedSaveTotalLogActions();
+}
+
+/**
+ * Debounced save of total log actions to storage
+ * v1.6.4-v5 - FIX: Persist total log actions across sidebar reloads
+ * Uses debouncing to avoid excessive storage writes during high log activity
+ * @private
+ */
+function _debouncedSaveTotalLogActions() {
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+  }
+  _totalLogActionsSaveTimer = setTimeout(() => {
+    _totalLogActionsSaveTimer = null;
+    _saveTotalLogActionsNow();
+  }, TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Immediately save total log actions to storage (non-debounced)
+ * v1.6.4-v5 - FIX BUG #2: Called by beforeunload handler to ensure save before sidebar closes
+ * @private
+ */
+function _saveTotalLogActionsNow() {
+  browser.storage.local.set({ [TOTAL_LOG_ACTIONS_KEY]: _totalLogActions }).catch(err => {
+    // Use original console to avoid recursion
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Failed to persist total log actions', {
+        key: TOTAL_LOG_ACTIONS_KEY,
+        value: _totalLogActions,
+        error: err
+      });
+    }
+  });
+}
+
+/**
+ * Handle beforeunload event to flush pending metrics save
+ * v1.6.4-v5 - FIX BUG #2: Log metrics footer resets on sidebar close/reopen
+ *   ROOT CAUSE: The 2000ms debounce may not complete before sidebar closes
+ *   FIX: Immediately save any pending total on beforeunload
+ * Note: Logging removed to minimize unload performance impact
+ * @private
+ */
+function _handleBeforeUnload() {
+  // If there's a pending debounced save, flush it immediately
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+    _totalLogActionsSaveTimer = null;
+    _saveTotalLogActionsNow();
+  }
 }
 
 /**
@@ -811,6 +906,7 @@ function _calculateLogsPerSecond() {
 /**
  * Clear log action counts (resets total and window)
  * v1.6.4-v3 - FEATURE: Log action tracking
+ * v1.6.4-v5 - FIX: Also clear persisted total from storage
  * Called on page refresh or via explicit reset
  * Note: Uses original console to avoid triggering the interceptor
  */
@@ -819,6 +915,21 @@ function _clearLogActionCounts() {
   _logActionsWindow = [];
   // v1.6.4-v3 - Task 2: Also reset category breakdown
   _logActionsByCategory = {};
+
+  // v1.6.4-v5 - FIX: Clear any pending save timer and persisted value
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+    _totalLogActionsSaveTimer = null;
+  }
+  browser.storage.local.remove(TOTAL_LOG_ACTIONS_KEY).catch(err => {
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Failed to clear persisted total log actions', {
+        key: TOTAL_LOG_ACTIONS_KEY,
+        error: err
+      });
+    }
+  });
+
   // Use original console to avoid incrementing counter during clear
   if (console._originalLog) {
     console._originalLog('[Manager] METRICS: Log action counts cleared');
@@ -1010,6 +1121,7 @@ function _stopMetricsInterval() {
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Added console interceptors for log action tracking
  * v1.6.4-v3 - Task 3: Load live filter settings for filtered log counting
+ * v1.6.4-v5 - FIX BUG #2: Add beforeunload handler to flush pending saves
  * Called on sidebar initialization
  */
 async function initializeMetrics() {
@@ -1038,6 +1150,9 @@ async function initializeMetrics() {
 
   // v1.6.4-v3 - FIX Task 1: Listen for CLEAR_LOG_ACTION_COUNTS from parent window (settings.js)
   window.addEventListener('message', _handleParentWindowMessage);
+
+  // v1.6.4-v5 - FIX BUG #2: Flush pending metrics saves before sidebar closes
+  window.addEventListener('beforeunload', _handleBeforeUnload);
 
   console.log('[Manager] METRICS: Initialization complete');
 }
@@ -8359,9 +8474,16 @@ function _createGroupActions(groupKey, isOrphaned) {
   goToTabBtn.title = `Go to Tab ${groupKey}`;
   goToTabBtn.dataset.action = 'goToTab';
   goToTabBtn.dataset.tabId = String(groupKey);
+  // v1.6.4-v5 - FIX Bug #2: Add error handling for async function to prevent silent failures
   goToTabBtn.addEventListener('click', e => {
     e.stopPropagation(); // Prevent toggle of details
-    _handleGoToTabGroup(groupKey);
+    _handleGoToTabGroup(groupKey).catch(err => {
+      console.error('[Manager] GO_TO_TAB_CLICK_HANDLER_ERROR:', {
+        groupKey,
+        error: err.message,
+        stack: err.stack
+      });
+    });
   });
   actionsContainer.appendChild(goToTabBtn);
 
@@ -8397,116 +8519,132 @@ function _createGroupActions(groupKey, isOrphaned) {
 // v1.6.4-v4 - NOTE: _shouldShowContainerBadge() and _createContainerBadge() moved to managers/ContainerManager.js
 
 /**
+ * Get container context for Go to Tab operation
+ * v1.6.4-v5 - Extracted to reduce _handleGoToTabGroup complexity
+ * @private
+ * @param {number} numTabId - Target tab ID
+ * @returns {Promise<Object>} Container context object
+ */
+async function _getGoToTabContainerContext(numTabId) {
+  const tab = await browser.tabs.get(numTabId);
+  const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+  const targetContainerId = tab?.cookieStoreId || 'firefox-default';
+
+  const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
+  const currentContainerId = currentTab?.cookieStoreId || 'firefox-default';
+  const isCrossContainerSwitch = targetContainerId !== currentContainerId;
+
+  const selectedFilter = _getSelectedContainerFilter();
+  const shouldReopenSidebar = selectedFilter === 'all' && isCrossContainerSwitch;
+
+  return {
+    tab,
+    windowId,
+    targetContainerId,
+    currentTab,
+    currentContainerId,
+    isCrossContainerSwitch,
+    selectedFilter,
+    shouldReopenSidebar
+  };
+}
+
+/**
+ * Handle sidebar close for cross-container Go to Tab
+ * v1.6.4-v5 - Extracted to reduce _handleGoToTabGroup complexity
+ * @private
+ * @param {number} tabId - Target tab ID
+ * @param {boolean} shouldReopenSidebar - Whether to reopen sidebar after close
+ */
+function _handleGoToTabSidebarClose(tabId, shouldReopenSidebar) {
+  browser.sidebarAction
+    .close()
+    .then(() => {
+      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
+        tabId,
+        reason: 'cross-container-switch',
+        willReopen: shouldReopenSidebar
+      });
+
+      if (shouldReopenSidebar) {
+        _scheduleDelayedSidebarReopen(tabId);
+      }
+    })
+    .catch(err => {
+      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
+        error: err.message,
+        tabId
+      });
+      _fallbackBlurForFocusRelease();
+    });
+}
+
+/**
  * Handle "Go to Tab" button click - switches to the browser tab
  * v1.6.4 - FEATURE #4: Navigate to browser tab
  * v1.6.4-v4 - FIX Issue #2: Focus window before activating tab for cross-container tabs
- * v1.6.4-v4 - FIX Issue #1: Force-close sidebar to release focus (NO auto-reopen)
- *   - blur() calls were insufficient for cross-container tab switching
- *   - browser.sidebarAction.close() forces focus to transfer to main window
- *   - Sidebar stays closed - reopening would retain original container context
+ * v1.6.4-v5 - FIX BUG #1/#2: Only close sidebar for cross-container switches
+ *   - For same-container: just activate tab without closing sidebar
+ *   - For cross-container: close sidebar first, then switch tab
+ *   - For cross-container in "All Containers" view: reopen sidebar after switch
  * @private
  * @param {number|string} tabId - The browser tab ID to switch to
  */
 async function _handleGoToTabGroup(tabId) {
   const numTabId = typeof tabId === 'string' ? parseInt(tabId, 10) : tabId;
 
-  console.log('[Manager] GO_TO_TAB_CLICKED:', {
-    tabId: numTabId,
-    timestamp: Date.now()
-  });
-
-  // v1.6.4-v6 - FIX BUG #1: Call sidebarAction.close() SYNCHRONOUSLY before any await
-  // Firefox only allows sidebarAction.close() from user input handler context.
-  // Any await breaks the call chain and Firefox rejects with:
-  // "sidebarAction.close may only be called from a user input handler"
-  // Solution: Close sidebar FIRST (fire-and-forget), then do async tab switching.
-  browser.sidebarAction
-    .close()
-    .then(() => {
-      console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED_SYNC:', {
-        tabId: numTabId,
-        timestamp: Date.now()
-      });
-    })
-    .catch(err => {
-      // If sidebarAction.close() fails, fall back to blur approach
-      console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_SYNC_FAILED:', {
-        error: err.message,
-        tabId: numTabId
-      });
-      _fallbackBlurForFocusRelease();
-    });
+  console.log('[Manager] GO_TO_TAB_CLICKED:', { tabId: numTabId, timestamp: Date.now() });
 
   try {
-    // v1.6.4-v4 - FIX Issue #2: Get the tab's window and focus it before activating the tab
-    // This ensures proper tab switching when the target tab is in a different window
-    const tab = await browser.tabs.get(numTabId);
-    // v1.6.4-v4 - FIX: Validate windowId before using (code review feedback)
-    // browser.tabs.get() throws if tab doesn't exist; this validates the returned object structure
-    const windowId = tab && typeof tab.windowId === 'number' ? tab.windowId : null;
+    const ctx = await _getGoToTabContainerContext(numTabId);
 
-    // v1.6.4-v4 - Container context logging for cross-container switches
-    const originContainerId = tab?.cookieStoreId || 'unknown';
-    const [currentTab] = await browser.tabs.query({ active: true, currentWindow: true });
-    const currentContainerId = currentTab?.cookieStoreId || 'unknown';
-    const isCrossContainerSwitch = originContainerId !== currentContainerId;
-
-    // v1.6.4-v5 - FIX BUG #1: Enhanced cross-container logging for debugging Zen Browser
     console.log('[Manager] GO_TO_TAB_CONTAINER_CONTEXT:', {
       targetTabId: numTabId,
-      targetContainerId: originContainerId,
-      currentContainerId,
-      isCrossContainerSwitch,
-      currentTabId: currentTab?.id,
-      targetWindowId: windowId,
-      currentWindowId: currentTab?.windowId
+      targetContainerId: ctx.targetContainerId,
+      currentContainerId: ctx.currentContainerId,
+      isCrossContainerSwitch: ctx.isCrossContainerSwitch,
+      selectedFilter: ctx.selectedFilter,
+      shouldReopenSidebar: ctx.shouldReopenSidebar,
+      currentTabId: ctx.currentTab?.id,
+      targetWindowId: ctx.windowId,
+      currentWindowId: ctx.currentTab?.windowId
     });
 
-    // v1.6.4-v5 - FIX BUG #1: Log cross-container switch warning for debugging
-    if (isCrossContainerSwitch) {
-      console.log(
-        '[Manager] GO_TO_TAB: Cross-container switch detected, current=' +
-          currentContainerId +
-          ', target=' +
-          originContainerId
-      );
+    if (ctx.isCrossContainerSwitch) {
+      console.log('[Manager] GO_TO_TAB: Cross-container switch, closing sidebar');
+      _handleGoToTabSidebarClose(numTabId, ctx.shouldReopenSidebar);
+    } else {
+      console.log('[Manager] GO_TO_TAB: Same-container switch, keeping sidebar open');
     }
 
-    if (windowId !== null) {
-      await browser.windows.update(windowId, { focused: true });
+    if (ctx.windowId !== null) {
+      await browser.windows.update(ctx.windowId, { focused: true });
     }
     await browser.tabs.update(numTabId, { active: true });
 
-    // v1.6.4-v6 - Sidebar already closed synchronously above, just log success
     console.log('[Manager] GO_TO_TAB_SUCCESS:', {
       tabId: numTabId,
-      windowId,
-      targetContainerId: originContainerId,
-      isCrossContainerSwitch,
-      sidebarAction: 'closed_sync'
+      windowId: ctx.windowId,
+      targetContainerId: ctx.targetContainerId,
+      isCrossContainerSwitch: ctx.isCrossContainerSwitch,
+      sidebarAction: ctx.isCrossContainerSwitch ? 'closed' : 'kept_open'
     });
   } catch (err) {
-    console.error('[Manager] GO_TO_TAB_FAILED:', {
-      tabId: numTabId,
-      error: err.message
-    });
-    // Tab might have been closed
+    console.error('[Manager] GO_TO_TAB_FAILED:', { tabId: numTabId, error: err.message });
     _showErrorNotification(`Cannot switch to tab: ${err.message}`);
   }
 }
 
 /**
  * Release sidebar focus to allow tab switch to take effect
- * v1.6.4-v4 - Extracted from _handleGoToTabGroup to reduce complexity
- * v1.6.4-v4 - FIX: Sidebar stays closed after Go to Tab for cross-container support
+ * v1.6.4-v2 - Extracted from _handleGoToTabGroup to reduce complexity
+ * v1.6.4-v2 - FIX: Sidebar stays closed after Go to Tab for cross-container support
  *   - Reopening sidebar would retain original container context, defeating the purpose
  *   - User can manually reopen sidebar when needed
- * v1.6.4-v5 - FIX BUG #1: Enhanced logging for cross-container switch
+ * v1.6.4-v3 - FIX BUG #1: Enhanced logging for cross-container switch
  *
- * @deprecated v1.6.4-v6 - No longer used. Sidebar is now closed synchronously at the
- * start of _handleGoToTabGroup() to fix Firefox user input handler requirement.
- * Firefox requires sidebarAction.close() to be called synchronously from user input
- * handler - any await before it breaks the call chain. Retained for reference.
+ * @deprecated v1.6.4-v5 - No longer used. Smart Go to Tab now handles sidebar close
+ * conditionally based on cross-container detection. Retained for reference.
  *
  * @private
  * @param {number} tabId - Tab ID for logging
@@ -8543,10 +8681,9 @@ async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerS
 /**
  * Schedule sidebar reopen after delay (fire-and-forget)
  * v1.6.4-v4 - Extracted helper function
- *
- * @deprecated Not currently used - retained for potential future sidebar operations
- * that may need delayed reopen after temporary close. The Go to Tab flow no longer
- * uses this because sidebars must stay closed for reliable cross-container focus transfer.
+ * v1.6.4-v5 - Now used for cross-container Go to Tab in "All Containers" view
+ *   - After closing sidebar and switching to a different container tab,
+ *   - reopen sidebar so user can continue managing Quick Tabs
  *
  * @private
  * @param {number} tabId - Tab ID for logging
@@ -9656,9 +9793,10 @@ function _getActionDispatcher(action) {
   return dispatchers[action];
 }
 
+// v1.6.4-v5 - FIX Bug #2: Use _handleGoToTabGroup for container-aware tab switching
 async function _dispatchGoToTab({ tabId, clickTimestamp }) {
   console.log('[Manager] ACTION_DISPATCH: goToTab', { tabId, timestamp: Date.now() });
-  await goToTab(parseInt(tabId));
+  await _handleGoToTabGroup(parseInt(tabId, 10));
   console.log('[Manager] ACTION_COMPLETE: goToTab', {
     tabId,
     durationMs: Date.now() - clickTimestamp
@@ -10866,15 +11004,14 @@ function _logOperationResult({
 
 /**
  * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
+ * @deprecated v1.6.4-v5 - Use _handleGoToTabGroup() instead for container-aware switching
+ * Retained for backwards compatibility with any code that may still call this function.
  */
+// eslint-disable-next-line no-unused-vars
 async function goToTab(tabId) {
-  try {
-    await browser.tabs.update(tabId, { active: true });
-    console.log(`Switched to tab ${tabId}`);
-  } catch (err) {
-    console.error(`Error switching to tab ${tabId}:`, err);
-    alert('Could not switch to tab - it may have been closed.');
-  }
+  console.warn('[Manager] DEPRECATED: goToTab() called - use _handleGoToTabGroup() instead');
+  // v1.6.4-v5 - FIX Bug #2: Delegate to container-aware function
+  await _handleGoToTabGroup(tabId);
 }
 
 /**

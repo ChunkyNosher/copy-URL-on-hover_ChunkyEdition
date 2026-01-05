@@ -1952,7 +1952,12 @@ function _validateTransferredInMessage(message) {
 
 /**
  * Store minimized snapshot for transferred Quick Tab
- * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
+ * v1.6.4-v4 - Extracted helper to reduce _handleQuickTabTransferredIn complexity
+ * v1.6.4-v5 - Note: After storing, updateTransferredSnapshotWindow must be called
+ *   with the created window to enable restore
+ * v1.6.4-v5 - FIX: Pass currentTabId as newOriginTabId to update savedOriginTabId to destination tab
+ *   This fixes the bug where minimized Quick Tabs transferred to another tab could not be restored
+ *   because the snapshot still contained the OLD origin tab ID from the source tab
  * @private
  * @param {string} quickTabId - Quick Tab ID
  * @param {boolean} isMinimized - Whether Quick Tab is minimized
@@ -1962,13 +1967,18 @@ function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSn
   if (!isMinimized) return;
 
   if (minimizedSnapshot && quickTabsManager?.minimizedManager) {
+    // v1.6.4-v5 - FIX: Pass currentTabId (destination tab) as newOriginTabId
+    // This updates savedOriginTabId to the NEW destination tab instead of keeping the OLD source tab
     const stored = quickTabsManager.minimizedManager.storeTransferredSnapshot(
       quickTabId,
-      minimizedSnapshot
+      minimizedSnapshot,
+      quickTabsManager.currentTabId // Pass destination tab ID to update savedOriginTabId
     );
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Stored minimized snapshot:', {
       quickTabId,
       stored,
+      newOriginTabId: quickTabsManager.currentTabId,
+      oldOriginTabId: minimizedSnapshot.originTabId,
       snapshot: minimizedSnapshot
     });
   } else {
@@ -1985,7 +1995,8 @@ function _storeTransferredMinimizedSnapshot(quickTabId, isMinimized, minimizedSn
  * v1.6.4 - FIX BUG #1: Cross-tab transfer not working
  * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
  * v1.6.4-v3 - FIX BUG #1: Add deduplication check to prevent duplicate creation
- * v1.6.4-v6 - FIX BUG #2 (Minimized Drag Restore): Store minimizedSnapshot for restore
+ * v1.6.4-v4 - FIX BUG #2 (Minimized Drag Restore): Store minimizedSnapshot for restore
+ * v1.6.4-v5 - FIX BUG #3: Call updateTransferredSnapshotWindow after creation
  * @private
  * @param {Object} message - Transfer in message
  * @param {Object} message.quickTab - Full Quick Tab data to create
@@ -2033,7 +2044,8 @@ function _handleQuickTabTransferredIn(message) {
 
 /**
  * Execute Quick Tab creation for transfer
- * v1.6.4-v6 - Extracted helper to reduce _handleQuickTabTransferredIn lines
+ * v1.6.4-v4 - Extracted helper to reduce _handleQuickTabTransferredIn lines
+ * v1.6.4-v5 - FIX BUG #3: Update transferred snapshot with window reference for restore
  * @private
  */
 function _executeTransferredQuickTabCreation(quickTab, createOptions) {
@@ -2052,8 +2064,23 @@ function _executeTransferredQuickTabCreation(quickTab, createOptions) {
     };
     sessionQuickTabs.set(quickTab.id, cachedQuickTab);
 
-    quickTabsManager.createQuickTab(createOptions);
+    const result = quickTabsManager.createQuickTab(createOptions);
     console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Quick Tab created successfully:', quickTab.id);
+
+    // v1.6.4-v5 - FIX BUG #3: Update transferred snapshot with window reference
+    // This is critical for minimized Quick Tabs to be restorable after transfer
+    // NOTE: createQuickTab() returns result.tabWindow directly, NOT an object containing tabWindow
+    if (quickTab.minimized && result && quickTabsManager?.minimizedManager) {
+      const updated = quickTabsManager.minimizedManager.updateTransferredSnapshotWindow(
+        quickTab.id,
+        result // result IS the tabWindow - createQuickTab() returns tabWindow directly
+      );
+      console.log('[Content] QUICK_TAB_TRANSFERRED_IN: Updated snapshot window:', {
+        quickTabId: quickTab.id,
+        updated,
+        hasWindow: !!result
+      });
+    }
 
     _trackAdoptedQuickTab(quickTab.id, quickTabsManager.currentTabId);
   } catch (err) {

@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4-v4** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.4-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,12 +8,44 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4-v4 Status:** Container Filter ✅ | Name Resolution ✅ | Filter
-Persistence ✅
+**🔧 v1.6.4-v5 Status:** Cross-Container Go to Tab Fix ✅ | Toggle Sidebar
+Context Menu ✅ | Minimized Transfer Restore ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.4-v5
+
+**🔧 Go to Tab Cross-Container Fix + Toggle Sidebar + Minimized Transfer ✅**
+
+- ✅ **Go to Tab Same-Container Fix** - Sidebar stays open when switching to
+  tabs in the same Firefox Container
+- ✅ **Go to Tab Cross-Container Reopen** - For "All Containers" view, sidebar
+  closes, switches tab, then reopens after 300ms for continued management
+- ✅ **Toggle Quick Tabs Manager Context Menu** - Right-click to toggle sidebar
+  via `browser.sidebarAction.toggle()` API
+- ✅ **Minimized Quick Tab Transfer Restore** - Minimized Quick Tabs can now be
+  restored after cross-tab transfer (previously required
+  restore-minimize-restore)
+- ✅ **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
+  since `createQuickTab()` returns `tabWindow` directly
+- ✅ **Minimized Transfer Tab ID Fix** - `storeTransferredSnapshot()` accepts
+  destination tab ID; fixes restore reverting to old tab
+- ✅ **Go to Tab Error Handling** - Added `.catch()` error handler; uses
+  container-aware `_handleGoToTabGroup()` for consistency
+- ✅ **Clear Log History Confirmation** - Added `confirm()` dialog before
+  clearing logs with detailed warning message
+- ✅ **Clear Log History Counts** - Shows "X background logs" and "logs from Y
+  tabs" or "No cached logs were present"
+- ✅ **Log Metrics Footer Persistence** - Total log count persists to
+  `storage.local` with 2000ms debounce (survives sidebar close/reopen)
+- ✅ **Minimized Transfer Display Fix** - UICoordinator orphan recovery updates
+  `display: flex`, `visibility: visible`, `opacity: 1` after restore
+- ✅ **Metrics Flush on Sidebar Close** - `beforeunload` handler flushes pending
+  debounced saves immediately before sidebar closes
+- ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
+  browsers with custom "spaces" features
 
 ## 🎉 What's New in v1.6.4-v4
 
@@ -34,82 +66,29 @@ powerful Quick Tabs for browsing links in floating, draggable iframe windows.
 
 ## 🎉 What's New in v1.6.4-v3
 
-**🔧 Log Action Metrics + Transfer Sync Fix + Footer Visibility ✅**
-
-- ✅ **Live Log Action Metrics** - Quick Tab Manager shows Quick Tab count, log
-  actions per second, and total log actions
-- ✅ **Expandable Category Breakdown** - Click metrics to expand/collapse
-  per-category log counts (User Actions, System Ops, Diagnostics)
-- ✅ **Filter-Aware Log Counting** - Metrics only count logs for enabled filter
-  categories in Live Console Output Filters
-- ✅ **Configurable Metrics Interval** - Update frequency from 500ms to 30
-  seconds
-- ✅ **Metrics Toggle** - Enable/disable live metrics in settings
-- ✅ **Metrics on All Tabs** - Metrics footer visible on both Manager and
-  Settings tabs
-- ✅ **Footer Visibility** - Save/Reset buttons hidden on Manager tab, shown
-  only on Settings tabs
-- ✅ **Cross-Tab Transfer Final Fix** - Immediate state refresh after
-  transfer/duplicate ACK
-- ✅ **Total Logs Reset Fix** - "Clear Log History" now resets total log count
-- ✅ **Single Metrics Footer** - Metrics footer only in settings.html (no
-  duplicate in manager)
-- ✅ **Reduced Logging** - Removed verbose DEBOUNCE event-queuing logs
-- ✅ **Export Console Logs includes Manager** - Full debugging with Manager logs
-- ✅ **Stale QUICKTAB_REMOVED Fix** - Transferred Quick Tabs no longer disappear
+**🔧 Log Metrics + Transfer Fix ✅** - Live metrics footer, cross-tab transfer
+sync, single metrics display, reduced logging
 
 ## 🎉 What's New in v1.6.4-v2
 
-**🔧 Title Updates + State Sync + Bug Fixes ✅**
-
-- ✅ **Quick Tab Title Updates** - Titles now update from link text to actual
-  page title after iframe loads
-- ✅ **Move to Current Tab Fix** - Quick Tabs properly appear in Manager after
-  transfer
-- ✅ **Last Quick Tab Close Fix** - Manager properly reflects when all Quick
-  Tabs are closed
-- ✅ **Navigation Title Updates** - Manager updates when navigating within Quick
-  Tab
-- ✅ **Open in New Tab Fix** - Button now closes Quick Tab after opening URL
-- ✅ **Cross-Tab Transfer Fix** - Fixed duplicate messages causing UI desyncs
-- ✅ **UI Flicker Fix** - Optimistic UI for smooth close animations
-- ✅ **Code Health Improvements** - window.js, VisibilityHandler.js, content.js
-  all above 9.0
-- ✅ **New StorageChangeAnalyzer Module** - Extracted from quick-tabs-manager.js
+**🔧 Title Updates + State Sync ✅** - Quick Tab titles update from page,
+transfer/close fixes, UI flicker fix, Code Health 9.0+
 
 ## 🎉 What's New in v1.6.4
 
-**🔧 Drag-and-Drop Manager + Cross-Tab Transfer + Bug Fixes ✅**
+**🔧 Drag-and-Drop Manager + Cross-Tab Transfer ✅**
 
-- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs in Manager via
+- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via
   drag-and-drop
-- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another to transfer
-  it
+- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another
 - ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
-  instead of move
 - ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items
-- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" buttons per
-  group
-- ✅ **Open in New Tab Button** - Per Quick Tab (↗️) in Manager
-- ✅ **Click-to-Front** - Quick Tabs come to front on click (not just drag)
-- ✅ **Open in New Tab Fix** - Added `openTab` to MessageRouter allowlist
-- ✅ **Manager Reordering Persistence** - Tab group order now persists
-- ✅ **Smaller count indicator** - Bigger number in smaller container
-
-**Settings Changes:**
-
-- New "Duplicate Modifier Key" dropdown: Shift (default), Ctrl, None
-- Alt option removed (doesn't work reliably)
+- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" per group
+- ✅ **Click-to-Front** - Quick Tabs come to front on click
 
 ---
 
 ## 🎉 Previous Releases
-
-**v1.6.3.12-v13:** Resize/Move Sync Fix, UI Flicker Fix, Helper Extraction  
-**v1.6.3.12-v12:** Button Operation Fix, Cross-Tab Display, Code Health 8.54  
-**v1.6.3.12-v11:** Cross-Tab Display Fix, Options Page Async Guard  
-**v1.6.3.12-v10:** Port Routing Fix, Manager Button Operations  
-**v1.6.3.12-v9:** Comprehensive Logging, Optimistic UI, Orphan Recovery UI
 
 See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
 
@@ -223,6 +202,6 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 ---
 
-**Version 1.6.4-v4** | [Changelog](docs/CHANGELOG.md) |
+**Version 1.6.4-v5** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
