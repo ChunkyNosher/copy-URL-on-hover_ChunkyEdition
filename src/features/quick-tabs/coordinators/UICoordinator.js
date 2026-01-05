@@ -66,6 +66,11 @@
  *   - destroy() method no longer calls tabWindow.destroy() - only handles Map cleanup
  *   - DestroyHandler is the authoritative deletion path (emits state:deleted)
  *   - UICoordinator.destroy() is just a cleanup listener for state:deleted events
+ * v1.6.4-v5 - FIX BUG #1: Minimized Quick Tab Transfer Restore Not Working
+ *   - ROOT CAUSE: Orphaned window recovery calls restore() but container still has display:none
+ *   - FIX: Added _updateRecoveredWindowDisplay() to update container CSS after restore
+ *   - When a minimized Quick Tab is transferred, it's created with display:none
+ *   - After orphan recovery, the display style must be updated to 'flex' for visibility
  */
 
 import browser from 'webextension-polyfill';
@@ -966,6 +971,11 @@ export class UICoordinator {
         recoveredWindow.restore();
       }
 
+      // v1.6.4-v5 - FIX BUG #1: After restore(), ensure container CSS is updated
+      // The container may have display:none from initial minimized render.
+      // restore() only updates instance state, so we need to update DOM here.
+      this._updateRecoveredWindowDisplay(recoveredWindow, quickTab.id);
+
       // Re-add to renderedTabs Map
       this.renderedTabs.set(quickTab.id, recoveredWindow);
 
@@ -988,6 +998,46 @@ export class UICoordinator {
     }
 
     return null;
+  }
+
+  /**
+   * Update recovered window display after restore
+   * v1.6.4-v5 - FIX BUG #1: Minimized Quick Tab transfer restore not showing
+   *   When a Quick Tab is transferred while minimized, it's created with display:none.
+   *   After orphan recovery calls restore(), the container still has display:none.
+   *   This method updates the container's display style to make it visible.
+   * @private
+   * @param {QuickTabWindow} recoveredWindow - The recovered window instance
+   * @param {string} quickTabId - Quick Tab ID for logging
+   */
+  _updateRecoveredWindowDisplay(recoveredWindow, quickTabId) {
+    if (!recoveredWindow.container) {
+      console.warn('[UICoordinator] Cannot update display - no container:', quickTabId);
+      return;
+    }
+
+    const currentDisplay = recoveredWindow.container.style.display;
+    const wasMinimized = recoveredWindow.minimized;
+
+    // If window is no longer minimized but display is still 'none', fix it
+    if (!wasMinimized && currentDisplay === 'none') {
+      recoveredWindow.container.style.display = 'flex';
+      recoveredWindow.container.style.visibility = 'visible';
+      recoveredWindow.container.style.opacity = '1';
+
+      console.log('[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED:', {
+        id: quickTabId,
+        previousDisplay: currentDisplay,
+        newDisplay: 'flex',
+        minimized: wasMinimized
+      });
+    } else {
+      console.log('[UICoordinator] Recovered window display OK:', {
+        id: quickTabId,
+        display: currentDisplay,
+        minimized: wasMinimized
+      });
+    }
   }
 
   /**

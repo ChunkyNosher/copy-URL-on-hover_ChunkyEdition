@@ -2,7 +2,7 @@
  * Quick Tabs Manager Sidebar Script
  * Manages display and interaction with Quick Tabs across all containers
  *
- * === v1.6.4-v5 LOG METRICS FOOTER PERSISTENCE FIX ===
+ * === v1.6.4-v5 BUG #2: LOG METRICS FOOTER PERSISTENCE FIX (ENHANCED) ===
  * v1.6.4-v5 - FIX: Log metrics footer now persists total count across sidebar close/reopen
  *   - ROOT CAUSE: _totalLogActions was a module-level variable that reset on page reload
  *   - FIX: Persist _totalLogActions to browser.storage.local with debounced writes
@@ -10,6 +10,9 @@
  *   - Added _debouncedSaveTotalLogActions() with 2000ms debounce
  *   - _loadMetricsSettings() now loads persisted total on startup
  *   - _clearLogActionCounts() now clears both variable and storage
+ *   - ENHANCEMENT: Added _handleBeforeUnload() to flush pending saves on sidebar close
+ *   - ENHANCEMENT: Added _saveTotalLogActionsNow() for immediate non-debounced saves
+ *   - This ensures the 2000ms debounce doesn't cause data loss when sidebar closes quickly
  *
  * === v1.6.4-v5 SMART GO TO TAB FIX ===
  * v1.6.4-v5 - FIX BUG #1/#2: Go to Tab now only closes sidebar for cross-container switches
@@ -814,17 +817,43 @@ function _debouncedSaveTotalLogActions() {
   }
   _totalLogActionsSaveTimer = setTimeout(() => {
     _totalLogActionsSaveTimer = null;
-    browser.storage.local.set({ [TOTAL_LOG_ACTIONS_KEY]: _totalLogActions }).catch(err => {
-      // Use original console to avoid recursion
-      if (console._originalWarn) {
-        console._originalWarn('[Manager] METRICS: Failed to persist total log actions', {
-          key: TOTAL_LOG_ACTIONS_KEY,
-          value: _totalLogActions,
-          error: err
-        });
-      }
-    });
+    _saveTotalLogActionsNow();
   }, TOTAL_LOG_ACTIONS_SAVE_DEBOUNCE_MS);
+}
+
+/**
+ * Immediately save total log actions to storage (non-debounced)
+ * v1.6.4-v5 - FIX BUG #2: Called by beforeunload handler to ensure save before sidebar closes
+ * @private
+ */
+function _saveTotalLogActionsNow() {
+  browser.storage.local.set({ [TOTAL_LOG_ACTIONS_KEY]: _totalLogActions }).catch(err => {
+    // Use original console to avoid recursion
+    if (console._originalWarn) {
+      console._originalWarn('[Manager] METRICS: Failed to persist total log actions', {
+        key: TOTAL_LOG_ACTIONS_KEY,
+        value: _totalLogActions,
+        error: err
+      });
+    }
+  });
+}
+
+/**
+ * Handle beforeunload event to flush pending metrics save
+ * v1.6.4-v5 - FIX BUG #2: Log metrics footer resets on sidebar close/reopen
+ *   ROOT CAUSE: The 2000ms debounce may not complete before sidebar closes
+ *   FIX: Immediately save any pending total on beforeunload
+ * Note: Logging removed to minimize unload performance impact
+ * @private
+ */
+function _handleBeforeUnload() {
+  // If there's a pending debounced save, flush it immediately
+  if (_totalLogActionsSaveTimer !== null) {
+    clearTimeout(_totalLogActionsSaveTimer);
+    _totalLogActionsSaveTimer = null;
+    _saveTotalLogActionsNow();
+  }
 }
 
 /**
@@ -1092,6 +1121,7 @@ function _stopMetricsInterval() {
  * v1.6.4-v2 - FEATURE: Live metrics footer
  * v1.6.4-v3 - Added console interceptors for log action tracking
  * v1.6.4-v3 - Task 3: Load live filter settings for filtered log counting
+ * v1.6.4-v5 - FIX BUG #2: Add beforeunload handler to flush pending saves
  * Called on sidebar initialization
  */
 async function initializeMetrics() {
@@ -1120,6 +1150,9 @@ async function initializeMetrics() {
 
   // v1.6.4-v3 - FIX Task 1: Listen for CLEAR_LOG_ACTION_COUNTS from parent window (settings.js)
   window.addEventListener('message', _handleParentWindowMessage);
+
+  // v1.6.4-v5 - FIX BUG #2: Flush pending metrics saves before sidebar closes
+  window.addEventListener('beforeunload', _handleBeforeUnload);
 
   console.log('[Manager] METRICS: Initialization complete');
 }
