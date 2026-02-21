@@ -11,13 +11,13 @@
 describe('Port Lifecycle Edge Cases', () => {
   let mockPort;
   let mockBrowser;
-  let pageShowHandler;
-  let pageHideHandler;
-  let portConnectivity;
+  let _pageShowHandler;
+  let _pageHideHandler;
+  let _portConnectivity;
 
   beforeEach(() => {
     // Reset state
-    portConnectivity = {
+    _portConnectivity = {
       isConnected: true,
       lastHeartbeatTime: Date.now(),
       disconnectHandlerCalled: false
@@ -51,13 +51,13 @@ describe('Port Lifecycle Edge Cases', () => {
     };
 
     // Store event handlers for testing
-    pageShowHandler = null;
-    pageHideHandler = null;
+    _pageShowHandler = null;
+    _pageHideHandler = null;
 
     // Mock addEventListener
     global.addEventListener = jest.fn((event, handler) => {
-      if (event === 'pageshow') pageShowHandler = handler;
-      if (event === 'pagehide') pageHideHandler = handler;
+      if (event === 'pageshow') _pageShowHandler = handler;
+      if (event === 'pagehide') _pageHideHandler = handler;
     });
 
     global.removeEventListener = jest.fn();
@@ -236,7 +236,7 @@ describe('Port Lifecycle Edge Cases', () => {
     test('should drain message queue after port validation completes', async () => {
       const messageQueue = [];
       const processedMessages = [];
-      let isValidatingPort = true;
+      let _isValidatingPort = true;
 
       const processMessage = jest.fn().mockImplementation(msg => {
         processedMessages.push(msg);
@@ -248,7 +248,7 @@ describe('Port Lifecycle Edge Cases', () => {
       messageQueue.push({ action: 'SYNC_STATE' });
 
       // Validation completes
-      isValidatingPort = false;
+      _isValidatingPort = false;
 
       // Drain queue
       while (messageQueue.length > 0) {

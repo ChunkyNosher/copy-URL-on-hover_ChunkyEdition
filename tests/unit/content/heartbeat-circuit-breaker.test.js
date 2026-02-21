@@ -132,7 +132,7 @@ describe('Heartbeat Circuit Breaker', () => {
     test('should follow exponential progression correctly', () => {
       const expectedIntervals = [30000, 60000, 120000, 120000, 120000];
 
-      expectedIntervals.forEach((expected, index) => {
+      expectedIntervals.forEach((expected, _index) => {
         handleHeartbeatFailure();
         expect(currentHeartbeatInterval).toBe(expected);
       });

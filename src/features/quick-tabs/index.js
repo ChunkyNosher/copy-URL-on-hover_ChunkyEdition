@@ -734,7 +734,7 @@ class QuickTabsManager {
     });
   }
 
-  async _readAndLogStorageState() {
+  _readAndLogStorageState() {
     console.log(
       '[QuickTabsManager] v1.6.3.12-v4 _readAndLogStorageState: Checking storage.local availability',
       {

@@ -510,7 +510,7 @@ let _currentScenarioContext = null;
  * v1.6.3.12 - J7: Called by Test Bridge to enable detailed scenario tracking
  * @param {Object} context - Scenario context { scenarioId, scenarioName }
  */
-function enableScenarioLogging(context = {}) {
+function _enableScenarioLogging(context = {}) {
   _scenarioLoggingEnabled = true;
   _currentScenarioContext = context;
   console.log('[Background] SCENARIO_LOGGING_ENABLED:', context);
@@ -520,7 +520,7 @@ function enableScenarioLogging(context = {}) {
  * Disable scenario logging
  * v1.6.3.12 - J7: Called by Test Bridge to disable scenario tracking
  */
-function disableScenarioLogging() {
+function _disableScenarioLogging() {
   _scenarioLoggingEnabled = false;
   _currentScenarioContext = null;
   console.log('[Background] SCENARIO_LOGGING_DISABLED');
@@ -534,7 +534,7 @@ function disableScenarioLogging() {
  * @param {string} description - Step description
  * @param {Object} data - Additional data to log
  */
-function logScenarioStep(scenarioId, step, description, data = {}) {
+function _logScenarioStep(scenarioId, step, description, data = {}) {
   if (!_scenarioLoggingEnabled) return;
 
   console.log(`[SCENARIO_LOG] ${scenarioId}_STEP_${step}: ${description}`, {
@@ -1434,7 +1434,7 @@ async function tryLoadFromSyncStorage() {
  *
  * @returns {Promise<void>}
  */
-async function saveMigratedToUnifiedFormat() {
+async function _saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
@@ -6151,7 +6151,7 @@ function handleUpdateQuickTabMessage(message, sender) {
  * v1.6.3.12 - J5: Enhanced broadcast error handling with per-target logging
  * @param {number} tabId - Tab ID to notify
  */
-function notifyContentScriptOfStateChange(tabId) {
+function _notifyContentScriptOfStateChange(tabId) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {

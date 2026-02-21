@@ -211,12 +211,12 @@ describe('Hydration Drain Lock', () => {
     test('should prevent double-drain on concurrent calls', async () => {
       await queuePreHydrationOperation({ id: 'op-1' });
 
-      let drainStartCount = 0;
+      let _drainStartCount = 0;
       const originalDrain = drainPreHydrationQueue;
 
       // Track drain calls
       const trackedDrain = async () => {
-        drainStartCount++;
+        _drainStartCount++;
         return originalDrain();
       };
 

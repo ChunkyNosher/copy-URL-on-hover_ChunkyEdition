@@ -615,7 +615,7 @@ export class SyncStorageAdapter extends StorageAdapter {
    * v1.6.3.12-v4 - Extracted for Code Health
    * @private
    */
-  async _performDataMigration(correlationId, currentState, state) {
+  _performDataMigration(correlationId, currentState, state) {
     const containersToMigrate = currentState.containers || state.containers;
     const containerKeys = Object.keys(containersToMigrate || {});
 

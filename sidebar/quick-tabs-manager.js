@@ -396,7 +396,7 @@ const SCROLL_POSITION_SAVE_DEBOUNCE_MS = 200;
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 // v1.6.4 - Note: SAVEID_RECONCILED and SAVEID_CLEARED now imported from StorageChangeAnalyzer.js
 const SAVEID_RECONCILED = _SAVEID_RECONCILED_FROM_SCA;
-const SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
+const _SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
@@ -1320,7 +1320,7 @@ const ACK_TIMEOUT_MS = 1000;
  * Delay before attempting Quick Tabs port reconnection (2 seconds)
  * v1.6.3.12 - Option 4: Centralized reconnect delay constant
  */
-const QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS = 2000;
+const _QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS = 2000;
 
 /**
  * Quick Tabs port connection to background
@@ -3205,7 +3205,7 @@ function requestAllQuickTabsViaPort() {
  * v1.6.3.12-v9 - FIX Issue #2: Add comprehensive logging for Close All operation
  * @returns {boolean} Success status
  */
-function closeAllQuickTabsViaPort() {
+function _closeAllQuickTabsViaPort() {
   const timestamp = Date.now();
   const quickTabCount = _allQuickTabsFromPort.length;
 
@@ -7667,7 +7667,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
-async function _checkAndReloadStaleState() {
+function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
@@ -11025,7 +11025,7 @@ async function goToTab(tabId) {
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
  */
-async function minimizeQuickTab(quickTabId) {
+async function _minimizeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('min', quickTabId);
   const startTime = Date.now();
 
@@ -11764,7 +11764,7 @@ function _handleRestoreOperationResult(quickTabId, result, correlationId, durati
  * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
-async function restoreQuickTab(quickTabId) {
+async function _restoreQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('restore', quickTabId);
   const startTime = Date.now();
 
@@ -11928,7 +11928,7 @@ function _logRestoreVerificationResult(quickTabId, tab) {
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
  */
-async function closeQuickTab(quickTabId) {
+async function _closeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('close', quickTabId);
   const startTime = Date.now();
 

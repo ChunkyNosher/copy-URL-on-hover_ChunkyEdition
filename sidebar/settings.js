@@ -151,7 +151,7 @@ async function getContentScriptLogs() {
  * v1.6.4-v3 - FEATURE: Include Manager/sidebar logs in export
  * @returns {Promise<Array>} Array of log entries
  */
-async function getManagerLogs() {
+function getManagerLogs() {
   console.log('[Settings] getManagerLogs: Requesting logs from Manager iframe...');
 
   const iframe = document.querySelector('iframe');

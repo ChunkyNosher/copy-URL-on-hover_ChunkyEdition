@@ -238,7 +238,6 @@ import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
-import { cleanUrl } from './utils/url-cleaner.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.11-v11 - FIX Issue #47: Import setWritingContainerId for container isolation
@@ -251,6 +250,7 @@ import {
   getWritingContainerId,
   TAB_ID_CALLER_CONTEXT
 } from './utils/storage-utils.js';
+import { cleanUrl } from './utils/url-cleaner.js';
 
 console.log('[Copy-URL-on-Hover] All module imports completed successfully');
 

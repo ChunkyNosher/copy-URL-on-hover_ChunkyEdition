@@ -161,7 +161,7 @@ describe('Adaptive Timeout Calculations', () => {
 
       // 95th percentile index: floor(10 * 0.95) = 9
       const p95Index = Math.floor(sorted.length * 0.95);
-      const p95Value = sorted[p95Index];
+      const _p95Value = sorted[p95Index];
 
       expect(p90Index).toBe(9);
       expect(p90Value).toBe(1000); // Index 9 = 1000ms
