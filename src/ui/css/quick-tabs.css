@@ -13,30 +13,30 @@
   --qt-bg-surface: #1e1e1e;
   --qt-bg-elevated: #2a2a2a;
   --qt-bg-glass: rgba(30, 30, 30, 0.85);
-  
+
   /* Text Colors */
   --qt-text-primary: #e8e8e8;
   --qt-text-secondary: #a0a0a0;
-  
+
   /* Accent & Status Colors */
   --qt-accent-primary: #6c5ce7;
   --qt-accent-hover: #5849c9;
   --qt-accent-active: #4839ab;
   --qt-success: #00b894;
   --qt-danger: #e17055;
-  
+
   /* Border Colors */
   --qt-border-normal: #404040;
   --qt-border-accent: var(--qt-accent-primary);
-  
+
   /* Shadows */
   --qt-shadow-window: 0 16px 48px rgba(0, 0, 0, 0.6);
   --qt-shadow-button: 0 2px 6px rgba(0, 0, 0, 0.3);
-  
+
   /* Border Radius */
   --qt-radius-window: 12px;
   --qt-radius-button: 6px;
-  
+
   /* Transitions */
   --qt-transition: 0.2s ease;
 }
@@ -48,12 +48,12 @@
     --qt-bg-surface: #ffffff;
     --qt-bg-elevated: #f0f0f0;
     --qt-bg-glass: rgba(255, 255, 255, 0.9);
-    
+
     --qt-text-primary: #212529;
     --qt-text-secondary: #6c757d;
-    
+
     --qt-border-normal: #dee2e6;
-    
+
     --qt-shadow-window: 0 16px 48px rgba(0, 0, 0, 0.12);
     --qt-shadow-button: 0 2px 6px rgba(0, 0, 0, 0.08);
   }
@@ -74,16 +74,22 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: box-shadow var(--qt-transition), transform var(--qt-transition);
+  transition:
+    box-shadow var(--qt-transition),
+    transform var(--qt-transition);
 }
 
 .quick-tab-container:hover {
-  box-shadow: 0 20px 56px rgba(108, 92, 231, 0.3), var(--qt-shadow-window);
+  box-shadow:
+    0 20px 56px rgba(108, 92, 231, 0.3),
+    var(--qt-shadow-window);
 }
 
 .quick-tab-container.quick-tab-active {
   border-color: var(--qt-accent-primary);
-  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.25), var(--qt-shadow-window);
+  box-shadow:
+    0 0 0 3px rgba(108, 92, 231, 0.25),
+    var(--qt-shadow-window);
 }
 
 /* ==================== QUICK TAB TITLE BAR ==================== */
@@ -108,10 +114,12 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: linear-gradient(90deg, 
-    transparent 0%, 
-    rgba(255, 255, 255, 0.1) 50%, 
-    transparent 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
   opacity: 0;
   transition: opacity var(--qt-transition);
 }
@@ -122,8 +130,12 @@
 }
 
 @keyframes shimmer {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 /* ==================== QUICK TAB TITLE ==================== */
@@ -250,7 +262,9 @@
     var(--qt-accent-primary) 100%
   );
   opacity: 0.4;
-  transition: opacity var(--qt-transition), transform var(--qt-transition);
+  transition:
+    opacity var(--qt-transition),
+    transform var(--qt-transition);
   border-bottom-right-radius: var(--qt-radius-window);
 }
 
@@ -266,9 +280,21 @@
   right: 2px;
   width: 16px;
   height: 16px;
-  background: 
-    linear-gradient(135deg, transparent 60%, rgba(255, 255, 255, 0.3) 60%, rgba(255, 255, 255, 0.3) 62%, transparent 62%),
-    linear-gradient(135deg, transparent 68%, rgba(255, 255, 255, 0.3) 68%, rgba(255, 255, 255, 0.3) 70%, transparent 70%);
+  background:
+    linear-gradient(
+      135deg,
+      transparent 60%,
+      rgba(255, 255, 255, 0.3) 60%,
+      rgba(255, 255, 255, 0.3) 62%,
+      transparent 62%
+    ),
+    linear-gradient(
+      135deg,
+      transparent 68%,
+      rgba(255, 255, 255, 0.3) 68%,
+      rgba(255, 255, 255, 0.3) 70%,
+      transparent 70%
+    );
   border-bottom-right-radius: var(--qt-radius-window);
 }
 
@@ -322,17 +348,17 @@
     padding: 4px 8px;
     font-size: 11px;
   }
-  
+
   .quick-tab-close-btn {
     width: 24px;
     height: 24px;
     font-size: 14px;
   }
-  
+
   .quick-tab-titlebar {
     padding: 8px 12px;
   }
-  
+
   .quick-tab-title {
     font-size: 12px;
   }
@@ -354,7 +380,7 @@
   .quick-tab-container {
     border-width: 3px;
   }
-  
+
   .quick-tab-btn,
   .quick-tab-close-btn {
     border-width: 2px;
@@ -366,16 +392,16 @@
   .quick-tab-titlebar {
     background: linear-gradient(135deg, var(--qt-accent-primary) 0%, #8477eb 100%);
   }
-  
+
   .quick-tab-btn {
     background: rgba(255, 255, 255, 0.3);
     border-color: rgba(255, 255, 255, 0.5);
   }
-  
+
   .quick-tab-btn:hover {
     background: rgba(255, 255, 255, 0.5);
   }
-  
+
   .quick-tab-close-btn {
     background: rgba(225, 112, 85, 0.3);
     border-color: rgba(225, 112, 85, 0.5);

@@ -17,33 +17,33 @@
         --bg-surface: #1e1e1e;
         --bg-elevated: #2a2a2a;
         --bg-hover: rgba(108, 92, 231, 0.1);
-        
+
         /* Text Colors */
         --text-primary: #e8e8e8;
         --text-secondary: #a0a0a0;
         --text-tertiary: #707070;
-        
+
         /* Accent & Status Colors */
         --accent-primary: #6c5ce7;
         --accent-hover: #5849c9;
         --success: #00b894;
         --danger: #e17055;
         --warning: #fdcb6e;
-        
+
         /* Border Colors */
         --border-subtle: #333333;
         --border-normal: #404040;
-        
+
         /* Shadows */
         --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
         --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
         --shadow-focus: 0 0 0 3px rgba(108, 92, 231, 0.25);
-        
+
         /* Radius */
         --radius-sm: 4px;
         --radius-md: 8px;
         --radius-lg: 12px;
-        
+
         /* Transitions */
         --transition: 0.2s ease;
       }
@@ -209,8 +209,14 @@
       }
 
       @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(-4px); }
-        to { opacity: 1; transform: translateY(0); }
+        from {
+          opacity: 0;
+          transform: translateY(-4px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
       }
 
       .tab-content.active {
@@ -236,7 +242,9 @@
         padding: 16px;
         border: 1px solid var(--border-subtle);
         border-radius: var(--radius-md);
-        transition: border-color var(--transition), box-shadow var(--transition);
+        transition:
+          border-color var(--transition),
+          box-shadow var(--transition);
       }
 
       .setting-group:hover {
@@ -264,7 +272,9 @@
         border-radius: var(--radius-sm);
         font-size: 13px;
         margin-bottom: 8px;
-        transition: border-color var(--transition), box-shadow var(--transition);
+        transition:
+          border-color var(--transition),
+          box-shadow var(--transition);
       }
 
       .setting-group input[type='text']:focus,
@@ -451,8 +461,14 @@
       }
 
       @keyframes slideDown {
-        from { opacity: 0; max-height: 0; }
-        to { opacity: 1; max-height: 300px; }
+        from {
+          opacity: 0;
+          max-height: 0;
+        }
+        to {
+          opacity: 1;
+          max-height: 300px;
+        }
       }
 
       .metrics-details-header {

@@ -862,20 +862,20 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 ### Which Limitations Are Addressed by ROBUST-QUICKTABS-ARCHITECTURE
 
-| Limitation                      | Addressed  | How                                                          |
-| ------------------------------- | ---------- | ------------------------------------------------------------ |
-| 1.1 - Sidebar tabs API          | ✅ YES     | Background queries tabs, sends results via message           |
+| Limitation                      | Addressed  | How                                                         |
+| ------------------------------- | ---------- | ----------------------------------------------------------- |
+| 1.1 - Sidebar tabs API          | ✅ YES     | Background queries tabs, sends results via message          |
 | 1.2 - Sidebar message relay     | ✅ YES     | All sidebar↔content communication routes through background |
-| 2.1 - Content script tabs API   | ✅ YES     | Background provides tab info during init                     |
-| 2.3 - Content script navigation | ✅ YES     | Health check detects missing updates, triggers refresh       |
-| 3.1 - Storage event ordering    | ✅ YES     | Revision versioning enforces ordering                        |
-| 3.2 - storage.sync quota        | ✅ YES     | Use storage.local (5MB+) not storage.sync (5KB)              |
-| 4.1 - Background idle timeout   | ⚠️ PARTIAL | Keepalive every 15s prevents timeout                         |
-| 4.2 - Port disconnection        | ✅ YES     | Removed ports entirely, use stateless sendMessage            |
-| 5.1 - Message timeout           | ✅ YES     | Explicit 3000ms timeout + storage fallback                   |
-| 5.2 - Navigation message loss   | ✅ YES     | 5s health check detects failure, requests fresh state        |
-| 6.1 - Sidebar origin scope      | ✅ YES     | Manager shows global + grouping, content shows scoped        |
-| 6.2 - Tab context verification  | ✅ YES     | Handshake + originTabId in writes                            |
+| 2.1 - Content script tabs API   | ✅ YES     | Background provides tab info during init                    |
+| 2.3 - Content script navigation | ✅ YES     | Health check detects missing updates, triggers refresh      |
+| 3.1 - Storage event ordering    | ✅ YES     | Revision versioning enforces ordering                       |
+| 3.2 - storage.sync quota        | ✅ YES     | Use storage.local (5MB+) not storage.sync (5KB)             |
+| 4.1 - Background idle timeout   | ⚠️ PARTIAL | Keepalive every 15s prevents timeout                        |
+| 4.2 - Port disconnection        | ✅ YES     | Removed ports entirely, use stateless sendMessage           |
+| 5.1 - Message timeout           | ✅ YES     | Explicit 3000ms timeout + storage fallback                  |
+| 5.2 - Navigation message loss   | ✅ YES     | 5s health check detects failure, requests fresh state       |
+| 6.1 - Sidebar origin scope      | ✅ YES     | Manager shows global + grouping, content shows scoped       |
+| 6.2 - Tab context verification  | ✅ YES     | Handshake + originTabId in writes                           |
 
 ---
 

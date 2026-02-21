@@ -279,8 +279,7 @@ paths
   BroadcastChannel)
 - Background → Manager: ❌ Broken (no broadcasts, only port heartbeats)
 - Manager → Background: ✅ Works (runtime.sendMessage + port)
-- Content Scripts ↔ Manager: ⚠️ Partial (BroadcastChannel for alerts, not
-  state)
+- Content Scripts ↔ Manager: ⚠️ Partial (BroadcastChannel for alerts, not state)
 
 ---
 

@@ -4658,7 +4658,7 @@ function scheduleRender(source = 'unknown', correlationId = null) {
 
   _scheduleRenderDebounceTimer = setTimeout(() => {
     _scheduleRenderDebounceTimer = null;
-    
+
     // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
     // This ensures DOM mutations are batched efficiently and prevents layout thrashing
     requestAnimationFrame(() => {

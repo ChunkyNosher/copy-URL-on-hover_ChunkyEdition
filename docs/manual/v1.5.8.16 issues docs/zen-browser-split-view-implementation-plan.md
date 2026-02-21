@@ -1739,8 +1739,7 @@ panes.
    - **Estimated Impact**: <5% increase in message volume
 
 4. **Position Calculation**:
-   - **Issue**: Relative ↔ absolute position conversion on every position
-     change
+   - **Issue**: Relative ↔ absolute position conversion on every position change
    - **Mitigation**: Calculate only when needed (drag end, tab switch)
    - **Estimated Impact**: <0.5ms per calculation
 

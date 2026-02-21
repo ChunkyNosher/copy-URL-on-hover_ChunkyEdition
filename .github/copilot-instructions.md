@@ -187,18 +187,18 @@ const quickTabsSessionState = {
 
 ## Architecture Classes (Key Methods)
 
-| Class                | Methods                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| QuickTabStateMachine | `canTransition()`, `transition()`                                                    |
-| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`                                               |
-| TabStateManager      | `getTabState()`, `setTabState()`                                                     |
-| MessageRouter        | ACTION-based routing                                                                 |
-| EventBus             | `on()`, `off()`, `emit()`, `once()`                                                  |
-| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`                                             |
-| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_handleBeforeUnload()`         |
-| UICoordinator        | `_updateRecoveredWindowDisplay()` for orphan window recovery                         |
-| CreateHandler        | `getWritingContainerId()` (v3)                                                       |
-| TestBridge           | `getManagerState()` (v3)                                                             |
+| Class                | Methods                                                                      |
+| -------------------- | ---------------------------------------------------------------------------- |
+| QuickTabStateMachine | `canTransition()`, `transition()`                                            |
+| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`                                       |
+| TabStateManager      | `getTabState()`, `setTabState()`                                             |
+| MessageRouter        | ACTION-based routing                                                         |
+| EventBus             | `on()`, `off()`, `emit()`, `once()`                                          |
+| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`                                     |
+| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_handleBeforeUnload()` |
+| UICoordinator        | `_updateRecoveredWindowDisplay()` for orphan window recovery                 |
+| CreateHandler        | `getWritingContainerId()` (v3)                                               |
+| TestBridge           | `getManagerState()` (v3)                                                     |
 
 ---
 
@@ -229,8 +229,7 @@ const quickTabsSessionState = {
 `[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
 `[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`,
 `[Manager] METRICS_FOOTER_LOADED:`, `METRICS_FOOTER_SAVED:`,
-`METRICS_FOOTER_FLUSHED:`,
-`[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED:`
+`METRICS_FOOTER_FLUSHED:`, `[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED:`
 
 **v1.6.4-v4:** `CONTAINER_FILTER:`, `CONTEXT_MENU:`, `SNAPSHOT_*:`
 
@@ -306,22 +305,22 @@ Tabs"
 
 ### Key Files
 
-| File                                                    | Features                                        |
-| ------------------------------------------------------- | ----------------------------------------------- |
-| `background.js`                                         | In-memory state, port handlers                  |
-| `sidebar/quick-tabs-manager.js`                         | Port queries, container filter (v1.6.4-v4)      |
-| `src/content.js`                                        | Port messaging, clean URL copy (v1.6.4-v7)      |
-| `src/utils/url-cleaner.js`                              | URL tracking param removal (v1.6.4-v7)          |
-| `src/features/quick-tabs/minimized-manager.js`          | Snapshot storage for minimize/restore           |
-| `src/features/quick-tabs/coordinators/UICoordinator.js` | Orphan recovery, display fix (v1.6.4-v5)        |
-| `sidebar/managers/ContainerManager.js`                  | Container isolation, filtering (v1.6.4-v4)      |
+| File                                                    | Features                                   |
+| ------------------------------------------------------- | ------------------------------------------ |
+| `background.js`                                         | In-memory state, port handlers             |
+| `sidebar/quick-tabs-manager.js`                         | Port queries, container filter (v1.6.4-v4) |
+| `src/content.js`                                        | Port messaging, clean URL copy (v1.6.4-v7) |
+| `src/utils/url-cleaner.js`                              | URL tracking param removal (v1.6.4-v7)     |
+| `src/features/quick-tabs/minimized-manager.js`          | Snapshot storage for minimize/restore      |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | Orphan recovery, display fix (v1.6.4-v5)   |
+| `sidebar/managers/ContainerManager.js`                  | Container isolation, filtering (v1.6.4-v4) |
 
 ### Storage (v1.6.3.12+)
 
 **In-Memory State:** `quickTabsSessionState` in background.js  
-**Persistence:** `browser.storage.local` + startup cleanup
-**Note:** `browser.storage.session` REMOVED - uses `storage.local` + startup
-cleanup for session-only behavior.
+**Persistence:** `browser.storage.local` + startup cleanup **Note:**
+`browser.storage.session` REMOVED - uses `storage.local` + startup cleanup for
+session-only behavior.
 
 ### Port Messages (v1.6.4+)
 

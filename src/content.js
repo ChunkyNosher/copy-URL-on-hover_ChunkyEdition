@@ -3283,7 +3283,7 @@ async function handleCopyURL(url) {
   try {
     // Clean the URL to remove tracking parameters
     const cleanedUrl = cleanUrl(url);
-    
+
     logNormal('clipboard', 'Cleaning', 'URL cleaned', {
       original: url,
       cleaned: cleanedUrl,

@@ -135,32 +135,32 @@ function removeTrackingParams(params) {
  */
 function buildCleanedUrl(url, params) {
   let cleanedUrl = url.origin + url.pathname;
-  
+
   if (hasAnyParams(params)) {
     cleanedUrl += '?' + params.toString();
   }
-  
+
   if (url.hash) {
     cleanedUrl += url.hash;
   }
-  
+
   return cleanedUrl;
 }
 
 /**
  * Clean tracking and affiliate parameters from a URL
- * 
+ *
  * @param {string} urlString - The URL string to clean
  * @returns {string} - The cleaned URL string, or original if invalid
- * 
+ *
  * @example
  * cleanUrl('https://example.com/page?utm_source=twitter&id=123')
  * // Returns: 'https://example.com/page?id=123'
- * 
+ *
  * @example
  * cleanUrl('https://example.com/page?utm_source=twitter')
  * // Returns: 'https://example.com/page'
- * 
+ *
  * @example
  * cleanUrl('invalid-url')
  * // Returns: 'invalid-url'
@@ -174,22 +174,21 @@ export function cleanUrl(urlString) {
   try {
     const url = new URL(urlString);
     const params = url.searchParams;
-    
+
     // If no params, return as-is (optimization)
     if (!hasAnyParams(params)) {
       return urlString;
     }
-    
+
     // Remove tracking parameters
     const removedAny = removeTrackingParams(params);
-    
+
     // If nothing was removed, return original
     if (!removedAny) {
       return urlString;
     }
-    
+
     return buildCleanedUrl(url, params);
-    
   } catch (error) {
     // Invalid URL - return original string unchanged
     return urlString;

@@ -46,7 +46,8 @@ describe('URL Cleaner', () => {
       });
 
       test('should remove multiple UTM parameters', () => {
-        const url = 'https://example.com/page?utm_source=twitter&utm_medium=social&utm_campaign=spring';
+        const url =
+          'https://example.com/page?utm_source=twitter&utm_medium=social&utm_campaign=spring';
         const expected = 'https://example.com/page';
         expect(cleanUrl(url)).toBe(expected);
       });
@@ -58,7 +59,8 @@ describe('URL Cleaner', () => {
       });
 
       test('should handle mixed tracking and non-tracking parameters', () => {
-        const url = 'https://example.com/page?id=123&utm_source=twitter&category=news&fbclid=abc123';
+        const url =
+          'https://example.com/page?id=123&utm_source=twitter&category=news&fbclid=abc123';
         const expected = 'https://example.com/page?id=123&category=news';
         expect(cleanUrl(url)).toBe(expected);
       });
@@ -175,7 +177,8 @@ describe('URL Cleaner', () => {
 
     describe('real-world URLs', () => {
       test('should clean Amazon product URL', () => {
-        const url = 'https://www.amazon.com/product/dp/B08N5WRWNW?tag=test-20&linkCode=ogi&th=1&psc=1';
+        const url =
+          'https://www.amazon.com/product/dp/B08N5WRWNW?tag=test-20&linkCode=ogi&th=1&psc=1';
         const expected = 'https://www.amazon.com/product/dp/B08N5WRWNW?th=1';
         expect(cleanUrl(url)).toBe(expected);
       });
@@ -199,13 +202,15 @@ describe('URL Cleaner', () => {
       });
 
       test('should clean email campaign URL', () => {
-        const url = 'https://example.com/page?utm_source=newsletter&utm_medium=email&utm_campaign=july2024&id=123';
+        const url =
+          'https://example.com/page?utm_source=newsletter&utm_medium=email&utm_campaign=july2024&id=123';
         const expected = 'https://example.com/page?id=123';
         expect(cleanUrl(url)).toBe(expected);
       });
 
       test('should clean URL with multiple tracking systems', () => {
-        const url = 'https://example.com/page?id=123&utm_source=twitter&fbclid=abc&gclid=def&_ga=xyz';
+        const url =
+          'https://example.com/page?id=123&utm_source=twitter&fbclid=abc&gclid=def&_ga=xyz';
         const expected = 'https://example.com/page?id=123';
         expect(cleanUrl(url)).toBe(expected);
       });
@@ -213,7 +218,8 @@ describe('URL Cleaner', () => {
 
     describe('parameter order preservation', () => {
       test('should preserve order of remaining parameters', () => {
-        const url = 'https://example.com/page?first=1&utm_source=twitter&second=2&fbclid=abc&third=3';
+        const url =
+          'https://example.com/page?first=1&utm_source=twitter&second=2&fbclid=abc&third=3';
         const cleaned = cleanUrl(url);
         // Should maintain the order: first, second, third
         expect(cleaned).toBe('https://example.com/page?first=1&second=2&third=3');

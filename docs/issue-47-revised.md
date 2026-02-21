@@ -2289,7 +2289,8 @@ succeeded.
 ## Scenario 54: Metrics Persistence Flush Before Sidebar Close (v1.6.4-v5)
 
 **Category:** Quick Tabs Manager - Settings  
-**Feature:** `beforeunload` handler flushes pending debounced saves immediately  
+**Feature:** `beforeunload` handler flushes pending debounced saves
+immediately  
 **Version:** v1.6.4-v5
 
 ### Setup
@@ -2310,13 +2311,13 @@ succeeded.
 
 ### Expected Behavior
 
-| Step | Result                                                             |
-| ---- | ------------------------------------------------------------------ |
-| 2    | Metrics footer updates to show ~52 total (42 + 10 new actions)     |
-| 3    | `beforeunload` triggers `_saveTotalLogActionsNow()` immediately    |
-| 3    | Debounced save is flushed (not lost due to 2000ms debounce delay)  |
-| 5    | Total count is preserved at ~52 (all actions saved before close)   |
-| 5    | No lost log actions from rapid-close scenario                      |
+| Step | Result                                                            |
+| ---- | ----------------------------------------------------------------- |
+| 2    | Metrics footer updates to show ~52 total (42 + 10 new actions)    |
+| 3    | `beforeunload` triggers `_saveTotalLogActionsNow()` immediately   |
+| 3    | Debounced save is flushed (not lost due to 2000ms debounce delay) |
+| 5    | Total count is preserved at ~52 (all actions saved before close)  |
+| 5    | No lost log actions from rapid-close scenario                     |
 
 ### Root Cause Analysis
 
@@ -2356,7 +2357,8 @@ before the sidebar closes.
 2. Examples:
    - YouTube: `https://youtube.com/watch?v=abc123&si=tracking&feature=share`
    - Amazon: `https://amazon.com/dp/B123?tag=affiliate-20&linkCode=ogi&ref_=abc`
-   - Any site with UTM: `https://example.com/page?id=1&utm_source=twitter&utm_medium=social`
+   - Any site with UTM:
+     `https://example.com/page?id=1&utm_source=twitter&utm_medium=social`
 
 ### Test Steps
 
@@ -2422,13 +2424,13 @@ before the sidebar closes.
 
 ### Expected Behavior
 
-| Step | Result                                                        |
-| ---- | ------------------------------------------------------------- |
-| 1    | Dark theme is default (#121212 background)                    |
-| 2    | Accent color is purple-blue, not green                        |
-| 3    | Quick Tab window has dark title bar with glass-morphism       |
-| 4    | Light mode override via `prefers-color-scheme: light`         |
-| 5    | All UI components adapt to light theme consistently           |
+| Step | Result                                                  |
+| ---- | ------------------------------------------------------- |
+| 1    | Dark theme is default (#121212 background)              |
+| 2    | Accent color is purple-blue, not green                  |
+| 3    | Quick Tab window has dark title bar with glass-morphism |
+| 4    | Light mode override via `prefers-color-scheme: light`   |
+| 5    | All UI components adapt to light theme consistently     |
 
 ### Key Implementation Details
 
@@ -2473,12 +2475,12 @@ before the sidebar closes.
 
 ### Expected Behavior
 
-| Step | Result                                                           |
-| ---- | ---------------------------------------------------------------- |
-| 1    | Operations work normally                                         |
-| 2    | Console shows only warnings/errors (not verbose logs)            |
-| 3    | Debug mode enables verbose logging                               |
-| 5    | Full diagnostic logging available when needed                    |
+| Step | Result                                                |
+| ---- | ----------------------------------------------------- |
+| 1    | Operations work normally                              |
+| 2    | Console shows only warnings/errors (not verbose logs) |
+| 3    | Debug mode enables verbose logging                    |
+| 5    | Full diagnostic logging available when needed         |
 
 ### Key Implementation Details
 
@@ -2505,5 +2507,6 @@ before the sidebar closes.
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** February 21, 2026  
+**Last
+Review Date:** February 21, 2026  
 **Behavior Model:** Tab-Scoped (v1.6.4-v7)

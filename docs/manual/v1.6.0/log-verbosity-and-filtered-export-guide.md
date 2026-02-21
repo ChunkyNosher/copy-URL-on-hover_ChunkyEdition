@@ -259,7 +259,7 @@ enhanced-logging-implementation-guide.md:**
 | `config`            | Configuration        | Settings load/change operations       | Config load, setting changes, validation                |
 | `state`             | State Management     | State changes and access              | State updates, batch changes, critical state            |
 | `storage`           | Browser Storage      | Storage read/write operations         | Storage get/set, sync events, quota                     |
-| `messaging`         | Message Passing      | Inter-script communication            | Background ↔ Content messaging, message routing        |
+| `messaging`         | Message Passing      | Inter-script communication            | Background ↔ Content messaging, message routing         |
 | `webrequest`        | Web Requests         | WebRequest API operations             | Header modifications, iframe loading, request lifecycle |
 | `tabs`              | Tab Management       | Browser tab operations                | Tab created, activated, closed, updated                 |
 | `performance`       | Performance          | Timing and metrics                    | Operation duration, slow operations, benchmarks         |

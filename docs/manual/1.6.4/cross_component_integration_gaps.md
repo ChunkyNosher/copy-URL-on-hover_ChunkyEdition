@@ -21,14 +21,14 @@ particularly affect Quick Tabs Manager consistency and multi-tab reliability.
 
 ## Issues Overview
 
-| Issue                                                 | Component                                           | Severity | Root Cause                                                                       |
-| ----------------------------------------------------- | --------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| Issue                                                 | Component                                          | Severity | Root Cause                                                                       |
+| ----------------------------------------------------- | -------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
 | #1: Missing Content Script State Sync                 | `src/content.js` ↔ `sidebar/quick-tabs-manager.js` | High     | No listener for storage changes; sidebar updates don't notify content            |
-| #2: Unacknowledged Background Operations              | `src/background/handlers/` → responses              | High     | Handlers complete operations but don't confirm success to requestor              |
-| #3: Notification Delivery Failures                    | `src/features/notifications/`                       | Medium   | Toast/notification creation has no error handling or delivery confirmation       |
-| #4: Sidebar Initialization Missing State Verification | `sidebar/quick-tabs-manager.js` on load             | Medium   | Sidebar loads cached state without verifying it matches current runtime state    |
-| #5: Content Script Recovery Mechanism Absent          | `src/content.js` on error                           | Medium   | When hover detection fails, no mechanism to alert user or recover                |
-| #6: Multi-Tab State Reconciliation Gaps               | Cross-tab sync                                      | Medium   | When user opens multiple tabs, Quick Tabs list not synchronized across instances |
+| #2: Unacknowledged Background Operations              | `src/background/handlers/` → responses             | High     | Handlers complete operations but don't confirm success to requestor              |
+| #3: Notification Delivery Failures                    | `src/features/notifications/`                      | Medium   | Toast/notification creation has no error handling or delivery confirmation       |
+| #4: Sidebar Initialization Missing State Verification | `sidebar/quick-tabs-manager.js` on load            | Medium   | Sidebar loads cached state without verifying it matches current runtime state    |
+| #5: Content Script Recovery Mechanism Absent          | `src/content.js` on error                          | Medium   | When hover detection fails, no mechanism to alert user or recover                |
+| #6: Multi-Tab State Reconciliation Gaps               | Cross-tab sync                                     | Medium   | When user opens multiple tabs, Quick Tabs list not synchronized across instances |
 
 **Why bundled:** All issues stem from incomplete cross-component messaging
 architecture rather than single-point failures. Sidebar cannot know when content
