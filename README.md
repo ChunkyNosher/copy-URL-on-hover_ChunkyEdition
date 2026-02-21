@@ -1,6 +1,6 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4-v5** - A feature-rich **Firefox/Chrome/Chromium** extension for
+**Version 1.6.4-v7** - A feature-rich **Firefox/Chrome/Chromium** extension for
 quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 **Container Isolation**, and Session-Only Quick Tabs.
 
@@ -8,12 +8,33 @@ quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
 Opera, and other Chromium-based browsers using Manifest v2 with
 webextension-polyfill.
 
-**🔧 v1.6.4-v5 Status:** Cross-Container Go to Tab Fix ✅ | Toggle Sidebar
-Context Menu ✅ | Minimized Transfer Restore ✅
+**🔧 v1.6.4-v7 Status:** Clean URL Copying ✅ | Dark Mode UI ✅ | Performance
+Optimization ✅
 
 This is a complete, customizable Firefox extension that allows you to copy URLs
 or link text by pressing keyboard shortcuts while hovering over links, plus
 powerful Quick Tabs for browsing links in floating, draggable iframe windows.
+
+## 🎉 What's New in v1.6.4-v7
+
+**🧹 Clean URL Copying + 🌙 Dark Mode UI + ⚡ Performance ✅**
+
+- ✅ **Clean URL Copying** - Automatically strips 90+ tracking parameters (UTM,
+  Facebook, Google, Amazon, YouTube) when copying URLs
+- ✅ **Copy Raw URL Shortcut** - New unbound shortcut to copy URLs with all
+  parameters intact (configure in settings)
+- ✅ **Dark Mode First UI** - Complete UI overhaul with modern dark-mode-first
+  design (#121212 backgrounds, #6c5ce7 purple-blue accent)
+- ✅ **Glass-Morphism Quick Tabs** - In-page Quick Tab windows with sleek dark
+  styling and backdrop-filter effects
+- ✅ **Performance: Debug-Gated Logging** - Console output reduced by ~29% via
+  debug mode checks (no more log spam in production)
+- ✅ **Performance: State Broadcast Dedup** - Hash-based change detection
+  eliminates redundant STATE_CHANGED messages
+- ✅ **Performance: Render Debouncing** - 16ms debounce batches rapid render
+  requests for smoother sidebar updates
+- ✅ **ESLint Clean** - All 25 ESLint warnings/errors resolved (0 remaining)
+- ✅ **Code Cleanup** - Removed unused variables and functions across codebase
 
 ## 🎉 What's New in v1.6.4-v5
 

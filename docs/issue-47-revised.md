@@ -2344,9 +2344,166 @@ before the sidebar closes.
 
 ---
 
+## Scenario 55: Clean URL Copying (v1.6.4-v7)
+
+**Category:** URL Copy - Tracking Parameter Removal  
+**Feature:** Copy URL action strips tracking/affiliate parameters by default  
+**Version:** v1.6.4-v7
+
+### Setup
+
+1. Open a browser tab with a URL containing tracking parameters
+2. Examples:
+   - YouTube: `https://youtube.com/watch?v=abc123&si=tracking&feature=share`
+   - Amazon: `https://amazon.com/dp/B123?tag=affiliate-20&linkCode=ogi&ref_=abc`
+   - Any site with UTM: `https://example.com/page?id=1&utm_source=twitter&utm_medium=social`
+
+### Test Steps
+
+1. Hover over a link with tracking parameters
+2. Press `Y` (default Copy URL shortcut)
+3. Paste the copied URL
+4. Hover over the same link again
+5. Press the "Copy Raw URL" shortcut (unbound by default - must be configured)
+6. Paste the copied raw URL
+
+### Expected Behavior
+
+| Step | Result                                                                    |
+| ---- | ------------------------------------------------------------------------- |
+| 2    | URL is cleaned before copying                                             |
+| 3    | Pasted URL has tracking params removed (e.g., `?v=abc123` without `&si=`) |
+| 3    | Content-relevant params preserved (YouTube `v`, `t`, `list`, `index`)     |
+| 3    | Notification shows "✓ URL copied!" (clean URL)                            |
+| 5    | Raw URL copied with ALL parameters intact                                 |
+| 6    | Pasted URL includes all original tracking parameters                      |
+
+### Key Implementation Details
+
+**URL Cleaner (`src/utils/url-cleaner.js`):**
+
+1. `cleanUrl(urlString)` - Strips 90+ tracking parameters
+2. Categories: UTM, Facebook, Google, Amazon, YouTube, Analytics, Social
+3. Preserves hash fragments and content-relevant parameters
+4. Returns original string unchanged for invalid URLs
+
+**Content Script (`src/content.js`):**
+
+1. `handleCopyURL()` - Uses `cleanUrl()` before copying
+2. `handleCopyRawURL()` - Copies URL without cleaning (new shortcut)
+3. `copyRawUrl` shortcut entry in `SHORTCUT_HANDLERS` table
+
+**Config (`src/core/config.js`):**
+
+1. `copyRawUrlKey: ''` - Unbound by default
+2. `copyRawUrlCtrl`, `copyRawUrlAlt`, `copyRawUrlShift` - Modifier keys
+
+---
+
+## Scenario 56: Dark Mode First UI (v1.6.4-v7)
+
+**Category:** UI/UX - Visual Design  
+**Feature:** Complete UI overhaul with dark-mode-first design  
+**Version:** v1.6.4-v7
+
+### Setup
+
+1. Install extension v1.6.4-v7
+2. Open Quick Tabs Manager (Ctrl+Alt+Z)
+3. Navigate between Settings and Manager tabs
+
+### Test Steps
+
+1. Observe the sidebar theme
+2. Check that accent color is purple-blue (#6c5ce7)
+3. Create a Quick Tab and observe in-page styling
+4. Switch system to light mode (if supported)
+5. Observe the sidebar adapts to light theme
+
+### Expected Behavior
+
+| Step | Result                                                        |
+| ---- | ------------------------------------------------------------- |
+| 1    | Dark theme is default (#121212 background)                    |
+| 2    | Accent color is purple-blue, not green                        |
+| 3    | Quick Tab window has dark title bar with glass-morphism       |
+| 4    | Light mode override via `prefers-color-scheme: light`         |
+| 5    | All UI components adapt to light theme consistently           |
+
+### Key Implementation Details
+
+**CSS Files Rewritten:**
+
+1. `sidebar/settings.css` - Dark-mode-first with CSS variables
+2. `sidebar/quick-tabs-manager.css` - Matching design system
+3. `src/ui/css/quick-tabs.css` - Glass-morphism effects
+4. `sidebar/settings.html` - Inline styles updated
+
+**Design System:**
+
+- Primary background: #121212
+- Surface: #1e1e1e
+- Elevated: #2a2a2a
+- Accent: #6c5ce7 (purple-blue)
+- Success: #00b894
+- Danger: #e17055
+- Warning: #fdcb6e
+
+---
+
+## Scenario 57: Performance Optimization (v1.6.4-v7)
+
+**Category:** Performance - Logging and State  
+**Feature:** Reduced logging overhead and state broadcast deduplication  
+**Version:** v1.6.4-v7
+
+### Setup
+
+1. Install extension v1.6.4-v7
+2. Open browser developer tools Console
+3. Create several Quick Tabs
+
+### Test Steps
+
+1. With debug mode OFF, perform Quick Tab operations
+2. Observe console output - should be minimal
+3. Enable debug mode in settings
+4. Perform same operations
+5. Observe console output - should be verbose
+
+### Expected Behavior
+
+| Step | Result                                                           |
+| ---- | ---------------------------------------------------------------- |
+| 1    | Operations work normally                                         |
+| 2    | Console shows only warnings/errors (not verbose logs)            |
+| 3    | Debug mode enables verbose logging                               |
+| 5    | Full diagnostic logging available when needed                    |
+
+### Key Implementation Details
+
+**Logging Reduction (-28.8%):**
+
+1. Verbose `console.log` calls wrapped behind `CONFIG.debugMode` checks
+2. `console.warn` and `console.error` always logged (critical diagnostics)
+3. Debug mode still provides full verbose output when enabled
+
+**State Broadcast Deduplication:**
+
+1. Hash-based change detection before broadcasting
+2. Eliminates redundant STATE_CHANGED messages
+3. Reduces unnecessary JSON processing
+
+**Render Debouncing:**
+
+1. 16ms debounce window for rapid render requests
+2. Combined with existing requestAnimationFrame and hash checks
+
+---
+
 **End of Scenarios Document**
 
 **Document Maintainer:** ChunkyNosher  
 **Repository:** https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition  
-**Last Review Date:** January 5, 2026  
-**Behavior Model:** Tab-Scoped (v1.6.4-v5)
+**Last Review Date:** February 21, 2026  
+**Behavior Model:** Tab-Scoped (v1.6.4-v7)
