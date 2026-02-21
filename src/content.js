@@ -238,6 +238,7 @@ import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
+import { cleanUrl } from './utils/url-cleaner.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
 // v1.6.3.11-v11 - FIX Issue #47: Import setWritingContainerId for container isolation
@@ -3085,6 +3086,12 @@ const SHORTCUT_HANDLERS = [
     handler: handleCopyURL
   },
   {
+    name: 'copyRawUrl',
+    needsLink: true,
+    needsElement: false,
+    handler: handleCopyRawURL
+  },
+  {
     name: 'copyText',
     needsLink: false,
     needsElement: true,
@@ -3235,9 +3242,59 @@ function checkShortcut(event, config) {
 /**
  * Handle copy URL action
  * v1.6.0.7 - Enhanced logging for clipboard operations and action context
+ * v1.6.4 - Added URL cleaning to remove tracking parameters
  */
 async function handleCopyURL(url) {
   logNormal('clipboard', 'Action', 'Copy URL requested', {
+    url: url,
+    urlLength: url?.length || 0,
+    currentPage: window.location.href,
+    triggeredBy: 'keyboard-shortcut'
+  });
+
+  try {
+    // Clean the URL to remove tracking parameters
+    const cleanedUrl = cleanUrl(url);
+    
+    logNormal('clipboard', 'Cleaning', 'URL cleaned', {
+      original: url,
+      cleaned: cleanedUrl,
+      changed: url !== cleanedUrl
+    });
+
+    const copyStart = performance.now();
+    const success = await copyToClipboard(cleanedUrl);
+    const copyDuration = performance.now() - copyStart;
+
+    logNormal('clipboard', 'Result', 'Copy operation completed', {
+      success: success,
+      url: cleanedUrl,
+      duration: `${copyDuration.toFixed(2)}ms`
+    });
+
+    if (success) {
+      eventBus.emit(Events.URL_COPIED, { url: cleanedUrl });
+      showNotification('✓ URL copied!', 'success');
+      debug('Copied URL:', cleanedUrl);
+    } else {
+      console.error('[Clipboard] [Failure] Copy operation returned false', {
+        url: cleanedUrl,
+        timestamp: Date.now()
+      });
+      showNotification('✗ Failed to copy URL', 'error');
+    }
+  } catch (err) {
+    console.error('[Copy URL] Failed:', err);
+    showNotification('✗ Failed to copy URL', 'error');
+  }
+}
+
+/**
+ * Handle copy raw URL action (without cleaning tracking parameters)
+ * v1.6.4 - Added for copying URLs with all original parameters intact
+ */
+async function handleCopyRawURL(url) {
+  logNormal('clipboard', 'Action', 'Copy raw URL requested', {
     url: url,
     urlLength: url?.length || 0,
     currentPage: window.location.href,
@@ -3257,18 +3314,18 @@ async function handleCopyURL(url) {
 
     if (success) {
       eventBus.emit(Events.URL_COPIED, { url });
-      showNotification('✓ URL copied!', 'success');
-      debug('Copied URL:', url);
+      showNotification('✓ Raw URL copied!', 'success');
+      debug('Copied raw URL:', url);
     } else {
       console.error('[Clipboard] [Failure] Copy operation returned false', {
         url: url,
         timestamp: Date.now()
       });
-      showNotification('✗ Failed to copy URL', 'error');
+      showNotification('✗ Failed to copy raw URL', 'error');
     }
   } catch (err) {
-    console.error('[Copy URL] Failed:', err);
-    showNotification('✗ Failed to copy URL', 'error');
+    console.error('[Copy Raw URL] Failed:', err);
+    showNotification('✗ Failed to copy raw URL', 'error');
   }
 }
 
