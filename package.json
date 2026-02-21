@@ -81,7 +81,6 @@
   "devDependencies": {
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.28.5",
-    "@joebobmiles/pointer-events-polyfill": "^1.0.0-alpha.1",
     "@playwright/mcp": "^0.0.47",
     "@playwright/test": "^1.57.0",
     "@rollup/plugin-alias": "^5.1.0",
