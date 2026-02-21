@@ -226,7 +226,7 @@ window.addEventListener('unhandledrejection', event => {
 console.log('[Copy-URL-on-Hover] Global error handlers installed');
 
 // Import core modules
-console.log('[Copy-URL-on-Hover] Starting module imports...');
+// Verbose logging wrapped in debug checks for performance (v1.6.3.12-v13)
 import { copyToClipboard, sendMessageToBackground } from './core/browser-api.js';
 import { ConfigManager, CONSTANTS, DEFAULT_CONFIG } from './core/config.js';
 import { EventBus, Events } from './core/events.js';
@@ -252,18 +252,11 @@ import {
 } from './utils/storage-utils.js';
 import { cleanUrl } from './utils/url-cleaner.js';
 
-console.log('[Copy-URL-on-Hover] All module imports completed successfully');
-
 // Initialize core systems
-console.log('[Copy-URL-on-Hover] Initializing core systems...');
 const configManager = new ConfigManager();
-console.log('[Copy-URL-on-Hover] ConfigManager initialized');
 const stateManager = new StateManager();
-console.log('[Copy-URL-on-Hover] StateManager initialized');
 const eventBus = new EventBus();
-console.log('[Copy-URL-on-Hover] EventBus initialized');
 const urlRegistry = new URLHandlerRegistry();
-console.log('[Copy-URL-on-Hover] URLHandlerRegistry initialized');
 
 // Feature managers (initialized after config is loaded)
 let quickTabsManager = null;
@@ -274,37 +267,38 @@ let CONFIG = { ...DEFAULT_CONFIG };
 
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for config loading
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 async function loadConfiguration() {
-  console.log('[Copy-URL-on-Hover] STEP: Loading user configuration...');
   try {
     const config = await configManager.load();
-    console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
-    console.log('[Copy-URL-on-Hover] Config values:', {
-      debugMode: config.debugMode,
-      quickTabPersistAcrossTabs: config.quickTabPersistAcrossTabs,
-      hasDefaultConfig: config !== null && config !== undefined
-    });
+    // Only log if debug mode will be enabled or already enabled
+    if (config.debugMode || CONFIG.debugMode) {
+      console.log('[Copy-URL-on-Hover] ✓ Configuration loaded successfully');
+      console.log('[Copy-URL-on-Hover] Config values:', {
+        debugMode: config.debugMode,
+        quickTabPersistAcrossTabs: config.quickTabPersistAcrossTabs,
+        hasDefaultConfig: config !== null && config !== undefined
+      });
+    }
     return config;
   } catch (configErr) {
     console.error('[Copy-URL-on-Hover] ERROR: Failed to load configuration:', configErr);
-    console.log('[Copy-URL-on-Hover] Falling back to DEFAULT_CONFIG');
     return { ...DEFAULT_CONFIG };
   }
 }
 
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for debug mode setup
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 function setupDebugMode() {
   if (!CONFIG.debugMode) return;
 
-  console.log('[Copy-URL-on-Hover] STEP: Enabling debug mode...');
   try {
     enableDebug();
     eventBus.enableDebug();
     debug('Debug mode enabled');
-    console.log('[Copy-URL-on-Hover] ✓ Debug mode activated');
   } catch (debugErr) {
     console.error('[Copy-URL-on-Hover] ERROR: Failed to enable debug mode:', debugErr);
   }
@@ -312,13 +306,15 @@ function setupDebugMode() {
 
 /**
  * v1.6.0 Phase 2.4 - Extracted helper for state initialization
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 function initializeState() {
-  console.log('[Copy-URL-on-Hover] STEP: Initializing state...');
   stateManager.setState({
     quickTabZIndex: CONSTANTS.QUICK_TAB_BASE_Z_INDEX
   });
-  console.log('[Copy-URL-on-Hover] ✓ State initialized');
+  if (CONFIG.debugMode) {
+    console.log('[Copy-URL-on-Hover] ✓ State initialized');
+  }
 }
 
 /**
@@ -454,41 +450,58 @@ function _queueInitializationMessage(message, callback) {
     queuedAt: Date.now()
   });
 
-  console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
-    action: message.action || message.type,
-    queueSize: initializationMessageQueue.length
-  });
+  if (CONFIG.debugMode) {
+    console.log('[MSG][Content] MESSAGE_QUEUED_DURING_INIT:', {
+      action: message.action || message.type,
+      queueSize: initializationMessageQueue.length
+    });
+  }
 }
 
 /**
- * Flush queued messages after initialization completes
- * v1.6.3.12-v7 - FIX Issue #14: Process queued messages
+ * Process a queued message from initialization queue
+ * v1.6.3.12-v13 - Performance: Extracted to reduce nesting depth
+ * @private
  */
-async function _flushInitializationMessageQueue() {
-  if (initializationMessageQueue.length === 0) return;
+async function _processQueuedMessage(queuedItem) {
+  const { message, callback, queuedAt } = queuedItem;
+  const queueDuration = Date.now() - queuedAt;
 
-  console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
-    queueSize: initializationMessageQueue.length
-  });
-
-  while (initializationMessageQueue.length > 0) {
-    const { message, callback, queuedAt } = initializationMessageQueue.shift();
-    const queueDuration = Date.now() - queuedAt;
-
-    try {
-      const result = await callback(message);
+  try {
+    const result = await callback(message);
+    if (CONFIG.debugMode) {
       console.log('[MSG][Content] QUEUED_MESSAGE_SENT:', {
         action: message.action || message.type,
         queueDurationMs: queueDuration,
         success: result?.success ?? true
       });
-    } catch (err) {
-      console.error('[MSG][Content] QUEUED_MESSAGE_FAILED:', {
-        action: message.action || message.type,
-        error: err.message,
-        queueDurationMs: queueDuration
-      });
     }
+  } catch (err) {
+    console.error('[MSG][Content] QUEUED_MESSAGE_FAILED:', {
+      action: message.action || message.type,
+      error: err.message,
+      queueDurationMs: queueDuration
+    });
+  }
+}
+
+/**
+ * Flush queued messages after initialization completes
+ * v1.6.3.12-v7 - FIX Issue #14: Process queued messages
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
+ */
+async function _flushInitializationMessageQueue() {
+  if (initializationMessageQueue.length === 0) return;
+
+  if (CONFIG.debugMode) {
+    console.log('[MSG][Content] FLUSHING_INIT_MESSAGE_QUEUE:', {
+      queueSize: initializationMessageQueue.length
+    });
+  }
+
+  while (initializationMessageQueue.length > 0) {
+    const queuedItem = initializationMessageQueue.shift();
+    await _processQueuedMessage(queuedItem);
   }
 }
 
@@ -513,14 +526,17 @@ function _updateBackgroundResponseTime() {
 /**
  * Mark content script as initialized and flush queued messages
  * v1.6.3.12-v7 - FIX Issue #14
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 async function _markContentScriptInitialized() {
   if (contentScriptInitialized) return;
 
   contentScriptInitialized = true;
-  console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
-    timestamp: new Date().toISOString()
-  });
+  if (CONFIG.debugMode) {
+    console.log('[MSG][Content] INITIALIZATION_COMPLETE:', {
+      timestamp: new Date().toISOString()
+    });
+  }
 
   // Flush any queued messages
   await _flushInitializationMessageQueue();
@@ -1027,19 +1043,22 @@ function _calculateReconnectDelay() {
 /**
  * Transition circuit breaker state with logging
  * v1.6.3.10-v7 - FIX Issue #1: Circuit breaker state transitions
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  * @param {string} newState - New state to transition to
  * @param {string} reason - Reason for transition
  */
 function _transitionPortState(newState, reason) {
   const oldState = portConnectionState;
   portConnectionState = newState;
-  console.log('[Content] PORT_STATE_TRANSITION:', {
-    from: oldState,
-    to: newState,
-    reason,
-    attempts: reconnectionAttempts,
-    timestamp: Date.now()
-  });
+  if (CONFIG.debugMode) {
+    console.log('[Content] PORT_STATE_TRANSITION:', {
+      from: oldState,
+      to: newState,
+      reason,
+      attempts: reconnectionAttempts,
+      timestamp: Date.now()
+    });
+  }
 }
 
 /**
@@ -1065,15 +1084,16 @@ function _isInGracePeriod() {
  * Reset reconnection attempt counter after successful connection
  * v1.6.3.10-v5 - FIX Issue #4: Reset backoff on success
  * v1.6.3.10-v7 - FIX Issue #1: Also start grace period
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 function _resetReconnectionAttempts() {
-  if (reconnectionAttempts > 0) {
+  if (reconnectionAttempts > 0 && CONFIG.debugMode) {
     console.log(
       '[Content] v1.6.3.10-v7 Reconnection successful, resetting attempt count from:',
       reconnectionAttempts
     );
-    reconnectionAttempts = 0;
   }
+  reconnectionAttempts = 0;
   // Start grace period
   reconnectGracePeriodStart = Date.now();
   _transitionPortState(PORT_CONNECTION_STATE.CONNECTED, 'connection-established');
@@ -1202,7 +1222,7 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
   }
 
   // Log if queued behind pending operation
-  if (existingOperation && existingOperation.status === 'pending') {
+  if (existingOperation && existingOperation.status === 'pending' && CONFIG.debugMode) {
     console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_QUEUED:', {
       ...details,
       reason: 'existing operation pending',
@@ -1217,19 +1237,22 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
     status: 'pending'
   });
 
-  console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_ALLOWED:', details);
+  if (CONFIG.debugMode) {
+    console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_ALLOWED:', details);
+  }
   return { allowed: true, reason: null, details };
 }
 
 /**
  * Mark a RESTORE operation as complete
  * v1.6.3.10-v10 - FIX Issue R: Update tracking after operation completes
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  * @param {string} quickTabId - Quick Tab ID that was restored
  * @param {boolean} success - Whether operation succeeded
  */
 function _markRestoreComplete(quickTabId, success) {
   const operation = pendingRestoreOperations.get(quickTabId);
-  if (operation) {
+  if (operation && CONFIG.debugMode) {
     operation.status = success ? 'completed' : 'failed';
     console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
       quickTabId,
@@ -1265,11 +1288,13 @@ function _queueMessage(message) {
   }
 
   messageQueue.push(queuedMessage);
-  console.log('[Content] MESSAGE_QUEUED:', {
-    messageId,
-    type: message.type,
-    queueSize: messageQueue.length
-  });
+  if (CONFIG.debugMode) {
+    console.log('[Content] MESSAGE_QUEUED:', {
+      messageId,
+      type: message.type,
+      queueSize: messageQueue.length
+    });
+  }
 
   return messageId;
 }
@@ -1277,14 +1302,17 @@ function _queueMessage(message) {
 /**
  * Drain message queue after successful reconnect
  * v1.6.3.10-v7 - FIX Issue #5: Drain queued messages in order
+ * v1.6.3.12-v13 - Performance: Wrap verbose logs behind debug checks
  */
 function _drainMessageQueue() {
   if (messageQueue.length === 0) return;
 
-  console.log('[Content] DRAINING_MESSAGE_QUEUE:', {
-    queueSize: messageQueue.length,
-    timestamp: Date.now()
-  });
+  if (CONFIG.debugMode) {
+    console.log('[Content] DRAINING_MESSAGE_QUEUE:', {
+      queueSize: messageQueue.length,
+      timestamp: Date.now()
+    });
+  }
 
   while (messageQueue.length > 0 && backgroundPort) {
     const queuedMessage = messageQueue.shift();

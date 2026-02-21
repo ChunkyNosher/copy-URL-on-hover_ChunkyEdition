@@ -1491,6 +1491,8 @@ class StateCoordinator {
     this.pendingConfirmations = new Map(); // saveId → {tabId, resolve, reject}
     this.tabVectorClocks = new Map(); // tabId → vector clock
     this.initialized = false;
+    // v1.6.3.12-v13 - Performance: Track last broadcast state to avoid redundant broadcasts
+    this._lastBroadcastStateHash = null;
   }
 
   /**
@@ -1804,9 +1806,18 @@ class StateCoordinator {
 
   /**
    * Broadcast canonical state to all tabs
+   * v1.6.3.12-v13 - Performance: Only broadcast if state actually changed
    */
   async broadcastState() {
     try {
+      // Only broadcast if state changed since last broadcast
+      const currentStateHash = JSON.stringify(this.globalState);
+      if (this._lastBroadcastStateHash === currentStateHash) {
+        // State hasn't changed, skip redundant broadcast
+        return;
+      }
+      this._lastBroadcastStateHash = currentStateHash;
+
       const tabs = await browser.tabs.query({});
 
       for (const tab of tabs) {

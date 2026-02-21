@@ -524,6 +524,10 @@ let _stateVersionAtSchedule = 0; // Version when render was scheduled
 // This allows scheduleRender to detect if state changed since last render
 let _lastRenderedStateVersion = 0;
 
+// v1.6.3.12-v13 - Performance: Debounce timer for batching rapid render requests
+let _scheduleRenderDebounceTimer = null;
+const SCHEDULE_RENDER_DEBOUNCE_MS = 16; // ~1 frame at 60fps - batch rapid calls
+
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
 // v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
 //   This cache exists as a FALLBACK to protect against storage storms/corruption.
@@ -4600,6 +4604,7 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
  * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
  * v1.6.4 - FIX Issue #21: Track state version for render transaction boundaries
  * v1.6.3.12-v12 - FIX Issue #48: Also check state version to ensure button operations trigger re-render
+ * v1.6.3.12-v13 - Performance: Add debouncing to batch rapid state changes
  * @param {string} [source='unknown'] - Source of render request
  * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
@@ -4645,21 +4650,31 @@ function scheduleRender(source = 'unknown', correlationId = null) {
 
   _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
 
-  // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
-  // This ensures DOM mutations are batched efficiently and prevents layout thrashing
-  requestAnimationFrame(() => {
-    // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
-    if (_stateVersion !== _stateVersionAtSchedule) {
-      console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
-        scheduledVersion: _stateVersionAtSchedule,
-        currentVersion: _stateVersion,
-        versionDrift: _stateVersion - _stateVersionAtSchedule,
-        source,
-        note: 'State changed between schedule and render - rendering latest state'
-      });
-    }
-    renderUI();
-  });
+  // v1.6.3.12-v13 - Performance: Debounce rapid render requests
+  // Clear any pending render and schedule a new one
+  if (_scheduleRenderDebounceTimer !== null) {
+    clearTimeout(_scheduleRenderDebounceTimer);
+  }
+
+  _scheduleRenderDebounceTimer = setTimeout(() => {
+    _scheduleRenderDebounceTimer = null;
+    
+    // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
+    // This ensures DOM mutations are batched efficiently and prevents layout thrashing
+    requestAnimationFrame(() => {
+      // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
+      if (_stateVersion !== _stateVersionAtSchedule) {
+        console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
+          scheduledVersion: _stateVersionAtSchedule,
+          currentVersion: _stateVersion,
+          versionDrift: _stateVersion - _stateVersionAtSchedule,
+          source,
+          note: 'State changed between schedule and render - rendering latest state'
+        });
+      }
+      renderUI();
+    });
+  }, SCHEDULE_RENDER_DEBOUNCE_MS);
 }
 
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
