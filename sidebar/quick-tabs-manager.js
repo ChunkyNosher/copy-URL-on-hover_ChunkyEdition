@@ -150,7 +150,7 @@
  *     - Fallback to storage only when port data is empty
  *   - Issue #2/#3: Close Minimized/Close All buttons already have event listeners
  *     - Verified _setupHeaderButtons() attaches listeners to both buttons
- *     - Button clicks call closeMinimizedQuickTabsViaPort()/closeAllQuickTabsViaPort()
+ *     - Button clicks call closeMinimizedQuickTabsViaPort()/_closeAllQuickTabsViaPort()
  *   - Issue #12: Browser tab cache invalidation on ORIGIN_TAB_CLOSED
  *     - Cache already invalidated in _handleOriginTabClosed() (v1.6.4 fix)
  *   - Issue #19: Render lock now uses try-finally for deadlock protection
@@ -175,7 +175,7 @@
  * === v1.6.3.12-v9 COMPREHENSIVE LOGGING & OPTIMISTIC UI ===
  * v1.6.3.12-v9 - FIX Issues from log-analysis-bugs-v1.6.3.12.md:
  *   - Issue #1: Manager buttons now have comprehensive click logging
- *   - Issue #2: Close All button has detailed logging via closeAllQuickTabsViaPort()
+ *   - Issue #2: Close All button has detailed logging via _closeAllQuickTabsViaPort()
  *   - Issue #3: Close Minimized button has detailed logging via closeMinimizedQuickTabsViaPort()
  *   - Issue #4: Manager updates logged via enhanced scheduleRender() and STATE_CHANGED handling
  *   - Issue #8: Button DOM creation logged in _createTabActions()

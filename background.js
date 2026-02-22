@@ -1496,6 +1496,38 @@ class StateCoordinator {
   }
 
   /**
+   * Compute a simple numeric hash from state object key properties
+   * v1.6.4-v7 - Performance: Replaces JSON.stringify for efficient state comparison
+   * @param {Object} state - The state object to hash
+   * @returns {number} - A numeric hash of the state
+   */
+  _computeStateHash(state) {
+    const base = String(state.timestamp) + '|' + String(state.version) + '|' + String(state.tabs?.length ?? 0);
+    let hash = this._hashString(base);
+    // Include individual tab IDs and states for change detection
+    if (state.tabs) {
+      for (const tab of state.tabs) {
+        hash = this._hashString(String(tab.id ?? '') + String(tab.state ?? ''), hash);
+      }
+    }
+    return hash;
+  }
+
+  /**
+   * Simple string hash using djb2 variant
+   * @param {string} str - String to hash
+   * @param {number} seed - Starting hash value
+   * @returns {number} - Numeric hash
+   */
+  _hashString(str, seed = 0) {
+    let hash = seed;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return hash;
+  }
+
+  /**
    * Initialize from storage
    * v1.6.0 - PHASE 3.2: Refactored to flatten nested blocks (cc=15 → cc<6)
    */
@@ -1807,11 +1839,12 @@ class StateCoordinator {
   /**
    * Broadcast canonical state to all tabs
    * v1.6.3.12-v13 - Performance: Only broadcast if state actually changed
+   * v1.6.4-v7 - Use numeric hash instead of JSON.stringify for efficiency
    */
   async broadcastState() {
     try {
       // Only broadcast if state changed since last broadcast
-      const currentStateHash = JSON.stringify(this.globalState);
+      const currentStateHash = this._computeStateHash(this.globalState);
       if (this._lastBroadcastStateHash === currentStateHash) {
         // State hasn't changed, skip redundant broadcast
         return;

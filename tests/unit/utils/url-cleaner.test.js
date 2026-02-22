@@ -33,7 +33,7 @@ describe('URL Cleaner', () => {
     test('should include Amazon tracking parameters', () => {
       expect(TRACKING_PARAMS).toContain('tag');
       expect(TRACKING_PARAMS).toContain('linkCode');
-      expect(TRACKING_PARAMS).toContain('ref');
+      expect(TRACKING_PARAMS).toContain('ref_');
     });
   });
 

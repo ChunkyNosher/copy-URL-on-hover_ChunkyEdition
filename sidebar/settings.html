@@ -865,6 +865,28 @@
           </div>
 
           <div class="setting-group">
+            <label>Copy Raw URL Key (with tracking params):</label>
+            <input type="text" id="copyRawUrlKey" maxlength="1" placeholder="" />
+            <div class="checkbox-inline-group">
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyRawUrlCtrl" />
+                <label for="copyRawUrlCtrl">Ctrl</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyRawUrlAlt" />
+                <label for="copyRawUrlAlt">Alt</label>
+              </div>
+              <div class="checkbox-group">
+                <input type="checkbox" id="copyRawUrlShift" />
+                <label for="copyRawUrlShift">Shift</label>
+              </div>
+            </div>
+            <div class="description">
+              Copies the URL without removing tracking parameters. Leave key blank to disable.
+            </div>
+          </div>
+
+          <div class="setting-group">
             <label>Copy Text Key:</label>
             <input type="text" id="copyTextKey" maxlength="1" placeholder="X" />
             <div class="checkbox-inline-group">

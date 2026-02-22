@@ -611,6 +611,12 @@ const DEFAULT_SETTINGS = {
   copyUrlAlt: false,
   copyUrlShift: false,
 
+  // v1.6.4-v7 - Copy Raw URL (with tracking params) settings
+  copyRawUrlKey: '',
+  copyRawUrlCtrl: false,
+  copyRawUrlAlt: false,
+  copyRawUrlShift: false,
+
   copyTextKey: 'x',
   copyTextCtrl: false,
   copyTextAlt: false,
@@ -718,6 +724,12 @@ function loadSettings() {
     document.getElementById('copyUrlCtrl').checked = items.copyUrlCtrl;
     document.getElementById('copyUrlAlt').checked = items.copyUrlAlt;
     document.getElementById('copyUrlShift').checked = items.copyUrlShift;
+
+    // v1.6.4-v7 - Copy Raw URL settings
+    document.getElementById('copyRawUrlKey').value = items.copyRawUrlKey;
+    document.getElementById('copyRawUrlCtrl').checked = items.copyRawUrlCtrl;
+    document.getElementById('copyRawUrlAlt').checked = items.copyRawUrlAlt;
+    document.getElementById('copyRawUrlShift').checked = items.copyRawUrlShift;
 
     document.getElementById('copyTextKey').value = items.copyTextKey;
     document.getElementById('copyTextCtrl').checked = items.copyTextCtrl;
@@ -833,6 +845,20 @@ function _gatherCopyUrlSettings() {
     copyUrlCtrl: document.getElementById('copyUrlCtrl').checked,
     copyUrlAlt: document.getElementById('copyUrlAlt').checked,
     copyUrlShift: document.getElementById('copyUrlShift').checked
+  };
+}
+
+/**
+ * Gather copy raw URL shortcut settings from form
+ * v1.6.4-v7 - FEATURE: Copy Raw URL shortcut settings
+ * @returns {Object} Copy raw URL settings
+ */
+function _gatherCopyRawUrlSettings() {
+  return {
+    copyRawUrlKey: document.getElementById('copyRawUrlKey').value || '',
+    copyRawUrlCtrl: document.getElementById('copyRawUrlCtrl').checked,
+    copyRawUrlAlt: document.getElementById('copyRawUrlAlt').checked,
+    copyRawUrlShift: document.getElementById('copyRawUrlShift').checked
   };
 }
 
@@ -964,6 +990,7 @@ function _gatherGeneralSettings() {
 function gatherSettingsFromForm() {
   return {
     ..._gatherCopyUrlSettings(),
+    ..._gatherCopyRawUrlSettings(),
     ..._gatherCopyTextSettings(),
     ..._gatherOpenNewTabSettings(),
     ..._gatherQuickTabSettings(),

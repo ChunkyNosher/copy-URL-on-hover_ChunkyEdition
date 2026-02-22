@@ -1222,7 +1222,8 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
   }
 
   // Log if queued behind pending operation
-  if (existingOperation && existingOperation.status === 'pending' && CONFIG.debugMode) {
+  const isPendingBehindExisting = existingOperation && existingOperation.status === 'pending';
+  if (isPendingBehindExisting && CONFIG.debugMode) {
     console.log('[Content] v1.6.3.10-v10 RESTORE_ORDER_QUEUED:', {
       ...details,
       reason: 'existing operation pending',
@@ -1252,14 +1253,16 @@ function _checkRestoreOrderingEnforcement(quickTabId, messageSequenceId) {
  */
 function _markRestoreComplete(quickTabId, success) {
   const operation = pendingRestoreOperations.get(quickTabId);
-  if (operation && CONFIG.debugMode) {
+  if (operation) {
     operation.status = success ? 'completed' : 'failed';
-    console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
-      quickTabId,
-      success,
-      sequenceId: operation.sequenceId,
-      duration: Date.now() - operation.timestamp
-    });
+    if (CONFIG.debugMode) {
+      console.log('[Content] v1.6.3.10-v10 RESTORE_COMPLETE:', {
+        quickTabId,
+        success,
+        sequenceId: operation.sequenceId,
+        duration: Date.now() - operation.timestamp
+      });
+    }
   }
 }
 

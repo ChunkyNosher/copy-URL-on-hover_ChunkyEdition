@@ -37,7 +37,6 @@ export const TRACKING_PARAMS = [
   'linkCode',
   'linkId',
   'ref_',
-  'ref',
   'camp',
   'creative',
   'ascsubtag',
@@ -85,7 +84,6 @@ export const TRACKING_PARAMS = [
   'oly_anon_id',
   'oly_enc_id',
   'otc',
-  'source',
   'click_id',
   'trk',
   'spm',
@@ -129,22 +127,16 @@ function removeTrackingParams(params) {
 /**
  * Build cleaned URL from components
  * @private
- * @param {URL} url - The parsed URL object
- * @param {URLSearchParams} params - The cleaned search params
+ * @param {URL} url - The parsed URL object (already mutated)
+ * @param {URLSearchParams} params - The cleaned search params (unused)
  * @returns {string} - The rebuilt URL string
  */
-function buildCleanedUrl(url, params) {
-  let cleanedUrl = url.origin + url.pathname;
-
-  if (hasAnyParams(params)) {
-    cleanedUrl += '?' + params.toString();
-  }
-
-  if (url.hash) {
-    cleanedUrl += url.hash;
-  }
-
-  return cleanedUrl;
+function buildCleanedUrl(url, _params) {
+  // The URL instance's searchParams have already been mutated
+  // by removeTrackingParams(). Use the built-in serializer so
+  // scheme-specific formatting (e.g., file:, about:, moz-extension:)
+  // and other components (username, password, port) are preserved.
+  return url.toString();
 }
 
 /**
