@@ -13,7 +13,7 @@
 describe('Queue Backpressure at Realistic Scale', () => {
   // Constants matching content.js
   const GLOBAL_QUEUE_BACKPRESSURE_THRESHOLD = 300;
-  const MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
+  const _MAX_INIT_MESSAGE_QUEUE_SIZE = 100;
 
   const LOAD_SHEDDING_THRESHOLDS = {
     REJECT_NON_CRITICAL: 50,

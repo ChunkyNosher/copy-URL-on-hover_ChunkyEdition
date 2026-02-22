@@ -489,8 +489,7 @@ All solutions must follow these patterns to maintain consistency:
 **Event Broadcasting Pattern**
 
 - Use internal event bus for same-context communication (content script only)
-- Use message passing for cross-context communication (content script ↔
-  sidebar)
+- Use message passing for cross-context communication (content script ↔ sidebar)
 - Use storage metadata for cross-tab awareness (all tabs)
 
 **Logging Pattern**

@@ -343,8 +343,7 @@ The architectural problem:
 WebExtensions' popup context has limitations:
 
 - Popups are isolated execution contexts
-- Port messages are the **primary mechanism** for popup↔background
-  communication
+- Port messages are the **primary mechanism** for popup↔background communication
 - If port fails to connect, there's no alternative event subscription system
 
 ### Code Architecture Issue

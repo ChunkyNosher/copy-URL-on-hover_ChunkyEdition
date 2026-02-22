@@ -150,7 +150,7 @@
  *     - Fallback to storage only when port data is empty
  *   - Issue #2/#3: Close Minimized/Close All buttons already have event listeners
  *     - Verified _setupHeaderButtons() attaches listeners to both buttons
- *     - Button clicks call closeMinimizedQuickTabsViaPort()/closeAllQuickTabsViaPort()
+ *     - Button clicks call closeMinimizedQuickTabsViaPort()/_closeAllQuickTabsViaPort()
  *   - Issue #12: Browser tab cache invalidation on ORIGIN_TAB_CLOSED
  *     - Cache already invalidated in _handleOriginTabClosed() (v1.6.4 fix)
  *   - Issue #19: Render lock now uses try-finally for deadlock protection
@@ -175,7 +175,7 @@
  * === v1.6.3.12-v9 COMPREHENSIVE LOGGING & OPTIMISTIC UI ===
  * v1.6.3.12-v9 - FIX Issues from log-analysis-bugs-v1.6.3.12.md:
  *   - Issue #1: Manager buttons now have comprehensive click logging
- *   - Issue #2: Close All button has detailed logging via closeAllQuickTabsViaPort()
+ *   - Issue #2: Close All button has detailed logging via _closeAllQuickTabsViaPort()
  *   - Issue #3: Close Minimized button has detailed logging via closeMinimizedQuickTabsViaPort()
  *   - Issue #4: Manager updates logged via enhanced scheduleRender() and STATE_CHANGED handling
  *   - Issue #8: Button DOM creation logged in _createTabActions()
@@ -396,7 +396,7 @@ const SCROLL_POSITION_SAVE_DEBOUNCE_MS = 200;
 const BROWSER_TAB_CACHE_TTL_MS = 30000;
 // v1.6.4 - Note: SAVEID_RECONCILED and SAVEID_CLEARED now imported from StorageChangeAnalyzer.js
 const SAVEID_RECONCILED = _SAVEID_RECONCILED_FROM_SCA;
-const SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
+const _SAVEID_CLEARED = _SAVEID_CLEARED_FROM_SCA;
 const OPERATION_TIMEOUT_MS = 2000;
 const DOM_VERIFICATION_DELAY_MS = 500;
 // v1.6.4 - Note: GROUP_ORDER_STORAGE_KEY and QUICK_TAB_ORDER_STORAGE_KEY now imported from OrderManager.js
@@ -523,6 +523,10 @@ let _stateVersionAtSchedule = 0; // Version when render was scheduled
 // v1.6.3.12-v12 - FIX Issue #48: Track state version at last render completion
 // This allows scheduleRender to detect if state changed since last render
 let _lastRenderedStateVersion = 0;
+
+// v1.6.3.12-v13 - Performance: Debounce timer for batching rapid render requests
+let _scheduleRenderDebounceTimer = null;
+const SCHEDULE_RENDER_DEBOUNCE_MS = 16; // ~1 frame at 60fps - batch rapid calls
 
 // v1.6.3.5-v4 - FIX Diagnostic Issue #2: In-memory state cache to prevent list clearing during storage storms
 // v1.6.3.5-v6 - ARCHITECTURE NOTE (Issue #6 - Manager as Pure Consumer):
@@ -1320,7 +1324,7 @@ const ACK_TIMEOUT_MS = 1000;
  * Delay before attempting Quick Tabs port reconnection (2 seconds)
  * v1.6.3.12 - Option 4: Centralized reconnect delay constant
  */
-const QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS = 2000;
+const _QUICK_TABS_SIDEBAR_RECONNECT_DELAY_MS = 2000;
 
 /**
  * Quick Tabs port connection to background
@@ -3205,7 +3209,7 @@ function requestAllQuickTabsViaPort() {
  * v1.6.3.12-v9 - FIX Issue #2: Add comprehensive logging for Close All operation
  * @returns {boolean} Success status
  */
-function closeAllQuickTabsViaPort() {
+function _closeAllQuickTabsViaPort() {
   const timestamp = Date.now();
   const quickTabCount = _allQuickTabsFromPort.length;
 
@@ -4600,6 +4604,7 @@ function _logRenderScheduled(scheduleTimestamp, source, currentHash, correlation
  * v1.6.3.12-v4 - Gap #5: Accept correlationId for end-to-end tracing
  * v1.6.4 - FIX Issue #21: Track state version for render transaction boundaries
  * v1.6.3.12-v12 - FIX Issue #48: Also check state version to ensure button operations trigger re-render
+ * v1.6.3.12-v13 - Performance: Add debouncing to batch rapid state changes
  * @param {string} [source='unknown'] - Source of render request
  * @param {string} [correlationId=null] - Correlation ID for async tracing
  */
@@ -4645,21 +4650,31 @@ function scheduleRender(source = 'unknown', correlationId = null) {
 
   _logRenderScheduled(scheduleTimestamp, source, currentHash, correlationId);
 
-  // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
-  // This ensures DOM mutations are batched efficiently and prevents layout thrashing
-  requestAnimationFrame(() => {
-    // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
-    if (_stateVersion !== _stateVersionAtSchedule) {
-      console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
-        scheduledVersion: _stateVersionAtSchedule,
-        currentVersion: _stateVersion,
-        versionDrift: _stateVersion - _stateVersionAtSchedule,
-        source,
-        note: 'State changed between schedule and render - rendering latest state'
-      });
-    }
-    renderUI();
-  });
+  // v1.6.3.12-v13 - Performance: Debounce rapid render requests
+  // Clear any pending render and schedule a new one
+  if (_scheduleRenderDebounceTimer !== null) {
+    clearTimeout(_scheduleRenderDebounceTimer);
+  }
+
+  _scheduleRenderDebounceTimer = setTimeout(() => {
+    _scheduleRenderDebounceTimer = null;
+
+    // v1.6.4 - FIX Issue #21: Use requestAnimationFrame for DOM mutation batching
+    // This ensures DOM mutations are batched efficiently and prevents layout thrashing
+    requestAnimationFrame(() => {
+      // v1.6.4 - FIX Issue #21: Check if state changed since scheduling
+      if (_stateVersion !== _stateVersionAtSchedule) {
+        console.log('[Manager] v1.6.4 RENDER_STATE_DRIFT:', {
+          scheduledVersion: _stateVersionAtSchedule,
+          currentVersion: _stateVersion,
+          versionDrift: _stateVersion - _stateVersionAtSchedule,
+          source,
+          note: 'State changed between schedule and render - rendering latest state'
+        });
+      }
+      renderUI();
+    });
+  }, SCHEDULE_RENDER_DEBOUNCE_MS);
 }
 
 // ==================== END STATE SYNC & UNIFIED RENDER ====================
@@ -7667,7 +7682,7 @@ function _applyFreshStorageState(storageState, inMemoryHash, storageHash) {
  * @private
  * @returns {Promise<{ stateReloaded: boolean, capturedHash: number, currentHash: number, storageHash: number, debounceWaitMs: number }>}
  */
-async function _checkAndReloadStaleState() {
+function _checkAndReloadStaleState() {
   const inMemoryHash = computeStateHash(quickTabsState);
   const debounceWaitTime = Date.now() - debounceSetTimestamp;
 
@@ -11025,7 +11040,7 @@ async function goToTab(tabId) {
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (107 -> ~55)
  */
-async function minimizeQuickTab(quickTabId) {
+async function _minimizeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('min', quickTabId);
   const startTime = Date.now();
 
@@ -11764,7 +11779,7 @@ function _handleRestoreOperationResult(quickTabId, result, correlationId, durati
  * v1.6.3.12-v7 - Refactored to reduce cyclomatic complexity
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  */
-async function restoreQuickTab(quickTabId) {
+async function _restoreQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('restore', quickTabId);
   const startTime = Date.now();
 
@@ -11928,7 +11943,7 @@ function _logRestoreVerificationResult(quickTabId, tab) {
  * v1.6.3.12-v7 - FIX Issue #20: Comprehensive logging for Manager-initiated operations
  * v1.6.3.12-v7 - FIX Code Health: Refactored to reduce line count (91 -> ~40)
  */
-async function closeQuickTab(quickTabId) {
+async function _closeQuickTab(quickTabId) {
   const correlationId = generateOperationCorrelationId('close', quickTabId);
   const startTime = Date.now();
 

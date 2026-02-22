@@ -271,7 +271,7 @@ describe('Message ID Collision Handling', () => {
 
   describe('No Stack Overflow Under 10k msg/sec', () => {
     test('should handle 10000 message IDs without stack overflow', () => {
-      const startTime = Date.now();
+      const _startTime = Date.now();
       let completedCount = 0;
 
       // Don't mock Date.now for realistic test

@@ -1,111 +1,144 @@
-/* Quick Tabs Manager Sidebar Styles */
-/* v1.6.3.10-v5 - FIX Bug #3: Animation Playing for All Quick Tabs During Single Adoption
- * - Removed automatic itemFadeIn animation that triggered on all items during re-render
- * - Added .adoption-animation class for targeted animation of adopted Quick Tab only
- * - Added adoptionSlideIn keyframes with green highlight for adoption feedback
- * - Existing items no longer animate when a single Quick Tab is adopted
- */
-/* v1.6.3.6-v11 - FIX Issues #1-9: Comprehensive diagnostics fixes
- * - Issue #1: Animation timing coordinated at 0.35s
- * - Issue #2: Removed inline maxHeight conflicts
- * - Issue #4: Favicon container uses CSS classes only
- * - Issue #12: Animation support via CSS variables
- */
-/* v1.6.3.12-v7 - FIX Issues #1-12: Comprehensive UI/UX improvements */
+/* ==================== QUICK TABS MANAGER SIDEBAR STYLES ====================
+ * v1.6.4-v4 - Modern Dark-Mode-First Design
+ * Complete UI overhaul with purple-blue accent (#6c5ce7)
+ * Dark mode is DEFAULT, light mode via media query override
+ * Matches settings.css design system
+ * ========================================================================== */
 
+/* ==================== CSS VARIABLES - DARK MODE (DEFAULT) ==================== */
 :root {
-  --primary-bg: #ffffff;
-  --secondary-bg: #f5f5f5;
-  --border-color: #ddd;
-  --text-primary: #333;
-  --text-secondary: #666;
-  --green-indicator: #4caf50;
-  --yellow-indicator: #ffc107;
-  --orange-indicator: #ff9800; /* v1.6.3.12-v7 - FIX Issue #4: Warning indicator */
-  --red-danger: #f44336;
-  --blue-primary: #4a90e2;
+  /* Background Colors */
+  --bg-base: #121212;
+  --bg-surface: #1e1e1e;
+  --bg-elevated: #2a2a2a;
+  --bg-hover: rgba(108, 92, 231, 0.1);
 
-  /* v1.6.3.12-v7 - Issue #5/#6: Orphaned/Closed tab colors */
-  --orphaned-bg: #fff3e0;
-  --orphaned-text: #e65100;
-  --closed-bg: #fafafa;
-  --closed-text: #9e9e9e;
-  --warning-color: #ff9800;
+  /* Text Colors */
+  --text-primary: #e8e8e8;
+  --text-secondary: #a0a0a0;
+  --text-tertiary: #707070;
 
-  /* v1.6.3.12-v7 - Issue #3: Visual hierarchy variables */
-  --group-content-border: #e0e0e0;
-  --group-content-bg: rgba(0, 0, 0, 0.02);
+  /* Accent & Status Colors */
+  --accent-primary: #6c5ce7;
+  --accent-hover: #5849c9;
+  --success: #00b894;
+  --success-hover: #00a085;
+  --danger: #e17055;
+  --danger-hover: #d35f48;
+  --warning: #fdcb6e;
+  --info: #74b9ff;
 
-  /* v1.6.3.12-v7 - Issue #8: Divider styling */
-  --divider-color: #e8e8e8;
+  /* Border & Divider Colors */
+  --border-subtle: #333333;
+  --border-normal: #404040;
 
-  /* v1.6.3.12-v7 - Issue #2: Count badge styling */
-  --count-badge-bg: #e3f2fd;
-  --count-badge-text: #1976d2;
+  /* Shadows */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
 
-  /* v1.6.3.12-v7 - Animation timing */
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.2s ease;
   --animation-duration: 0.35s;
   --animation-timing: ease-in-out;
+
+  /* Status-specific colors */
+  --status-active: #00b894;
+  --status-minimized: #74b9ff;
+  --status-orphaned: #fdcb6e;
+  --status-closed: #95a5a6;
+
+  /* Badge Colors */
+  --badge-active-bg: rgba(0, 184, 148, 0.15);
+  --badge-active-text: #00b894;
+  --badge-minimized-bg: rgba(116, 185, 255, 0.15);
+  --badge-minimized-text: #74b9ff;
+  --badge-orphaned-bg: rgba(253, 203, 110, 0.15);
+  --badge-orphaned-text: #fdcb6e;
+  --badge-closed-bg: rgba(149, 165, 166, 0.15);
+  --badge-closed-text: #95a5a6;
 }
 
-@media (prefers-color-scheme: dark) {
+/* ==================== LIGHT MODE OVERRIDE ==================== */
+@media (prefers-color-scheme: light) {
   :root {
-    --primary-bg: #2d2d2d;
-    --secondary-bg: #1e1e1e;
-    --border-color: #555;
-    --text-primary: #e0e0e0;
-    --text-secondary: #999;
+    /* Background Colors */
+    --bg-base: #f8f9fa;
+    --bg-surface: #ffffff;
+    --bg-elevated: #f0f0f0;
+    --bg-hover: rgba(108, 92, 231, 0.08);
 
-    /* v1.6.3.12-v7 - Issue #5/#6: Orphaned/Closed tab colors (dark mode) */
-    --orphaned-bg: #3e2723;
-    --orphaned-text: #ffb74d;
-    --closed-bg: #333;
-    --closed-text: #757575;
-    --warning-color: #ffb74d;
+    /* Text Colors */
+    --text-primary: #212529;
+    --text-secondary: #6c757d;
+    --text-tertiary: #adb5bd;
 
-    /* v1.6.3.12-v7 - Issue #3: Visual hierarchy (dark mode) */
-    --group-content-border: #444;
-    --group-content-bg: rgba(255, 255, 255, 0.03);
+    /* Border & Divider Colors */
+    --border-subtle: #e9ecef;
+    --border-normal: #dee2e6;
 
-    /* v1.6.3.12-v7 - Issue #8: Divider styling (dark mode) */
-    --divider-color: #444;
+    /* Shadows */
+    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.08);
+    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.12);
 
-    /* v1.6.3.12-v7 - Issue #2: Count badge styling (dark mode) */
-    --count-badge-bg: #1a237e;
-    --count-badge-text: #90caf9;
+    /* Status-specific colors adjusted for light mode */
+    --status-active: #00b894;
+    --status-minimized: #5499d6;
+    --status-orphaned: #f39c12;
+    --status-closed: #7f8c8d;
+
+    /* Badge Colors for light mode */
+    --badge-active-bg: rgba(0, 184, 148, 0.1);
+    --badge-minimized-bg: rgba(84, 153, 214, 0.1);
+    --badge-orphaned-bg: rgba(243, 156, 18, 0.1);
+    --badge-closed-bg: rgba(127, 140, 141, 0.1);
   }
 }
 
+/* ==================== BASE STYLES ==================== */
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
   margin: 0;
   padding: 0;
+  height: 100%;
+}
+
+body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 13px;
-  background: var(--primary-bg);
+  background: var(--bg-base);
   color: var(--text-primary);
   overflow-y: auto;
-  height: 100%;
   display: flex;
   flex-direction: column;
 }
 
-html {
-  height: 100%;
-}
-
+/* ==================== SIDEBAR HEADER ==================== */
 .sidebar-header {
-  padding: 12px 16px;
-  background: var(--secondary-bg);
-  border-bottom: 1px solid var(--border-color);
+  padding: 14px 16px;
+  background: var(--bg-surface);
+  border-bottom: 2px solid var(--accent-primary);
   position: sticky;
   top: 0;
   z-index: 10;
+  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-header h1 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
+  margin: 0 0 12px 0;
+  font-size: 17px;
   font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
 
 .header-actions {
@@ -116,164 +149,211 @@ html {
 .btn-secondary,
 .btn-danger {
   flex: 1;
-  padding: 6px 12px;
+  padding: 8px 14px;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   font-size: 12px;
-  font-weight: 500;
-  transition: opacity 0.2s;
+  font-weight: 600;
+  transition: all var(--transition-normal);
+  letter-spacing: 0.3px;
+  box-shadow: var(--shadow-sm);
 }
 
 .btn-secondary {
-  background: var(--blue-primary);
+  background: var(--accent-primary);
   color: white;
 }
 
 .btn-secondary:hover {
-  opacity: 0.8;
+  background: var(--accent-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.btn-secondary:active {
+  transform: translateY(1px);
 }
 
 .btn-danger {
-  background: var(--red-danger);
+  background: var(--danger);
   color: white;
 }
 
 .btn-danger:hover {
-  opacity: 0.8;
+  background: var(--danger-hover);
+  box-shadow: var(--shadow-md);
 }
 
+.btn-danger:active {
+  transform: translateY(1px);
+}
+
+/* ==================== SIDEBAR STATS & FILTER ==================== */
 .sidebar-stats {
-  padding: 8px 16px;
-  background: var(--secondary-bg);
-  border-bottom: 1px solid var(--border-color);
+  padding: 10px 16px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   font-size: 11px;
   color: var(--text-secondary);
+  font-weight: 500;
 }
 
-/* v1.6.4-v4 - FEATURE: Container filter dropdown styling */
+/* Container Filter Dropdown */
 .container-filter-dropdown {
   flex: 1;
-  max-width: 150px;
-  min-width: 90px;
-  padding: 4px 8px;
+  max-width: 160px;
+  min-width: 100px;
+  padding: 6px 10px;
   font-size: 11px;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background: var(--primary-bg);
+  font-weight: 500;
+  border: 2px solid var(--border-normal);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
   color: var(--text-primary);
   cursor: pointer;
-  transition: border-color 0.2s ease;
+  transition:
+    border-color var(--transition-normal),
+    box-shadow var(--transition-normal);
 }
 
 .container-filter-dropdown:hover {
-  border-color: var(--blue-primary);
+  border-color: var(--accent-primary);
 }
 
 .container-filter-dropdown:focus {
   outline: none;
-  border-color: var(--blue-primary);
-  box-shadow: 0 0 0 2px rgba(74, 144, 226, 0.2);
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.25);
 }
 
-/* Container indicator icon before container name in dropdown */
 .container-filter-dropdown option {
-  padding: 4px 8px;
+  padding: 6px 10px;
 }
 
-/* Compact dropdown on narrow screens instead of hiding */
 @media (max-width: 280px) {
   .container-filter-dropdown {
     max-width: 80px;
     font-size: 10px;
-    padding: 2px 4px;
+    padding: 4px 6px;
   }
 }
 
+/* ==================== CONTAINERS LIST ==================== */
 .containers-list {
-  padding: 10px 0;
+  padding: 0;
   flex: 1;
+  overflow-y: auto;
 }
 
 .container-section {
-  margin-bottom: 16px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .container-header {
-  padding: 8px 16px;
+  padding: 10px 16px;
   margin: 0;
   font-size: 13px;
   font-weight: 600;
-  background: var(--secondary-bg);
-  border-top: 1px solid var(--border-color);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
 
 .container-icon {
-  font-size: 14px;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 
 .container-count {
   margin-left: auto;
-  font-weight: normal;
+  font-weight: 500;
   color: var(--text-secondary);
   font-size: 11px;
+  padding: 2px 8px;
+  background: var(--badge-active-bg);
+  color: var(--badge-active-text);
+  border-radius: var(--radius-sm);
 }
 
+/* ==================== QUICK TABS LIST ==================== */
 .quick-tabs-list {
-  /* No padding - items have their own spacing */
   padding: 0;
+  list-style: none;
+  margin: 0;
 }
 
 .quick-tab-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  border-bottom: 1px solid var(--border-color);
-  transition: background 0.2s;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition:
+    background var(--transition-normal),
+    border-left-color var(--transition-fast);
   cursor: pointer;
+  position: relative;
+  border-left: 3px solid transparent;
 }
 
 .quick-tab-item:hover {
-  background: var(--secondary-bg);
+  background: var(--bg-hover);
+  border-left-color: var(--accent-primary);
 }
 
 .quick-tab-item.active {
-  border-left: 3px solid var(--green-indicator);
-  padding-left: 13px; /* Adjust for border */
+  background: var(--badge-active-bg);
+  border-left-color: var(--status-active);
 }
 
 .quick-tab-item.minimized {
-  border-left: 3px solid var(--yellow-indicator);
-  padding-left: 13px;
+  background: var(--badge-minimized-bg);
+  border-left-color: var(--status-minimized);
 }
 
+.quick-tab-item.orphaned {
+  background: var(--badge-orphaned-bg);
+  border-left-color: var(--status-orphaned);
+}
+
+.quick-tab-item.closed {
+  background: var(--badge-closed-bg);
+  border-left-color: var(--status-closed);
+  opacity: 0.7;
+}
+
+/* Status Indicator */
 .status-indicator {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 4px currentColor;
 }
 
 .status-indicator.green {
-  background: var(--green-indicator);
+  background: var(--status-active);
+  color: var(--status-active);
 }
 
-.status-indicator.yellow {
-  background: var(--yellow-indicator);
+.status-indicator.blue {
+  background: var(--status-minimized);
+  color: var(--status-minimized);
 }
 
-/* v1.6.3.12-v7 - FIX Issue #4: Warning indicator for domVerified=false */
+.status-indicator.yellow,
 .status-indicator.orange {
-  background: var(--orange-indicator);
+  background: var(--status-orphaned);
+  color: var(--status-orphaned);
   animation: pulse-warning 1.5s ease-in-out infinite;
 }
 
@@ -281,130 +361,182 @@ html {
   0%,
   100% {
     opacity: 1;
+    transform: scale(1);
   }
   50% {
-    opacity: 0.5;
+    opacity: 0.6;
+    transform: scale(1.1);
   }
 }
 
-.favicon {
-  width: 16px;
-  height: 16px;
+.status-indicator.gray {
+  background: var(--status-closed);
+  color: var(--status-closed);
+}
+
+/* Favicon */
+.favicon,
+.tab-favicon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  object-fit: contain;
+}
+
+.tab-favicon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
 }
 
+.tab-favicon-fallback {
+  font-size: 16px;
+  width: 18px;
+  height: 18px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.tab-favicon-fallback.visible {
+  display: inline-flex;
+}
+
+/* Tab Info */
 .tab-info {
   flex: 1;
-  min-width: 0; /* Allow text truncation */
+  min-width: 0;
 }
 
 .tab-title {
   font-weight: 500;
-  font-size: 12px;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  color: var(--text-primary);
+  margin-bottom: 3px;
 }
 
 .tab-meta {
   font-size: 10px;
   color: var(--text-secondary);
   margin-top: 2px;
+  font-weight: 500;
 }
 
+/* Tab Actions */
 .tab-actions {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   flex-shrink: 0;
 }
 
 .btn-icon {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  background: transparent;
+  background: var(--bg-elevated);
   cursor: pointer;
-  border-radius: 4px;
-  font-size: 12px;
-  transition: background 0.2s;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  transition: all var(--transition-normal);
   display: flex;
   align-items: center;
   justify-content: center;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
 }
 
 .btn-icon:hover {
-  background: var(--border-color);
+  background: var(--bg-hover);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  box-shadow: var(--shadow-sm);
 }
 
-/* v1.6.3.12 - UI Fix: Button colors */
-/* Restore button - green arrow */
+.btn-icon:active {
+  transform: scale(0.95);
+}
+
+/* Restore button */
 .btn-icon[data-action='restore'] {
-  color: #4caf50;
+  color: var(--success);
+  border-color: var(--success);
 }
 
-/* Close button - light gray */
+.btn-icon[data-action='restore']:hover {
+  background: rgba(0, 184, 148, 0.15);
+  color: var(--success-hover);
+}
+
+/* Close button */
 .btn-icon[data-action='close'] {
-  color: #999;
+  color: var(--text-tertiary);
 }
 
 .btn-icon[data-action='close']:hover {
-  color: #f44336;
-  background: rgba(244, 67, 54, 0.1);
+  color: var(--danger);
+  background: rgba(225, 112, 85, 0.15);
+  border-color: var(--danger);
 }
 
-/* v1.6.3.7-v1 - FIX ISSUE #8: Adopt button for orphaned tabs */
+/* Adopt button */
 .btn-icon.btn-adopt,
 .btn-icon[data-action='adoptToCurrentTab'] {
-  color: var(--orphaned-text);
-  background: var(--orphaned-bg);
-  border: 1px solid var(--warning-color);
+  color: var(--warning);
+  border-color: var(--warning);
 }
 
 .btn-icon.btn-adopt:hover,
 .btn-icon[data-action='adoptToCurrentTab']:hover {
-  background: rgba(255, 152, 0, 0.2);
-  color: #e65100;
+  background: rgba(253, 203, 110, 0.15);
+  color: var(--warning);
 }
 
-/* v1.6.4 - FEATURE #6: Open in New Tab button styling */
+/* Open in New Tab button */
 .btn-icon.btn-open-in-tab,
 .btn-icon[data-action='openInNewTab'] {
-  color: var(--blue-primary);
-  background: rgba(74, 144, 226, 0.1);
-  border: 1px solid var(--blue-primary);
+  color: var(--info);
+  border-color: var(--info);
 }
 
 .btn-icon.btn-open-in-tab:hover,
 .btn-icon[data-action='openInNewTab']:hover {
-  background: var(--blue-primary);
-  color: white;
+  background: rgba(116, 185, 255, 0.15);
+  color: var(--info);
 }
 
-/* Disabled button state */
+/* Disabled button */
 .btn-icon:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
-  background: transparent;
+  background: var(--bg-elevated);
+  border-color: var(--border-subtle);
 }
 
 .btn-icon:disabled:hover {
-  background: transparent;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+  box-shadow: none;
 }
 
-/* ========================================
- * Cross-Tab Grouping UI (v1.6.3.12-v7)
- * v1.6.3.12-v7 - FIX Issues #1-12: Complete UI/UX overhaul
- * ======================================== */
-
+/* ==================== TAB GROUPS (COLLAPSIBLE) ==================== */
 .tab-groups-container {
   padding: 0;
 }
 
-/* Collapsible group container */
 .tab-group {
-  border-bottom: 1px solid var(--border-color);
-  /* Issue #7: Smooth removal animation */
+  border-bottom: 1px solid var(--border-subtle);
   transition:
     opacity var(--animation-duration) var(--animation-timing),
     max-height var(--animation-duration) var(--animation-timing);
@@ -414,158 +546,137 @@ html {
   border-bottom: none;
 }
 
-/* Issue #7: Fading out animation class - smooth removal */
 .tab-group.removing {
   opacity: 0;
   max-height: 0;
   overflow: hidden;
   pointer-events: none;
-  /* Issue #7: Smoother fade with scale effect */
   transform: translateX(-10px);
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-bottom-width: 0;
 }
 
-/* Clickable summary with hover states */
+/* Group Header (Summary) */
 .tab-group-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 10px;
+  padding: 12px 16px;
   cursor: pointer;
-  background: var(--secondary-bg);
-  /* Issue #4: Enhanced animation timing */
+  background: var(--bg-elevated);
   transition: background var(--animation-duration) var(--animation-timing);
   user-select: none;
-  list-style: none; /* Remove default marker */
+  list-style: none;
+  border-left: 3px solid transparent;
 }
 
 .tab-group-header::-webkit-details-marker {
-  display: none; /* Remove default marker in Chrome/Safari */
+  display: none;
 }
 
-/* Issue #4: Larger, smoother arrow animation - synchronized with content */
+.tab-group-header:hover {
+  background: var(--bg-hover);
+  border-left-color: var(--accent-primary);
+}
+
+/* Collapse Arrow */
 .tab-group-header::before {
   content: '▼';
-  font-size: 12px; /* Issue #4: Increased from 10px */
-  color: var(--text-secondary);
+  font-size: 13px;
+  color: var(--accent-primary);
   transition:
     transform var(--animation-duration) var(--animation-timing),
-    color 0.2s ease; /* Issue #4: Also animate color */
+    color var(--transition-normal);
   flex-shrink: 0;
-  width: 14px;
+  width: 16px;
   text-align: center;
-  transform-origin: center center; /* Issue #4: Ensure smooth rotation */
+  transform-origin: center;
 }
 
 .tab-group:not([open]) .tab-group-header::before {
   transform: rotate(-90deg);
+  color: var(--text-secondary);
 }
 
-.tab-group-header:hover {
-  background: var(--border-color);
-}
-
-/* Issue #2: 16x16 favicon image with proper spacing */
-.tab-favicon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-  border-radius: 2px;
-  margin-right: 4px; /* Issue #2: 3-4px gutter */
-  object-fit: contain;
-}
-
-/* Issue #4: Favicon container class-based styling (no inline styles needed)
- * v1.6.3.6-v11 - FIX Issue #4: Both image and fallback use identical CSS constraints
- */
-.tab-favicon-container {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  margin-right: 4px;
-  flex-shrink: 0;
-}
-
-/* Issue #4/#9: Favicon fallback emoji styling - hidden by default */
-.tab-favicon-fallback {
-  font-size: 14px;
-  width: 16px;
-  height: 16px;
-  display: none; /* Issue #4: Hidden by default, shown via .visible class */
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-right: 4px;
-  line-height: 1;
-  /* Issue #9: Ensure emoji doesn't overflow */
-  overflow: hidden;
-}
-
-/* Issue #4: Fallback visible state (toggled via JS using class only, no inline display) */
-.tab-favicon-fallback.visible {
-  display: inline-flex;
-}
-
-/* Truncated tab title */
+/* Group Title */
 .tab-group-title {
   flex: 1;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   min-width: 0;
+  color: var(--text-primary);
+  letter-spacing: 0.3px;
 }
 
-/* Issue #2: Tab ID display in header */
+/* Tab ID Display */
 .tab-group-tab-id {
   font-size: 11px;
   color: var(--text-secondary);
   flex-shrink: 0;
   opacity: 0.8;
+  font-weight: 500;
+  padding: 2px 6px;
+  background: var(--bg-surface);
+  border-radius: var(--radius-sm);
 }
 
-/* Issue #6: Closed tab stronger styling - strikethrough, distinct background */
+/* Quick Tab Count Badge */
+.tab-group-count {
+  font-size: 12px;
+  color: var(--badge-active-text);
+  font-weight: 700;
+  flex-shrink: 0;
+  padding: 3px 1px;
+  background: var(--badge-active-bg);
+  border-radius: 3px;
+  min-width: 10px;
+  text-align: center;
+  transition:
+    transform var(--transition-normal),
+    background-color var(--transition-normal);
+  border: 1px solid var(--badge-active-text);
+}
+
+.tab-group-count.updated {
+  transform: scale(1.15);
+  background-color: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+/* Closed Tab Styling */
 .tab-group-title.closed-tab {
   font-style: italic;
-  color: var(--closed-text);
-  text-decoration: line-through; /* Issue #6: Strikethrough for emphasis */
-  text-decoration-color: var(--red-danger);
+  color: var(--status-closed);
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
   opacity: 0.7;
 }
 
-/* Issue #6: Closed tab group header background - more distinct */
 .tab-group.closed-tab-group .tab-group-header {
-  background: var(--closed-bg);
-  border-left: 3px solid var(--closed-text); /* Issue #6: Left border indicator */
+  background: var(--badge-closed-bg);
+  border-left-color: var(--status-closed);
 }
 
-/* Issue #6: Closed tab badge - more prominent */
 .closed-tab-badge {
   font-size: 10px;
-  color: var(--red-danger);
-  background: rgba(244, 67, 54, 0.15); /* Issue #6: Slightly more visible */
-  padding: 2px 8px; /* Issue #6: More padding */
-  border-radius: 4px;
+  color: var(--danger);
+  background: var(--badge-closed-bg);
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
-  margin-left: 4px;
-  border: 1px solid rgba(244, 67, 54, 0.3); /* Issue #6: Subtle border */
-  font-weight: 500;
+  margin-left: 6px;
+  border: 1px solid var(--danger);
+  font-weight: 600;
+  letter-spacing: 0.3px;
 }
 
-/* Issue #6: Closed tab content area styling */
 .tab-group.closed-tab-group .tab-group-content {
-  background: rgba(0, 0, 0, 0.02);
-  border-left-color: var(--closed-text);
+  background: var(--badge-closed-bg);
+  border-left: 3px solid var(--status-closed);
 }
 
-/* Issue #6: Items in closed tab groups */
 .tab-group.closed-tab-group .quick-tab-item {
   opacity: 0.6;
 }
@@ -575,748 +686,106 @@ html {
   text-decoration-color: var(--text-secondary);
 }
 
-/* Issue #2: Enhanced Quick Tab count badge - more prominent styling */
-/* v1.6.4 - FIX BUG #3: Narrower indicator - thin vertical rectangle per user request */
-/* v1.6.4 - FIX BUG #3: Further narrowed per additional user feedback */
-.tab-group-count {
-  font-size: 12px; /* v1.6.4: Slightly smaller number per user request */
-  color: var(--count-badge-text);
-  font-weight: 700; /* v1.6.4: Even bolder font weight */
-  flex-shrink: 0;
-  padding: 3px 1px; /* v1.6.4: Minimal L/R padding (2px->1px) for very narrow badge */
-  background: var(--count-badge-bg);
-  border-radius: 3px; /* v1.6.4: Smaller radius for tighter fit */
-  min-width: 10px; /* v1.6.4: Further reduced min-width (12px->10px) for narrower badge */
-  text-align: center;
-  /* Issue #10: Subtle transition for count updates */
-  transition:
-    transform 0.2s ease,
-    background-color 0.2s ease;
-}
-
-/* Issue #10: Visual feedback when count changes */
-.tab-group-count.updated {
-  transform: scale(1.1);
-  background-color: var(--blue-primary);
-  color: white;
-}
-
-/* v1.6.3.6-v11 - Issue #20: Direction-specific animation */
-.tab-group-count.count-increased {
-  background-color: var(--green-indicator);
-}
-
-.tab-group-count.count-decreased {
-  background-color: var(--warning-color);
-}
-
-/* v1.6.4 - FEATURE #4: Group action buttons (Go to Tab, Close All in Tab) */
-.tab-group-actions {
-  display: flex;
-  gap: 4px;
-  margin-left: 8px;
-  flex-shrink: 0;
-}
-
-.tab-group-actions .btn-icon {
-  width: 22px;
-  height: 22px;
-  font-size: 11px;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tab-group-actions .btn-go-to-tab {
-  background: rgba(74, 144, 226, 0.1);
-  color: var(--blue-primary);
-}
-
-.tab-group-actions .btn-go-to-tab:hover {
-  background: var(--blue-primary);
-  color: white;
-}
-
-.tab-group-actions .btn-close-all-in-tab {
-  background: rgba(244, 67, 54, 0.1);
-  color: var(--red-danger);
-}
-
-.tab-group-actions .btn-close-all-in-tab:hover {
-  background: var(--red-danger);
-  color: white;
-}
-
-/* v1.6.4-v4 - FEATURE Issue #1: Container indicator badge in "All Containers" view */
-.container-indicator-badge {
-  font-size: 10px;
-  color: var(--text-secondary);
-  background: rgba(0, 0, 0, 0.05);
-  padding: 2px 6px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  margin-left: 4px;
-  white-space: nowrap;
-  max-width: 100px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  transition: background-color 0.2s ease;
-}
-
-/* v1.6.4-v4 - Container color variants based on Firefox container colors */
-.container-indicator-badge[data-container-color='blue'] {
-  background: rgba(55, 114, 255, 0.15);
-  color: #3772ff;
-}
-
-.container-indicator-badge[data-container-color='turquoise'] {
-  background: rgba(0, 196, 196, 0.15);
-  color: #00c4c4;
-}
-
-.container-indicator-badge[data-container-color='green'] {
-  background: rgba(81, 183, 81, 0.15);
-  color: #51b751;
-}
-
-.container-indicator-badge[data-container-color='yellow'] {
-  background: rgba(255, 203, 0, 0.15);
-  color: #c9a100;
-}
-
-.container-indicator-badge[data-container-color='orange'] {
-  background: rgba(255, 144, 0, 0.15);
-  color: #ff9000;
-}
-
-.container-indicator-badge[data-container-color='red'] {
-  background: rgba(255, 75, 75, 0.15);
-  color: #ff4b4b;
-}
-
-.container-indicator-badge[data-container-color='pink'] {
-  background: rgba(255, 117, 181, 0.15);
-  color: #ff75b5;
-}
-
-.container-indicator-badge[data-container-color='purple'] {
-  background: rgba(175, 75, 255, 0.15);
-  color: #af4bff;
-}
-
-/* Dark mode adjustments for container indicator */
-@media (prefers-color-scheme: dark) {
-  .container-indicator-badge {
-    background: rgba(255, 255, 255, 0.08);
-    color: var(--text-secondary);
-  }
-
-  .container-indicator-badge[data-container-color='blue'] {
-    background: rgba(55, 114, 255, 0.25);
-    color: #5c99ff;
-  }
-
-  .container-indicator-badge[data-container-color='turquoise'] {
-    background: rgba(0, 196, 196, 0.25);
-    color: #33d1d1;
-  }
-
-  .container-indicator-badge[data-container-color='green'] {
-    background: rgba(81, 183, 81, 0.25);
-    color: #6bc96b;
-  }
-
-  .container-indicator-badge[data-container-color='yellow'] {
-    background: rgba(255, 203, 0, 0.25);
-    color: #ffd633;
-  }
-
-  .container-indicator-badge[data-container-color='orange'] {
-    background: rgba(255, 144, 0, 0.25);
-    color: #ffa733;
-  }
-
-  .container-indicator-badge[data-container-color='red'] {
-    background: rgba(255, 75, 75, 0.25);
-    color: #ff6e6e;
-  }
-
-  .container-indicator-badge[data-container-color='pink'] {
-    background: rgba(255, 117, 181, 0.25);
-    color: #ff91c7;
-  }
-
-  .container-indicator-badge[data-container-color='purple'] {
-    background: rgba(175, 75, 255, 0.25);
-    color: #c47aff;
-  }
-}
-
-/* Responsive: Hide container badge on narrow screens */
-@media (max-width: 300px) {
-  .container-indicator-badge {
-    display: none;
-  }
-}
-
-/* Issue #3: Visual hierarchy - Indented Quick Tab list with container effect */
+/* Group Content */
 .tab-group-content {
-  padding-left: 28px; /* Issue #3: Slightly more indentation */
-  padding-top: 8px; /* Issue #3: Top padding for breathing room */
-  padding-bottom: 8px; /* Issue #3: Bottom padding for breathing room */
-  border-top: 1px solid var(--border-color);
-  border-left: 3px solid var(--group-content-border); /* Issue #3: Left border (3px) for container effect */
-  margin-left: 14px; /* Issue #3: Align with arrow */
-  background: var(--group-content-bg); /* Issue #3: Subtle background */
-  /* Issue #3: Border radius for softer look */
-  border-bottom-left-radius: 4px;
-  /* Issue #12: Animation support */
-  overflow: hidden;
-  transition:
-    max-height var(--animation-duration) var(--animation-timing),
-    opacity var(--animation-duration) var(--animation-timing),
-    padding var(--animation-duration) var(--animation-timing);
+  background: var(--bg-surface);
+  border-left: 3px solid var(--accent-primary);
+  transition: padding var(--animation-duration) var(--animation-timing);
 }
 
-/* Issue #12: Collapsed state - smooth transition */
-.tab-group:not([open]) .tab-group-content {
-  max-height: 0;
-  opacity: 0;
-  border-top: none;
-  padding-top: 0;
-  padding-bottom: 0;
-  /* Issue #12: Ensure all properties transition together */
-  transition:
-    max-height var(--animation-duration) var(--animation-timing),
-    opacity var(--animation-duration) var(--animation-timing),
-    padding var(--animation-duration) var(--animation-timing);
-}
-
-/* Issue #12: Expanded state with animation */
-.tab-group[open] .tab-group-content {
-  opacity: 1;
-  /* max-height managed by JS for smooth animation */
-  /* Issue #12: Delay opacity slightly for stagger effect */
-  transition:
-    max-height var(--animation-duration) var(--animation-timing),
-    opacity var(--animation-duration) var(--animation-timing) 0.05s,
-    padding var(--animation-duration) var(--animation-timing);
-}
-
-/* Issue #12: Item entrance animation */
-.tab-group-content .quick-tab-item {
-  padding-left: 12px;
-  /* v1.6.3.10-v5 - FIX Bug #3: Removed automatic animation to prevent all items animating
-   * Animation now only applies to items with explicit animation classes
-   * This prevents the bug where adopting one Quick Tab caused all items to animate
-   */
-}
-
-/* v1.6.3.10-v5 - FIX Bug #3: Adoption animation - only applied to the specific adopted Quick Tab */
-.tab-group-content .quick-tab-item.adoption-animation {
-  animation: adoptionSlideIn var(--animation-duration) var(--animation-timing);
-}
-
-@keyframes adoptionSlideIn {
-  from {
-    opacity: 0;
-    transform: translateX(-20px);
-    background-color: rgba(76, 175, 80, 0.2); /* Green highlight */
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-    background-color: transparent;
-  }
-}
-
-/* v1.6.3.10-v5 - FIX Bug #3: Initial render animation - only for newly created groups 
- * This animation only triggers when a group is first expanded, not on every render
- */
-.tab-group-content .quick-tab-item.initial-render {
-  animation: itemFadeIn var(--animation-duration) var(--animation-timing);
-}
-
-@keyframes itemFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.tab-group-content .quick-tab-item:last-child {
-  border-bottom: none;
-}
-
-/* Issue #8: Divider between active and minimized tabs - enhanced styling */
-.section-divider {
-  height: 1px;
-  background: linear-gradient(to right, transparent, var(--divider-color), transparent);
-  margin: 12px 0; /* Issue #8: More spacing */
-  position: relative;
-}
-
-.section-divider::after {
-  content: attr(data-label);
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--primary-bg); /* Issue #8: Match page background */
-  padding: 0 10px;
-  font-size: 9px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-}
-
-/* Issue #8: Section sub-headers - more prominent */
-.section-header {
-  font-size: 10px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 8px 12px 6px; /* Issue #8: More padding */
-  font-weight: 600;
-  background: rgba(0, 0, 0, 0.02);
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 4px;
-}
-
-/* Issue #5: Orphaned tabs styling - tinted background, reduced opacity, warning icon */
-.tab-group.orphaned .tab-group-header {
-  background: var(--orphaned-bg);
-  /* Issue #5: Slightly reduced opacity for header */
-  opacity: 0.9;
-}
-
-.tab-group.orphaned .tab-group-title {
-  font-style: italic;
-  color: var(--orphaned-text);
-}
-
-.tab-group.orphaned .tab-group-count {
-  background: var(--warning-color);
-  color: white;
-}
-
-/* v1.6.4 - FIX Issue #16: Orphan badge for individual quick-tab-item elements */
-.orphan-badge {
-  font-size: 10px;
-  color: var(--warning-color);
-  background: rgba(255, 152, 0, 0.15);
-  padding: 2px 4px;
-  border-radius: 3px;
-  flex-shrink: 0;
-  margin-left: 4px;
-  position: absolute;
-  top: 2px;
-  right: 2px;
-}
-
-/* Issue #5: Orphaned warning badge for group headers - more prominent */
-.orphaned-badge {
-  font-size: 10px;
-  color: var(--warning-color);
-  background: rgba(255, 152, 0, 0.15);
-  padding: 2px 8px; /* Issue #5: Slightly more padding */
-  border-radius: 4px;
-  flex-shrink: 0;
-  border: 1px solid var(--warning-color); /* Issue #5: Border for emphasis */
-  font-weight: 500;
-}
-
-/* v1.6.4 - FIX Issue #16: Individual orphaned quick-tab-item styling */
-.quick-tab-item.orphaned {
-  background: var(--orphaned-bg);
-  border-left: 3px solid var(--warning-color);
-  opacity: 0.85;
-  position: relative;
-}
-
-.quick-tab-item.orphaned .tab-title {
-  font-style: italic;
-  color: var(--orphaned-text);
-}
-
-/* Issue #5: Items within orphaned groups - reduced opacity */
-.tab-group.orphaned .quick-tab-item {
-  opacity: 0.65; /* Issue #5: More noticeable reduced opacity */
-}
-
-.tab-group.orphaned .quick-tab-item .tab-title {
-  font-style: italic;
-}
-
-/* Issue #5: Orphaned content area has tinted background */
-.tab-group.orphaned .tab-group-content {
-  background: rgba(255, 152, 0, 0.05);
-  border-left-color: var(--warning-color);
-}
-
-/* ======================================== */
-
-/* ========================================
- * Issue #11: Responsive Design
- * ======================================== */
-
-/* Standard sidebar (300px-400px) */
-@media (max-width: 400px) {
-  .tab-group-header {
-    padding: 8px 12px;
-    gap: 6px;
-  }
-
-  .tab-group-content {
-    padding-left: 20px;
-    margin-left: 10px;
-  }
-
-  .tab-group-tab-id {
-    display: none; /* Hide tab ID on smaller widths */
-  }
-
-  /* Issue #11: Reduce badge padding at this breakpoint */
-  .tab-group-count {
-    padding: 3px 8px;
-  }
-}
-
-/* Issue #11: 350px breakpoint - intermediate size */
-@media (max-width: 350px) {
-  .tab-group-header {
-    padding: 7px 10px;
-  }
-
-  .tab-group-content {
-    padding-left: 18px;
-    margin-left: 8px;
-  }
-
-  .tab-group-title {
-    font-size: 12px;
-  }
-
-  .orphaned-badge,
-  .closed-tab-badge {
-    font-size: 9px;
-    padding: 1px 5px;
-  }
-}
-
-/* Narrow sidebar (<300px) */
-@media (max-width: 300px) {
-  .tab-group-header {
-    padding: 6px 10px;
-    gap: 4px;
-  }
-
-  .tab-group-header::before {
-    font-size: 10px;
-    width: 12px;
-  }
-
-  .tab-group-content {
-    padding-left: 16px;
-    margin-left: 8px;
-    border-left-width: 2px; /* Issue #11: Thinner border */
-  }
-
-  .tab-group-content .quick-tab-item {
-    padding-left: 8px;
-    padding-top: 8px;
-    padding-bottom: 8px;
-  }
-
-  .tab-group-title {
-    font-size: 12px;
-  }
-
-  .tab-group-count {
-    font-size: 10px;
-    padding: 2px 6px; /* Issue #11: Smaller padding */
-    min-width: 16px;
-  }
-
-  .tab-favicon,
-  .tab-favicon-fallback {
-    width: 14px;
-    height: 14px;
-    font-size: 12px;
-  }
-
-  .closed-tab-badge,
-  .orphaned-badge {
-    font-size: 9px;
-    padding: 1px 4px;
-    border-width: 0; /* Issue #11: Remove border at small sizes */
-  }
-
-  /* Issue #11: Reduce button size */
-  .tab-actions .btn-icon {
-    width: 20px;
-    height: 20px;
-    font-size: 10px;
-  }
-
-  /* Issue #11: Hide secondary metadata */
-  .tab-meta {
-    display: none;
-  }
-
-  .section-divider::after {
-    font-size: 8px;
-    padding: 0 6px;
-  }
-
-  /* Issue #11: Smaller section headers */
-  .section-header {
-    font-size: 9px;
-    padding: 6px 10px 4px;
-  }
-}
-
-/* Very narrow sidebar (<250px) - Issue #11: Hide favicons, minimize metadata */
-@media (max-width: 250px) {
-  .tab-group-header {
-    padding: 5px 8px;
-  }
-
-  .tab-group-content {
-    padding-left: 12px;
-    margin-left: 6px;
-    padding-top: 4px;
-    padding-bottom: 4px;
-  }
-
-  .tab-favicon,
-  .tab-favicon-fallback,
-  .tab-favicon-container {
-    display: none !important; /* Issue #11: Hide favicon on very narrow */
-  }
-
-  .tab-group-count {
-    padding: 1px 4px;
-    font-size: 9px;
-  }
-
-  .closed-tab-badge,
-  .orphaned-badge {
-    display: none; /* Issue #11: Hide badges on very narrow */
-  }
-
-  /* Issue #11: Smaller title */
-  .tab-group-title {
-    font-size: 11px;
-  }
-
-  /* Issue #11: Smaller arrow */
-  .tab-group-header::before {
-    font-size: 9px;
-    width: 10px;
-  }
-
-  /* Issue #11: Hide section headers */
-  .section-header {
-    display: none;
-  }
-
-  /* Issue #11: Simpler divider */
-  .section-divider::after {
-    display: none;
-  }
-}
-
-/* Wide sidebar (>500px) */
-@media (min-width: 500px) {
-  .tab-group-content {
-    padding-left: 32px;
-    margin-left: 16px;
-  }
-
-  .tab-group-content .quick-tab-item {
-    padding-left: 16px;
-  }
-}
-
-/* ======================================== */
-
+/* ==================== EMPTY STATE ==================== */
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* Reduced from 60px for better space utilization in flex layout */
-  padding: 20px;
+  padding: 40px 20px;
   text-align: center;
   color: var(--text-secondary);
-  flex: 1;
-  min-height: 0;
 }
 
-.empty-icon {
+.empty-state-icon {
   font-size: 48px;
   margin-bottom: 16px;
   opacity: 0.5;
 }
 
-.empty-text {
+.empty-state-title {
   font-size: 16px;
-  font-weight: 500;
+  font-weight: 600;
+  color: var(--text-primary);
   margin-bottom: 8px;
 }
 
-.empty-hint {
-  font-size: 12px;
+.empty-state-description {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-secondary);
 }
 
-/* ========================================
- * Drag and Drop Styles (v1.6.4)
- * FEATURE #2, #3, #5: Drag-and-Drop Reordering and Transfer
- * ======================================== */
-
-/* Dragging state - applied to element being dragged */
-.tab-group.dragging,
-.quick-tab-item.dragging {
-  opacity: 0.5;
-  transform: scale(0.98);
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
+/* ==================== SCROLLBAR STYLING ==================== */
+.containers-list::-webkit-scrollbar {
+  width: 10px;
 }
 
-/* Drag handle cursor */
-.tab-group-header[draggable='true'],
-.quick-tab-item[draggable='true'] {
-  cursor: grab;
+.containers-list::-webkit-scrollbar-track {
+  background: var(--bg-base);
 }
 
-.tab-group-header[draggable='true']:active,
-.quick-tab-item[draggable='true']:active {
-  cursor: grabbing;
+.containers-list::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--bg-base);
+  transition: background var(--transition-normal);
 }
 
-/* Drag over state - applied to valid drop targets */
-.tab-group.drag-over {
-  outline: 2px dashed var(--blue-primary);
-  outline-offset: -2px;
-  background: rgba(74, 144, 226, 0.1);
+.containers-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
 }
 
-.quick-tab-item.drag-over {
-  border-top: 2px solid var(--blue-primary);
-  margin-top: -2px;
+/* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+@media (max-width: 400px) {
+  .sidebar-header {
+    padding: 10px 12px;
+  }
+
+  .quick-tab-item {
+    padding: 10px 12px;
+  }
+
+  .tab-group-header {
+    padding: 10px 12px;
+  }
+
+  .btn-icon {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
 }
 
-.quick-tab-item.drag-over-bottom {
-  border-bottom: 2px solid var(--blue-primary);
-  margin-bottom: -2px;
+/* ==================== ACCESSIBILITY ==================== */
+.btn-icon:focus-visible,
+.container-filter-dropdown:focus-visible,
+.tab-group-header:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
-/* Cross-tab transfer indicator */
-.tab-group.drag-transfer {
-  outline: 2px dashed var(--green-indicator);
-  outline-offset: -2px;
-  background: rgba(76, 175, 80, 0.1);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.tab-group.drag-transfer .tab-group-header {
-  background: rgba(76, 175, 80, 0.15);
+@media (prefers-contrast: high) {
+  :root {
+    --border-normal: #ffffff;
+    --border-subtle: #cccccc;
+  }
+
+  .btn-icon,
+  .tab-group-header {
+    border: 2px solid currentColor;
+  }
 }
-
-/* Duplicate indicator (Alt+drag) */
-.tab-group.drag-duplicate {
-  outline: 2px dashed var(--orange-indicator);
-  outline-offset: -2px;
-  background: rgba(255, 152, 0, 0.1);
-}
-
-.tab-group.drag-duplicate .tab-group-header {
-  background: rgba(255, 152, 0, 0.15);
-}
-
-/* Drop zone indicator for tab group content */
-.tab-group-content.drag-over {
-  background: rgba(74, 144, 226, 0.08);
-  border-left-color: var(--blue-primary);
-}
-
-/* Drag ghost customization */
-.drag-ghost {
-  position: fixed;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.9;
-  transform: rotate(2deg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-/* Smooth reorder animation */
-.tab-group.reordering,
-.quick-tab-item.reordering {
-  transition:
-    transform 0.2s ease,
-    margin 0.2s ease;
-}
-
-/* Invalid drop target */
-.tab-group.drag-invalid,
-.quick-tab-item.drag-invalid {
-  outline: 2px dashed var(--red-danger);
-  outline-offset: -2px;
-  background: rgba(244, 67, 54, 0.1);
-  cursor: not-allowed;
-}
-
-/* ========================================
- * Optimistic UI States (v1.6.4-v3)
- * FIX: "Open in New Tab" flicker - immediate visual feedback
- * ======================================== */
-
-/* Operation pending state - reduces opacity to indicate processing */
-.quick-tab-item.operation-pending {
-  opacity: 0.5;
-  pointer-events: none;
-  transition: opacity 0.15s ease-out;
-}
-
-/* Closing state - fade out animation */
-.quick-tab-item.closing {
-  opacity: 0.3;
-  transform: translateX(-10px);
-  transition:
-    opacity 0.2s ease-out,
-    transform 0.2s ease-out;
-}
-
-/* Minimizing state - slight scale down */
-.quick-tab-item.minimizing {
-  opacity: 0.6;
-  transform: scale(0.98);
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.15s ease-out;
-}
-
-/* Restoring state - slight scale up */
-.quick-tab-item.restoring {
-  opacity: 0.7;
-  transform: scale(1.01);
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.15s ease-out;
-}
-
-/* ========================================
- * v1.6.4-v3 REMOVED: Metrics footer CSS
- * Duplicate footer removed - metrics now only displayed in settings.html expandable footer
- * The quick-tabs-manager.js still sends METRICS_UPDATE postMessage to parent window
- * ======================================== */
-
-/* ======================================== */

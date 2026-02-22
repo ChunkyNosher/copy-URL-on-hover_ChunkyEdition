@@ -1,185 +1,409 @@
 /**
- * Quick Tabs Module CSS
- * Styles for Quick Tab windows, controls, and overlays
- * v1.5.8.10 - Hybrid Architecture
+ * Quick Tabs Module CSS - In-Page Window Styles
+ * v1.6.4-v7 - Modern Dark-Mode-First Design
+ * Complete UI overhaul with purple-blue accent (#6c5ce7)
+ * Dark mode is DEFAULT, light mode via media query override
+ * Glass-morphism effects with modern aesthetics
  */
 
-/* Quick Tab Window Container */
+/* ==================== CSS VARIABLES - DARK MODE (DEFAULT) ==================== */
+:root {
+  /* Background Colors */
+  --qt-bg-base: #121212;
+  --qt-bg-surface: #1e1e1e;
+  --qt-bg-elevated: #2a2a2a;
+  --qt-bg-glass: rgba(30, 30, 30, 0.85);
+
+  /* Text Colors */
+  --qt-text-primary: #e8e8e8;
+  --qt-text-secondary: #a0a0a0;
+
+  /* Accent & Status Colors */
+  --qt-accent-primary: #6c5ce7;
+  --qt-accent-hover: #5849c9;
+  --qt-accent-active: #4839ab;
+  --qt-success: #00b894;
+  --qt-danger: #e17055;
+
+  /* Border Colors */
+  --qt-border-normal: #404040;
+  --qt-border-accent: var(--qt-accent-primary);
+
+  /* Shadows */
+  --qt-shadow-window: 0 16px 48px rgba(0, 0, 0, 0.6);
+  --qt-shadow-button: 0 2px 6px rgba(0, 0, 0, 0.3);
+
+  /* Border Radius */
+  --qt-radius-window: 12px;
+  --qt-radius-button: 6px;
+
+  /* Transitions */
+  --qt-transition: 0.2s ease;
+}
+
+/* ==================== LIGHT MODE OVERRIDE ==================== */
+@media (prefers-color-scheme: light) {
+  :root {
+    --qt-bg-base: #f8f9fa;
+    --qt-bg-surface: #ffffff;
+    --qt-bg-elevated: #f0f0f0;
+    --qt-bg-glass: rgba(255, 255, 255, 0.9);
+
+    --qt-text-primary: #212529;
+    --qt-text-secondary: #6c757d;
+
+    --qt-border-normal: #dee2e6;
+
+    --qt-shadow-window: 0 16px 48px rgba(0, 0, 0, 0.12);
+    --qt-shadow-button: 0 2px 6px rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* ==================== QUICK TAB WINDOW CONTAINER ==================== */
 .quick-tab-container {
   position: fixed;
-  background: white;
-  border: 2px solid #0078d4;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  background: var(--qt-bg-glass);
+  border: 2px solid var(--qt-border-accent);
+  border-radius: var(--qt-radius-window);
+  box-shadow: var(--qt-shadow-window);
   z-index: 999999990;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-family:
     -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition:
+    box-shadow var(--qt-transition),
+    transform var(--qt-transition);
 }
 
-/* Quick Tab Title Bar */
+.quick-tab-container:hover {
+  box-shadow:
+    0 20px 56px rgba(108, 92, 231, 0.3),
+    var(--qt-shadow-window);
+}
+
+.quick-tab-container.quick-tab-active {
+  border-color: var(--qt-accent-primary);
+  box-shadow:
+    0 0 0 3px rgba(108, 92, 231, 0.25),
+    var(--qt-shadow-window);
+}
+
+/* ==================== QUICK TAB TITLE BAR ==================== */
 .quick-tab-titlebar {
-  background: linear-gradient(to bottom, #f0f0f0, #e0e0e0);
-  padding: 8px 12px;
+  background: linear-gradient(135deg, var(--qt-accent-primary) 0%, var(--qt-accent-hover) 100%);
+  padding: 10px 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   cursor: move;
   user-select: none;
   -webkit-user-select: none;
-  border-bottom: 1px solid #ccc;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  overflow: hidden;
 }
 
-/* Quick Tab Title */
+.quick-tab-titlebar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity var(--qt-transition);
+}
+
+.quick-tab-titlebar:hover::before {
+  opacity: 1;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ==================== QUICK TAB TITLE ==================== */
 .quick-tab-title {
   font-size: 13px;
   font-weight: 600;
-  color: #333;
+  color: #ffffff;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.3px;
 }
 
-/* Quick Tab Controls Container */
+/* ==================== QUICK TAB CONTROLS ==================== */
 .quick-tab-controls {
   display: flex;
-  gap: 4px;
+  gap: 6px;
   align-items: center;
 }
 
-/* Quick Tab Button */
+/* ==================== QUICK TAB BUTTONS ==================== */
 .quick-tab-btn {
-  background: transparent;
-  border: 1px solid #999;
-  color: #333;
-  padding: 4px 8px;
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  padding: 5px 10px;
+  border-radius: var(--qt-radius-button);
   cursor: pointer;
   font-size: 12px;
-  transition: all 0.2s;
+  font-weight: 600;
+  transition: all var(--qt-transition);
   white-space: nowrap;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  letter-spacing: 0.3px;
+  box-shadow: var(--qt-shadow-button);
 }
 
 .quick-tab-btn:hover {
-  background: #0078d4;
-  color: white;
-  border-color: #0078d4;
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
 .quick-tab-btn:active {
-  background: #005a9e;
+  transform: translateY(0);
+  box-shadow: var(--qt-shadow-button);
 }
 
-/* Quick Tab Close Button */
+.quick-tab-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* ==================== QUICK TAB CLOSE BUTTON ==================== */
 .quick-tab-close-btn {
-  background: #dc3545;
-  color: white;
-  border: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 3px;
+  background: rgba(225, 112, 85, 0.2);
+  color: #ffffff;
+  border: 1px solid rgba(225, 112, 85, 0.4);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--qt-radius-button);
   cursor: pointer;
   font-size: 16px;
-  font-weight: bold;
+  font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.2s;
+  transition: all var(--qt-transition);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: var(--qt-shadow-button);
 }
 
 .quick-tab-close-btn:hover {
-  background: #c82333;
+  background: var(--qt-danger);
+  border-color: var(--qt-danger);
+  transform: rotate(90deg) scale(1.1);
+  box-shadow: 0 4px 12px rgba(225, 112, 85, 0.4);
 }
 
-/* Quick Tab Content (iframe container) */
+.quick-tab-close-btn:active {
+  transform: rotate(90deg) scale(1);
+}
+
+.quick-tab-close-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+/* ==================== QUICK TAB CONTENT (IFRAME CONTAINER) ==================== */
 .quick-tab-content {
   flex: 1;
   overflow: hidden;
   position: relative;
+  background: var(--qt-bg-surface);
 }
 
-/* Quick Tab iframe */
+/* ==================== QUICK TAB IFRAME ==================== */
 .quick-tab-iframe {
   width: 100%;
   height: 100%;
   border: none;
-  background: white;
+  background: var(--qt-bg-surface);
+  display: block;
 }
 
-/* Quick Tab Resize Handle */
+/* ==================== QUICK TAB RESIZE HANDLE ==================== */
 .quick-tab-resize-handle {
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   cursor: nwse-resize;
-  background: linear-gradient(135deg, transparent 50%, #0078d4 50%);
-  opacity: 0.5;
-  transition: opacity 0.2s;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    transparent 50%,
+    var(--qt-accent-primary) 50%,
+    var(--qt-accent-primary) 100%
+  );
+  opacity: 0.4;
+  transition:
+    opacity var(--qt-transition),
+    transform var(--qt-transition);
+  border-bottom-right-radius: var(--qt-radius-window);
 }
 
 .quick-tab-resize-handle:hover {
   opacity: 1;
+  transform: scale(1.1);
 }
 
-/* Quick Tab Slot Number Badge (Debug Mode) */
+.quick-tab-resize-handle::before {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  background:
+    linear-gradient(
+      135deg,
+      transparent 60%,
+      rgba(255, 255, 255, 0.3) 60%,
+      rgba(255, 255, 255, 0.3) 62%,
+      transparent 62%
+    ),
+    linear-gradient(
+      135deg,
+      transparent 68%,
+      rgba(255, 255, 255, 0.3) 68%,
+      rgba(255, 255, 255, 0.3) 70%,
+      transparent 70%
+    );
+  border-bottom-right-radius: var(--qt-radius-window);
+}
+
+/* ==================== QUICK TAB SLOT NUMBER BADGE (DEBUG MODE) ==================== */
 .quick-tab-slot-badge {
   position: absolute;
-  top: 4px;
-  left: 4px;
-  background: #ff6b6b;
+  top: 6px;
+  left: 6px;
+  background: linear-gradient(135deg, var(--qt-danger) 0%, #c0392b 100%);
   color: white;
-  padding: 2px 6px;
-  border-radius: 3px;
+  padding: 3px 8px;
+  border-radius: var(--qt-radius-button);
   font-size: 11px;
-  font-weight: bold;
+  font-weight: 700;
   z-index: 10;
   pointer-events: none;
+  box-shadow: var(--qt-shadow-button);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  letter-spacing: 0.5px;
 }
 
-/* Quick Tab Minimized State */
+/* ==================== QUICK TAB STATES ==================== */
 .quick-tab-minimized {
   display: none;
 }
 
-/* Quick Tab Active State */
 .quick-tab-active {
-  border-color: #0078d4;
+  border-color: var(--qt-accent-primary);
+  z-index: 999999991;
 }
 
-/* Dark Mode Support */
-@media (prefers-color-scheme: dark) {
-  .quick-tab-container {
-    background: #2d2d2d;
-    border-color: #0078d4;
+/* ==================== ANIMATIONS ==================== */
+@keyframes quickTabFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.quick-tab-container {
+  animation: quickTabFadeIn 0.25s ease-out;
+}
+
+/* ==================== RESPONSIVE ADJUSTMENTS ==================== */
+@media (max-width: 600px) {
+  .quick-tab-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+  }
+
+  .quick-tab-close-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 14px;
   }
 
   .quick-tab-titlebar {
-    background: linear-gradient(to bottom, #3d3d3d, #333);
-    border-bottom-color: #555;
+    padding: 8px 12px;
   }
 
   .quick-tab-title {
-    color: #e0e0e0;
+    font-size: 12px;
+  }
+}
+
+/* ==================== ACCESSIBILITY ==================== */
+@media (prefers-reduced-motion: reduce) {
+  .quick-tab-container,
+  .quick-tab-btn,
+  .quick-tab-close-btn,
+  .quick-tab-resize-handle,
+  .quick-tab-titlebar::before {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: high) {
+  .quick-tab-container {
+    border-width: 3px;
+  }
+
+  .quick-tab-btn,
+  .quick-tab-close-btn {
+    border-width: 2px;
+  }
+}
+
+/* ==================== LIGHT MODE SPECIFIC ADJUSTMENTS ==================== */
+@media (prefers-color-scheme: light) {
+  .quick-tab-titlebar {
+    background: linear-gradient(135deg, var(--qt-accent-primary) 0%, #8477eb 100%);
   }
 
   .quick-tab-btn {
-    background: #3d3d3d;
-    border-color: #555;
-    color: #e0e0e0;
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
   }
 
   .quick-tab-btn:hover {
-    background: #0078d4;
-    color: white;
-    border-color: #0078d4;
+    background: rgba(255, 255, 255, 0.5);
   }
 
-  .quick-tab-iframe {
-    background: #1a1a1a;
+  .quick-tab-close-btn {
+    background: rgba(225, 112, 85, 0.3);
+    border-color: rgba(225, 112, 85, 0.5);
   }
 }

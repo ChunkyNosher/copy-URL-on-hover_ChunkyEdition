@@ -9,6 +9,11 @@ export const DEFAULT_CONFIG = {
   copyUrlAlt: false,
   copyUrlShift: false,
 
+  copyRawUrlKey: '',
+  copyRawUrlCtrl: false,
+  copyRawUrlAlt: false,
+  copyRawUrlShift: false,
+
   copyTextKey: 'x',
   copyTextCtrl: false,
   copyTextAlt: false,

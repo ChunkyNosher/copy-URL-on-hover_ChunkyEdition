@@ -510,7 +510,7 @@ let _currentScenarioContext = null;
  * v1.6.3.12 - J7: Called by Test Bridge to enable detailed scenario tracking
  * @param {Object} context - Scenario context { scenarioId, scenarioName }
  */
-function enableScenarioLogging(context = {}) {
+function _enableScenarioLogging(context = {}) {
   _scenarioLoggingEnabled = true;
   _currentScenarioContext = context;
   console.log('[Background] SCENARIO_LOGGING_ENABLED:', context);
@@ -520,7 +520,7 @@ function enableScenarioLogging(context = {}) {
  * Disable scenario logging
  * v1.6.3.12 - J7: Called by Test Bridge to disable scenario tracking
  */
-function disableScenarioLogging() {
+function _disableScenarioLogging() {
   _scenarioLoggingEnabled = false;
   _currentScenarioContext = null;
   console.log('[Background] SCENARIO_LOGGING_DISABLED');
@@ -534,7 +534,7 @@ function disableScenarioLogging() {
  * @param {string} description - Step description
  * @param {Object} data - Additional data to log
  */
-function logScenarioStep(scenarioId, step, description, data = {}) {
+function _logScenarioStep(scenarioId, step, description, data = {}) {
   if (!_scenarioLoggingEnabled) return;
 
   console.log(`[SCENARIO_LOG] ${scenarioId}_STEP_${step}: ${description}`, {
@@ -1434,7 +1434,7 @@ async function tryLoadFromSyncStorage() {
  *
  * @returns {Promise<void>}
  */
-async function saveMigratedToUnifiedFormat() {
+async function _saveMigratedToUnifiedFormat() {
   const saveId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
   try {
@@ -1491,6 +1491,40 @@ class StateCoordinator {
     this.pendingConfirmations = new Map(); // saveId → {tabId, resolve, reject}
     this.tabVectorClocks = new Map(); // tabId → vector clock
     this.initialized = false;
+    // v1.6.3.12-v13 - Performance: Track last broadcast state to avoid redundant broadcasts
+    this._lastBroadcastStateHash = null;
+  }
+
+  /**
+   * Compute a simple numeric hash from state object key properties
+   * v1.6.4-v7 - Performance: Replaces JSON.stringify for efficient state comparison
+   * @param {Object} state - The state object to hash
+   * @returns {number} - A numeric hash of the state
+   */
+  _computeStateHash(state) {
+    const base = String(state.timestamp) + '|' + String(state.version) + '|' + String(state.tabs?.length ?? 0);
+    let hash = this._hashString(base);
+    // Include individual tab IDs and states for change detection
+    if (state.tabs) {
+      for (const tab of state.tabs) {
+        hash = this._hashString(String(tab.id ?? '') + String(tab.state ?? ''), hash);
+      }
+    }
+    return hash;
+  }
+
+  /**
+   * Simple string hash using djb2 variant
+   * @param {string} str - String to hash
+   * @param {number} seed - Starting hash value
+   * @returns {number} - Numeric hash
+   */
+  _hashString(str, seed = 0) {
+    let hash = seed;
+    for (let i = 0; i < str.length; i++) {
+      hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+    }
+    return hash;
   }
 
   /**
@@ -1804,9 +1838,19 @@ class StateCoordinator {
 
   /**
    * Broadcast canonical state to all tabs
+   * v1.6.3.12-v13 - Performance: Only broadcast if state actually changed
+   * v1.6.4-v7 - Use numeric hash instead of JSON.stringify for efficiency
    */
   async broadcastState() {
     try {
+      // Only broadcast if state changed since last broadcast
+      const currentStateHash = this._computeStateHash(this.globalState);
+      if (this._lastBroadcastStateHash === currentStateHash) {
+        // State hasn't changed, skip redundant broadcast
+        return;
+      }
+      this._lastBroadcastStateHash = currentStateHash;
+
       const tabs = await browser.tabs.query({});
 
       for (const tab of tabs) {
@@ -6151,7 +6195,7 @@ function handleUpdateQuickTabMessage(message, sender) {
  * v1.6.3.12 - J5: Enhanced broadcast error handling with per-target logging
  * @param {number} tabId - Tab ID to notify
  */
-function notifyContentScriptOfStateChange(tabId) {
+function _notifyContentScriptOfStateChange(tabId) {
   const quickTabs = quickTabsSessionState.quickTabsByTab[tabId] || [];
   const correlationId = `cs-broadcast-${tabId}-${Date.now()}`;
   const message = {
@@ -7480,7 +7524,7 @@ function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds);
 
   // Send ACK to sidebar
-  _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds);
+  _sendCloseAllAck(sidebarPort, { correlationId, containerFilter, closedCount, quickTabIds });
 
   // Notify sidebar of state change
   notifySidebarOfStateChange();
@@ -7529,13 +7573,15 @@ function _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds) {
 /**
  * Send Close All ACK to sidebar
  * v1.6.4-v4 - Helper for Close All
+ * v1.6.4-v7 - Refactored to use options object (CodeScene: excess arguments)
  * @param {browser.runtime.Port} sidebarPort - Sidebar port
- * @param {string} correlationId - Correlation ID
- * @param {string} containerFilter - Container filter
- * @param {number} closedCount - Number of closed Quick Tabs
- * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ * @param {Object} options - Close all result details
+ * @param {string} options.correlationId - Correlation ID
+ * @param {string} options.containerFilter - Container filter
+ * @param {number} options.closedCount - Number of closed Quick Tabs
+ * @param {Array} options.quickTabIds - IDs of closed Quick Tabs
  */
-function _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds) {
+function _sendCloseAllAck(sidebarPort, { correlationId, containerFilter, closedCount, quickTabIds }) {
   if (!sidebarPort) return;
 
   const ackMessage = {
@@ -7751,20 +7797,16 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
  * Update session and global state for Quick Tab transfer
  * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
  * v1.6.4-v4 - FIX: Also update originContainerId when transferring to different container
+ * v1.6.4-v7 - Refactored to use transfer context object (CodeScene: excess arguments)
  * @private
  * @param {Object} quickTabData - Quick Tab data to transfer
- * @param {string} quickTabId - Quick Tab ID
- * @param {number} newOriginTabId - New origin tab ID
- * @param {number} oldOriginTabId - Old origin tab ID
- * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
+ * @param {Object} transferContext - Transfer context
+ * @param {string} transferContext.quickTabId - Quick Tab ID
+ * @param {number} transferContext.newOriginTabId - New origin tab ID
+ * @param {number} transferContext.oldOriginTabId - Old origin tab ID
+ * @param {string} transferContext.newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(
-  quickTabData,
-  quickTabId,
-  newOriginTabId,
-  oldOriginTabId,
-  newContainerId
-) {
+function _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId }) {
   const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
 
   // Update the Quick Tab's origin tab ID
@@ -7883,7 +7925,7 @@ async function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const newContainerId = await _getTargetTabContainerId(quickTabId, newOriginTabId);
 
   // Update all state (including container ID)
-  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId);
+  _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId });
 
   // Send success ACK to sidebar
   _sendTransferAck(
