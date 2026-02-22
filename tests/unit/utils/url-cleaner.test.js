@@ -179,7 +179,39 @@ describe('URL Cleaner', () => {
       test('should clean Amazon product URL', () => {
         const url =
           'https://www.amazon.com/product/dp/B08N5WRWNW?tag=test-20&linkCode=ogi&th=1&psc=1';
-        const expected = 'https://www.amazon.com/product/dp/B08N5WRWNW?th=1';
+        const expected = 'https://www.amazon.com/dp/B08N5WRWNW/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should reduce Amazon URL with pd_rd_* tracking params to canonical form', () => {
+        const url =
+          'https://www.amazon.com/Wireless-Earbuds-Bluetooth/dp/B0BYW3W5JQ?pd_rd_w=abcd&pd_rd_r=efgh&pd_rd_wg=ijkl&psc=1';
+        const expected = 'https://www.amazon.com/dp/B0BYW3W5JQ/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should reduce Amazon URL without query params to canonical form with trailing slash', () => {
+        const url = 'https://www.amazon.com/product-title/dp/B01234ABCD';
+        const expected = 'https://www.amazon.com/dp/B01234ABCD/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should handle Amazon gp/product pattern', () => {
+        const url = 'https://www.amazon.com/gp/product/B012345678?tag=affiliate';
+        const expected = 'https://www.amazon.com/dp/B012345678/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should handle Amazon URL with all tracking params removed', () => {
+        const url =
+          'https://www.amazon.com/Some-Product/dp/B08XYZ1234?ref_=nav&pf_rd_p=test&pd_rd_w=xyz&qid=123';
+        const expected = 'https://www.amazon.com/dp/B08XYZ1234/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should preserve Amazon domain variants', () => {
+        const url = 'https://www.amazon.co.uk/product/dp/B0ABCDEF12?tag=test';
+        const expected = 'https://www.amazon.co.uk/dp/B0ABCDEF12/';
         expect(cleanUrl(url)).toBe(expected);
       });
 

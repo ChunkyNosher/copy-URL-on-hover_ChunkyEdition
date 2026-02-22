@@ -125,6 +125,31 @@ function removeTrackingParams(params) {
 }
 
 /**
+ * Extract ASIN from Amazon URL pathname
+ * @private
+ * @param {string} pathname - The URL pathname
+ * @returns {string|null} - The ASIN if found, null otherwise
+ */
+function extractAmazonAsin(pathname) {
+  // Match /dp/{ASIN} or /gp/product/{ASIN} patterns
+  const match = pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
+  return match ? match[1] : null;
+}
+
+/**
+ * Check if URL is an Amazon product URL
+ * @private
+ * @param {URL} url - The parsed URL object
+ * @returns {boolean} - True if Amazon product URL
+ */
+function isAmazonProductUrl(url) {
+  return (
+    url.hostname.includes('amazon.') &&
+    /\/(?:dp|gp\/product)\/[A-Z0-9]{10}/i.test(url.pathname)
+  );
+}
+
+/**
  * Build cleaned URL from components
  * @private
  * @param {URL} url - The parsed URL object (already mutated)
@@ -132,6 +157,15 @@ function removeTrackingParams(params) {
  * @returns {string} - The rebuilt URL string
  */
 function buildCleanedUrl(url, _params) {
+  // Special handling for Amazon product URLs - reduce to canonical form
+  if (isAmazonProductUrl(url)) {
+    const asin = extractAmazonAsin(url.pathname);
+    if (asin) {
+      // Return canonical Amazon product URL: https://amazon.com/dp/{ASIN}/
+      return `${url.protocol}//${url.hostname}/dp/${asin}/`;
+    }
+  }
+
   // The URL instance's searchParams have already been mutated
   // by removeTrackingParams(). Use the built-in serializer so
   // scheme-specific formatting (e.g., file:, about:, moz-extension:)
@@ -165,6 +199,12 @@ export function cleanUrl(urlString) {
 
   try {
     const url = new URL(urlString);
+
+    // Amazon product URLs always get canonical treatment
+    if (isAmazonProductUrl(url)) {
+      return buildCleanedUrl(url, url.searchParams);
+    }
+
     const params = url.searchParams;
 
     // If no params, return as-is (optimization)
