@@ -168,30 +168,46 @@ function getManagerLogs() {
     }, 5000);
 
     const handler = event => {
-      // Security check: only accept messages from same origin
-      if (event.origin !== window.location.origin) return;
-
-      if (event.data && event.data.type === 'MANAGER_LOGS_RESPONSE') {
-        clearTimeout(timeoutId);
-        window.removeEventListener('message', handler);
-        const logCount = event.data.logs ? event.data.logs.length : 0;
-        console.log(`[Settings] getManagerLogs: Received ${logCount} logs from Manager`);
-        resolve(event.data.logs || []);
-      }
+      if (!_isValidManagerLogsResponse(event)) return;
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handler);
+      const logCount = event.data.logs ? event.data.logs.length : 0;
+      console.log(`[Settings] getManagerLogs: Received ${logCount} logs from Manager`);
+      resolve(event.data.logs || []);
     };
 
     window.addEventListener('message', handler);
-
-    try {
-      iframe.contentWindow.postMessage({ type: 'GET_MANAGER_LOGS' }, window.location.origin);
-      console.log('[Settings] getManagerLogs: Sent GET_MANAGER_LOGS to iframe');
-    } catch (err) {
-      console.error('[Settings] getManagerLogs: Failed to send message to iframe:', err);
-      clearTimeout(timeoutId);
-      window.removeEventListener('message', handler);
-      resolve([]);
-    }
+    _postManagerLogsRequest(iframe, timeoutId, handler, resolve);
   });
+}
+
+/**
+ * Check if event is a valid Manager logs response
+ * @param {MessageEvent} event - Message event
+ * @returns {boolean} Whether the event is a valid response
+ */
+function _isValidManagerLogsResponse(event) {
+  if (event.origin !== window.location.origin) return false;
+  return event.data && event.data.type === 'MANAGER_LOGS_RESPONSE';
+}
+
+/**
+ * Post the GET_MANAGER_LOGS request to iframe
+ * @param {HTMLIFrameElement} iframe - Manager iframe
+ * @param {number} timeoutId - Timeout ID to clear on failure
+ * @param {Function} handler - Event handler to remove on failure
+ * @param {Function} resolve - Promise resolve function
+ */
+function _postManagerLogsRequest(iframe, timeoutId, handler, resolve) {
+  try {
+    iframe.contentWindow.postMessage({ type: 'GET_MANAGER_LOGS' }, window.location.origin);
+    console.log('[Settings] getManagerLogs: Sent GET_MANAGER_LOGS to iframe');
+  } catch (err) {
+    console.error('[Settings] getManagerLogs: Failed to send message to iframe:', err);
+    clearTimeout(timeoutId);
+    window.removeEventListener('message', handler);
+    resolve([]);
+  }
 }
 
 /**
@@ -295,39 +311,40 @@ function _logCollectionDebugInfo(backgroundLogs, contentLogs, managerLogs = []) 
  */
 const LOG_VALIDATION_RULES = [
   {
-    condition: (_, __, ___, ____, activeTab) => activeTab && activeTab.url.startsWith('about:'),
+    condition: ctx => ctx.activeTab && ctx.activeTab.url.startsWith('about:'),
     message:
       'Cannot capture logs from browser internal pages (about:*, about:debugging, etc.). Try navigating to a regular webpage first.'
   },
   {
-    condition: (_, __, ___, ____, activeTab) => !activeTab,
+    condition: ctx => !ctx.activeTab,
     message: 'No active tab found. Try clicking on a webpage tab first.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs, managerLogs) =>
-      contentLogs.length === 0 && backgroundLogs.length === 0 && managerLogs.length === 0,
+    condition: ctx =>
+      ctx.contentLogs.length === 0 && ctx.backgroundLogs.length === 0 && ctx.managerLogs.length === 0,
     message:
       'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
   },
   {
-    condition: (_, backgroundLogs, contentLogs, managerLogs) =>
-      contentLogs.length === 0 && managerLogs.length === 0,
-    messageBuilder: (_, backgroundLogs) =>
-      `Only found ${backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
+    condition: ctx => ctx.contentLogs.length === 0 && ctx.managerLogs.length === 0,
+    messageBuilder: ctx =>
+      `Only found ${ctx.backgroundLogs.length} background logs. Content script may not be loaded. Try reloading the webpage.`
   }
 ];
 
 /**
  * Validate that logs were collected and throw appropriate errors
  * v1.6.4-v3 - Updated to include Manager logs
- * @param {Array} allLogs - All collected logs
- * @param {Array} backgroundLogs - Background logs
- * @param {Array} contentLogs - Content logs
- * @param {Array} managerLogs - Manager/sidebar logs
- * @param {Object|null} activeTab - Active tab or null
+ * v1.6.4-v7 - Refactored to use context object (CodeScene: excess arguments)
+ * @param {Object} logContext - Log collection context
+ * @param {Array} logContext.allLogs - All collected logs
+ * @param {Array} logContext.backgroundLogs - Background logs
+ * @param {Array} logContext.contentLogs - Content logs
+ * @param {Array} logContext.managerLogs - Manager/sidebar logs
+ * @param {Object|null} logContext.activeTab - Active tab or null
  * @throws {Error} If validation fails
  */
-function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab) {
+function _validateCollectedLogs({ allLogs, backgroundLogs, contentLogs, managerLogs, activeTab }) {
   if (allLogs.length > 0) {
     console.log('[Settings] Log validation passed:', allLogs.length, 'logs collected');
     return;
@@ -335,12 +352,12 @@ function _validateCollectedLogs(allLogs, backgroundLogs, contentLogs, managerLog
 
   console.warn('[Settings] No logs to export');
 
+  const ctx = { allLogs, backgroundLogs, contentLogs, managerLogs, activeTab };
+
   // Find first matching validation rule and throw appropriate error
   for (const rule of LOG_VALIDATION_RULES) {
-    if (rule.condition(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab)) {
-      const errorMessage = rule.messageBuilder
-        ? rule.messageBuilder(allLogs, backgroundLogs, contentLogs, managerLogs, activeTab)
-        : rule.message;
+    if (rule.condition(ctx)) {
+      const errorMessage = rule.messageBuilder ? rule.messageBuilder(ctx) : rule.message;
       throw new Error(errorMessage);
     }
   }
@@ -573,7 +590,7 @@ async function exportAllLogs(version) {
     // ==================== END EXPORT FILTER ====================
 
     // Validate logs were collected
-    _validateCollectedLogs(filteredLogs, backgroundLogs, contentLogs, managerLogs, activeTab);
+    _validateCollectedLogs({ allLogs: filteredLogs, backgroundLogs, contentLogs, managerLogs, activeTab });
 
     // Format logs as plain text (using filtered logs)
     const logText = formatLogsAsText(filteredLogs, version);

@@ -7524,7 +7524,7 @@ function handleSidebarCloseAllQuickTabs(msg, sidebarPort) {
   _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds);
 
   // Send ACK to sidebar
-  _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds);
+  _sendCloseAllAck(sidebarPort, { correlationId, containerFilter, closedCount, quickTabIds });
 
   // Notify sidebar of state change
   notifySidebarOfStateChange();
@@ -7573,13 +7573,15 @@ function _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds) {
 /**
  * Send Close All ACK to sidebar
  * v1.6.4-v4 - Helper for Close All
+ * v1.6.4-v7 - Refactored to use options object (CodeScene: excess arguments)
  * @param {browser.runtime.Port} sidebarPort - Sidebar port
- * @param {string} correlationId - Correlation ID
- * @param {string} containerFilter - Container filter
- * @param {number} closedCount - Number of closed Quick Tabs
- * @param {Array} quickTabIds - IDs of closed Quick Tabs
+ * @param {Object} options - Close all result details
+ * @param {string} options.correlationId - Correlation ID
+ * @param {string} options.containerFilter - Container filter
+ * @param {number} options.closedCount - Number of closed Quick Tabs
+ * @param {Array} options.quickTabIds - IDs of closed Quick Tabs
  */
-function _sendCloseAllAck(sidebarPort, correlationId, containerFilter, closedCount, quickTabIds) {
+function _sendCloseAllAck(sidebarPort, { correlationId, containerFilter, closedCount, quickTabIds }) {
   if (!sidebarPort) return;
 
   const ackMessage = {
@@ -7795,20 +7797,16 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
  * Update session and global state for Quick Tab transfer
  * v1.6.4 - Extracted to reduce handleSidebarTransferQuickTab complexity
  * v1.6.4-v4 - FIX: Also update originContainerId when transferring to different container
+ * v1.6.4-v7 - Refactored to use transfer context object (CodeScene: excess arguments)
  * @private
  * @param {Object} quickTabData - Quick Tab data to transfer
- * @param {string} quickTabId - Quick Tab ID
- * @param {number} newOriginTabId - New origin tab ID
- * @param {number} oldOriginTabId - Old origin tab ID
- * @param {string} newContainerId - New container ID (cookieStoreId of target tab)
+ * @param {Object} transferContext - Transfer context
+ * @param {string} transferContext.quickTabId - Quick Tab ID
+ * @param {number} transferContext.newOriginTabId - New origin tab ID
+ * @param {number} transferContext.oldOriginTabId - Old origin tab ID
+ * @param {string} transferContext.newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(
-  quickTabData,
-  quickTabId,
-  newOriginTabId,
-  oldOriginTabId,
-  newContainerId
-) {
+function _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId }) {
   const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
 
   // Update the Quick Tab's origin tab ID
@@ -7927,7 +7925,7 @@ async function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const newContainerId = await _getTargetTabContainerId(quickTabId, newOriginTabId);
 
   // Update all state (including container ID)
-  _updateStateForTransfer(quickTabData, quickTabId, newOriginTabId, oldOriginTabId, newContainerId);
+  _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId });
 
   // Send success ACK to sidebar
   _sendTransferAck(
