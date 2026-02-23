@@ -62,11 +62,30 @@ export const TRACKING_PARAMS = [
   'yclid',
   '_openstat',
   'twclid',
+  'ttclid',
   'msclkid',
   'igshid',
+  'igsh',
+  'ref_src',
+  'ref_url',
+  'guce_referrer',
+  'guce_referrer_sig',
+  'guccounter',
+  'li_fat_id',
+  'rdt_cid',
+  'irclickid',
+  '_branch_match_id',
   's_kwcid',
   'si',
   'srsltid',
+  'pk_campaign',
+  'pk_medium',
+  'pk_source',
+  'mtm_campaign',
+  'mtm_medium',
+  'mtm_source',
+  'mtm_content',
+  'mtm_term',
 
   // Analytics platforms
   '_ga',
@@ -124,6 +143,28 @@ function removeTrackingParams(params) {
   return removedAny;
 }
 
+const AMAZON_HOST_SUFFIXES = [
+  'amazon.com',
+  'amazon.ca',
+  'amazon.com.mx',
+  'amazon.com.br',
+  'amazon.co.uk',
+  'amazon.de',
+  'amazon.fr',
+  'amazon.it',
+  'amazon.es',
+  'amazon.nl',
+  'amazon.pl',
+  'amazon.se',
+  'amazon.com.tr',
+  'amazon.ae',
+  'amazon.sa',
+  'amazon.in',
+  'amazon.sg',
+  'amazon.com.au',
+  'amazon.co.jp'
+];
+
 /**
  * Extract ASIN from Amazon URL pathname
  * @private
@@ -132,20 +173,48 @@ function removeTrackingParams(params) {
  */
 function extractAmazonAsin(pathname) {
   // Match /dp/{ASIN} or /gp/product/{ASIN} patterns
-  const match = pathname.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})/i);
-  return match ? match[1] : null;
+  const match = pathname.match(/\/(?:dp|gp\/product)\/([A-Za-z0-9]{10})(?:\/|$)/);
+  return match ? match[1].toUpperCase() : null;
 }
 
 /**
- * Check if URL is an Amazon product URL
+ * Check if hostname belongs to an official Amazon retail domain
+ * @private
+ * @param {string} hostname - The URL hostname
+ * @returns {boolean} - True if hostname is an allowed Amazon domain/subdomain
+ */
+function isAmazonRetailHostname(hostname) {
+  const lowerHostname = hostname.toLowerCase();
+  return AMAZON_HOST_SUFFIXES.some(
+    (suffix) => lowerHostname === suffix || lowerHostname.endsWith(`.${suffix}`)
+  );
+}
+
+/**
+ * Extract ASIN from trusted Amazon product URL
  * @private
  * @param {URL} url - The parsed URL object
- * @returns {boolean} - True if Amazon product URL
+ * @returns {string|null} - ASIN for trusted Amazon product URL, else null
  */
-function isAmazonProductUrl(url) {
-  return (
-    url.hostname.includes('amazon.') && /\/(?:dp|gp\/product)\/[A-Z0-9]{10}/i.test(url.pathname)
-  );
+function getAmazonAsinFromProductUrl(url) {
+  if (!isAmazonRetailHostname(url.hostname)) {
+    return null;
+  }
+  return extractAmazonAsin(url.pathname);
+}
+
+/**
+ * Build canonical Amazon product URL
+ * @private
+ * @param {URL} url - The parsed URL object
+ * @param {string} asin - Amazon ASIN
+ * @returns {string} - Canonical Amazon product URL
+ */
+function buildCanonicalAmazonUrl(url, asin) {
+  const canonicalUrl = new URL(url.toString());
+  canonicalUrl.pathname = `/dp/${asin}/`;
+  canonicalUrl.search = '';
+  return canonicalUrl.toString();
 }
 
 /**
@@ -156,15 +225,6 @@ function isAmazonProductUrl(url) {
  * @returns {string} - The rebuilt URL string
  */
 function buildCleanedUrl(url, _params) {
-  // Special handling for Amazon product URLs - reduce to canonical form
-  if (isAmazonProductUrl(url)) {
-    const asin = extractAmazonAsin(url.pathname);
-    if (asin) {
-      // Return canonical Amazon product URL: https://amazon.com/dp/{ASIN}/
-      return `${url.protocol}//${url.hostname}/dp/${asin}/`;
-    }
-  }
-
   // The URL instance's searchParams have already been mutated
   // by removeTrackingParams(). Use the built-in serializer so
   // scheme-specific formatting (e.g., file:, about:, moz-extension:)
@@ -200,8 +260,9 @@ export function cleanUrl(urlString) {
     const url = new URL(urlString);
 
     // Amazon product URLs always get canonical treatment
-    if (isAmazonProductUrl(url)) {
-      return buildCleanedUrl(url, url.searchParams);
+    const amazonAsin = getAmazonAsinFromProductUrl(url);
+    if (amazonAsin) {
+      return buildCanonicalAmazonUrl(url, amazonAsin);
     }
 
     const params = url.searchParams;
