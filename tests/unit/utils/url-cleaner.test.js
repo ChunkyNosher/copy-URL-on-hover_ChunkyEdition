@@ -30,6 +30,13 @@ describe('URL Cleaner', () => {
       expect(TRACKING_PARAMS).toContain('gclsrc');
     });
 
+    test('should include modern social and ad tracking parameters', () => {
+      expect(TRACKING_PARAMS).toContain('ttclid');
+      expect(TRACKING_PARAMS).toContain('ref_src');
+      expect(TRACKING_PARAMS).toContain('li_fat_id');
+      expect(TRACKING_PARAMS).toContain('rdt_cid');
+    });
+
     test('should include Amazon tracking parameters', () => {
       expect(TRACKING_PARAMS).toContain('tag');
       expect(TRACKING_PARAMS).toContain('linkCode');
@@ -94,6 +101,31 @@ describe('URL Cleaner', () => {
       test('should remove YouTube tracking while preserving content params', () => {
         const url = 'https://youtube.com/watch?v=dQw4w9WgXcQ&feature=share&si=abc123';
         const expected = 'https://youtube.com/watch?v=dQw4w9WgXcQ';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should remove TikTok click identifier', () => {
+        const url = 'https://www.tiktok.com/@creator/video/1234567890?ttclid=abc123';
+        const expected = 'https://www.tiktok.com/@creator/video/1234567890';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should remove X/Twitter share tracking params', () => {
+        const url =
+          'https://twitter.com/example/status/1234567890?ref_src=twsrc%5Etfw&ref_url=https%3A%2F%2Fexample.com';
+        const expected = 'https://twitter.com/example/status/1234567890';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should remove LinkedIn ad tracking params', () => {
+        const url = 'https://www.linkedin.com/feed/update/urn:li:activity:123?li_fat_id=abc123';
+        const expected = 'https://www.linkedin.com/feed/update/urn:li:activity:123';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should remove Reddit campaign click identifier', () => {
+        const url = 'https://www.reddit.com/r/firefox/comments/abc123/test/?rdt_cid=track123';
+        const expected = 'https://www.reddit.com/r/firefox/comments/abc123/test/';
         expect(cleanUrl(url)).toBe(expected);
       });
     });
@@ -179,7 +211,81 @@ describe('URL Cleaner', () => {
       test('should clean Amazon product URL', () => {
         const url =
           'https://www.amazon.com/product/dp/B08N5WRWNW?tag=test-20&linkCode=ogi&th=1&psc=1';
-        const expected = 'https://www.amazon.com/product/dp/B08N5WRWNW?th=1';
+        const expected = 'https://www.amazon.com/dp/B08N5WRWNW/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should reduce Amazon URL with pd_rd_* tracking params to canonical form', () => {
+        const url =
+          'https://www.amazon.com/Wireless-Earbuds-Bluetooth/dp/B0BYW3W5JQ?pd_rd_w=abcd&pd_rd_r=efgh&pd_rd_wg=ijkl&psc=1';
+        const expected = 'https://www.amazon.com/dp/B0BYW3W5JQ/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should reduce Amazon URL without query params to canonical form with trailing slash', () => {
+        const url = 'https://www.amazon.com/product-title/dp/B01234ABCD';
+        const expected = 'https://www.amazon.com/dp/B01234ABCD/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should handle Amazon gp/product pattern', () => {
+        const url = 'https://www.amazon.com/gp/product/B012345678?tag=affiliate';
+        const expected = 'https://www.amazon.com/dp/B012345678/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should handle Amazon URL with all tracking params removed', () => {
+        const url =
+          'https://www.amazon.com/Some-Product/dp/B08XYZ1234?ref_=nav&pf_rd_p=test&pd_rd_w=xyz&qid=123';
+        const expected = 'https://www.amazon.com/dp/B08XYZ1234/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should preserve Amazon domain variants', () => {
+        const url = 'https://www.amazon.co.uk/product/dp/B0ABCDEF12?tag=test';
+        const expected = 'https://www.amazon.co.uk/dp/B0ABCDEF12/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test("should not canonicalize non-Amazon domains that contain 'amazon' in hostname", () => {
+        const url = 'https://notamazon.com/dp/B012345678?tag=affiliate';
+        const expected = 'https://notamazon.com/dp/B012345678';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should not canonicalize lookalike Amazon domains', () => {
+        const url = 'https://amazon.evil.com/dp/B012345678?tag=affiliate';
+        const expected = 'https://amazon.evil.com/dp/B012345678';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should not canonicalize Amazon URLs when ASIN is shorter than 10 characters', () => {
+        const url = 'https://www.amazon.com/dp/B01234?tag=affiliate';
+        const expected = 'https://www.amazon.com/dp/B01234';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should not canonicalize Amazon URLs when ASIN is longer than 10 characters', () => {
+        const url = 'https://www.amazon.com/dp/B01234567890?tag=affiliate';
+        const expected = 'https://www.amazon.com/dp/B01234567890';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should canonicalize Amazon URLs without www subdomain', () => {
+        const url = 'https://amazon.com/dp/B012345678?tag=affiliate';
+        const expected = 'https://amazon.com/dp/B012345678/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should canonicalize Amazon URLs with http protocol', () => {
+        const url = 'http://www.amazon.com/dp/B012345678?tag=affiliate';
+        const expected = 'http://www.amazon.com/dp/B012345678/';
+        expect(cleanUrl(url)).toBe(expected);
+      });
+
+      test('should preserve hash fragment on canonical Amazon URLs', () => {
+        const url = 'https://www.amazon.com/dp/B0BYW3W5JQ?tag=affiliate#customerReviews';
+        const expected = 'https://www.amazon.com/dp/B0BYW3W5JQ/#customerReviews';
         expect(cleanUrl(url)).toBe(expected);
       });
 
