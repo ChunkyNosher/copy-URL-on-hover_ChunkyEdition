@@ -1502,7 +1502,8 @@ class StateCoordinator {
    * @returns {number} - A numeric hash of the state
    */
   _computeStateHash(state) {
-    const base = String(state.timestamp) + '|' + String(state.version) + '|' + String(state.tabs?.length ?? 0);
+    const base =
+      String(state.timestamp) + '|' + String(state.version) + '|' + String(state.tabs?.length ?? 0);
     let hash = this._hashString(base);
     // Include individual tab IDs and states for change detection
     if (state.tabs) {
@@ -7581,7 +7582,10 @@ function _updateHostTrackingAfterCloseAll(containerFilter, quickTabIds) {
  * @param {number} options.closedCount - Number of closed Quick Tabs
  * @param {Array} options.quickTabIds - IDs of closed Quick Tabs
  */
-function _sendCloseAllAck(sidebarPort, { correlationId, containerFilter, closedCount, quickTabIds }) {
+function _sendCloseAllAck(
+  sidebarPort,
+  { correlationId, containerFilter, closedCount, quickTabIds }
+) {
   if (!sidebarPort) return;
 
   const ackMessage = {
@@ -7806,7 +7810,10 @@ function _sendTransferAck(sidebarPort, ackMessage, quickTabId, correlationId) {
  * @param {number} transferContext.oldOriginTabId - Old origin tab ID
  * @param {string} transferContext.newContainerId - New container ID (cookieStoreId of target tab)
  */
-function _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId }) {
+function _updateStateForTransfer(
+  quickTabData,
+  { quickTabId, newOriginTabId, oldOriginTabId, newContainerId }
+) {
   const oldContainerId = quickTabData.originContainerId || DEFAULT_CONTAINER_ID;
 
   // Update the Quick Tab's origin tab ID
@@ -7925,7 +7932,12 @@ async function handleSidebarTransferQuickTab(msg, sidebarPort) {
   const newContainerId = await _getTargetTabContainerId(quickTabId, newOriginTabId);
 
   // Update all state (including container ID)
-  _updateStateForTransfer(quickTabData, { quickTabId, newOriginTabId, oldOriginTabId, newContainerId });
+  _updateStateForTransfer(quickTabData, {
+    quickTabId,
+    newOriginTabId,
+    oldOriginTabId,
+    newContainerId
+  });
 
   // Send success ACK to sidebar
   _sendTransferAck(

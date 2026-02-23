@@ -321,7 +321,9 @@ const LOG_VALIDATION_RULES = [
   },
   {
     condition: ctx =>
-      ctx.contentLogs.length === 0 && ctx.backgroundLogs.length === 0 && ctx.managerLogs.length === 0,
+      ctx.contentLogs.length === 0 &&
+      ctx.backgroundLogs.length === 0 &&
+      ctx.managerLogs.length === 0,
     message:
       'No logs found. Make sure debug mode is enabled and try using the extension (hover over links, create Quick Tabs, etc.) before exporting logs.'
   },
@@ -590,7 +592,13 @@ async function exportAllLogs(version) {
     // ==================== END EXPORT FILTER ====================
 
     // Validate logs were collected
-    _validateCollectedLogs({ allLogs: filteredLogs, backgroundLogs, contentLogs, managerLogs, activeTab });
+    _validateCollectedLogs({
+      allLogs: filteredLogs,
+      backgroundLogs,
+      contentLogs,
+      managerLogs,
+      activeTab
+    });
 
     // Format logs as plain text (using filtered logs)
     const logText = formatLogsAsText(filteredLogs, version);

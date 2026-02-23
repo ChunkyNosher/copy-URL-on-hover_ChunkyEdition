@@ -144,8 +144,7 @@ function extractAmazonAsin(pathname) {
  */
 function isAmazonProductUrl(url) {
   return (
-    url.hostname.includes('amazon.') &&
-    /\/(?:dp|gp\/product)\/[A-Z0-9]{10}/i.test(url.pathname)
+    url.hostname.includes('amazon.') && /\/(?:dp|gp\/product)\/[A-Z0-9]{10}/i.test(url.pathname)
   );
 }
 
