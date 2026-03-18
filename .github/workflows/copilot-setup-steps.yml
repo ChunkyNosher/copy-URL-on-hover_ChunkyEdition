@@ -227,7 +227,7 @@ jobs:
           fi
 
           if npm list rollup-plugin-visualizer --depth=0 > /dev/null 2>&1; then
-            echo "✓ rollup-plugin-visualizer $(npm list rollup-plugin-visualizer --depth=0 | grep rollup-plugin-visualizer@ | sed 's/.*rollup-plugin-visualizer@//' | cut -d' ' -f1)"
+            echo "✓ rollup-plugin-visualizer (Vite+ analysis) $(npm list rollup-plugin-visualizer --depth=0 | grep rollup-plugin-visualizer@ | sed 's/.*rollup-plugin-visualizer@//' | cut -d' ' -f1)"
           else
             echo "⚠ rollup-plugin-visualizer NOT installed - Needed for bundle analysis"
           fi
@@ -809,8 +809,9 @@ jobs:
           echo "  • @testing-library/user-event (user interactions)"
           echo ""
           echo "Build Tools:"
-          echo "  • vite, vite-plugin-static-copy"
-          echo "  • rollup-plugin-visualizer (analysis)"
+          echo "  • Vite+ (vite core + static-copy plugin)"
+          echo "  • Bundle size guard (Vite plugin)"
+          echo "  • Visualizer plugin (analysis)"
           echo ""
           echo "Code Quality:"
           echo "  • eslint, prettier"

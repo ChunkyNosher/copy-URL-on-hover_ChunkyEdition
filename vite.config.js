@@ -1,3 +1,4 @@
+import fs from 'fs';
 import path from 'path';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { defineConfig } from 'vite';
@@ -40,6 +41,47 @@ if (!entryMap[bundleTarget]) {
   throw new Error(`Unknown BUNDLE_TARGET "${bundleTarget}". Use "background" or "content".`);
 }
 
+function loadBundleSizeLimits() {
+  try {
+    const configPath = path.resolve(__dirname, '.buildconfig.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+    return Object.fromEntries(
+      Object.entries(config.bundleSizeLimits || {}).map(([file, data]) => [file, data.maxBytes])
+    );
+  } catch (error) {
+    console.warn('[bundle-size-guard] Could not load .buildconfig.json, skipping size enforcement');
+    return {};
+  }
+}
+
+function bundleSizeGuard() {
+  const limits = loadBundleSizeLimits();
+  return {
+    name: 'bundle-size-guard',
+    generateBundle(_, bundle) {
+      for (const [fileName, output] of Object.entries(bundle)) {
+        const base = path.basename(fileName);
+        const limit = limits[base];
+        if (!limit) continue;
+
+        const size =
+          output.type === 'chunk'
+            ? Buffer.byteLength(output.code, 'utf8')
+            : Buffer.byteLength(
+                typeof output.source === 'string' ? output.source : Buffer.from(output.source || ''),
+                'utf8'
+              );
+
+        if (size > limit) {
+          throw new Error(
+            `[bundle-size-guard] ${base} is ${size} bytes which exceeds limit ${limit} bytes`
+          );
+        }
+      }
+    }
+  };
+}
+
 export default defineConfig(({ mode }) => ({
   appType: 'custom',
   define: {
@@ -57,6 +99,7 @@ export default defineConfig(({ mode }) => ({
           })
         ]
       : []),
+    bundleSizeGuard(),
     ...(isAnalyze && bundleTarget === 'background'
       ? [
           visualizer({
