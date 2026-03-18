@@ -68,7 +68,9 @@ function bundleSizeGuard() {
           output.type === 'chunk'
             ? Buffer.byteLength(output.code, 'utf8')
             : Buffer.byteLength(
-                typeof output.source === 'string' ? output.source : Buffer.from(output.source || ''),
+                typeof output.source === 'string'
+                  ? output.source
+                  : Buffer.from(output.source || ''),
                 'utf8'
               );
 

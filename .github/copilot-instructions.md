@@ -6,9 +6,9 @@
 **Version:** 1.6.4-v7  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
-**Purpose:** URL management with sidebar Quick Tabs Manager
-**Build Tooling:** Vite+ (Vite 5 + plugins) for IIFE MV2 bundles, static asset
-copy, and in-build bundle size guard
+**Purpose:** URL management with sidebar Quick Tabs Manager **Build Tooling:**
+Vite+ (Vite 5 + plugins) for IIFE MV2 bundles, static asset copy, and in-build
+bundle size guard
 
 **Key Features:**
 
