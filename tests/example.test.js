@@ -112,11 +112,11 @@ describe('Manifest Validation', () => {
 
   /**
    * TEST: Background script
-   * WHY: Core functionality depends on background.js
-   */
+  * WHY: Core functionality depends on background.js
+  */
   test('should specify background script', () => {
     expect(manifest.background).toBeDefined();
-    expect(manifest.background.scripts).toContain('dist/background.js');
+    expect(manifest.background.scripts).toContain('background.js');
   });
 
   /**

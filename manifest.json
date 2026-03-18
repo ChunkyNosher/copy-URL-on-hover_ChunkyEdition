@@ -54,13 +54,13 @@
   },
 
   "background": {
-    "scripts": ["dist/browser-polyfill.min.js", "dist/background.js"]
+    "scripts": ["browser-polyfill.min.js", "background.js"]
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["dist/browser-polyfill.min.js", "dist/content.js"],
+      "js": ["browser-polyfill.min.js", "content.js"],
       "run_at": "document_end",
       "all_frames": false
     }

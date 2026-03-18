@@ -7,6 +7,8 @@
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
+**Build Tooling:** Vite 5 (IIFE output for MV2) + vite-plugin-static-copy for
+manifest/icons/sidebar assets
 
 **Key Features:**
 
