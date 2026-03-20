@@ -186,7 +186,7 @@ function extractAmazonAsin(pathname) {
 function isAmazonRetailHostname(hostname) {
   const lowerHostname = hostname.toLowerCase();
   return AMAZON_HOST_SUFFIXES.some(
-    (suffix) => lowerHostname === suffix || lowerHostname.endsWith(`.${suffix}`)
+    suffix => lowerHostname === suffix || lowerHostname.endsWith(`.${suffix}`)
   );
 }
 
