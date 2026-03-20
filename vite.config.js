@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-
-import { viteStaticCopy } from 'vite-plugin-static-copy';
 import { defineConfig } from 'vite';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
+
+import { normalizeManifestPaths } from './scripts/manifest-path-utils.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const production = process.env.BUILD === 'production';
@@ -22,27 +23,6 @@ const aliases = {
   '@core': path.resolve(__dirname, 'src/core'),
   '@ui': path.resolve(__dirname, 'src/ui')
 };
-
-export function normalizeManifestPaths(manifestSource) {
-  const manifest = JSON.parse(manifestSource);
-
-  if (manifest.background && manifest.background.scripts) {
-    manifest.background.scripts = manifest.background.scripts.map(script =>
-      script.startsWith('dist/') ? script.replace(/^dist\//, '') : script
-    );
-  }
-
-  if (manifest.content_scripts) {
-    manifest.content_scripts = manifest.content_scripts.map(contentScript => ({
-      ...contentScript,
-      js: Array.isArray(contentScript.js)
-        ? contentScript.js.map(script => (script.startsWith('dist/') ? script.replace(/^dist\//, '') : script))
-        : contentScript.js
-    }));
-  }
-
-  return JSON.stringify(manifest, null, 2) + '\n';
-}
 
 function getStaticCopyTargets() {
   if (!shouldCopyStatic) {
@@ -88,7 +68,10 @@ export default defineConfig({
     sourcemap: !production,
     minify: production ? 'esbuild' : false,
     lib: {
-      entry: buildTarget === 'background' ? path.resolve(__dirname, 'background.js') : path.resolve(__dirname, 'src/content.js'),
+      entry:
+        buildTarget === 'background'
+          ? path.resolve(__dirname, 'background.js')
+          : path.resolve(__dirname, 'src/content.js'),
       name: buildTarget === 'background' ? 'BackgroundScript' : 'ContentScript',
       formats: ['iife'],
       fileName: () => `${buildTarget}.js`
