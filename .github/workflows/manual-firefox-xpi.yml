@@ -1,0 +1,39 @@
+name: Manual Firefox XPI Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-firefox-xpi:
+    name: Build Firefox .xpi
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build extension (production)
+        run: npm run build:prod
+
+      - name: Package Firefox extension (.xpi)
+        run: npm run package:firefox
+
+      - name: Upload Firefox XPI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: firefox-extension-xpi
+          path: firefox-extension-v*.xpi
+          if-no-files-found: error
+          retention-days: 14

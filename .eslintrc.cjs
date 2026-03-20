@@ -119,7 +119,7 @@ module.exports = {
   overrides: [
     {
       // Relax rules for build config files
-      files: ['rollup.config.js', 'jest.config.cjs', '.eslintrc.cjs', '.prettierrc.cjs'],
+      files: ['rollup.config.js', 'vite.config.js', 'vitest.config.js', '.eslintrc.cjs', '.prettierrc.cjs'],
       env: {
         node: true
       },
