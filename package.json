@@ -9,15 +9,15 @@
     "build": "npm run clean && npm run build:vite",
     "build:dev": "npm run build:vite",
     "build:vite": "npm run build:vite:content && npm run build:vite:background",
-    "build:vite:content": "EMPTY_OUT_DIR=true COPY_STATIC=true BUILD_TARGET=content vite build",
-    "build:vite:background": "EMPTY_OUT_DIR=false COPY_STATIC=false BUILD_TARGET=background vite build",
+    "build:vite:content": "EMPTY_OUT_DIR=true COPY_STATIC=true BUILD_TARGET=content vp build",
+    "build:vite:background": "EMPTY_OUT_DIR=false COPY_STATIC=false BUILD_TARGET=background vp build",
     "build:test": "npm run clean && TEST_MODE=true npm run build:vite && TEST_MODE=true node scripts/inject-test-bridge.cjs",
     "build:prod": "npm run clean && BUILD=production npm run build:vite",
     "build:analyze": "BUILD=production npm run build:vite",
     "build:check-size": "node scripts/check-bundle-size.js",
     "watch": "npm-run-all --parallel watch:content watch:background",
-    "watch:content": "EMPTY_OUT_DIR=true COPY_STATIC=true BUILD_TARGET=content vite build --watch",
-    "watch:background": "EMPTY_OUT_DIR=false COPY_STATIC=false BUILD_TARGET=background vite build --watch",
+    "watch:content": "EMPTY_OUT_DIR=true COPY_STATIC=true BUILD_TARGET=content vp build --watch",
+    "watch:background": "EMPTY_OUT_DIR=false COPY_STATIC=false BUILD_TARGET=background vp build --watch",
     "clean": "rm -rf dist && mkdir -p dist",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -80,11 +80,10 @@
     "@babel/core": "^7.28.5",
     "@babel/preset-env": "^7.28.5",
     "@playwright/test": "^1.57.0",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/user-event": "^14.6.1",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.0.1",
     "@types/webextension-polyfill": "^0.12.4",
+    "@voidzero-dev/vite-plus-core": "^0.1.13",
     "babel-jest": "^29.7.0",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^10.1.8",
@@ -96,8 +95,9 @@
     "playwright-webextext": "^0.0.4",
     "prettier": "^3.2.5",
     "typescript": "^5.9.3",
-    "vite": "^7.1.7",
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.13",
     "vite-plugin-static-copy": "^3.1.4",
+    "vite-plus": "^0.1.13",
     "web-ext": "^9.1.0"
   },
   "engines": {
@@ -108,6 +108,8 @@
     "webextension-polyfill": "^0.12.0"
   },
   "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@0.1.13",
+    "vitest": "npm:@voidzero-dev/vite-plus-test@0.1.13",
     "playwright": "1.57.0",
     "playwright-core": "1.57.0"
   }

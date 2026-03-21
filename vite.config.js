@@ -84,10 +84,8 @@ export default defineConfig({
         }
       },
       treeshake: {
-        preset: buildConfig.treeshake.preset,
         moduleSideEffects: buildConfig.treeshake.moduleSideEffects,
-        propertyReadSideEffects: buildConfig.treeshake.propertyReadSideEffects,
-        tryCatchDeoptimization: buildConfig.treeshake.tryCatchDeoptimization
+        propertyReadSideEffects: buildConfig.treeshake.propertyReadSideEffects
       }
     }
   }
