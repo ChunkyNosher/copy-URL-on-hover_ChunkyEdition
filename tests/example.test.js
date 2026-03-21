@@ -116,7 +116,7 @@ describe('Manifest Validation', () => {
    */
   test('should specify background script', () => {
     expect(manifest.background).toBeDefined();
-    expect(manifest.background.scripts).toContain('dist/background.js');
+    expect(manifest.background.scripts).toContain('background.js');
   });
 
   /**

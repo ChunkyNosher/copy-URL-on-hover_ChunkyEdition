@@ -201,10 +201,14 @@ Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers.
 ## 🛠️ Development
 
 ```bash
-npm install && npm run build    # Build
+npm install && npm run build    # Build (Vite+)
 npm test                        # Run tests
 npm run lint                    # Lint
 ```
+
+The Vite+ build pipeline bundles `background.js` and `src/content.js` as IIFEs,
+then statically copies manifest, icons, popup/options pages, and sidebar assets
+into `dist/`, with bundle size enforcement handled via a Vite plugin.
 
 ## 📝 Notes
 

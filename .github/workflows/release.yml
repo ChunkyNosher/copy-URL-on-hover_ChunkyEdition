@@ -27,7 +27,7 @@ jobs:
           node-version: '22'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run Tests
         run: npm test
@@ -216,7 +216,7 @@ jobs:
 
             - **Architecture:** Hybrid Modular/EventBus (v1.5.8+)
             - **Cross-Browser:** Uses webextension-polyfill for API compatibility
-            - Built from modular source using Rollup bundler
+            - Built with Vite (Rollup under the hood) targeting background/content IIFE bundles
             - Bundled content.js from modular src/ structure
             - CSS modularized into ui/css/ directory
             - Core utilities: config, state, events, dom, browser-api

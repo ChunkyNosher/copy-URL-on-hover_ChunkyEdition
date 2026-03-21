@@ -66,7 +66,9 @@ try {
 
   if (hasErrors) {
     console.error('\n❌ Manifest validation failed!');
-    console.error('   Run "npm run fix-manifest" to correct paths.');
+    console.error(
+      '   Re-run "npm run build:prod" or fix manifest paths to be relative (no "dist/" prefix).'
+    );
     process.exit(1);
   }
 

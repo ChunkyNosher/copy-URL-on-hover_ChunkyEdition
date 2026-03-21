@@ -1,7 +1,7 @@
 name: 'Copilot Development Environment Setup - UPDATED'
 
 # Optimized for Browser Extension Development with WebExtension API Testing
-# UPDATED to verify ALL 17 installed JavaScript libraries
+# UPDATED to verify required build + test libraries (Vite pipeline)
 # Last Updated: November 14, 2025
 
 on:
@@ -77,7 +77,7 @@ jobs:
       - name: Verify ALL browser API testing libraries
         run: |
           echo "=========================================="
-          echo "Verifying ALL Testing Libraries (17 total)"
+          echo "Verifying ALL Testing Libraries and Build Tooling"
           echo "=========================================="
 
           FAILED=0
@@ -146,13 +146,6 @@ jobs:
             FAILED=1
           fi
 
-          if npm list @joebobmiles/pointer-events-polyfill --depth=0 > /dev/null 2>&1; then
-            echo "✓ @joebobmiles/pointer-events-polyfill $(npm list @joebobmiles/pointer-events-polyfill --depth=0 | grep pointer-events-polyfill@ | sed 's/.*pointer-events-polyfill@//' | cut -d' ' -f1)"
-          else
-            echo "✗ @joebobmiles/pointer-events-polyfill NOT installed - CRITICAL FOR DRAG/RESIZE TESTING"
-            FAILED=1
-          fi
-
           if npm list @testing-library/jest-dom --depth=0 > /dev/null 2>&1; then
             echo "✓ @testing-library/jest-dom $(npm list @testing-library/jest-dom --depth=0 | grep jest-dom@ | sed 's/.*jest-dom@//' | cut -d' ' -f1)"
           else
@@ -181,25 +174,24 @@ jobs:
           echo "Build Tools:"
           echo "-------------------------------------------"
 
-          if npm list rollup --depth=0 > /dev/null 2>&1; then
-            echo "✓ rollup $(npm list rollup --depth=0 | grep rollup@ | sed 's/.*rollup@//' | cut -d' ' -f1)"
+          if npm list vite --depth=0 > /dev/null 2>&1; then
+            echo "✓ vite $(npm list vite --depth=0 | grep vite@ | sed 's/.*vite@//' | cut -d' ' -f1)"
           else
-            echo "✗ rollup NOT installed - CRITICAL FOR BUILD"
+            echo "✗ vite NOT installed - CRITICAL FOR BUILD"
             FAILED=1
           fi
 
-          if npm list @rollup/plugin-commonjs --depth=0 > /dev/null 2>&1; then
-            echo "✓ @rollup/plugin-commonjs $(npm list @rollup/plugin-commonjs --depth=0 | grep plugin-commonjs@ | sed 's/.*plugin-commonjs@//' | cut -d' ' -f1)"
+          if npm list vite-plugin-static-copy --depth=0 > /dev/null 2>&1; then
+            echo "✓ vite-plugin-static-copy $(npm list vite-plugin-static-copy --depth=0 | grep vite-plugin-static-copy@ | sed 's/.*vite-plugin-static-copy@//' | cut -d' ' -f1)"
           else
-            echo "✗ @rollup/plugin-commonjs NOT installed - CRITICAL FOR BUILD"
+            echo "✗ vite-plugin-static-copy NOT installed - CRITICAL FOR ASSET COPY"
             FAILED=1
           fi
 
-          if npm list @rollup/plugin-node-resolve --depth=0 > /dev/null 2>&1; then
-            echo "✓ @rollup/plugin-node-resolve $(npm list @rollup/plugin-node-resolve --depth=0 | grep plugin-node-resolve@ | sed 's/.*plugin-node-resolve@//' | cut -d' ' -f1)"
+          if npm list rollup-plugin-visualizer --depth=0 > /dev/null 2>&1; then
+            echo "✓ rollup-plugin-visualizer (Vite+ analysis) $(npm list rollup-plugin-visualizer --depth=0 | grep rollup-plugin-visualizer@ | sed 's/.*rollup-plugin-visualizer@//' | cut -d' ' -f1)"
           else
-            echo "✗ @rollup/plugin-node-resolve NOT installed - CRITICAL FOR BUILD"
-            FAILED=1
+            echo "⚠ rollup-plugin-visualizer NOT installed - Needed for bundle analysis"
           fi
 
           # Code Quality Tools
@@ -235,7 +227,7 @@ jobs:
           echo ""
           echo "=========================================="
           if [ $FAILED -eq 0 ]; then
-            echo "✓ All critical libraries verified! (17/17)"
+            echo "✓ All critical libraries verified!"
             echo "=========================================="
           else
             echo "✗ Some critical libraries are missing!"
@@ -696,7 +688,7 @@ jobs:
           echo "🚀 ENVIRONMENT READY FOR COPILOT AGENT 🚀"
           echo "=========================================="
           echo ""
-          echo "✓ All 17 JavaScript libraries installed and verified:"
+          echo "✓ All required JavaScript libraries installed and verified:"
           echo ""
           echo "Core Testing:"
           echo "  • jest, jest-environment-jsdom, jsdom"
@@ -704,12 +696,13 @@ jobs:
           echo ""
           echo "Testing Helpers:"
           echo "  • sinon-chrome (advanced API mocking)"
-          echo "  • @joebobmiles/pointer-events-polyfill (drag/resize)"
           echo "  • @testing-library/jest-dom (better assertions)"
           echo "  • @testing-library/user-event (user interactions)"
           echo ""
           echo "Build Tools:"
-          echo "  • rollup + plugins"
+          echo "  • Vite+ (vite core + static-copy plugin)"
+          echo "  • Bundle size guard (Vite plugin)"
+          echo "  • Visualizer plugin (analysis)"
           echo ""
           echo "Code Quality:"
           echo "  • eslint, prettier"
@@ -730,7 +723,7 @@ jobs:
           echo ""
           echo "Copilot can now use ALL libraries for:"
           echo "  • Complex browser API mocking (sinon-chrome)"
-          echo "  • Drag/resize testing (pointer-events-polyfill)"
+          echo "  • Drag/resize testing (native pointer events)"
           echo "  • Better DOM assertions (@testing-library/jest-dom)"
           echo "  • Realistic user interactions (@testing-library/user-event)"
           echo "  • Cross-tab communication testing (broadcast-channel)"
