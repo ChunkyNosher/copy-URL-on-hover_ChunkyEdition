@@ -72,45 +72,7 @@ jobs:
           fi
 
       # ====================================================================
-      # NEW STEP: Restore Memory from Previous Runs
-      # ====================================================================
-
-      - name: Display Memory Status
-        run: |
-          echo "=========================================="
-          echo "Agent Memory Status"
-          echo "=========================================="
-
-          # Check Agentic-Tools MCP memories (individual JSON files)
-          if [ -d ".agentic-tools-mcp/memories" ] && [ "$(ls -A .agentic-tools-mcp/memories 2>/dev/null)" ]; then
-            MEMORY_COUNT=$(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null | wc -l)
-            echo "✓ Agentic-Tools memories found"
-            echo "  Memory files: $MEMORY_COUNT"
-            echo ""
-            echo "Memory categories:"
-            ls -d .agentic-tools-mcp/memories/*/ 2>/dev/null | xargs -n1 basename || echo "  No categories yet"
-            echo ""
-            echo "Recent memory files:"
-            find .agentic-tools-mcp/memories -name "*.json" -type f -exec ls -lth {} + 2>/dev/null | head -5
-          else
-            echo "⚠ No Agentic-Tools memories (first run or empty)"
-          fi
-
-          echo ""
-
-          # Check Agentic-Tools MCP tasks
-          if [ -d ".agentic-tools-mcp/tasks" ] && [ -f ".agentic-tools-mcp/tasks/tasks.json" ]; then
-            echo "✓ Agentic-Tools tasks database found"
-            TASK_COUNT=$(cat .agentic-tools-mcp/tasks/tasks.json | jq '.tasks | length' 2>/dev/null || echo "0")
-            echo "  Tasks: $TASK_COUNT"
-          else
-            echo "⚠ No Agentic-Tools tasks (first run or empty)"
-          fi
-
-          echo "=========================================="
-
-      # ====================================================================
-      # STEP 5: Verify testing/build libraries in current toolchain
+      # STEP 5: Verify ALL Testing Libraries (UPDATED)
       # ====================================================================
       - name: Verify browser API testing and build libraries
         run: |
@@ -671,77 +633,6 @@ jobs:
 
           echo "=========================================="
         continue-on-error: true
-
-      # ====================================================================
-      # NEW STEP: Verify Memory Quality
-      # ====================================================================
-      - name: Verify memory file quality
-        run: |
-          echo "=========================================="
-          echo "Memory Quality Check"
-          echo "=========================================="
-
-          if [ -d ".agentic-tools-mcp/memories" ]; then
-            # Count memories by category
-            echo "Memories by category:"
-            TOTAL_MEMORIES=0
-            for category in .agentic-tools-mcp/memories/*/; do
-              if [ -d "$category" ]; then
-                CATEGORY_NAME=$(basename "$category")
-                FILE_COUNT=$(find "$category" -name "*.json" 2>/dev/null | wc -l)
-                echo "  $CATEGORY_NAME: $FILE_COUNT file(s)"
-                TOTAL_MEMORIES=$((TOTAL_MEMORIES + FILE_COUNT))
-              fi
-            done
-            
-            echo ""
-            echo "Total memories: $TOTAL_MEMORIES"
-            echo ""
-            
-            # Check for memories without categories
-            UNCATEGORIZED=$(find .agentic-tools-mcp/memories -maxdepth 1 -name "*.json" 2>/dev/null | wc -l)
-            if [ "$UNCATEGORIZED" -gt 0 ]; then
-              echo "⚠️ Warning: $UNCATEGORIZED uncategorized memory file(s) found"
-              echo "Recommendation: All memories should have categories"
-            else
-              echo "✓ All memories properly categorized"
-            fi
-            
-            echo ""
-            
-            # Validate JSON structure
-            INVALID_COUNT=0
-            for memfile in $(find .agentic-tools-mcp/memories -name "*.json" 2>/dev/null); do
-              if ! jq empty "$memfile" 2>/dev/null; then
-                echo "✗ Invalid JSON: $memfile"
-                INVALID_COUNT=$((INVALID_COUNT + 1))
-              fi
-            done
-            
-            if [ "$INVALID_COUNT" -eq 0 ]; then
-              echo "✓ All memory files have valid JSON"
-            else
-              echo "✗ Found $INVALID_COUNT invalid memory file(s)"
-              exit 1
-            fi
-            
-            # Check for recommended categories
-            echo ""
-            echo "Category usage analysis:"
-            RECOMMENDED_CATEGORIES="architecture technical best-practices preferences research troubleshooting project-context verification-notes"
-            for cat in $RECOMMENDED_CATEGORIES; do
-              if [ -d ".agentic-tools-mcp/memories/$cat" ]; then
-                COUNT=$(find ".agentic-tools-mcp/memories/$cat" -name "*.json" 2>/dev/null | wc -l)
-                if [ "$COUNT" -gt 0 ]; then
-                  echo "  ✓ $cat ($COUNT)"
-                fi
-              fi
-            done
-          else
-            echo "ℹ️ No memories directory found (first run or no memories created yet)"
-          fi
-
-          echo "=========================================="
 
       # ====================================================================
       # STEP 17: Environment Ready Summary (UPDATED)
