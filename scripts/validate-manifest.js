@@ -66,7 +66,9 @@ try {
 
   if (hasErrors) {
     console.error('\n❌ Manifest validation failed!');
-    console.error('   Ensure manifest path normalization is applied via Vite static copy transform.');
+    console.error(
+      '   Ensure manifest path normalization is applied via Vite static copy transform.'
+    );
     process.exit(1);
   }
 

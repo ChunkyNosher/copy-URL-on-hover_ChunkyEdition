@@ -119,11 +119,7 @@ module.exports = {
   overrides: [
     {
       // Relax rules for build config files
-      files: [
-        'vite.config.js',
-        '.eslintrc.cjs',
-        '.prettierrc.cjs'
-      ],
+      files: ['vite.config.js', '.eslintrc.cjs', '.prettierrc.cjs'],
       env: {
         node: true
       },
