@@ -6,8 +6,6 @@
  * Uncovered lines: 153-159 (onOpenInTab), 360-420 (iframe title update), 477 (console.log)
  */
 
-import { jest } from '@jest/globals';
-
 import { QuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 
 describe('QuickTabWindow - Edge Cases', () => {
