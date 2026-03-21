@@ -120,9 +120,7 @@ module.exports = {
     {
       // Relax rules for build config files
       files: [
-        'rollup.config.js',
         'vite.config.js',
-        'vitest.config.js',
         '.eslintrc.cjs',
         '.prettierrc.cjs'
       ],
@@ -130,7 +128,7 @@ module.exports = {
         node: true
       },
       parserOptions: {
-        sourceType: 'module', // Allow ES modules in rollup.config.js
+        sourceType: 'module',
         ecmaVersion: 'latest'
       }
     },
