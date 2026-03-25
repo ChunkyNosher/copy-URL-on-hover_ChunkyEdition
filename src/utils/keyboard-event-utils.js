@@ -18,7 +18,6 @@ export function isInputField(element) {
 
   return (
     normalizedElement.matches('input, textarea') ||
-    normalizedElement.isContentEditable ||
     normalizedElement.closest(EDITABLE_PARENT_SELECTOR) !== null
   );
 }

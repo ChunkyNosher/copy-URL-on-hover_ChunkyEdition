@@ -1,6 +1,10 @@
 import { getDeepEventTarget, isInputField } from '../../../src/utils/keyboard-event-utils.js';
 
 describe('keyboard-event-utils', () => {
+  afterEach(() => {
+    document.body.innerHTML = '';
+  });
+
   describe('getDeepEventTarget()', () => {
     test('returns the composed path target for shadow DOM keyboard events', () => {
       const host = document.createElement('div');
