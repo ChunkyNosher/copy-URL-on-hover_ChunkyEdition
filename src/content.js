@@ -237,6 +237,7 @@ import { getLinkText } from './features/url-handlers/generic.js';
 import { URLHandlerRegistry } from './features/url-handlers/index.js';
 import { clearLogBuffer, debug, enableDebug, getLogBuffer } from './utils/debug.js';
 import { settingsReady } from './utils/filter-settings.js';
+import { getDeepEventTarget, isInputField } from './utils/keyboard-event-utils.js';
 import { logNormal, logWarn, refreshLiveConsoleSettings } from './utils/logger.js';
 // v1.6.3.6-v4 - FIX Cross-Tab Isolation Issue #3: Import setWritingTabId to set tab ID for storage writes
 // v1.6.3.10-v6 - FIX Issue #4/11/12: Import isWritingTabIdInitialized for synchronous check
@@ -3095,19 +3096,6 @@ function setupHoverDetection() {
 }
 
 /**
- * Check if element is an input field or editable
- */
-function isInputField(element) {
-  return (
-    element &&
-    (element.tagName === 'INPUT' ||
-      element.tagName === 'TEXTAREA' ||
-      element.isContentEditable ||
-      element.closest('[contenteditable="true"]'))
-  );
-}
-
-/**
  * v1.6.0 Phase 2.4 - Table-driven shortcut handling
  */
 const SHORTCUT_HANDLERS = [
@@ -3213,7 +3201,7 @@ async function executeShortcutHandler(shortcut, hoveredLink, hoveredElement, eve
  */
 async function handleKeyboardShortcut(event) {
   // Check if in input field first - silently ignore
-  const isInInputField = isInputField(event.target);
+  const isInInputField = isInputField(getDeepEventTarget(event));
   if (isInInputField) {
     return;
   }
