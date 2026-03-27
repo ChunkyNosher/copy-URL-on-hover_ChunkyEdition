@@ -4,13 +4,13 @@
  * Helper script to load the extension in Chrome for testing with Playwright MCP
  *
  * This script launches Chrome/Chromium with the extension pre-loaded from the
- * dist/ directory, making it available for interactive testing with Playwright MCP.
+ * dist-chrome/ directory, making it available for interactive testing with Playwright MCP.
  *
  * Usage:
  *   node scripts/load-extension-chrome.js
  *
  * Prerequisites:
- *   - Extension must be built in dist/ directory
+ *   - Extension must be prepared in dist-chrome/ directory
  *   - Chrome or Chromium must be installed
  */
 
@@ -25,21 +25,21 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.join(__dirname, '..');
 
 // Paths
-const distPath = path.join(projectRoot, 'dist');
+const distPath = path.join(projectRoot, 'dist-chrome');
 const profilePath = path.join(projectRoot, 'chrome-profile');
 
-// Verify dist exists
+// Verify prepared Chrome dist exists
 if (!fs.existsSync(distPath)) {
-  console.error('❌ Error: dist/ directory not found!');
-  console.error('   Please run: npm run build:prod');
+  console.error('❌ Error: dist-chrome/ directory not found!');
+  console.error('   Please run: npm run prepare:chrome-dist');
   process.exit(1);
 }
 
 // Verify manifest exists
 const manifestPath = path.join(distPath, 'manifest.json');
 if (!fs.existsSync(manifestPath)) {
-  console.error('❌ Error: dist/manifest.json not found!');
-  console.error('   Please run: npm run build:prod');
+  console.error('❌ Error: dist-chrome/manifest.json not found!');
+  console.error('   Please run: npm run prepare:chrome-dist');
   process.exit(1);
 }
 
