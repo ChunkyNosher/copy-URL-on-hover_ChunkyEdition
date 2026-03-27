@@ -55,8 +55,8 @@ export default {
         // Chrome-specific launch options for loading extension
         launchOptions: {
           args: [
-             `--disable-extensions-except=${path.join(__dirname, 'dist-chrome')}`,
-             `--load-extension=${path.join(__dirname, 'dist-chrome')}`,
+            `--disable-extensions-except=${path.join(__dirname, 'dist-chrome')}`,
+            `--load-extension=${path.join(__dirname, 'dist-chrome')}`,
             '--no-sandbox',
             '--disable-setuid-sandbox'
           ]
