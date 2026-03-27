@@ -144,5 +144,5 @@ module.exports = {
       }
     }
   ],
-  ignorePatterns: ['node_modules/', 'dist/', '*.min.js', 'coverage/']
+  ignorePatterns: ['node_modules/', 'dist/', 'dist-chrome/', '*.min.js', 'coverage/']
 };

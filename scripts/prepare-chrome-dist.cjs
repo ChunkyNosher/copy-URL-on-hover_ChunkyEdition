@@ -37,7 +37,11 @@ function prepareChromeDist(projectRoot = path.resolve(__dirname, '..')) {
     fs.rmSync(distChromeDir, { recursive: true, force: true });
   }
 
-  fs.cpSync(distDir, distChromeDir, { recursive: true });
+  try {
+    fs.cpSync(distDir, distChromeDir, { recursive: true });
+  } catch (error) {
+    throw new Error(`Failed to copy dist/ to dist-chrome/: ${error.message}`);
+  }
 
   const chromeManifest = normalizeChromeManifestPaths(
     JSON.parse(fs.readFileSync(chromeManifestSrc, 'utf8'))
