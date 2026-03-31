@@ -1,24 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-
-function normalizeChromeManifestPaths(manifest) {
-  if (manifest.background && manifest.background.scripts) {
-    manifest.background.scripts = manifest.background.scripts.map(script =>
-      script.replace(/^dist\//, '')
-    );
-  }
-
-  if (manifest.content_scripts) {
-    manifest.content_scripts.forEach(contentScript => {
-      if (contentScript.js) {
-        contentScript.js = contentScript.js.map(script => script.replace(/^dist\//, ''));
-      }
-    });
-  }
-
-  return manifest;
-}
-
+const { normalizeChromeManifestPaths } = require('./manifest-path-utils.js');
 function prepareChromeDist(projectRoot = path.resolve(__dirname, '..')) {
   const distDir = path.join(projectRoot, 'dist');
   const distChromeDir = path.join(projectRoot, 'dist-chrome');
