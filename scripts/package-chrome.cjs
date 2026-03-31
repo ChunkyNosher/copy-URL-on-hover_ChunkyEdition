@@ -1,61 +1,14 @@
 const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { prepareChromeDist } = require('./prepare-chrome-dist.cjs');
 
 console.log('📦 Packaging for Chrome/Chromium...');
 
 const projectRoot = path.resolve(__dirname, '..');
-const distDir = path.join(projectRoot, 'dist');
-const distChromeDir = path.join(projectRoot, 'dist-chrome');
+const { distChromeDir, manifest: chromeManifest } = prepareChromeDist(projectRoot);
 
-// Verify dist directory exists and has required files
-if (!fs.existsSync(distDir)) {
-  console.error('❌ dist/ directory not found. Run npm run build:prod first.');
-  process.exit(1);
-}
-
-// Create dist-chrome directory with Chrome-specific manifest
-console.log('🔧 Creating Chrome-specific build...');
-
-// Clean dist-chrome directory if it exists
-if (fs.existsSync(distChromeDir)) {
-  fs.rmSync(distChromeDir, { recursive: true, force: true });
-}
-fs.mkdirSync(distChromeDir, { recursive: true });
-
-// Copy dist contents to dist-chrome
-execSync(`cp -r ${distDir}/* ${distChromeDir}/`, { stdio: 'inherit' });
-
-// Copy Chrome-specific manifest
-const chromeManifestSrc = path.join(projectRoot, 'manifest.chrome.json');
-const chromeManifestDest = path.join(distChromeDir, 'manifest.json');
-
-if (!fs.existsSync(chromeManifestSrc)) {
-  console.error('❌ manifest.chrome.json not found in project root.');
-  process.exit(1);
-}
-
-// Read Chrome manifest and fix paths
-const chromeManifest = JSON.parse(fs.readFileSync(chromeManifestSrc, 'utf8'));
-
-// Fix background script paths
-if (chromeManifest.background && chromeManifest.background.scripts) {
-  chromeManifest.background.scripts = chromeManifest.background.scripts.map(script =>
-    script.replace(/^dist\//, '')
-  );
-}
-
-// Fix content script paths
-if (chromeManifest.content_scripts) {
-  chromeManifest.content_scripts.forEach(contentScript => {
-    if (contentScript.js) {
-      contentScript.js = contentScript.js.map(script => script.replace(/^dist\//, ''));
-    }
-  });
-}
-
-fs.writeFileSync(chromeManifestDest, JSON.stringify(chromeManifest, null, 2) + '\n');
-console.log('✓ Chrome manifest copied and paths fixed');
+console.log('✓ Chrome build prepared with Chrome-specific manifest');
 
 // Get version from manifest for filename
 const version = chromeManifest.version;
