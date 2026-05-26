@@ -15,31 +15,31 @@ coverage:
         informational: true
 
 ignore:
-  - "dist/**"
-  - "node_modules/**"
-  - "coverage/**"
-  - "**/*.test.js"
-  - "**/*.spec.js"
-  - ".github/**"
-  - "tests/**"
-  - "docs/**"
-  - "*.config.js"
-  - "*.config.cjs"
+  - 'dist/**'
+  - 'node_modules/**'
+  - 'coverage/**'
+  - '**/*.test.js'
+  - '**/*.spec.js'
+  - '.github/**'
+  - 'tests/**'
+  - 'docs/**'
+  - '*.config.js'
+  - '*.config.cjs'
 
 comment:
-  layout: "diff,flags,files"
+  layout: 'diff,flags,files'
   behavior: default
   require_changes: true
 
 flags:
   features:
     paths:
-      - "src/features/**/*.js"
+      - 'src/features/**/*.js'
   core:
     paths:
-      - "*.js"
-      - "src/**/*.js"
-      - "!src/features/**"
+      - '*.js'
+      - 'src/**/*.js'
+      - '!src/features/**'
 
 github_checks:
   annotations: true
