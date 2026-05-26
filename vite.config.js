@@ -43,7 +43,6 @@ function getStaticCopyTargets() {
     { src: 'popup.js', dest: '.' },
     { src: 'options_page.html', dest: '.' },
     { src: 'options_page.js', dest: '.' },
-    { src: 'state-manager.js', dest: '.' },
     { src: 'icons/**/*', dest: 'icons' },
     { src: 'sidebar/**/*', dest: 'sidebar' }
   ];
