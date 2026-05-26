@@ -15,48 +15,9 @@
       "description": "Popup script - max 100KB"
     }
   },
-  "terser": {
-    "production": {
-      "compress": {
-        "drop_console": false,
-        "passes": 3,
-        "pure_funcs": [],
-        "dead_code": true,
-        "unused": true
-      },
-      "mangle": {
-        "properties": false,
-        "toplevel": false
-      },
-      "format": {
-        "beautify": false,
-        "comments": false,
-        "max_line_len": 0
-      }
-    },
-    "development": {
-      "compress": {
-        "drop_console": false,
-        "passes": 1
-      },
-      "mangle": false,
-      "format": {
-        "beautify": true,
-        "indent_level": 2,
-        "comments": "some",
-        "max_line_len": 120
-      }
-    }
-  },
   "treeshake": {
-    "_comment": "v1.6.3.6-v11: Aggressive tree-shaking for browser extension. Safe for extensions but NOT for libraries (they may need side effects preserved). moduleSideEffects:false assumes modules are pure exports. propertyReadSideEffects:false allows eliminating unused property reads.",
-    "preset": "smallest",
     "moduleSideEffects": false,
     "propertyReadSideEffects": false,
     "tryCatchDeoptimization": false
-  },
-  "cache": {
-    "enabled": true,
-    "directory": "node_modules/.cache/rollup"
   }
 }

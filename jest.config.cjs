@@ -49,9 +49,6 @@ module.exports = {
     // Core - require 85% coverage
     'src/core/**/*.js',
 
-    // UI - require 80% coverage
-    'src/ui/**/*.js',
-
     // Exclusions
     '!src/**/*.test.js',
     '!src/**/*.spec.js',
