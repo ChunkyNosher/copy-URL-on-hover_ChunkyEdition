@@ -3,7 +3,7 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.4-v7  
+**Version:** 2.0.0  
 **Language:** JavaScript (ES6+)  
 **Architecture:** Domain-Driven Design with Background-as-Coordinator  
 **Purpose:** URL management with sidebar Quick Tabs Manager
@@ -16,13 +16,22 @@
 - **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
 - **Tab Isolation** - Filter by `originTabId` at hydration time (tab-scoped QTs)
 - **Container Isolation** - `originContainerId` field for Firefox Containers
-- **Container Filter** - Filter Quick Tabs by container in Manager (v1.6.4-v4)
+- **Container Filter** - Filter Quick Tabs by container in Manager
 - **Context Menu** - Right-click context menu for bulk Quick Tab operations
-- **Session-like Quick Tabs** - `storage.local` + startup cleanup; browser restart clears QTs
+- **Session-like Quick Tabs** - `storage.session` (FF 115+) or `storage.local` +
+  startup cleanup
 - **Clean URL Copying** - Strips tracking parameters from copied URLs
 - **Dark Mode First UI** - Dark-mode-first design for Manager / Quick Tab chrome
 
-**v1.6.4-v7 Features (CURRENT):**
+**v2.0.0 Features (CURRENT):**
+
+- Dead-code purge (`src/storage/` adapters, options_page, Solo/Mute test leftovers)
+- Permission/API hygiene (`scripting` declared; unused perms removed)
+- MessageRouter hang fix (always settle `sendResponse`)
+- Background `storage.session` when available
+- Chrome MV3 deferred (see `docs/architecture/chrome-mv3-deferred.md`)
+
+**v1.6.4-v7 Features (included in 2.0.0):**
 
 - **Clean URL Copying** - `cleanUrl()` strips UTM, Facebook, Google, Amazon,
   YouTube tracking params from copied URLs by default
@@ -55,6 +64,8 @@
   `browser.menus` API
 - **Minimize All Button** - ⏬ button in tab group headers
 
+**v2.0.0:** Dead-code purge, API hygiene, MessageRouter hang fix, background
+`storage.session`  
 **v1.6.4-v7:** Clean URL Copy, Dark Mode UI, Performance Optimization  
 **v1.6.4-v4:** Container Filter, Badge, ContainerManager.js  
 **v1.6.4-v3:** Metrics footer, title/state fixes  
@@ -123,7 +134,7 @@ const quickTabsSessionState = {
 
 ## 🆕 Version Patterns Summary
 
-### v1.6.4-v7 Patterns (Current)
+### v2.0.0 Patterns (Current)
 
 - **Clean URL Copy** - `cleanUrl()` in `src/utils/url-cleaner.js` strips 90+
   tracking params; `handleCopyURL()` uses it by default

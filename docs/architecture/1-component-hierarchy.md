@@ -1,10 +1,10 @@
-# Component Hierarchy
+# Component Hierarchy (v2.0.0)
 
 ## Overview
 
 Firefox-first Manifest V2 extension. Dependencies flow features → utils/core →
 domain. Quick Tabs are **tab-scoped** (`originTabId`). Sync is Option 4:
-background in-memory session + ports + `storage.local`.
+background in-memory session + ports + `storage.local` / `storage.session`.
 
 ## Component Hierarchy
 

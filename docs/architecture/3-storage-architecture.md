@@ -1,4 +1,4 @@
-# Storage Architecture
+# Storage Architecture (v2.0.0)
 
 ## Overview
 

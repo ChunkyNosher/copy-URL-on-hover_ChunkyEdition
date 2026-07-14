@@ -9,10 +9,50 @@ and this project adheres to
 
 ---
 
+# Changelog - v2.0.0
+
+**Release Date:** 2026-07-14  
+**Status:** Released
+
+## Overview
+
+Major release consolidating the late 1.6.4 feature line with a large dead-code
+purge, permission/API hygiene, Option 4 messaging hardening, and background
+`storage.session` support (Firefox 115+). Quick Tabs remain **tab-scoped**.
+
+## Added
+
+- Background preference for `browser.storage.session` when available (content
+  scripts never access it directly)
+- Architecture locks documented in `AGENTS.md` and
+  `docs/architecture/chrome-mv3-deferred.md`
+- MessageRouter `createListener` always settles `sendResponse` on route failure
+
+## Changed
+
+- Settings UI is sidebar + popup only (`storage.local`)
+- Manifest permissions trimmed to what production code uses; `scripting` declared
+  for recovery injection
+- Architecture docs rewritten for Option 4 / no adapter layer
+
+## Removed
+
+- Entire unused `src/storage/` adapter layer and paired unit tests
+- `options_page` / `options_ui` (`storage.sync` settings path)
+- Solo/Mute and floating-panel test leftovers
+- Stale `@ui` / `@storage` aliases and Chrome WAR `state-manager.js`
+
+## Fixed
+
+- Unhandled MessageRouter `route()` rejections that could hang Export/Clear logs
+  and similar callers
+
+---
+
 # Changelog - v1.6.0 Infrastructure
 
 **Release Date:** 2025-11-18 (Infrastructure Phase)  
-**Status:** Infrastructure Complete, Refactoring In Progress
+**Status:** Historical (superseded by later 1.6.x and v2.0.0)
 
 ---
 

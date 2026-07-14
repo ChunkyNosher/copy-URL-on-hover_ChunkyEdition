@@ -3,7 +3,7 @@ name: copilot-docs-updater
 description: |
   Specialist agent for updating Copilot instructions and agent files with current
   extension state. Enforces 15KB size limits and ensures consistency across all
-  documentation. Current version: v1.6.4-v4.
+  documentation. Current version: v2.0.0.
 tools: ['*']
 ---
 
@@ -98,7 +98,7 @@ nothing.
 ## Audit Checklist
 
 - [ ] All files under 15KB
-- [ ] Version numbers match 1.6.4-v4
+- [ ] Version numbers match 2.0.0
 - [ ] **v1.6.4-v4:** Container Filter documented
 - [ ] Architecture references accurate (Background-as-Coordinator)
 - [ ] NO Solo/Mute references (REMOVED in v12)

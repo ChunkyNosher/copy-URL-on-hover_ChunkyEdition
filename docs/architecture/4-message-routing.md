@@ -1,4 +1,4 @@
-# Message Routing Architecture
+# Message Routing Architecture (v2.0.0)
 
 ## Overview
 

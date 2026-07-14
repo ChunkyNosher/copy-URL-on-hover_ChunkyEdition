@@ -2,8 +2,8 @@
 
 ## Cursor Cloud specific instructions
 
-This is a Firefox/Chrome browser extension (Manifest V2). No backend services,
-databases, or external APIs are required.
+This is a Firefox/Chrome browser extension (Manifest V2), **version 2.0.0**. No
+backend services, databases, or external APIs are required.
 
 ### Quick reference
 

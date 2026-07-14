@@ -1,7 +1,7 @@
 # GitHub Copilot Autonomous Testing Guide
 
 **Extension**: Copy URL on Hover - ChunkyEdition  
-**Version**: 1.6.3  
+**Version**: 2.0.0  
 **Testing System**: Test Bridge Pattern with Playwright MCP  
 **Coverage**: ~80% autonomous testing capability
 

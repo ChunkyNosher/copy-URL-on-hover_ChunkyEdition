@@ -37,7 +37,7 @@ await searchMemories({ query: '[keywords]', limit: 5 });
 
 ## Project Context
 
-**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
+**Version:** 2.0.0 - Option 4 Architecture (tab-scoped Quick Tabs)
 
 **v1.6.4-v2 Bug Fixes (NEW):**
 

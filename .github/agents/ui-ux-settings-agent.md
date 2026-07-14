@@ -60,7 +60,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.4-v3 - Two-Layer Sidebar Tab System ✅
+**Version:** 2.0.0 - Option 4 Architecture (tab-scoped Quick Tabs)
 
 **v1.6.4-v3 Features (NEW) - Live Metrics Footer:**
 

@@ -1,4 +1,4 @@
-# Chrome Manifest V3 — Deferred
+# Chrome Manifest V3 — Deferred (v2.0.0)
 
 Chrome Web Store distribution requires Manifest V3. This repo stays on **Firefox
 Manifest V2** as the primary target.

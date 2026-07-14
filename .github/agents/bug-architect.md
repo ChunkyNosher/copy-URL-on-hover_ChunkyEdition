@@ -65,7 +65,7 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.3.12-v12 - Domain-Driven Design with
+**Version:** 2.0.0 - Option 4 Architecture (tab-scoped Quick Tabs)
 Background-as-Coordinator  
 **Architecture:** DDD with Clean Architecture  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE

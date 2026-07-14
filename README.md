@@ -1,228 +1,198 @@
 # Cross-Browser Extension: Copy URL on Hover
 
-**Version 1.6.4-v7** - A feature-rich **Firefox/Chrome/Chromium** extension for
-quick URL copying and advanced Quick Tab management with **Per-Tab Isolation**,
-**Container Isolation**, and Session-Only Quick Tabs.
+**Version 2.0.0** — A feature-rich **Firefox / Chrome / Chromium** extension for
+quick URL copying and advanced Quick Tab management with **tab-scoped isolation**,
+**Firefox Container awareness**, and session-like Quick Tabs.
 
-**🌐 Cross-Browser Support:** Now compatible with Firefox, Chrome, Edge, Brave,
-Opera, and other Chromium-based browsers using Manifest v2 with
-webextension-polyfill.
+**Cross-browser:** Firefox, Chrome, Edge, Brave, Opera, and other Chromium
+browsers via Manifest V2 + `webextension-polyfill`.
 
-**🔧 v1.6.4-v7 Status:** Clean URL Copying ✅ | Dark Mode UI ✅ | Performance
-Optimization ✅
+**v2.0.0 status:** Dead-code purge ✅ | API hygiene ✅ | Option 4 ports ✅ |
+Tab-scoped Quick Tabs ✅ | Background `storage.session` (FF 115+) ✅
 
-This is a complete, customizable Firefox extension that allows you to copy URLs
-or link text by pressing keyboard shortcuts while hovering over links, plus
-powerful Quick Tabs for browsing links in floating, draggable iframe windows.
-
-## 🎉 What's New in v1.6.4-v7
-
-**🧹 Clean URL Copying + 🌙 Dark Mode UI + ⚡ Performance ✅**
-
-- ✅ **Clean URL Copying** - Automatically strips 90+ tracking parameters (UTM,
-  Facebook, Google, Amazon, YouTube) when copying URLs
-- ✅ **Copy Raw URL Shortcut** - New unbound shortcut to copy URLs with all
-  parameters intact (configure in settings)
-- ✅ **Dark Mode First UI** - Complete UI overhaul with modern dark-mode-first
-  design (#121212 backgrounds, #6c5ce7 purple-blue accent)
-- ✅ **Glass-Morphism Quick Tabs** - In-page Quick Tab windows with sleek dark
-  styling and backdrop-filter effects
-- ✅ **Performance: Debug-Gated Logging** - Console output reduced by ~29% via
-  debug mode checks (no more log spam in production)
-- ✅ **Performance: State Broadcast Dedup** - Hash-based change detection
-  eliminates redundant STATE_CHANGED messages
-- ✅ **Performance: Render Debouncing** - 16ms debounce batches rapid render
-  requests for smoother sidebar updates
-- ✅ **ESLint Clean** - All 25 ESLint warnings/errors resolved (0 remaining)
-- ✅ **Code Cleanup** - Removed unused variables and functions across codebase
-
-## 🎉 What's New in v1.6.4-v5
-
-**🔧 Go to Tab Cross-Container Fix + Toggle Sidebar + Minimized Transfer ✅**
-
-- ✅ **Go to Tab Same-Container Fix** - Sidebar stays open when switching to
-  tabs in the same Firefox Container
-- ✅ **Go to Tab Cross-Container Reopen** - For "All Containers" view, sidebar
-  closes, switches tab, then reopens after 300ms for continued management
-- ✅ **Toggle Quick Tabs Manager Context Menu** - Right-click to toggle sidebar
-  via `browser.sidebarAction.toggle()` API
-- ✅ **Minimized Quick Tab Transfer Restore** - Minimized Quick Tabs can now be
-  restored after cross-tab transfer (previously required
-  restore-minimize-restore)
-- ✅ **Minimized Transfer Restore Fix** - Fixed `result?.tabWindow` to `result`
-  since `createQuickTab()` returns `tabWindow` directly
-- ✅ **Minimized Transfer Tab ID Fix** - `storeTransferredSnapshot()` accepts
-  destination tab ID; fixes restore reverting to old tab
-- ✅ **Go to Tab Error Handling** - Added `.catch()` error handler; uses
-  container-aware `_handleGoToTabGroup()` for consistency
-- ✅ **Clear Log History Confirmation** - Added `confirm()` dialog before
-  clearing logs with detailed warning message
-- ✅ **Clear Log History Counts** - Shows "X background logs" and "logs from Y
-  tabs" or "No cached logs were present"
-- ✅ **Log Metrics Footer Persistence** - Total log count persists to
-  `storage.local` with 2000ms debounce (survives sidebar close/reopen)
-- ✅ **Minimized Transfer Display Fix** - UICoordinator orphan recovery updates
-  `display: flex`, `visibility: visible`, `opacity: 1` after restore
-- ✅ **Metrics Flush on Sidebar Close** - `beforeunload` handler flushes pending
-  debounced saves immediately before sidebar closes
-- ✅ **Zen Browser Compatibility** - Improved focus handling for Firefox-based
-  browsers with custom "spaces" features
-
-## 🎉 What's New in v1.6.4-v4
-
-**🔧 Container Filter for Quick Tabs Manager ✅**
-
-- ✅ **Container Filter Dropdown** - Filter Quick Tabs by Firefox Container in
-  Manager header
-- ✅ **Container-Based Filtering** - Quick Tabs filtered by current tab's
-  container by default
-- ✅ **Container Name Resolution** - Shows actual container names (Shopping,
-  Research, Work) instead of "Firefox Container 1, 2, 3"
-- ✅ **Dynamic Container Indicator** - Updates when switching to tabs in
-  different containers
-- ✅ **"All Containers" Option** - View Quick Tabs across all containers via
-  dropdown
-- ✅ **Filter Preference Persistence** - Container filter selection saved to
-  storage
-
-## 🎉 What's New in v1.6.4-v3
-
-**🔧 Log Metrics + Transfer Fix ✅** - Live metrics footer, cross-tab transfer
-sync, single metrics display, reduced logging
-
-## 🎉 What's New in v1.6.4-v2
-
-**🔧 Title Updates + State Sync ✅** - Quick Tab titles update from page,
-transfer/close fixes, UI flicker fix, Code Health 9.0+
-
-## 🎉 What's New in v1.6.4
-
-**🔧 Drag-and-Drop Manager + Cross-Tab Transfer ✅**
-
-- ✅ **Drag-and-Drop Reordering** - Reorder tabs and Quick Tabs via
-  drag-and-drop
-- ✅ **Cross-Tab Transfer** - Drag Quick Tab from one tab to another
-- ✅ **Duplicate via Shift+Drag** - Hold Shift while dragging to duplicate
-- ✅ **Move to Current Tab Button** - Replaces "Go to Tab" for Quick Tab items
-- ✅ **Tab Group Actions** - "Go to Tab" and "Close All in Tab" per group
-- ✅ **Click-to-Front** - Quick Tabs come to front on click
+This extension lets you copy URLs or link text with keyboard shortcuts while
+hovering over links, and open links in floating, draggable Quick Tab iframe
+windows managed from the Firefox sidebar (Chrome uses the toolbar popup).
 
 ---
 
-## 🎉 Previous Releases
+## What's New in v2.0.0
 
-See [docs/CHANGELOG.md](docs/CHANGELOG.md) for complete version history.
+**Major cleanup and architecture hardening** (builds on the late 1.6.4 line and
+the recent storage/messaging refactor).
+
+### Product locks
+
+- **Tab-scoped Quick Tabs** — a Quick Tab’s DOM lives only on its
+  `originTabId`; the Manager may list all QTs grouped by origin tab. Global
+  cross-tab mirror (Issues #46 / #51) remains out of scope.
+- **Container-aware Manager** — Firefox Multi-Account Containers stay supported;
+  Solo/Mute is not returning.
+
+### Dead code & packaging
+
+- Removed the unused `src/storage/` adapter layer (`SyncStorageAdapter`,
+  `SessionStorageAdapter`, `FormatMigrator`) — live path is
+  `src/utils/storage-utils.js` + background.
+- Removed the divergent `options_page` (`storage.sync`); settings are **sidebar +
+  popup → `storage.local` only**.
+- Stripped Solo/Mute and floating-panel test leftovers, stale `@ui` / `@storage`
+  aliases, and Chrome WAR pointing at deleted `state-manager.js`.
+- Large prior cleanup (#451): panel/mediator/`src/ui`/Rollup/docs bloat.
+
+### API hygiene
+
+- Dropped unused permissions (`cookies`, `sessions`, `alarms`, `notifications`,
+  `clipboardRead`).
+- Declared `scripting` for the background recovery injection path.
+- Kept `clipboardWrite` for reliable content-script clipboard writes.
+
+### Messaging & storage
+
+- **Option 4** remains canonical: background owns the in-memory QT session;
+  content/sidebar use `quick-tabs-port`.
+- Fixed MessageRouter hang risk (unhandled `route()` rejections no longer leave
+  callers waiting forever — same class of bug as PR #414).
+- Mid-session QT persistence prefers **`browser.storage.session`** in the
+  background when available (Firefox 115+); falls back to `storage.local` +
+  startup wipe on older browsers. Content scripts do not touch `storage.session`.
+
+### Chrome MV3
+
+Chrome Store MV3 (service worker + DNR + `sidePanel`) is **documented and
+deferred**. See
+[docs/architecture/chrome-mv3-deferred.md](docs/architecture/chrome-mv3-deferred.md).
+Firefox stays on Manifest V2 for now.
 
 ---
 
-## 🎯 Firefox Sidebar Integration
+## Previous 1.6.4 highlights (still in the product)
 
-**Unified Settings Sidebar for Firefox** - All settings and Quick Tabs Manager
-in the sidebar!
+- Clean URL copying + optional copy-raw shortcut
+- Dark-mode-first UI / glass Quick Tab chrome
+- Container filter, Go to Tab (incl. cross-container), drag-and-drop Manager
+- Port messaging, circuit breaker, session-like Quick Tabs
 
-- **Firefox:** Click toolbar button OR press `Alt+Shift+S` to open sidebar
-- **Chrome/Edge/Brave:** Traditional popup (toolbar button) + Extension Options
-- **Quick Tabs Manager:** `Alt+Shift+Z` or `Ctrl+Alt+Z` to toggle
-
----
-
-## 🏗️ Architecture (v1.6.0+)
-
-**Domain-Driven Design with Background-as-Coordinator**
-
-- **QuickTab Domain Entity** - Pure business logic (100% test coverage)
-- **Storage Abstraction Layer** - Async-first adapters (92% coverage)
-- **Phase 1 COMPLETE** - 96% average coverage, 249 tests
+Full history: [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ---
 
-## ✨ Key Features
+## Firefox Sidebar Integration
 
-✓ Quick URL Copying with keyboard shortcuts (Y, X, O)  
-✓ Quick Tabs - Floating, draggable, resizable iframe windows  
-✓ **Container Isolation** - Firefox Container support with originContainerId +
-Container Filter dropdown  
-✓ **Session-Only Quick Tabs** - Start fresh each browser session (v1.6.3.12)  
-✓ **Shadow DOM Support** - YouTube, Twitter, Instagram, TikTok  
-✓ **Port Messaging** - `'quick-tabs-port'` for reliable Quick Tabs sync
-(v1.6.3.12)  
-✓ **Tabs API Events** - Automatic cleanup on tab close, metadata sync  
-✓ Floating Quick Tabs Manager - Persistent draggable panel (Ctrl+Alt+Z)  
-✓ 100+ Site-Specific Handlers  
-✓ Dark Mode support  
-✓ Auto-Updates via GitHub releases
+**Unified Settings Sidebar for Firefox** — settings and Quick Tabs Manager in
+the sidebar.
 
-## 🚀 Installation
+- **Firefox:** Toolbar button or `Alt+Shift+S`
+- **Chrome/Edge/Brave:** Toolbar popup
+- **Quick Tabs Manager:** `Ctrl+Alt+Z` (Firefox) / `Alt+Shift+Z` (Chrome)
 
-### Firefox/Zen Browser (Recommended)
+---
 
-1. Go to
+## Architecture (v2.0.0)
+
+**Domain-Driven Design with Background-as-Coordinator (Option 4)**
+
+- **QuickTab domain entity** — pure business logic
+- **Persistence** — `storage-utils` + background; no `src/storage/` adapters
+- **Realtime sync** — ports primary; `storage.onChanged` is not the realtime bus
+- **Tab isolation** — hydrate / restore filtered by `originTabId`
+
+Docs: [docs/architecture/](docs/architecture/)
+
+---
+
+## Key Features
+
+- Quick URL / text copy with shortcuts (defaults: **Y**, **X**, **O**)
+- Quick Tabs — floating, draggable, resizable iframes
+- Container isolation + Manager container filter (Firefox)
+- Session-like Quick Tabs (cleared on browser restart)
+- Shadow DOM support for major sites
+- Port messaging (`quick-tabs-port`)
+- Sidebar Manager (Firefox) / popup settings (Chrome)
+- 100+ site-specific URL handlers
+- Dark mode UI
+- Auto-updates via GitHub releases (Firefox `update_url`)
+
+---
+
+## Installation
+
+### Firefox / Zen (recommended)
+
+1. Open
    [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-2. Download latest `firefox-extension-vX.X.X.xpi` file
-3. Open Firefox/Zen Browser → `about:addons`
-4. Click gear icon (⚙️) → "Install Add-on From File..."
-5. Select the `.xpi` file and confirm
+2. Download the latest `*.xpi`
+3. Firefox → `about:addons` → gear → **Install Add-on From File…**
 
-**Auto-updates enabled** - Extension will notify you of new versions
-automatically.
+Auto-updates are enabled via `updates.json`.
 
-### Chrome/Edge/Brave/Opera
+### Chrome / Edge / Brave / Opera
 
-1. Go to
-   [Releases](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/releases)
-2. Download latest `chrome-extension-vX.X.X.zip` file
-3. Extract the ZIP file to a permanent folder
-4. Open browser extensions page (`chrome://extensions/` etc.)
-5. Enable "Developer mode" and click "Load unpacked"
+1. Download the latest Chrome `*.zip` from Releases
+2. Extract to a permanent folder
+3. Extensions page → Developer mode → **Load unpacked**
 
-## 🌐 Browser Compatibility
+---
+
+## Browser Compatibility
 
 | Feature             | Firefox/Zen       | Chrome/Edge/Brave/Opera     |
 | ------------------- | ----------------- | --------------------------- |
-| Copy URL (Y key)    | ✅                | ✅                          |
-| Quick Tabs          | ✅                | ✅                          |
-| Container Isolation | ✅                | ⚠️ Single default container |
-| Sidebar Settings    | ✅ Native sidebar | ⚠️ Traditional popup        |
-
-## 📖 Usage
-
-**Basic Copy Functions:** Hover over link → Press **Y** (URL), **X** (text), or
-**O** (open)
-
-**Quick Tabs:** Hover → **Q** to open → Drag/resize → **Esc** to close all
-
-**Quick Tabs Manager:** **Ctrl+Alt+Z** to toggle panel
-
-## 🔒 Security Notice
-
-Uses Manifest v2 for `webRequestBlocking` to modify X-Frame-Options/CSP headers.
-**Only open Quick Tabs from trusted websites.**
-
-## 🛠️ Development
-
-```bash
-npm install && npm run build    # Build
-npm test                        # Run tests
-npm run lint                    # Lint
-```
-
-## 📝 Notes
-
-- Quick Tabs are session-only and cleared on browser restart (`storage.local` +
-  startup cleanup)
-- Container isolation prevents cross-container state leaks
-- Port messaging ensures reliable Quick Tabs sync across tabs
-- Background script is single source of truth for all Quick Tabs data
-- Port circuit breaker limits reconnection attempts to max 10 with backoff
-- Circuit breaker auto-resets after 60 seconds of inactivity
-- Sequence tracking ensures FIFO ordering resilience for messages
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) file for details.
+| Copy URL (Y key)    | Yes               | Yes                         |
+| Quick Tabs          | Yes               | Yes                         |
+| Container Isolation | Yes               | Single default container    |
+| Sidebar Settings    | Native sidebar    | Toolbar popup               |
 
 ---
 
-**Version 1.6.4-v5** | [Changelog](docs/CHANGELOG.md) |
+## Usage
+
+**Copy:** Hover a link → **Y** (cleaned URL), **X** (text), or **O** (open).
+
+**Quick Tabs:** Hover → **Q** → drag/resize → **Esc** closes all on that page.
+
+**Manager:** **Ctrl+Alt+Z** (Firefox) toggles the sidebar Manager.
+
+---
+
+## Security Notice
+
+Uses Manifest V2 `webRequestBlocking` to strip framing headers for Quick Tab
+iframes. **Only open Quick Tabs from sites you trust.**
+
+---
+
+## Development
+
+```bash
+npm install
+npm run build          # or npm run build:prod
+npm test
+npm run lint
+npm run ci:full
+```
+
+See [AGENTS.md](AGENTS.md) for architecture locks and tooling notes.
+
+---
+
+## Notes
+
+- Quick Tabs are tab-scoped and session-like (native `storage.session` when
+  available; otherwise local + startup cleanup).
+- Background is the single source of truth for Quick Tab session state.
+- Port circuit breaker caps reconnects; auto-resets after idle.
+- Chrome MV3 Store packaging is deferred (see architecture docs).
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---
+
+**Version 2.0.0** | [Changelog](docs/CHANGELOG.md) |
 [GitHub](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition) |
 [Issues](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues)
