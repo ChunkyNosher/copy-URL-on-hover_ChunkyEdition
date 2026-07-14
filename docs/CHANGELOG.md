@@ -1,9 +1,11 @@
 # Changelog
 
-All notable changes to the Copy URL on Hover Firefox Extension are documented in this file.
+All notable changes to the Copy URL on Hover Firefox Extension are documented in
+this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+and this project adheres to
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
@@ -16,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Overview
 
-Version 1.6.0 represents the beginning of a comprehensive architectural refactoring to reduce technical debt and improve maintainability. This release completes **Phase 0: Infrastructure Setup**, establishing the foundation for the modular architecture transformation.
+Version 1.6.0 represents the beginning of a comprehensive architectural
+refactoring to reduce technical debt and improve maintainability. This release
+completes **Phase 0: Infrastructure Setup**, establishing the foundation for the
+modular architecture transformation.
 
 ---
 
@@ -26,7 +31,8 @@ Version 1.6.0 represents the beginning of a comprehensive architectural refactor
 
 **Module Aliasing System**
 
-- Added path aliases for clean imports: `@domain`, `@storage`, `@features`, `@utils`, `@core`, `@ui`
+- Added path aliases for clean imports: `@domain`, `@storage`, `@features`,
+  `@utils`, `@core`, `@ui`
 - Integrated `@rollup/plugin-alias` for module resolution
 - Configured `@rollup/plugin-terser` for production optimizations
 - Enabled tree-shaking for bundle size reduction
@@ -78,8 +84,10 @@ tests/
 
 **ESLint Architectural Rules**
 
-- Complexity limits: `complexity ≤ 9`, `max-depth ≤ 2`, `max-lines-per-function ≤ 70`
-- Async/await rules: `require-await`, `no-return-await`, `prefer-promise-reject-errors`
+- Complexity limits: `complexity ≤ 9`, `max-depth ≤ 2`,
+  `max-lines-per-function ≤ 70`
+- Async/await rules: `require-await`, `no-return-await`,
+  `prefer-promise-reject-errors`
 - Import ordering: domain → storage → features → internal → relative
 - Architecture boundaries enforced:
   - Domain layer cannot import from features or storage
@@ -211,7 +219,8 @@ None in this release (infrastructure focus).
 
 ### New Documentation
 
-- `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.6.0-infrastructure.md` - Complete infrastructure summary
+- `docs/implementation-summaries/IMPLEMENTATION-SUMMARY-v1.6.0-infrastructure.md` -
+  Complete infrastructure summary
 - `docs/changelogs/CHANGELOG-v1.6.0.md` - This changelog
 
 ### Updated Documentation
@@ -292,7 +301,8 @@ src/
 
 ## 💬 Notes
 
-The infrastructure is now production-ready and can support the full refactoring. All scaffolding is in place:
+The infrastructure is now production-ready and can support the full refactoring.
+All scaffolding is in place:
 
 - ✅ Module aliasing system
 - ✅ Test infrastructure with helpers and mocks
@@ -4342,3 +4352,75 @@ Install via .xpi file from GitHub releases or load manually in about:debugging.
 ---
 
 **Full Changelog**: v1.3.0...v1.4.0
+
+---
+
+## [1.6.2.0] - 2025-11-24
+
+### 🎯 Popup to Sidebar Migration - Complete
+
+**Major Changes:** Complete migration of popup settings UI to Firefox Sidebar
+API with updated keyboard shortcuts.
+
+### Added
+
+- **Complete Sidebar UI** - All 5 tabs now in Firefox sidebar:
+  1. Copy URL - Keyboard shortcut configuration
+  2. Quick Tabs - Quick Tab settings and positioning
+  3. Appearance - Theme, notifications, tooltips
+  4. Advanced - Console log filtering, debug tools
+  5. Manager - Quick Tabs Manager (NEW tab)
+- **Unified Settings Experience** - Same UI for popup (Chrome) and sidebar
+  (Firefox)
+- **Documentation** - Comprehensive migration guide (11KB) in
+  `docs/implementation-summaries/`
+- **Agent Memory** - Stored migration details for future reference
+
+### Changed
+
+- **Keyboard Shortcuts:**
+  - Settings Sidebar: `Ctrl+Shift+S` → `Alt+Shift+S`
+  - Quick Tabs Manager: `Ctrl+Alt+Z` → `Alt+Shift+Z`
+- **Firefox Manifest:**
+  - Removed `default_popup` from `browser_action`
+  - Toolbar icon now opens sidebar instead of popup
+- **Chrome Manifest:**
+  - Updated version to 1.6.2.0
+  - Updated Quick Tabs Manager shortcut to `Alt+Shift+Z`
+  - Kept `default_popup` for Chrome compatibility
+- **Sidebar Files:**
+  - `sidebar/settings.html` replaced with full popup.html content (51KB)
+  - `sidebar/settings.js` replaced with popup.js functionality (42KB)
+  - Added iframe for Quick Tabs Manager in Manager tab
+- **Version:** Bumped to 1.6.2.0 across all manifests and package.json
+
+### Technical Details
+
+- **Lines of Code:** sidebar/settings.html increased from 135 to 1,551 lines
+- **File Size:** sidebar/settings.html increased from 5KB to 52KB
+- **Tests:** All 1819 unit tests passing
+- **Build:** Production build successful with tree-shaking
+- **Cross-Browser:** Firefox uses sidebar, Chrome uses popup
+
+### Browser Compatibility
+
+- **Firefox:** Sidebar opens on toolbar click or `Alt+Shift+S`
+- **Chrome/Edge/Brave:** Popup opens on toolbar click (unchanged)
+- **Both:** Quick Tabs Manager opens with `Alt+Shift+Z`
+
+### Migration Guide
+
+See `docs/implementation-summaries/popup-to-sidebar-migration-v1.6.2.0.md` for:
+
+- Detailed UI comparison
+- Technical implementation notes
+- Testing checklist
+- Known limitations
+- Future enhancements
+
+### Breaking Changes
+
+**None** - Chrome users experience no changes. Firefox users get enhanced
+sidebar experience.
+
+---

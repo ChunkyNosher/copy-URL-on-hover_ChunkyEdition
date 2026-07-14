@@ -1,8 +1,0 @@
-{
-  "id": "cb6a59c5-136e-40ab-a755-453e76793bea",
-  "title": "CSS Selector Bug: Triangle Rotation Fix",
-  "details": "## Triangle Rotation CSS Bug Fixed (v1.6.0.11)\n\n**Problem:**\nTriangle icon in collapsible filter groups didn't rotate when expanded.\n\n**Root Cause:**\nIncorrect CSS selector using general sibling (`~`) instead of adjacent sibling (`+`).\n\n**Broken Code:**\n```css\n.group-toggle:checked ~ .group-header .group-icon {\n  transform: rotate(90deg) !important;\n}\n```\n\n**DOM Structure:**\n```html\n<input type=\"checkbox\" id=\"live-group-user-actions\" class=\"group-toggle\" />\n<label for=\"live-group-user-actions\" class=\"group-header\">\n  <span class=\"group-icon\">▶</span>\n  ...\n</label>\n```\n\n**Issue:** \n- The `~` selector matches any sibling after the checkbox\n- But we need the IMMEDIATELY adjacent label\n- The label is associated via `for` attribute, not DOM proximity\n\n**Solution:**\n```css\n.group-toggle:checked + .group-header .group-icon {\n  transform: rotate(90deg);\n}\n```\n\n**Why This Works:**\n- `+` matches the immediately adjacent sibling (the label)\n- When checkbox is checked, its adjacent label's icon rotates\n- Also added `display: inline-block` to `.group-icon` for proper transform\n\n**Lesson:** \n- Use `+` (adjacent sibling) for checkbox-label pairs\n- Use `~` (general sibling) for matching any following sibling\n- Always test CSS selectors with actual DOM structure",
-  "category": "bug-fix",
-  "dateCreated": "2025-11-21T05:30:23.080Z",
-  "dateUpdated": "2025-11-21T05:30:23.080Z"
-}

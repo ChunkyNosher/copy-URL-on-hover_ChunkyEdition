@@ -6,9 +6,11 @@
  *
  * Responsibilities:
  * - Build titlebar with left section (navigation + favicon + title)
- * - Build control buttons (solo/mute/minimize/close)
+ * - Build control buttons (minimize/close)
  * - Manage button state updates
  * - Handle button event delegation
+ *
+ * v1.6.3.12 - Removed Solo/Mute functionality
  *
  * @created 2025-11-19
  * @refactoring Phase 2.9 Task 4
@@ -25,17 +27,15 @@ import { createElement } from '../../../utils/dom.js';
 export class TitlebarBuilder {
   /**
    * @param {Object} config - Titlebar configuration
+   * @param {string} config.id - Quick Tab unique ID (for debug display)
    * @param {string} config.title - Initial title text
    * @param {string} config.url - URL for favicon extraction
-   * @param {Array<number>} config.soloedOnTabs - Solo tab IDs
-   * @param {Array<number>} config.mutedOnTabs - Mute tab IDs
-   * @param {number} config.currentTabId - Current tab ID for solo/mute checks
+   * @param {number} config.currentTabId - Current tab ID
    * @param {HTMLIFrameElement} config.iframe - Iframe element for navigation/zoom
+   * @param {boolean} config.showDebugId - Whether to display Quick Tab ID in titlebar
    * @param {Object} callbacks - Event callbacks
    * @param {Function} callbacks.onClose - Close button clicked
    * @param {Function} callbacks.onMinimize - Minimize button clicked
-   * @param {Function} callbacks.onSolo - Solo button clicked
-   * @param {Function} callbacks.onMute - Mute button clicked
    * @param {Function} callbacks.onOpenInTab - Open in tab button clicked
    */
   constructor(config, callbacks) {
@@ -45,9 +45,9 @@ export class TitlebarBuilder {
     // DOM element references (public for window.js access)
     this.titlebar = null;
     this.titleElement = null;
-    this.soloButton = null;
-    this.muteButton = null;
     this.faviconElement = null;
+    this.debugIdElement = null; // v1.6.3.2 - Debug ID display element
+    this.controlsContainer = null; // v1.6.3.4-v9 - Controls container for dynamic updates
 
     // Zoom state (internal to titlebar)
     this.currentZoom = 100;
@@ -82,29 +82,69 @@ export class TitlebarBuilder {
   }
 
   /**
-   * Update solo button state
-   * @param {boolean} isSoloed - Whether currently soloed on this tab
+   * Update debug ID display dynamically
+   * v1.6.3.4-v9 - FIX Issue #4: Dynamic titlebar updates when settings change
+   * @param {boolean} showDebugId - Whether to show debug ID in titlebar
    */
-  updateSoloButton(isSoloed) {
-    if (this.soloButton) {
-      this.soloButton.textContent = isSoloed ? '🎯' : '⭕';
-      this.soloButton.title = isSoloed
-        ? 'Un-solo (show on all tabs)'
-        : 'Solo (show only on this tab)';
-      this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
+  updateDebugIdDisplay(showDebugId) {
+    // Update config for future builds
+    this.config.showDebugId = showDebugId;
+
+    if (showDebugId) {
+      this._addDebugIdElement();
+    } else {
+      this._removeDebugIdElement();
     }
   }
 
   /**
-   * Update mute button state
-   * @param {boolean} isMuted - Whether currently muted on this tab
+   * Add debug ID element to titlebar if not already present
+   * v1.6.3.4-v9 - Extracted to reduce nesting depth
+   * v1.6.3.4-v9 - Use stored controlsContainer reference instead of fragile querySelector
+   * @private
    */
-  updateMuteButton(isMuted) {
-    if (this.muteButton) {
-      this.muteButton.textContent = isMuted ? '🔇' : '🔊';
-      this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
-      this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
+  _addDebugIdElement() {
+    // Skip if already present or no controls container
+    if (this.debugIdElement || !this.controlsContainer) {
+      if (!this.controlsContainer) {
+        console.log(
+          '[TitlebarBuilder] Cannot add debug ID - no controls container:',
+          this.config.id
+        );
+      }
+      return;
     }
+
+    this.debugIdElement = this._createDebugIdElement();
+    if (!this.debugIdElement) {
+      // Can happen if config.id is missing or empty
+      console.log(
+        '[TitlebarBuilder] Debug ID element not created (no ID in config):',
+        this.config.id
+      );
+      return;
+    }
+
+    // Insert at beginning of controls container
+    if (this.controlsContainer.firstChild) {
+      this.controlsContainer.insertBefore(this.debugIdElement, this.controlsContainer.firstChild);
+    } else {
+      this.controlsContainer.appendChild(this.debugIdElement);
+    }
+    console.log('[TitlebarBuilder] Added debug ID element dynamically:', this.config.id);
+  }
+
+  /**
+   * Remove debug ID element from titlebar if present
+   * v1.6.3.4-v9 - Extracted to reduce nesting depth
+   * @private
+   */
+  _removeDebugIdElement() {
+    if (!this.debugIdElement) return;
+
+    this.debugIdElement.remove();
+    this.debugIdElement = null;
+    console.log('[TitlebarBuilder] Removed debug ID element dynamically:', this.config.id);
   }
 
   // ============================================================================
@@ -322,16 +362,74 @@ export class TitlebarBuilder {
   }
 
   /**
+   * Create debug ID display element
+   * v1.6.3.2 - Feature: Show Quick Tab Debug ID in titlebar
+   * v1.6.3.3 - FIX Bug #1: Show LAST N characters for uniqueness (random suffix is at end)
+   * @private
+   * @returns {HTMLElement|null} Debug ID element or null if disabled
+   */
+  _createDebugIdElement() {
+    if (!this.config.showDebugId || !this.config.id) {
+      return null;
+    }
+
+    // v1.6.3.3 - FIX Bug #1: Show LAST 12 characters (the unique part is the random suffix)
+    // Old format truncated prefix like "qt-123-16..." which was identical across tabs
+    // New format shows "...timestamp-random" which is always unique
+    const displayId =
+      this.config.id.length > 15 ? '...' + this.config.id.slice(-12) : this.config.id;
+
+    // v1.6.3.4-v9 - FIX Issue #1: Add marginLeft: 'auto' to push element to right edge
+    // v1.6.3.4-v9 - FIX Issue #3: Increase fontSize to 11px and use brighter color #aaa
+    const debugId = createElement(
+      'span',
+      {
+        className: 'quick-tab-debug-id',
+        style: {
+          fontSize: '11px',
+          color: '#aaa',
+          fontFamily: 'monospace',
+          marginLeft: 'auto',
+          marginRight: '8px',
+          userSelect: 'text',
+          cursor: 'default',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          maxWidth: '120px'
+        }
+      },
+      displayId
+    );
+    debugId.title = `Quick Tab ID: ${this.config.id}`;
+
+    return debugId;
+  }
+
+  /**
    * Create right section with control buttons
+   * v1.6.3.12 - Removed Solo/Mute buttons
    * @private
    */
   _createRightSection() {
+    // v1.6.3.4-v9 - Added className for robust querySelector targeting
     const controls = createElement('div', {
+      className: 'quick-tab-controls',
       style: {
         display: 'flex',
-        gap: '8px'
+        gap: '8px',
+        alignItems: 'center'
       }
     });
+
+    // Store reference for dynamic updates
+    this.controlsContainer = controls;
+
+    // v1.6.3.2 - Add debug ID display (left of buttons)
+    this.debugIdElement = this._createDebugIdElement();
+    if (this.debugIdElement) {
+      controls.appendChild(this.debugIdElement);
+    }
 
     // Open in New Tab button
     const openBtn = this._createButton('🔗', () => {
@@ -341,30 +439,6 @@ export class TitlebarBuilder {
     });
     openBtn.title = 'Open in New Tab';
     controls.appendChild(openBtn);
-
-    // v1.5.9.13 - Solo button
-    const isSoloed = this._isCurrentTabSoloed();
-    this.soloButton = this._createButton(isSoloed ? '🎯' : '⭕', () => {
-      if (this.callbacks.onSolo) {
-        this.callbacks.onSolo(this.soloButton);
-      }
-    });
-    this.soloButton.title = isSoloed
-      ? 'Un-solo (show on all tabs)'
-      : 'Solo (show only on this tab)';
-    this.soloButton.style.background = isSoloed ? '#444' : 'transparent';
-    controls.appendChild(this.soloButton);
-
-    // v1.5.9.13 - Mute button
-    const isMuted = this._isCurrentTabMuted();
-    this.muteButton = this._createButton(isMuted ? '🔇' : '🔊', () => {
-      if (this.callbacks.onMute) {
-        this.callbacks.onMute(this.muteButton);
-      }
-    });
-    this.muteButton.title = isMuted ? 'Unmute (show on this tab)' : 'Mute (hide on this tab)';
-    this.muteButton.style.background = isMuted ? '#c44' : 'transparent';
-    controls.appendChild(this.muteButton);
 
     // Minimize button
     const minimizeBtn = this._createButton('−', () => {
@@ -455,23 +529,5 @@ export class TitlebarBuilder {
       this.zoomDisplay.textContent = `${zoomLevel}%`;
     }
     console.log(`[TitlebarBuilder] Zoom applied: ${zoomLevel}% on ${this.config.url}`);
-  }
-
-  /**
-   * Check if current tab is soloed
-   * @private
-   * @returns {boolean} True if current tab is in soloedOnTabs array
-   */
-  _isCurrentTabSoloed() {
-    return this.config.soloedOnTabs && this.config.soloedOnTabs.includes(this.config.currentTabId);
-  }
-
-  /**
-   * Check if current tab is muted
-   * @private
-   * @returns {boolean} True if current tab is in mutedOnTabs array
-   */
-  _isCurrentTabMuted() {
-    return this.config.mutedOnTabs && this.config.mutedOnTabs.includes(this.config.currentTabId);
   }
 }

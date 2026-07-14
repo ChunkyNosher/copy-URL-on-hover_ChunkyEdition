@@ -2,7 +2,9 @@
 
 ## Overview
 
-The URL detection system uses a registry pattern with 13 site-specific handler categories and a generic fallback handler. Handlers are organized by domain type (social media, developer, ecommerce, etc.) and executed in priority order.
+The URL detection system uses a registry pattern with 13 site-specific handler
+categories and a generic fallback handler. Handlers are organized by domain type
+(social media, developer, ecommerce, etc.) and executed in priority order.
 
 ## URL Handler Architecture
 
@@ -145,7 +147,8 @@ export class URLHandlerRegistry {
 
 ### 1. Social Media (social-media.js)
 
-**Coverage**: Twitter, Facebook, Instagram, LinkedIn, TikTok, Snapchat, Pinterest, Tumblr
+**Coverage**: Twitter, Facebook, Instagram, LinkedIn, TikTok, Snapchat,
+Pinterest, Tumblr
 
 **Strategy**: Target feed items, profile links, post containers
 
@@ -215,7 +218,9 @@ export function findStackOverflowUrl(element) {
   // Check for question container
   const questionContainer = element.closest('.question-summary, .answer');
   if (questionContainer) {
-    const linkElement = questionContainer.querySelector('.question-hyperlink, a.answer-hyperlink');
+    const linkElement = questionContainer.querySelector(
+      '.question-hyperlink, a.answer-hyperlink'
+    );
     if (linkElement) {
       return linkElement.href;
     }
@@ -234,7 +239,9 @@ export function findStackOverflowUrl(element) {
 ```javascript
 export function findYouTubeUrl(element) {
   // Check for video container
-  const videoContainer = element.closest('ytd-video-renderer, ytd-grid-video-renderer');
+  const videoContainer = element.closest(
+    'ytd-video-renderer, ytd-grid-video-renderer'
+  );
   if (videoContainer) {
     const linkElement = videoContainer.querySelector('a#video-title');
     if (linkElement) {
@@ -270,7 +277,9 @@ export function findAmazonUrl(element) {
   }
 
   // Check for product links
-  const productLink = element.closest('a[href*="/dp/"], a[href*="/gp/product/"]');
+  const productLink = element.closest(
+    'a[href*="/dp/"], a[href*="/gp/product/"]'
+  );
   if (productLink) {
     return productLink.href;
   }
@@ -456,7 +465,8 @@ for (const [domain, handler] of this.handlers) {
 return generic.findGenericUrl(element);
 ```
 
-**Key**: Handler failures don't break detection - system always tries generic fallback
+**Key**: Handler failures don't break detection - system always tries generic
+fallback
 
 ### Invalid URLs
 

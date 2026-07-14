@@ -87,7 +87,8 @@ const rules = [
         return { pass: true, message: 'Managers not yet created' };
       }
 
-      const requiredManagers = ['StorageManager.js', 'BroadcastManager.js', 'StateManager.js'];
+      // v1.6.3.8-v6 - BC REMOVED: BroadcastManager.js no longer required
+      const requiredManagers = ['StorageManager.js', 'StateManager.js'];
       for (const manager of requiredManagers) {
         if (!fs.existsSync(path.join(managersDir, manager))) {
           return {

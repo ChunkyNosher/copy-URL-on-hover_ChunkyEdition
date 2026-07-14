@@ -72,15 +72,10 @@ describe('Manifest Validation', () => {
   /**
    * TEST: Required permissions
    * WHY: Extension won't work without these
+   * NOTE: contextualIdentities removed for Chrome compatibility (Firefox-only feature)
    */
   test('should have all required permissions', () => {
-    const requiredPermissions = [
-      'storage',
-      'tabs',
-      'webRequest',
-      'webRequestBlocking',
-      'contextualIdentities'
-    ];
+    const requiredPermissions = ['storage', 'tabs', 'webRequest', 'webRequestBlocking'];
 
     requiredPermissions.forEach(permission => {
       expect(manifest.permissions).toContain(permission);
@@ -106,10 +101,12 @@ describe('Manifest Validation', () => {
    * TEST: Version format
    * WHY: Firefox AMO supports both standard semver (1.5.9) and 4-part versions (1.5.9.0)
    * ACCEPTS: Both 3-part (1.5.9) and 4-part (1.5.9.0) version numbers
+   * ACCEPTS: Versions with -v{number} suffix (e.g., 1.6.3.4-v2) for incremental updates
    */
   test('should have valid semantic version', () => {
     // Updated regex: accepts both 3-part (1.5.9) and 4-part (1.5.9.0) versions
-    const versionPattern = /^\d+\.\d+\.\d+(\.\d+)?$/;
+    // Also accepts optional -v{number} suffix for incremental updates (e.g., 1.6.3.4-v2)
+    const versionPattern = /^\d+\.\d+\.\d+(\.\d+)?(-v\d+)?$/;
     expect(manifest.version).toMatch(versionPattern);
   });
 
@@ -133,11 +130,15 @@ describe('Manifest Validation', () => {
 
   /**
    * TEST: Browser action
-   * WHY: Popup UI requires browser_action
+   * WHY: Browser action is required (Firefox opens sidebar, Chrome uses popup)
+   * NOTE: In v1.6.2.0, Firefox manifest has no default_popup (opens sidebar instead)
+   * Chrome manifest keeps default_popup for compatibility
    */
   test('should have browser action defined', () => {
     expect(manifest.browser_action).toBeDefined();
-    expect(manifest.browser_action.default_popup).toBe('popup.html');
+    expect(manifest.browser_action.default_icon).toBe('icons/icon.png');
+    // default_popup removed in v1.6.2.0 for Firefox (sidebar opens instead)
+    // Chrome manifest.chrome.json still has default_popup
   });
 });
 

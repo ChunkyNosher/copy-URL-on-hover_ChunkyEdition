@@ -3,859 +3,341 @@
 ## Project Overview
 
 **Type:** Firefox Manifest V2 browser extension  
-**Version:** 1.6.x  
+**Version:** 1.6.4-v7  
 **Language:** JavaScript (ES6+)  
-**Architecture:** Domain-Driven Design with Clean Architecture  
-**Purpose:** URL management with Solo/Mute visibility control, complete Firefox Container isolation, and persistent floating panel manager with granular console log filtering
+**Architecture:** Domain-Driven Design with Background-as-Coordinator  
+**Purpose:** URL management with sidebar Quick Tabs Manager
 
 **Key Features:**
-- Solo/Mute tab-specific visibility control
-- Firefox Container complete isolation
-- Floating Quick Tabs Manager with persistent panel
-- Cross-tab sync via BroadcastChannel + browser.storage
-- Direct local creation pattern (content renders first, background persists)
+
+- **Option 4 Architecture** - Background script in-memory storage (SINGLE SOURCE
+  OF TRUTH)
+- Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
+- **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
+- **Tab Isolation** - Filter by `originTabId` at hydration time
+- **Container Isolation** - `originContainerId` field for Firefox Containers
+- **Container Filter** - Filter Quick Tabs by container in Manager (v1.6.4-v4)
+- **Context Menu** - Right-click context menu for bulk Quick Tab operations
+- **Ephemeral Storage** - Quick Tabs stored in-memory, NOT persisted to disk
+- **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
+  automatically
+
+- **Clean URL Copying** - Strips 90+ tracking parameters from copied URLs
+- **Dark Mode First UI** - Complete UI overhaul with dark-mode-first design
+
+**v1.6.4-v7 Features (CURRENT):**
+
+- **Clean URL Copying** - `cleanUrl()` strips UTM, Facebook, Google, Amazon,
+  YouTube tracking params from copied URLs by default
+- **Copy Raw URL Shortcut** - New `copyRawUrl` shortcut (unbound by default)
+  copies URLs with all parameters intact
+- **Dark Mode First UI** - Complete CSS overhaul with #121212 dark backgrounds,
+  #6c5ce7 purple-blue accent, glass-morphism effects on Quick Tab windows
+- **Performance: Debug-Gated Logging** - Verbose console.log wrapped behind
+  `CONFIG.debugMode` checks (-28.8% logging overhead)
+- **Performance: State Broadcast Dedup** - Hash-based STATE_CHANGED dedup in
+  background.js eliminates redundant broadcasts
+- **Performance: Render Debouncing** - 16ms debounce for rapid render requests
+  in Quick Tabs Manager sidebar
+- **ESLint Clean** - All ESLint warnings resolved (25 → 0)
+
+**v1.6.4-v5 Features:**
+
+- **Go to Tab** - Same-container stays open; cross-container reopens after 300ms
+- **Toggle Sidebar** - Context menu via `sidebarAction.toggle()`
+- **Transfer Fixes** - Window, restore, tab ID, display fixes for cross-tab
+- **Metrics** - Footer persistence, flush on close, clear confirmation
+
+**v1.6.4-v4 Features:**
+
+- **Go to Tab Cross-Container Fix** - `sidebarAction.close()` called
+  synchronously FIRST; Zen Browser compatible
+- **Minimized Drag Restore Fix** - `minimizedSnapshot` transferred with Quick
+  Tab data
+- **Right-Click Context Menu** - "Close All" and "Minimize All" via
+  `browser.menus` API
+- **Minimize All Button** - ⏬ button in tab group headers
+
+**v1.6.4-v7:** Clean URL Copy, Dark Mode UI, Performance Optimization  
+**v1.6.4-v4:** Container Filter, Badge, ContainerManager.js  
+**v1.6.4-v3:** Metrics footer, title/state fixes  
+**v1.6.4:** Drag-Drop, Cross-Tab Transfer, Duplicate  
+**v1.6.3.12:** Option 4 Architecture, Port Messaging
+
+**Core:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
+MessageBuilder, StructuredLogger, MessageRouter
+
+**Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel, storage.session,
+runtime.sendMessage for Quick Tabs, Solo/Mute
 
 ---
 
-## 🎯 CRITICAL: Robust Solutions Philosophy
+## 🤖 Agent Delegation
 
-### Core Principle: Fix Root Causes, Not Symptoms
+**Delegate to specialists:** Bug fixes → `bug-fixer`/`bug-architect`, Features →
+`feature-builder`, Quick Tabs → `quicktabs-unified-agent`, Cross-tab →
+`quicktabs-cross-tab-agent`, Manager → `quicktabs-manager-agent`, Settings →
+`ui-ux-settings-agent`, Docs → `copilot-docs-updater`
 
-**ALWAYS prioritize solutions that:**
-- ✅ Fix the actual underlying behavior causing the issue
-- ✅ Address root causes at the architectural level
-- ✅ Eliminate technical debt rather than accumulating it
-- ✅ Prevent entire classes of bugs from recurring
-- ✅ Use the RIGHT pattern/API even if it takes more code
-
-**NEVER accept solutions that:**
-- ❌ Mask symptoms without fixing the root problem
-- ❌ Add workarounds instead of fixing the core issue
-- ❌ Use quick hacks just to "make it work"
-- ❌ Sacrifice correctness for perceived simplicity
-- ❌ Add technical debt for short-term convenience
-
-**Code Review Red Flags:**
-
-If you think: "This setTimeout should fix it" → ❌ Fix the race condition  
-If you think: "I'll catch and ignore this error" → ❌ Fix the error source  
-If you think: "This workaround is easier" → ❌ Implement properly  
-
-**Remember: Complex-but-correct is better than simple-but-broken.**
+**Important:** When using context7, look up JavaScript/ES6/Web API
+documentation, NOT "Quick Tabs" directly. context7 is for standard API
+references.
 
 ---
 
-## 📏 File Size and Documentation Limits
+## 🔄 Cross-Tab Sync Architecture
 
-### Size Limits (ENFORCED)
+### CRITICAL: Option 4 Architecture (v1.6.3.12+)
 
-**Copilot Agent Files:**
-- `.github/copilot-instructions.md` - **MAXIMUM 25KB (25,600 bytes)**
-- `.github/agents/*.md` - **MAXIMUM 25KB (25,600 bytes) each**
-
-**Documentation Files:**
-- Any documentation written by Copilot - **MAXIMUM 20KB (20,480 bytes)**
-- Check file size before committing: `wc -c filename.md`
-
-### Documentation Location Rules
-
-**PROHIBITED:**
-- ❌ DO NOT write documentation to `docs/manual/` directory
-- ❌ DO NOT create new markdown files in root directory (except README.md)
-
-**ALLOWED:**
-- ✅ `docs/implementation-summaries/` - Implementation summaries
-- ✅ `docs/CHANGELOG.md` - Append changelog entries only
-- ✅ In-code comments and JSDoc documentation
-
-**Why:** The `docs/manual/` directory is reserved for user-facing documentation maintained separately.
-
----
-
-## 🧠 Memory Persistence Instructions (Agentic-Tools MCP)
-
-### CRITICAL: At the end of EVERY task, you MUST:
-
-1. **Stage memory files for commit:**
-   ```bash
-   git add .agentic-tools-mcp/
-   ```
-
-2. **Commit memory files with your code changes:**
-   ```bash
-   git commit -m "chore: persist agent memory from task"
-   ```
-
-3. **Push to the PR branch:**
-   - Ensure memory files are included in the push
-
-### Memory File Locations
-
-- `.agentic-tools-mcp/memories/` - Individual memory JSON files organized by category
-- `.agentic-tools-mcp/tasks/` - Task and project data files
-
-**Why This Matters:** Your memory files are stored in an ephemeral environment that gets destroyed when your session ends. If you don't commit them to the PR, they will be lost forever.
-
----
-
-## Memory Workflow (Agentic-Tools MCP)
-
-### 1. ALWAYS Search Memories First 🔍
-
-**CRITICAL WORKFLOW RULE:**
-Before starting ANY task, search memories for relevant context.
-
-**When to Search:**
-- Before implementing new features
-- Before refactoring existing code
-- Before researching topics (check if already researched)
-- Before making architectural decisions
-
-**Search Workflow:**
+**Background Script as SINGLE SOURCE OF TRUTH:**
 
 ```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "keywords about task/feature/component",
-  limit: 5,
-  threshold: 0.3,
-  category: "architecture"  // Optional filter
-});
+const quickTabsSessionState = {
+  quickTabsByTab: {}, // { [tabId]: [quickTab, ...] }
+  contentScriptPorts: {}, // { [tabId]: port }
+  sidebarPort: null,
+  sessionId: generateUUID(),
+  sessionStartTime: Date.now(),
+  minimizedSnapshots: {} // { [quickTabId]: { left, top, width, height } }
+};
 ```
 
-**Check results for:**
-- Similar work done before
-- Past architectural decisions
-- Related research findings
-- Relevant patterns or best practices
+**Port Messaging (`'quick-tabs-port'`):**
 
-**Search Query Tips:**
-- Use specific component names ("state-manager", "container", "quick-tabs")
-- Include action words ("isolation", "tracking", "persistence")
-- Try multiple queries with different keywords
-- Use category filter when relevant
+- **Content Script → Background:**
+  - `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`, `RESTORE_QUICK_TAB`
+  - `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`, `HYDRATE_ON_LOAD`
+  - `UPDATE_QUICK_TAB`
+- **Sidebar → Background:**
+  - `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`, `SIDEBAR_CLOSE_QUICK_TAB`
+  - `SIDEBAR_MINIMIZE_QUICK_TAB`, `SIDEBAR_RESTORE_QUICK_TAB`
+- **Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED` (push
+  notifications)
+
+**Dual Architecture (Retained):**
+
+- **MessageRouter.js** - ACTION-based routing (GET_CURRENT_TAB_ID, COPY_URL)
+- **Port handlers** - TYPE-based Quick Tabs routing via factory patterns
 
 ---
 
-### 2. Create Memories for Learnings
+## 🆕 Version Patterns Summary
 
-**For Agent Memories (Learnings, Context, Decisions):**
+### v1.6.4-v7 Patterns (Current)
 
-✅ Use `create_memory` tool from agentic-tools MCP
+- **Clean URL Copy** - `cleanUrl()` in `src/utils/url-cleaner.js` strips 90+
+  tracking params; `handleCopyURL()` uses it by default
+- **Copy Raw URL** - `handleCopyRawURL()` copies without cleaning; unbound by
+  default via `copyRawUrlKey: ''`
+- **Dark Mode First** - CSS variables with dark defaults (#121212, #6c5ce7),
+  light mode via `prefers-color-scheme: light` override
+- **Debug-Gated Logging** - `console.log` wrapped behind `CONFIG.debugMode`
+- **State Broadcast Dedup** - `_lastBroadcastStateHash` prevents redundant
+  STATE_CHANGED messages
+- **Render Debounce** - `_scheduleRenderDebounceTimer` with 16ms window
 
-**Required Parameters:**
-- `workingDirectory`: Absolute path to project (e.g., `/home/runner/work/copy-URL-on-hover_ChunkyEdition/copy-URL-on-hover_ChunkyEdition`)
-- `title`: Short descriptive title (max 50 characters, used for filename)
-- `content`: Detailed memory content (no limit)
+### v1.6.4-v5 Patterns
 
-**Optional Parameters:**
-- `category`: Categorization string
-- `metadata`: Flexible metadata object for additional context
+- **Go to Tab** - Same-container (sidebar stays) / Cross-container (close →
+  reopen 300ms); Toggle Sidebar context menu
+- **Transfer Fixes** - `updateTransferredSnapshotWindow()`,
+  `storeTransferredSnapshot(id, snapshot, newTabId)`, display fix
+- **Metrics** - `TOTAL_LOG_ACTIONS_KEY`, debounced persistence, beforeunload
+  flush
 
-**Example:**
-```javascript
-await createMemory({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Container Isolation Architecture Pattern",
-  content: "This extension uses cookieStoreId for complete Firefox container isolation. Key implementation: Always query tabs with cookieStoreId filter to maintain separation between containers. State manager tracks per-container data.",
-  category: "architecture",
-  metadata: {
-    components: ["state-manager.js", "background.js"],
-    relatedIssues: ["#123"],
-    importance: "critical",
-    tags: ["container", "isolation", "state-management"],
-    implementedDate: "2025-11-21",
-    confidence: 0.9
-  }
-});
-```
+### v1.6.4-v4 Patterns
 
----
+- **Go to Tab Focus Fix** - `sidebarAction.close()` FIRST; Zen Browser
+  compatible
+- **Minimized Drag Restore** - `minimizedSnapshots`,
+  `storeTransferredSnapshot()`
+- **Context Menu** - `_initializeContextMenus()` for "Close All"/"Minimize All"
+- **Container Filter/Badge** - `_filterQuickTabsByContainer()`, ContainerManager
 
-### Memory Categorization Standards
+### v1.6.4-v3 Patterns
 
-**Use consistent categories for efficient retrieval:**
+- **Title/Navigation Update** - UPDATE_QUICK_TAB updates title from iframe
+- **State Fixes** - forceEmpty, State Version Race, Open-and-Close
+- **Metrics** - Single footer, reduced DEBOUNCE logging
 
-| Category | Use For | Examples |
-|----------|---------|----------|
-| `architecture` | Design patterns, system architecture | "Container Isolation Pattern" |
-| `technical` | Implementation details, API usage | "CookieStoreId API Usage" |
-| `best-practices` | Standards, conventions, patterns | "ESLint Configuration Standards" |
-| `preferences` | User preferences, style guides | "Code Style Preferences" |
-| `research` | Research findings, external resources | "WebExtension Performance Research" |
-| `troubleshooting` | Known issues, solutions, fixes | "Container State Race Condition Fix" |
-| `project-context` | Repo structure, build config | "Repository Structure" |
+### v1.6.4 Patterns
 
-**Category Selection Guidelines:**
-- Architecture > Technical (if both apply)
-- Specific > General (prefer more specific category)
-- Use metadata for additional tags
+- **Race Fixes** - Removed redundant `requestAllQuickTabsViaPort()` calls
+- **Order Persistence** - `_userQuickTabOrderByGroup`
+- **Drag Features** - Reordering, Cross-Tab Transfer, Duplicate, Click-to-Front
 
----
+### v1.6.3.12 Patterns (Consolidated)
 
-### Memory Metadata Schema
+- **v10-v13:** Port Routing, Button Op, Cross-Tab, Resize/Move Sync
+- **v5-v9:** Circuit Breaker, Priority Queue, Optimistic UI, Render Lock
+- **Base:** Option 4 Architecture, Port Messaging, storage.local Only
 
-**Recommended metadata structure for rich context:**
+### Key Timing Constants
 
-```javascript
-metadata: {
-  // Component references
-  components: ["state-manager.js", "background.js"],
-  
-  // Related files
-  relatedFiles: [
-    "src/state-manager.js",
-    "src/background.js"
-  ],
-  
-  // Related issues/PRs
-  relatedIssues: ["#123"],
-  relatedPRs: ["#456"],
-  
-  // Importance level
-  importance: "critical",  // critical | high | medium | low
-  
-  // Tags for additional context
-  tags: ["container", "isolation", "state-management"],
-  
-  // Source of information
-  source: "implementation",  // implementation | research | documentation | conversation
-  
-  // Date context
-  implementedDate: "2025-11-21",
-  lastVerified: "2025-11-21",
-  
-  // Confidence level
-  confidence: 0.9  // 0-1 scale
-}
-```
+| Constant                                | Value                           | Purpose                     |
+| --------------------------------------- | ------------------------------- | --------------------------- |
+| `QUICK_TAB_ORDER_STORAGE_KEY`           | 'quickTabsManagerQuickTabOrder' | Order persistence key       |
+| `CONTAINER_FILTER_STORAGE_KEY`          | 'quickTabsContainerFilter'      | Container filter preference |
+| `TOTAL_LOG_ACTIONS_KEY`                 | 'quickTabsTotalLogActions'      | Metrics footer persistence  |
+| `MAX_OVERLAY_Z_INDEX`                   | 2147483646                      | Click overlay z-index       |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5                               | Failures before trip        |
+| `PORT_RECONNECT_MAX_ATTEMPTS`           | 10                              | Max reconnect attempts      |
 
 ---
 
-## 📋 Task Management System (Agentic-Tools MCP)
+## Architecture Classes (Key Methods)
 
-### When to Use Task Management
-
-**Task management is for:**
-- Multi-step features requiring planning
-- Complex refactors spanning multiple files
-- Projects with dependencies between tasks
-- Work that spans multiple PR sessions
-
-### Creating a Project Plan
-
-**1. Start with project creation:**
-```javascript
-await createProject({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  name: "Feature Name",
-  description: "High-level overview of feature goals"
-});
-```
-
-**2. Break down into tasks:**
-```javascript
-await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  name: "Task name",
-  details: "Detailed task description",
-  priority: 8,        // 1-10 (10 = highest)
-  complexity: 6,      // 1-10 (10 = most complex)
-  status: "pending",  // pending | in-progress | blocked | done
-  tags: ["refactor", "architecture"],
-  estimatedHours: 8
-});
-```
-
-**3. Create subtasks for task breakdown (unlimited nesting):**
-```javascript
-await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  parentId: "[parent-task-id]",  // Creates subtask
-  name: "Subtask name",
-  details: "Subtask details",
-  priority: 7,
-  complexity: 4,
-  estimatedHours: 3
-});
-
-// Create sub-subtasks (infinite depth!)
-await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  parentId: "[subtask-id]",  // Creates sub-subtask
-  name: "Sub-subtask name"
-  // ... supports unlimited nesting!
-});
-```
-
-**4. Track progress:**
-```javascript
-// Update task status as you work
-await updateTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  id: "[task-id]",
-  status: "in-progress",
-  actualHours: 3
-});
-
-// Mark complete
-await updateTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  id: "[task-id]",
-  status: "done",
-  completed: true,
-  actualHours: 8
-});
-```
-
-**Task Dependencies:**
-```javascript
-await createTask({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  name: "Write integration tests",
-  dependsOn: ["[implementation-task-id]"],  // Can't start until implementation done
-  priority: 7,
-  complexity: 4
-});
-```
-
-**Workflow Integration:**
-- Create tasks at start of complex features
-- Update status as you work through PR
-- Mark tasks complete before final commit
-- Commit `.agentic-tools-mcp/tasks/` with code changes
+| Class                | Methods                                                                      |
+| -------------------- | ---------------------------------------------------------------------------- |
+| QuickTabStateMachine | `canTransition()`, `transition()`                                            |
+| QuickTabMediator     | `minimize()`, `restore()`, `destroy()`                                       |
+| TabStateManager      | `getTabState()`, `setTabState()`                                             |
+| MessageRouter        | ACTION-based routing                                                         |
+| EventBus             | `on()`, `off()`, `emit()`, `once()`                                          |
+| StructuredLogger     | `debug()`, `info()`, `warn()`, `error()`                                     |
+| Manager              | `scheduleRender()`, `_filterQuickTabsByContainer()`, `_handleBeforeUnload()` |
+| UICoordinator        | `_updateRecoveredWindowDisplay()` for orphan window recovery                 |
+| CreateHandler        | `getWritingContainerId()` (v3)                                               |
+| TestBridge           | `getManagerState()` (v3)                                                     |
 
 ---
 
-## 🤖 AI Agent Advanced Tools (Agentic-Tools MCP)
+## 🔧 Storage & State
 
-### Intelligent Task Recommendations
+**v1.6.3.12 In-Memory State:** Quick Tabs stored in background script memory
+(not persisted to disk)
 
-Get AI-powered task prioritization based on dependencies, priority, and complexity:
+**State Object:** `quickTabsSessionState` with `quickTabsByTab`,
+`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`,
+`minimizedSnapshots`
 
-```javascript
-const recommendation = await getNextTaskRecommendation({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]"
-});
-// Returns optimal next task to work on
-```
+**Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
+`canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
 
-**Benefits:**
-- Autonomous task selection (no human guidance needed)
-- Never works on blocked tasks
-- Balances high-value, achievable work
-- Reduces decision paralysis
+**Sync Mechanism:** Port messaging is PRIMARY; `storage.onChanged` with
+`'local'` area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
 
 ---
 
-### Automatic Task Complexity Analysis
+## 📝 Logging Prefixes
 
-Identify overly complex tasks and get automatic breakdown suggestions:
+**v1.6.4-v7:** `[Clipboard] CLEAN_URL:`, `[Clipboard] RAW_URL:`
 
-```javascript
-const analysis = await analyzeTaskComplexity({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]",
-  complexityThreshold: 7
-});
-// If complexity > threshold, returns suggested subtasks
-```
+**v1.6.4-v5:** `[Manager] GO_TO_TAB_SAME_CONTAINER:`,
+`GO_TO_TAB_CROSS_CONTAINER:`, `GO_TO_TAB_SIDEBAR_REOPEN:`,
+`[Settings] CLEAR_LOG_HISTORY:`,
+`[Content] TRANSFERRED_SNAPSHOT_WINDOW_UPDATED:`,
+`[Content] SNAPSHOT_STORED_WITH_NEW_TAB_ID:`,
+`[Manager] METRICS_FOOTER_LOADED:`, `METRICS_FOOTER_SAVED:`,
+`METRICS_FOOTER_FLUSHED:`, `[UICoordinator] RECOVERED_WINDOW_DISPLAY_UPDATED:`
 
-**Benefits:**
-- Prevents overwhelming tasks
-- Improves task completion rate
-- Better progress tracking
-- Reduces cognitive load
+**v1.6.4-v4:** `CONTAINER_FILTER:`, `CONTEXT_MENU:`, `SNAPSHOT_*:`
 
----
+**v1.6.4:** `DRAG_DROP:`, `TRANSFER_QUICK_TAB:`, `QUICKTAB_ORDER:`
 
-### PRD Parsing Automation
-
-Parse Product Requirements Documents into structured task breakdowns automatically:
-
-```javascript
-const prdContent = `
-## Feature: Enhanced Console Log Filtering
-
-### Requirements
-1. Add granular log level filtering (HIGH PRIORITY)
-   - Filter by: error, warn, info, debug
-   - Per-tab filtering persistence
-   - Estimated: 8 hours
-
-2. Export filtered logs (MEDIUM PRIORITY)
-   - CSV export functionality
-   - JSON export with metadata
-   - Estimated: 6 hours
-`;
-
-await parsePRD({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  prdContent: prdContent
-});
-// Result: Complete project created with tasks, subtasks, priorities, estimates
-```
-
-**Benefits:**
-- Instant task breakdown from requirements (90% time saved)
-- Consistent task structure
-- Dependencies auto-detected from context
-
-**PRD Format Tips:**
-- Use clear headings for sections
-- Mark priorities (HIGH/MEDIUM/LOW)
-- Include time estimates
-- List dependencies explicitly
+**Core:** `STORAGE_ONCHANGED`, `STATE_SYNC`, `MSG_ROUTER`, `HYDRATION`,
+`CIRCUIT_BREAKER_*`, `PORT_RECONNECT_*`
 
 ---
 
-### Task Progress Inference
+## 🏗️ Key Patterns
 
-Analyze codebase to detect task completion from code evidence:
-
-```javascript
-const progress = await inferTaskProgress({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  projectId: "[project-id]",
-  autoUpdateTasks: false,
-  confidenceThreshold: 0.7
-});
-// Returns suggested status, confidence, evidence, recommendations
-```
-
-**Benefits:**
-- Automatic progress tracking
-- Accurate completion detection
-- Prevents forgotten status updates
-- Evidence-based reporting
+Promise sequencing, debounced drag, per-tab scoping, state machine, Single
+Writer Authority, container isolation, port messaging, in-memory state, circuit
+breaker, port routing, context menu, clean URL copying, debug-gated logging,
+state broadcast deduplication.
 
 ---
 
-### Research-Enhanced Memory System
+## 🔧 QuickTabsManager API
 
-Perform comprehensive web research with automatic memory storage:
+### Correct Methods
 
-```javascript
-// 1. Generate intelligent research queries
-const queries = await generateResearchQueries({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  taskId: "[task-id]",
-  queryTypes: ["implementation", "best_practices", "examples"]
-});
+| Method          | Description                    |
+| --------------- | ------------------------------ |
+| `closeById(id)` | Close a single Quick Tab by ID |
+| `closeAll()`    | Close all Quick Tabs           |
 
-// 2. Use Perplexity MCP for research
-const results = await perplexity_reason({
-  messages: [
-    { role: "system", content: "You are a research assistant." },
-    { role: "user", content: queries[0] }
-  ]
-});
+### Common Mistake
 
-// 3. Store findings as memories
-await createMemory({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  title: "Research: Topic",
-  content: results.content,
-  category: "research",
-  metadata: {
-    relatedTask: "[task-id]"
-  }
-});
-```
-
-**Benefits:**
-- Copilot performs autonomous research
-- Research findings persistent
-- Context-aware implementation
-- Reusable knowledge
+❌ `closeQuickTab(id)` - **DOES NOT EXIST** (use `closeById(id)` instead)
 
 ---
 
-## MCP Server Utilization (10 Servers Configured)
+## 🎯 Philosophy
 
-### Critical Priority MCPs (ALWAYS Use)
-
-#### ESLint MCP ⭐ MANDATORY
-- **Purpose:** JavaScript linting, auto-fixing, code quality
-- **Rule:** EVERY code change MUST be linted before committing
-- **Workflow:** Write code → Lint immediately → Apply fixes → Verify zero errors → Commit
-
-#### Context7 MCP ⭐ MANDATORY
-- **Purpose:** Up-to-date API documentation
-- **Rule:** ALWAYS fetch current docs instead of relying on training data
-- **Use For:** WebExtensions APIs, external libraries, Firefox compatibility
-
-#### Perplexity MCP ⭐ MANDATORY
-- **Purpose:** Real-time web search with reasoning
-- **Model:** sonar-reasoning-pro (with citations)
-- **Use For:** Current information, best practices, recent solutions
-- **CRITICAL LIMITATION:** Perplexity CANNOT directly read repository files. You MUST paste file contents into your Perplexity prompt if you need it to analyze code/documents.
-
-### High Priority MCPs (Use Frequently)
-
-**GitHub MCP** - Create/update issues & PRs, add comments, trigger workflows  
-**Playwright Firefox MCP** ⭐ - Test extension functionality in Firefox BEFORE and AFTER changes  
-**Playwright Chrome MCP** ⭐ - Test extension functionality in Chrome BEFORE and AFTER changes  
-**CodeScene MCP** ⭐ - Code health analysis alongside ESLint, detect technical debt hotspots  
-**Codecov MCP** ⭐ - Test coverage verification at end of tasks  
-**GitHub Actions MCP** - CI/CD workflow management
+**ALWAYS:** Fix root causes, use correct patterns, eliminate technical debt  
+**NEVER:** setTimeout for race conditions, catch-and-ignore errors, workarounds
 
 ---
 
-## 🎭 Playwright MCP Autonomous Testing
+## 📏 File Size Limits
 
-### Overview
+| File                      | Max Size |
+| ------------------------- | -------- |
+| `copilot-instructions.md` | **15KB** |
+| `.github/agents/*.md`     | **10KB** |
+| README.md                 | **10KB** |
 
-The extension includes a **Test Bridge Pattern** for autonomous testing with Playwright MCP, enabling ~80% test coverage without manual intervention.
-
-**Key Documents:**
-- **Testing Guide**: `.github/COPILOT-TESTING-GUIDE.md`
-- **Test Utilities**: `tests/extension/helpers/extension-test-utils.js`
-
-### What You CAN Test Autonomously
-
-✅ **Quick Tab Operations** (via Test Bridge - bypasses keyboard shortcuts):
-- Create Quick Tabs programmatically
-- Minimize/restore
-- Pin/unpin behavior
-- Close and cleanup
-
-✅ **State Management**:
-- Storage verification (browser.storage.local)
-- Cross-tab synchronization (BroadcastChannel)
-- Container isolation (cookieStoreId)
-
-✅ **UI Interactions**:
-- Click, hover, drag, resize
-- Form inputs, screenshots
-- Multi-tab testing
-
-### What You CANNOT Test
-
-❌ **Keyboard Shortcuts**: `manifest.json` commands ("Q" key, "Ctrl+Alt+Z") - browser API limitation  
-❌ **Extension Icon**: Toolbar icon clicks  
-❌ **OS-Level Events**: System notifications, some clipboard ops
-
-**These require manual testing.**
-
-### Quick Start
-
-**Basic Test Pattern:**
-```javascript
-import { ExtensionTestHelper } from './tests/extension/helpers/extension-test-utils.js';
-
-test('create Quick Tab', async ({ page }) => {
-  const helper = new ExtensionTestHelper(page);
-  await page.goto('https://example.com');
-  
-  // Wait for test bridge
-  const ready = await helper.waitForTestBridge();
-  expect(ready).toBe(true);
-  
-  // Create Quick Tab (bypasses "Q" key!)
-  await helper.createQuickTab('https://github.com');
-  
-  // Verify
-  const tabs = await helper.getQuickTabs();
-  expect(tabs).toHaveLength(1);
-});
-```
-
-**Run Tests:**
-```bash
-npm run test:extension        # All extension tests
-npm run test:extension:ui     # With UI
-npm run test:extension:debug  # Debug mode
-```
-
-### Test Bridge API
-
-**Core Methods:**
-- `waitForTestBridge()` - Wait for bridge availability
-- `createQuickTab(url, options)` - Create Quick Tab
-- `getQuickTabs()` - Get all Quick Tabs
-- `getQuickTabById(id)` - Get specific Quick Tab
-- `minimizeQuickTab(id)` - Minimize
-- `restoreQuickTab(id)` - Restore
-- `pinQuickTab(id)` - Pin to tab
-- `unpinQuickTab(id)` - Unpin
-- `closeQuickTab(id)` - Close
-- `clearAllQuickTabs()` - Cleanup
-- `waitForQuickTabCount(n)` - Wait for sync
-- `takeScreenshot(name)` - Capture screenshot
-- `verifyQuickTabBehavior(scenario)` - Verify scenarios
-
-### Testing Best Practices
-
-**1. Always wait for test bridge:**
-```javascript
-await helper.waitForTestBridge();
-```
-
-**2. Clean up before and after tests:**
-```javascript
-test.beforeEach(async ({ page }) => {
-  helper = new ExtensionTestHelper(page);
-  await page.goto('https://example.com');
-  await helper.waitForTestBridge();
-  await helper.clearAllQuickTabs();
-});
-
-test.afterEach(async () => {
-  await helper.clearAllQuickTabs();
-});
-```
-
-**3. Use polling for async operations:**
-```javascript
-await helper.waitForQuickTabCount(1, 5000);
-```
-
-**4. Take screenshots on failures:**
-```javascript
-try {
-  // Test code
-} catch (error) {
-  await helper.takeScreenshot('test-failure');
-  throw error;
-}
-```
-
-**See `.github/COPILOT-TESTING-GUIDE.md` for complete documentation.**
+**PROHIBITED:** `docs/manual/`, root markdown (except README.md)
 
 ---
 
-## Standard MCP Workflows
+## 🔧 MCP & Testing
 
-### Bug Fix Workflow
-```
-1. Search memories 🧠 | 2. Playwright: Test BEFORE 🎭
-3. Context7: Get docs ⭐ | 4. Perplexity: Research + verify solution ⭐
-5. Write fix | 6. Context7: Double-check ⭐ | 7. Perplexity: Check alternatives ⭐
-8. ESLint + CodeScene ⭐ | 9. Playwright: Test AFTER 🎭
-10. Run all tests + Codecov ⭐ | 11. Create memory 🧠 | 12. Commit 🧠
-```
+**MCPs:** CodeScene, Context7 (JS API docs), Perplexity
 
-### Feature Workflow
-```
-1. Search memories 🧠 | 2. Create tasks 📋 | 3. Playwright: Baseline 🎭
-4. Perplexity: Research ⭐ | 5. Context7: Get docs ⭐ | 6. Update task 📋
-7. Write code | 8. Context7: Verify ⭐ | 9. Perplexity: Alternatives ⭐
-10. ESLint + CodeScene ⭐ | 11. Playwright: Test feature 🎭
-12. Run all tests + Codecov ⭐ | 13. Mark done 📋 | 14. Memory 🧠 | 15. Commit 🧠📋
-```
+**Context7:** Search standard APIs (Map, Promise, storage.local) NOT "Quick
+Tabs"
+
+**Testing:** `npm test` | `npm run lint` | `npm run build`
 
 ---
 
-## Browser Extension Specific Rules
+## ✅ Commit Checklist
 
-### Message Passing Security
-
-**ALWAYS validate sender:**
-```javascript
-browser.runtime.onMessage.addListener((message, sender) => {
-  if (!sender.id || sender.id !== browser.runtime.id) {
-    return Promise.reject(new Error('Unauthorized'));
-  }
-  // Process message
-});
-```
-
-### Storage API Best Practices
-
-**Always handle quotas and errors:**
-```javascript
-async function saveState(state) {
-  try {
-    const stateSize = new Blob([JSON.stringify(state)]).size;
-    if (stateSize > 100 * 1024) {
-      throw new Error(`State too large: ${stateSize} bytes`);
-    }
-    await browser.storage.sync.set({ state });
-  } catch (error) {
-    console.error('Storage error:', error);
-    await browser.storage.local.set({ state });
-  }
-}
-```
-
-### Container Isolation
-
-**Always use `cookieStoreId` for container-aware operations:**
-```javascript
-async function getTabState(tabId) {
-  const tab = await browser.tabs.get(tabId);
-  const cookieStoreId = tab.cookieStoreId || 'firefox-default';
-  return await getStateForContainer(cookieStoreId);
-}
-```
+- [ ] Delegated to specialist agent
+- [ ] ESLint + tests pass
 
 ---
 
-## Code Style & Patterns
+## 📋 Quick Reference
 
-### Preferred Patterns
-```javascript
-// ✅ Use const for immutable values
-const MAX_RETRIES = 3;
+### Key Files
 
-// ✅ Use async/await
-async function fetchData() {
-  const data = await fetch(url);
-  return data;
-}
+| File                                                    | Features                                   |
+| ------------------------------------------------------- | ------------------------------------------ |
+| `background.js`                                         | In-memory state, port handlers             |
+| `sidebar/quick-tabs-manager.js`                         | Port queries, container filter (v1.6.4-v4) |
+| `src/content.js`                                        | Port messaging, clean URL copy (v1.6.4-v7) |
+| `src/utils/url-cleaner.js`                              | URL tracking param removal (v1.6.4-v7)     |
+| `src/features/quick-tabs/minimized-manager.js`          | Snapshot storage for minimize/restore      |
+| `src/features/quick-tabs/coordinators/UICoordinator.js` | Orphan recovery, display fix (v1.6.4-v5)   |
+| `sidebar/managers/ContainerManager.js`                  | Container isolation, filtering (v1.6.4-v4) |
 
-// ✅ Use arrow functions for callbacks
-items.map(item => item.value);
+### Storage (v1.6.3.12+)
 
-// ✅ Use template literals
-const message = `Hello ${name}`;
+**In-Memory State:** `quickTabsSessionState` in background.js  
+**Persistence:** `browser.storage.local` + startup cleanup **Note:**
+`browser.storage.session` REMOVED - uses `storage.local` + startup cleanup for
+session-only behavior.
 
-// ✅ Use destructuring
-const { id, name } = user;
-```
+### Port Messages (v1.6.4+)
 
-### Patterns to Avoid
-```javascript
-// ❌ Don't use var
-// ❌ Don't use eval or new Function
-// ❌ Don't use innerHTML with user input
-// ❌ Don't ignore errors (empty catch blocks)
-// ❌ Don't use console.log in production
-```
+**Content → Background:** `CREATE_QUICK_TAB`, `MINIMIZE_QUICK_TAB`,
+`RESTORE_QUICK_TAB`, `DELETE_QUICK_TAB`, `QUERY_MY_QUICK_TABS`,
+`HYDRATE_ON_LOAD`, `UPDATE_QUICK_TAB`
 
----
+**Sidebar → Background:** `GET_ALL_QUICK_TABS`, `SIDEBAR_READY`,
+`SIDEBAR_CLOSE_QUICK_TAB`, `SIDEBAR_MINIMIZE_QUICK_TAB`,
+`SIDEBAR_RESTORE_QUICK_TAB`, `CLOSE_ALL_QUICK_TABS`,
+`CLOSE_MINIMIZED_QUICK_TABS`, `TRANSFER_QUICK_TAB`, `DUPLICATE_QUICK_TAB`,
+`MOVE_QUICK_TAB_TO_CURRENT_TAB`
 
-## Documentation Update Requirements
-
-### MANDATORY Updates Based on Change Type
-
-**Update README.md when:**
-- Version numbers change
-- Features or functionality change
-- User interface or UX changes
-- Settings or configuration change
-
-**README must stay under 10KB**
-
-**Update Agent Files when:**
-- Architecture changes (patterns, structure)
-- Build/test/deploy processes change
-- Repository structure changes
-
-### Version Synchronization
-
-When version changes from X.Y.Z to X.Y.Z+1:
-- Update `manifest.json` version
-- Update `package.json` version
-- Update README header & footer
-- Update `.github/copilot-instructions.md` (Project Overview)
+**Background → Sidebar:** `STATE_CHANGED`, `QUICKTAB_MINIMIZED`,
+`ORIGIN_TAB_CLOSED`, `CLOSE_MINIMIZED_QUICK_TABS_ACK`
 
 ---
 
-## Bug Reporting and Issue Creation
-
-### Automatic Issue Creation (ENABLED)
-
-When user reports bugs or requests features:
-
-1. **Document all issues** in `docs/manual/` or `docs/implementation-summaries/`
-2. **CREATE GITHUB ISSUES** automatically using GitHub MCP
-3. **DO NOT auto-close issues** - User closes manually
-4. **Include:**
-   - Clear, actionable title
-   - Detailed description
-   - Root cause analysis (for bugs)
-   - Implementation strategy
-   - Appropriate labels
-
----
-
-## Before Every Commit Checklist
-
-### Pre-Implementation
-- [ ] **Searched memories before starting work** 🧠🔍
-- [ ] **Referenced relevant memories in implementation** 🧠
-- [ ] **Playwright Firefox/Chrome MCP: Tested baseline behavior BEFORE changes** 🎭
-
-### During Implementation
-- [ ] **Context7 MCP: Verified API usage with current docs** ⭐
-- [ ] **Perplexity MCP: Double-checked solution approach (paste code if analyzing files)** ⭐
-- [ ] **Perplexity MCP: Verified no better alternative exists** ⭐
-
-### Code Quality
-- [ ] **ESLint MCP: Linted all modified JS files** ⭐
-- [ ] **CodeScene MCP: Checked code health and technical debt** ⭐
-- [ ] Zero ESLint errors remaining ⭐
-
-### Testing
-- [ ] **Playwright Firefox MCP: Tested extension functionality AFTER changes** 🎭
-- [ ] **Playwright Chrome MCP: Tested extension functionality AFTER changes** 🎭
-- [ ] **Test Bridge verified for Quick Tab features** 🎭
-- [ ] Run all test suites: `npm run test` ⭐
-- [ ] Run extension tests: `npm run test:extension` ⭐
-- [ ] **Codecov MCP: Verified test coverage is adequate** ⭐
-
-### Task & Memory Management
-- [ ] **Tasks created for multi-step features** 📋
-- [ ] **Task status updated to reflect progress** 📋
-- [ ] **Completed tasks marked as "done"** 📋
-- [ ] **Task data committed** (`.agentic-tools-mcp/tasks/`) 📋
-- [ ] **Memory files committed** (`.agentic-tools-mcp/`) 🧠
-- [ ] Verified `.agentic-tools-mcp/memories/` contains individual JSON files 🧠
-
-### Documentation & Size Limits
-- [ ] **Copilot instruction files under 25KB** 📏
-- [ ] **Documentation files under 20KB** 📏
-- [ ] **No documentation in docs/manual/** 📏
-
----
-
-## Before Every PR Checklist
-
-- [ ] **All commits linted with ESLint MCP** ⭐
-- [ ] **CodeScene MCP verified code health** ⭐
-- [ ] **Playwright Firefox MCP test suite passes** 🎭
-- [ ] **Playwright Chrome MCP test suite passes** 🎭
-- [ ] **Extension tests cover new Quick Tab features** 🎭
-- [ ] **All test suites pass (npm run test, test:extension)** ⭐
-- [ ] **Codecov MCP verified adequate test coverage** ⭐
-- [ ] Documentation updated (README, agent files if applicable)
-- [ ] **Documentation files under 20KB** 📏
-- [ ] **No documentation written to docs/manual/** 📏
-- [ ] **Memory files included in PR** 🧠
-- [ ] GitHub MCP used to create PR
-
----
-
-## Documentation Organization
-
-**ALLOWED locations for Copilot-written documentation:**
-- Implementation summaries → `docs/implementation-summaries/` (max 20KB each)
-- Changelog updates → **APPEND to `docs/CHANGELOG.md`**
-- In-code comments and JSDoc documentation
-
-**PROHIBITED:**
-- ❌ DO NOT write to `docs/manual/` (reserved for user-facing docs)
-- ❌ DO NOT create new markdown files in root directory (except README.md)
-- ❌ DO NOT create documentation larger than 20KB
-
----
-
-## Final Notes
-
-**When in doubt:**
-1. Prioritize security over convenience
-2. Add error handling rather than assuming success
-3. Write tests before marking as done
-4. Document decisions in code comments
-5. Ask for human review on security-critical changes
-6. **ALWAYS commit memory files before finishing** 🧠
-
-**This extension handles user data and browsing history. Security and privacy are paramount.**
+**Security Note:** This extension handles user data. Security and privacy are
+paramount.

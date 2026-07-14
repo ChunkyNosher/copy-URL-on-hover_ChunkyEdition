@@ -1,23 +1,29 @@
 # Testing with Playwright MCP
 
-This guide explains how to use Playwright MCP servers (Chrome and Firefox) to enable interactive browser testing with the Copilot Coding Agent.
+This guide explains how to use Playwright MCP servers (Chrome and Firefox) to
+enable interactive browser testing with the Copilot Coding Agent.
 
 ## Overview
 
-The extension can be tested interactively using Playwright MCP, which allows an AI agent to:
+The extension can be tested interactively using Playwright MCP, which allows an
+AI agent to:
+
 - Open browser instances with the extension pre-loaded
 - Test features manually using keyboard shortcuts
 - Interact with Quick Tabs as a real user would
-- Verify behaviors documented in [Issue #47](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/47)
+- Verify behaviors documented in
+  [Issue #47](https://github.com/ChunkyNosher/copy-URL-on-hover_ChunkyEdition/issues/47)
 
 ## Prerequisites
 
 1. **Build the extension** (required):
+
    ```bash
    npm run build:prod
    ```
 
 2. **Install Playwright browsers** (if not already installed):
+
    ```bash
    npx playwright install chromium firefox
    npx playwright install-deps
@@ -39,6 +45,7 @@ npm run mcp:chrome
 ```
 
 This will:
+
 - Open Chrome with the extension installed from `dist/`
 - Use a persistent profile in `chrome-profile/`
 - Navigate to `chrome://extensions/` to show the extension is loaded
@@ -53,16 +60,20 @@ npm run mcp:firefox
 ```
 
 This will:
+
 - Launch Firefox using `web-ext` with the extension installed from `dist/`
 - Use a persistent profile in `firefox-profile/`
-- Navigate to `about:debugging#/runtime/this-firefox` to show installed extension
+- Navigate to `about:debugging#/runtime/this-firefox` to show installed
+  extension
 - Keep the browser open for Playwright MCP interaction
 
 ## MCP Configuration
 
-The repository includes two MCP configuration files for use with Playwright MCP servers:
+The repository includes two MCP configuration files for use with Playwright MCP
+servers:
 
 ### Chrome Configuration
+
 **File:** `.playwright-mcp-chrome-config.json`
 
 ```json
@@ -90,6 +101,7 @@ The repository includes two MCP configuration files for use with Playwright MCP 
 ```
 
 ### Firefox Configuration
+
 **File:** `.playwright-mcp-firefox-config.json`
 
 ```json
@@ -121,22 +133,27 @@ The repository includes two MCP configuration files for use with Playwright MCP 
 ### Starting the MCP Server
 
 #### For Chrome:
+
 ```bash
 npx @playwright/mcp@latest --config .playwright-mcp-chrome-config.json
 ```
 
 #### For Firefox:
+
 ```bash
 npx @playwright/mcp@latest --config .playwright-mcp-firefox-config.json
 ```
 
 ### Connecting to Running Browser
 
-If you've launched the browser using `npm run mcp:chrome` or `npm run mcp:firefox`, the Playwright MCP server can connect to it and control it for testing.
+If you've launched the browser using `npm run mcp:chrome` or
+`npm run mcp:firefox`, the Playwright MCP server can connect to it and control
+it for testing.
 
 ## Testing Quick Tabs Features
 
-Once the browser is running with the extension, you can test the Quick Tabs features interactively:
+Once the browser is running with the extension, you can test the Quick Tabs
+features interactively:
 
 ### Basic Quick Tab Creation (Scenario 1 from #47)
 
@@ -179,21 +196,25 @@ The extension supports Firefox Container isolation:
 With Playwright MCP configured, you can use the Copilot Coding Agent to:
 
 1. **Navigate to test pages:**
+
    ```
    Navigate to https://en.wikipedia.org
    ```
 
 2. **Interact with the page:**
+
    ```
    Hover over a link and press Q to create a Quick Tab
    ```
 
 3. **Test keyboard shortcuts:**
+
    ```
    Press Ctrl+Alt+Z to open the Quick Tabs Manager
    ```
 
 4. **Verify behaviors:**
+
    ```
    Create a Quick Tab, switch tabs, and verify it appears in the new tab
    ```
@@ -245,7 +266,9 @@ npm run test:extension:firefox
 
 ### Custom Test Scenarios
 
-Create custom test scenarios in `tests/e2e/` following the patterns in existing test files. Use the helper functions from `tests/e2e/helpers/extension-loader.js`.
+Create custom test scenarios in `tests/e2e/` following the patterns in existing
+test files. Use the helper functions from
+`tests/e2e/helpers/extension-loader.js`.
 
 ## References
 

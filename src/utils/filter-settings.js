@@ -84,7 +84,7 @@ export const settingsReady = (async () => {
         'liveConsoleCategoriesEnabled',
         'exportLogCategoriesEnabled'
       ]);
-      
+
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(() => reject(new Error('Storage timeout after 5s')), 5000)
       );
@@ -92,12 +92,13 @@ export const settingsReady = (async () => {
       const result = await Promise.race([storagePromise, timeoutPromise]);
 
       // Atomic batch update to prevent partial reads
-      const newLiveSettings = result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
+      const newLiveSettings =
+        result.liveConsoleCategoriesEnabled || getDefaultLiveConsoleSettings();
       const newExportSettings = result.exportLogCategoriesEnabled || getDefaultExportSettings();
-      
+
       liveConsoleSettingsCache = newLiveSettings;
       exportLogSettingsCache = newExportSettings;
-      
+
       settingsInitialized = true;
       return { success: true, source: 'storage' };
     } else {
@@ -198,7 +199,11 @@ export async function refreshExportSettings() {
  * Used to map log message prefixes to category IDs
  */
 export function getCategoryIdFromDisplayName(displayName) {
-  const normalized = displayName.trim().toLowerCase().replace(/[^\w\s-]/g, '').trim();
+  const normalized = displayName
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s-]/g, '')
+    .trim();
 
   const mapping = {
     'url detection': 'url-detection',

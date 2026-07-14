@@ -1,6 +1,20 @@
 // Jest setup file for browser extension testing
 // This file runs before each test suite
 
+// v1.6.3.7 - Mock requestAnimationFrame to run synchronously in tests
+// This is needed because our ResizeHandle now uses rAF for throttling
+// We run the callback immediately (synchronously) to allow tests to work without async handling
+let rafIdCounter = 0;
+global.requestAnimationFrame = callback => {
+  const id = ++rafIdCounter;
+  // Run immediately/synchronously for tests
+  callback(performance.now());
+  return id;
+};
+global.cancelAnimationFrame = _id => {
+  // No-op since callback already executed
+};
+
 // Mock browser API
 global.browser = {
   storage: {
@@ -24,14 +38,16 @@ global.browser = {
     }
   },
   runtime: {
-    sendMessage: jest.fn(),
+    // v1.6.3.8-v12 GAP-2 fix: Make sendMessage return a Promise for message routing tests
+    sendMessage: jest.fn().mockResolvedValue({ success: true }),
     onMessage: {
       addListener: jest.fn()
     }
   },
   tabs: {
     query: jest.fn(),
-    sendMessage: jest.fn(),
+    // v1.6.3.8-v12 GAP-5 fix: Make tabs.sendMessage return a Promise for broadcast tests
+    sendMessage: jest.fn().mockResolvedValue({ success: true }),
     create: jest.fn()
   },
   contextualIdentities: {
@@ -83,6 +99,14 @@ if (typeof global.PointerEvent === 'undefined') {
       this.isPrimary = params.isPrimary !== undefined ? params.isPrimary : true;
     }
   };
+}
+
+// Add TextEncoder and TextDecoder polyfills for JSDOM
+// Required for cross-tab simulator tests that use JSDOM
+if (typeof global.TextEncoder === 'undefined') {
+  const { TextEncoder, TextDecoder } = require('util');
+  global.TextEncoder = TextEncoder;
+  global.TextDecoder = TextDecoder;
 }
 
 // Add custom matchers if needed

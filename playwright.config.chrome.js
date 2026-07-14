@@ -1,4 +1,3 @@
-
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -8,7 +7,7 @@ const __dirname = path.dirname(__filename);
 /**
  * Playwright configuration for Chrome extension E2E testing
  *
- * This config loads the extension from the dist/ directory and runs tests
+ * This config loads the Chrome-ready extension from the dist-chrome/ directory and runs tests
  * in Chromium browser with the extension installed.
  *
  * Note: This extension is primarily designed for Firefox, but we test
@@ -29,7 +28,7 @@ export default {
 
   /* Opt out of parallel tests on CI - always use 1 worker for extension tests */
   workers: 1,
-  
+
   /* Increase teardown timeout for extension cleanup */
   globalTimeout: 5 * 60 * 1000, // 5 minutes for entire test run
 
@@ -56,8 +55,8 @@ export default {
         // Chrome-specific launch options for loading extension
         launchOptions: {
           args: [
-            `--disable-extensions-except=${path.join(__dirname, 'dist')}`,
-            `--load-extension=${path.join(__dirname, 'dist')}`,
+            `--disable-extensions-except=${path.join(__dirname, 'dist-chrome')}`,
+            `--load-extension=${path.join(__dirname, 'dist-chrome')}`,
             '--no-sandbox',
             '--disable-setuid-sandbox'
           ]

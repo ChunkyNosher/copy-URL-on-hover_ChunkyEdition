@@ -6,7 +6,7 @@ const browser = {
       addListener: jest.fn(),
       removeListener: jest.fn()
     },
-    getURL: jest.fn((path) => `moz-extension://fake-id/${path}`)
+    getURL: jest.fn(path => `moz-extension://fake-id/${path}`)
   },
   storage: {
     sync: {

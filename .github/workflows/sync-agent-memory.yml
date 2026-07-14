@@ -16,20 +16,19 @@ jobs:
       github.event.pull_request.merged == true &&
       startsWith(github.event.pull_request.head.ref, 'copilot/')
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout main branch
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 2
-      
+
       - name: Verify memory files exist in merge
         run: |
           echo "=========================================="
           echo "Checking for Agent Memory in Merged PR"
           echo "=========================================="
-          
+
           # Check if agentic-tools-mcp directory exists
           if [ -d ".agentic-tools-mcp" ]; then
             echo "✓ .agentic-tools-mcp/ directory found"
@@ -66,9 +65,9 @@ jobs:
             echo "⚠️ .agentic-tools-mcp/ directory not found"
             echo "Agent may not have committed memory files"
           fi
-          
+
           echo "=========================================="
-   
+
       - name: Create memory verification comment
         uses: actions/github-script@v7
         with:
@@ -76,11 +75,11 @@ jobs:
             const fs = require('fs');
             const path = require('path');
             const { execSync } = require('child_process');
-            
+
             let message = '## 🧠 Agent Memory Sync Status\n\n';
-            
+
             const hasAgenticTools = fs.existsSync('.agentic-tools-mcp');
-            
+
             if (hasAgenticTools) {
               message += '✅ Memory files successfully persisted to main branch\n\n';
               
@@ -146,7 +145,7 @@ jobs:
               message += '```\n\n';
               message += 'Copilot must run: `git add .agentic-tools-mcp/` before final commit.';
             }
-            
+
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

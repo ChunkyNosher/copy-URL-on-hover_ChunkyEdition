@@ -3,6 +3,32 @@
  * Handles creation, rendering, and lifecycle of individual Quick Tab overlay windows
  *
  * v1.5.9.0 - Restored missing UI logic identified in v1589-quick-tabs-root-cause.md
+ * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification logging after container creation
+ * v1.6.3.4-v3 - FIX 6 Critical Quick Tab Restore Bugs:
+ *   - Issue #3: Callbacks persist through restore - stored on instance, not closure
+ *   - Issue #4: onDestroy callback verified before invoke, with logging
+ *   - Issue #6: Enhanced logging for callback wiring and restore operations
+ * v1.6.3.4-v6 - FIX Issue #2: Add URL validation in constructor to reject malformed URLs
+ * v1.6.3.5-v5 - FIX Legacy Code Architecture Issues:
+ *   - Issue #1: Added deprecation warnings to setPosition/setSize/updatePosition/updateSize
+ *   - Issue #2: Added currentTabId as instance property (removed global access)
+ *   - Issue #4: Updated comments to reflect single-tab architecture
+ *   - Issue #6: Removed lastPositionUpdate/lastSizeUpdate (dead code)
+ * v1.6.3.5-v9 - FIX Diagnostic Report Issues #3, #7:
+ *   - Issue #3: Position/size updates stop after restore - callbacks verified after render
+ *   - Issue #7: Add __quickTabWindow property and data-quicktab-id attribute for DOM recovery
+ * v1.6.3.5-v10 - FIX Critical Quick Tab Restore Issues (Z-Index):
+ *   - Issue #3: Z-index broken after restore - apply z-index AFTER appendChild with reflow
+ *   - Added _applyZIndexAfterAppend() method for proper stacking context
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #1: Stale closure references - Add rewireCallbacks() method
+ *   - Issue #3: DOM event listener cleanup - Call controller cleanup() before DOM removal
+ *   - Issue #4: Operation-specific flags (isMinimizing, isRestoring) replace time-based suppression
+ *   - Issue #5: Enhanced logging in minimize(), restore(), updateZIndex()
+ * v1.6.4-v2 - Refactor to improve Code Health from 8.28 to 9.0+:
+ *   - Extract _createClickOverlay helper methods to reduce CC from 12 to <9
+ *   - Simplify _tryGetIframeUrl to reduce CC from 10 to <9
+ *   - Extract complex conditional predicates in _logIfStateDesync
  */
 
 import browser from 'webextension-polyfill';
@@ -12,12 +38,40 @@ import { ResizeController } from './window/ResizeController.js';
 import { TitlebarBuilder } from './window/TitlebarBuilder.js';
 import { CONSTANTS } from '../../core/config.js';
 import { createElement } from '../../utils/dom.js';
+import { isValidQuickTabUrl } from '../../utils/storage-utils.js';
+
+// v1.6.3.4-v8 - Default dimensions for fallback when invalid values provided
+const DEFAULT_WIDTH = 400;
+const DEFAULT_HEIGHT = 300;
+const DEFAULT_LEFT = 100;
+const DEFAULT_TOP = 100;
+
+// v1.6.4 - FIX Code Review: Extract magic numbers into named constants
+// Maximum z-index value to ensure overlay is always on top of iframe content
+const MAX_OVERLAY_Z_INDEX = 2147483646;
+// v1.6.4 - FIX BUG #2: OVERLAY_REACTIVATION_DELAY_MS removed (no longer used)
+// The overlay is now re-enabled via focusout and mouseleave events instead of a fixed timeout
+
+// v1.6.4 - FIX Code Review: Use WeakSet to track iframe documents with focus listeners
+// This avoids polluting the DOM API by not adding properties to document objects
+const _iframeDocsWithFocusListeners = new WeakSet();
 
 /**
  * QuickTabWindow class - Manages a single Quick Tab overlay instance
  */
 export class QuickTabWindow {
   constructor(options) {
+    // v1.6.3.4-v6 - FIX Issue #2: Validate URL before creating window
+    // Uses shared isValidQuickTabUrl from storage-utils.js
+    if (!isValidQuickTabUrl(options.url)) {
+      console.error('[QuickTabWindow] REJECTED: Invalid URL for Quick Tab creation:', {
+        id: options.id,
+        url: options.url,
+        reason: 'URL validation failed (undefined, malformed, or invalid protocol)'
+      });
+      throw new Error(`Invalid URL for Quick Tab: ${options.url}`);
+    }
+
     // v1.6.0 Phase 2.4 - Extract initialization methods to reduce complexity
     this._initializeBasicProperties(options);
     this._initializePositionAndSize(options);
@@ -28,12 +82,18 @@ export class QuickTabWindow {
 
   /**
    * Initialize basic properties (id, url, title, etc.)
+   * v1.6.3.4-v6 - FIX Issue #2: Log URL for debugging
    */
   _initializeBasicProperties(options) {
     this.id = options.id;
     this.url = options.url;
     this.title = options.title || 'Quick Tab';
     this.cookieStoreId = options.cookieStoreId || 'firefox-default';
+    // v1.6.3.2 - Debug ID display setting (from options, falls back to false)
+    this.showDebugId = options.showDebugId ?? false;
+
+    // v1.6.3.4-v6 - FIX Issue #2: Log URL for debugging ghost iframe issues
+    console.log('[QuickTabWindow] Created with URL:', { id: this.id, url: this.url });
   }
 
   /**
@@ -48,18 +108,25 @@ export class QuickTabWindow {
   }
 
   /**
-   * Initialize visibility-related properties (minimized, solo, mute)
+   * Initialize visibility-related properties (minimized state)
+   * v1.6.3.5-v5 - FIX Issue #2: Added currentTabId as instance property (removes global access)
+   * v1.6.3.12 - Removed Solo/Mute functionality
+   * v1.6.4 - FIX BUG #2: Added skipInitialOverlay option for transferred Quick Tabs
    */
   _initializeVisibility(options) {
     this.minimized = options.minimized || false;
-    // v1.5.9.13 - Replace pinnedToUrl with solo/mute arrays
-    this.soloedOnTabs = options.soloedOnTabs || [];
-    this.mutedOnTabs = options.mutedOnTabs || [];
+    // v1.6.3.5-v5 - FIX Issue #2: Store currentTabId as instance property
+    // This removes tight coupling to window.quickTabsManager.currentTabId
+    this.currentTabId = options.currentTabId ?? null;
+    // v1.6.4 - FIX BUG #2: Flag to skip initial overlay for transferred Quick Tabs
+    // When a Quick Tab is transferred, it should be immediately interactive without requiring a click first
+    this.skipInitialOverlay = options.skipInitialOverlay ?? false;
   }
 
   /**
    * Initialize lifecycle and event callbacks
    * v1.6.0 Phase 2.4 - Table-driven to reduce complexity
+   * v1.6.3.12 - Removed Solo/Mute callbacks
    */
   _initializeCallbacks(options) {
     const noop = () => {};
@@ -70,9 +137,7 @@ export class QuickTabWindow {
       'onPositionChange',
       'onPositionChangeEnd',
       'onSizeChange',
-      'onSizeChangeEnd',
-      'onSolo', // v1.5.9.13
-      'onMute' // v1.5.9.13
+      'onSizeChangeEnd'
     ];
 
     callbacks.forEach(name => {
@@ -81,27 +146,175 @@ export class QuickTabWindow {
   }
 
   /**
+   * Re-wire callbacks after restore to capture fresh execution context
+   * v1.6.3.5-v11 - FIX Issue #1: Stale closure references after restore
+   * v1.6.3.12 - Removed Solo/Mute callbacks
+   *
+   * After browser restart with hydration OR minimize/restore cycle, the original
+   * callbacks may reference stale closure variables from construction time.
+   * This method allows replacing callbacks with fresh versions that capture
+   * the CURRENT handler context.
+   *
+   * @param {Object} callbacks - Object containing fresh callback functions
+   * @returns {boolean} True if any callbacks were rewired
+   */
+  rewireCallbacks(callbacks) {
+    const callbackNames = [
+      'onDestroy',
+      'onMinimize',
+      'onFocus',
+      'onPositionChange',
+      'onPositionChangeEnd',
+      'onSizeChange',
+      'onSizeChangeEnd'
+    ];
+    const rewired = [];
+
+    callbackNames.forEach(name => {
+      if (callbacks[name] && typeof callbacks[name] === 'function') {
+        this[name] = callbacks[name];
+        rewired.push(name);
+      }
+    });
+
+    console.log('[QuickTabWindow][rewireCallbacks] Re-wired callbacks:', {
+      id: this.id,
+      rewired,
+      rewiredCount: rewired.length,
+      totalCallbacks: callbackNames.length
+    });
+
+    return rewired.length > 0;
+  }
+
+  /**
    * Initialize internal state properties
+   * v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate fields (dead code)
+   * v1.6.3.5-v11 - FIX Issue #4: Add isMinimizing, isRestoring operation-specific flags
+   * v1.6.3.12-v7 - FIX Issue #24/#28: Add state sync and sidebar lifecycle tracking
+   * v1.6.3.12 - Removed Solo/Mute button references
    */
   _initializeState() {
     this.container = null;
     this.iframe = null;
     this.rendered = false; // v1.5.9.10 - Track rendering state to prevent rendering bugs
+    this.destroyed = false; // v1.6.3.2 - Track destroyed state to prevent ghost events
     // v1.6.0 Phase 2.9 - isDragging kept for external checks, managed by DragController
     this.isDragging = false;
     this.isResizing = false;
     // v1.6.0 Phase 2.9 - dragStartX/Y removed, managed internally by DragController
     this.resizeStartWidth = 0;
     this.resizeStartHeight = 0;
-    this.soloButton = null; // v1.5.9.13 - Reference to solo button
-    this.muteButton = null; // v1.5.9.13 - Reference to mute button
     // v1.6.0 Phase 2.9 - Controllers for drag and resize
     this.dragController = null;
     this.resizeController = null;
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate/lastSizeUpdate (unused timestamp tracking)
+    // These fields were set during updatePosition/updateSize but never read by any code.
+    // They were intended for cross-tab sync conflict resolution which was removed in v1.6.3.
+
+    // v1.6.3.5-v11 - FIX Issue #4: Operation-specific flags replace time-based callback suppression
+    // These flags are checked by callbacks to determine if they should be suppressed
+    // instead of using a broad time-based window that suppresses ALL callbacks
+    this.isMinimizing = false;
+    this.isRestoring = false;
+
+    // v1.6.3.12-v7 - FIX Issue #24: State synchronization tracking
+    // Track last confirmed state for bidirectional sync
+    this._lastSyncedState = null;
+    this._pendingStateSync = false;
+
+    // v1.6.3.12-v7 - FIX Issue #28: Sidebar lifecycle tracking
+    // Track origin tab ID for lifecycle monitoring
+    this.originTabId = null;
+    this._lifecycleHandlerBound = false;
+  }
+
+  /**
+   * Set the origin tab ID for lifecycle tracking
+   * v1.6.3.12-v7 - FIX Issue #28: Window.js sidebar lifecycle tracking
+   * @param {number} tabId - Origin tab ID
+   */
+  setOriginTabId(tabId) {
+    this.originTabId = tabId;
+    console.log('[SIDEBAR_LIFECYCLE] Origin tab ID set:', {
+      quickTabId: this.id,
+      originTabId: tabId
+    });
+  }
+
+  /**
+   * Acknowledge state sync from content script
+   * v1.6.3.12-v7 - FIX Issue #24: State synchronization acknowledgment
+   * @param {Object} state - Confirmed state from content script
+   */
+  acknowledgeStateSync(state) {
+    this._lastSyncedState = state;
+    this._pendingStateSync = false;
+
+    console.log('[STATE_SYNC] State acknowledged:', {
+      quickTabId: this.id,
+      minimized: state?.minimized,
+      position: state?.position || { left: state?.left, top: state?.top },
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Mark state sync as pending
+   * v1.6.3.12-v7 - FIX Issue #24: Track pending state sync
+   */
+  markStateSyncPending() {
+    this._pendingStateSync = true;
+    console.log('[STATE_SYNC] State sync pending:', {
+      quickTabId: this.id,
+      timestamp: Date.now()
+    });
+  }
+
+  /**
+   * Check if state sync is pending
+   * v1.6.3.12-v7 - FIX Issue #24: Check pending state
+   * @returns {boolean} True if state sync is pending
+   */
+  isStateSyncPending() {
+    return this._pendingStateSync;
+  }
+
+  /**
+   * Process URL to disable autoplay for YouTube videos
+   * v1.6.1.5 - Fix for YouTube autoplay issue
+   *
+   * @param {string} url - Original URL
+   * @returns {string} - Modified URL with autoplay disabled
+   */
+  _processUrlForAutoplay(url) {
+    try {
+      // Check if URL is a YouTube URL (youtube.com or youtu.be)
+      if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+        return url; // Not a YouTube URL, return as-is
+      }
+
+      const urlObj = new URL(url);
+
+      // Set or update autoplay parameter to 0
+      urlObj.searchParams.set('autoplay', '0');
+
+      console.log(
+        `[QuickTabWindow] Processed YouTube URL for autoplay prevention: ${urlObj.toString()}`
+      );
+      return urlObj.toString();
+    } catch (err) {
+      console.error('[QuickTabWindow] Error processing URL for autoplay:', err);
+      return url; // Return original URL on error
+    }
   }
 
   /**
    * Create and render the Quick Tab window
+   * v1.6.3.4-v8 - FIX Issues #1, #6: Enhanced logging to verify correct dimensions are used
+   * v1.6.3.4-v2 - FIX Issue #4: Add DOM dimension verification after container creation
+   * v1.6.3.4-v11 - Refactored to extract helper methods for improved code health
+   * v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild and force reflow
    */
   render() {
     if (this.container) {
@@ -109,12 +322,148 @@ export class QuickTabWindow {
       return this.container;
     }
 
-    const targetLeft = Number.isFinite(this.left) ? this.left : 100;
-    const targetTop = Number.isFinite(this.top) ? this.top : 100;
+    // Step 1: Validate and normalize dimensions
+    const dimensions = this._validateAndNormalizeDimensions();
+
+    // Step 2: Create container
+    this._createContainer(dimensions);
+
+    // Step 3: Create and attach titlebar
+    const titlebar = this._createTitlebar();
+    this.container.appendChild(titlebar);
+
+    // Step 4: Create and attach iframe
+    this._createIframe();
+    this.container.appendChild(this.iframe);
+    this.titlebarBuilder.config.iframe = this.iframe;
+    this.setupIframeLoadHandler();
+
+    // v1.6.4 - FIX BUG #1: Add click overlay for cross-origin iframe click detection
+    if (this.clickOverlay) {
+      this.container.appendChild(this.clickOverlay);
+    }
+
+    // Step 5: Add to document and mark as rendered
+    document.body.appendChild(this.container);
+    this.rendered = true;
+
+    // v1.6.3.5-v10 - FIX Issue #3: Apply z-index AFTER appendChild
+    // When z-index is set before the element is in the DOM, the browser may not
+    // properly create a stacking context. Setting z-index after appendChild and
+    // forcing a reflow ensures the z-index takes effect immediately.
+    this._applyZIndexAfterAppend();
+
+    // Step 6: Apply anti-flash positioning
+    this._setupAntiFlashPositioning(dimensions);
+
+    // Step 7: Setup controllers
+    this._setupDragController(titlebar);
+    this._setupResizeController();
+    this.setupFocusHandlers();
+
+    console.log('[QuickTabWindow] Rendered:', this.id);
+
+    // v1.6.3.5-v12 - FIX Issue #3: Log render completion with full container state
+    console.log('[QuickTabWindow][render] Render completed - container established:', {
+      id: this.id,
+      hasContainer: !!this.container,
+      isAttachedToDOM: !!this.container?.parentNode,
+      isRendered: this.isRendered()
+    });
+
+    return this.container;
+  }
+
+  /**
+   * Apply z-index after container is appended to DOM and force reflow
+   * v1.6.3.5-v10 - FIX Issue #3: Ensures proper stacking context creation
+   *
+   * Setting z-index before appendChild may not create the stacking context
+   * correctly in all browsers. By setting it after the element is in the DOM
+   * and forcing a reflow (by reading offsetHeight), we ensure the browser
+   * has properly computed the stacking context.
+   *
+   * @private
+   */
+  _applyZIndexAfterAppend() {
+    if (!this.container) return;
+
+    // Re-apply z-index to ensure it takes effect after appendChild
+    this.container.style.zIndex = this.zIndex.toString();
+
+    // Force browser reflow to ensure z-index is applied immediately
+    // Reading offsetHeight triggers a synchronous layout calculation
+    // Using void operator to explicitly indicate intentional side-effect
+    void this.container.offsetHeight;
+
+    // Verify z-index was applied correctly (defensive check for test environment)
+    let verifiedZIndex = 'unknown';
+    if (typeof window !== 'undefined' && window.getComputedStyle) {
+      try {
+        const computedStyle = window.getComputedStyle(this.container);
+        verifiedZIndex = computedStyle.zIndex;
+      } catch (_e) {
+        // getComputedStyle may fail in test environments
+        verifiedZIndex = this.container.style.zIndex;
+      }
+    } else {
+      verifiedZIndex = this.container.style.zIndex;
+    }
+
+    console.log('[QuickTabWindow] Z-index applied after appendChild:', {
+      id: this.id,
+      targetZIndex: this.zIndex,
+      verifiedZIndex,
+      position: this.container.style.position
+    });
+  }
+
+  /**
+   * Validate and normalize dimensions with fallback to defaults
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   * @returns {{ left: number, top: number, width: number, height: number }}
+   */
+  _validateAndNormalizeDimensions() {
+    console.log('[QuickTabWindow] render() called with dimensions:', {
+      id: this.id,
+      left: this.left,
+      top: this.top,
+      width: this.width,
+      height: this.height
+    });
+
+    const targetLeft = Number.isFinite(this.left) ? this.left : DEFAULT_LEFT;
+    const targetTop = Number.isFinite(this.top) ? this.top : DEFAULT_TOP;
+    const targetWidth = Number.isFinite(this.width) && this.width > 0 ? this.width : DEFAULT_WIDTH;
+    const targetHeight =
+      Number.isFinite(this.height) && this.height > 0 ? this.height : DEFAULT_HEIGHT;
+
     this.left = targetLeft;
     this.top = targetTop;
+    this.width = targetWidth;
+    this.height = targetHeight;
 
-    // Create main container
+    console.log('[QuickTabWindow] Applying dimensions to DOM:', {
+      id: this.id,
+      width: targetWidth,
+      height: targetHeight,
+      left: targetLeft,
+      top: targetTop
+    });
+
+    return { left: targetLeft, top: targetTop, width: targetWidth, height: targetHeight };
+  }
+
+  /**
+   * Create the main container element
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add __quickTabWindow property for DOM recovery
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add data-quicktab-id attribute for DOM querying
+   * @private
+   * @param {{ width: number, height: number }} dimensions
+   */
+  _createContainer(dimensions) {
     this.container = createElement('div', {
       id: `quick-tab-${this.id}`,
       className: 'quick-tab-window',
@@ -122,8 +471,8 @@ export class QuickTabWindow {
         position: 'fixed',
         left: '-9999px',
         top: '-9999px',
-        width: `${this.width}px`,
-        height: `${this.height}px`,
+        width: `${dimensions.width}px`,
+        height: `${dimensions.height}px`,
         zIndex: this.zIndex.toString(),
         backgroundColor: '#1e1e1e',
         border: '2px solid #444',
@@ -138,44 +487,94 @@ export class QuickTabWindow {
       }
     });
 
-    // v1.6.0 Phase 2.9 Task 4 - Use TitlebarBuilder facade pattern
-    // Create titlebar using TitlebarBuilder component
+    // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Add data-quicktab-id attribute for DOM querying
+    // This allows UICoordinator to find orphaned DOM elements via querySelector
+    this.container.setAttribute('data-quicktab-id', this.id);
+
+    // v1.6.3.5-v9 - FIX Diagnostic Issue #7: Store instance reference on container element
+    // This enables UICoordinator to recover orphaned windows instead of creating duplicates
+    // Pattern: DOM element → QuickTabWindow instance (reverse lookup)
+    this.container.__quickTabWindow = this;
+
+    console.log('[QuickTabWindow] DOM dimensions AFTER createElement:', {
+      id: this.id,
+      'container.style.width': this.container.style.width,
+      'container.style.height': this.container.style.height,
+      'container.style.left': this.container.style.left,
+      'container.style.top': this.container.style.top,
+      'container.style.zIndex': this.container.style.zIndex,
+      'data-quicktab-id': this.container.getAttribute('data-quicktab-id'),
+      __quickTabWindow: !!this.container.__quickTabWindow
+    });
+  }
+
+  /**
+   * Create titlebar using TitlebarBuilder
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   * @returns {HTMLElement} The titlebar element
+   */
+  _createTitlebar() {
     this.titlebarBuilder = new TitlebarBuilder(
       {
+        id: this.id,
         title: this.title,
         url: this.url,
-        soloedOnTabs: this.soloedOnTabs,
-        mutedOnTabs: this.mutedOnTabs,
         currentTabId: this.currentTabId,
-        iframe: null // Will be set after iframe creation
+        iframe: null,
+        showDebugId: this.showDebugId
       },
       {
         onClose: () => this.destroy(),
         onMinimize: () => this.minimize(),
-        onSolo: btn => this.toggleSolo(btn),
-        onMute: btn => this.toggleMute(btn),
-        onOpenInTab: () => {
+        onOpenInTab: async () => {
           const currentSrc = this.iframe.src || this.iframe.getAttribute('data-deferred-src');
-          browser.runtime.sendMessage({
-            action: 'openTab',
+          console.log('[QuickTabWindow] onOpenInTab: Opening URL in new tab', {
+            id: this.id,
             url: currentSrc,
-            switchFocus: true
+            timestamp: Date.now()
           });
+
+          try {
+            const response = await browser.runtime.sendMessage({
+              action: 'openTab',
+              url: currentSrc,
+              switchFocus: true
+            });
+            console.log('[QuickTabWindow] onOpenInTab: Tab opened successfully', {
+              id: this.id,
+              response,
+              timestamp: Date.now()
+            });
+
+            const settings = await browser.storage.local.get({ quickTabCloseOnOpen: false });
+            if (settings.quickTabCloseOnOpen) {
+              this.destroy();
+            }
+          } catch (err) {
+            console.error('[QuickTabWindow] onOpenInTab: Failed to open tab', {
+              id: this.id,
+              url: currentSrc,
+              error: err.message
+            });
+          }
         }
       }
     );
 
-    // Note: iframe is null during titlebar build, will be updated before first use
     const titlebar = this.titlebarBuilder.build();
-    this.container.appendChild(titlebar);
+    return titlebar;
+  }
 
-    // Store button references for updating (solo/mute state changes)
-    this.soloButton = this.titlebarBuilder.soloButton;
-    this.muteButton = this.titlebarBuilder.muteButton;
-
-    // Create iframe content area
+  /**
+   * Create iframe content area
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   */
+  _createIframe() {
+    const processedUrl = this._processUrlForAutoplay(this.url);
     this.iframe = createElement('iframe', {
-      src: this.url,
+      src: processedUrl,
       style: {
         flex: '1',
         border: 'none',
@@ -183,82 +582,324 @@ export class QuickTabWindow {
         height: 'calc(100% - 40px)'
       },
       sandbox:
-        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox'
+        'allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox',
+      allow: 'picture-in-picture; fullscreen'
     });
 
-    this.container.appendChild(this.iframe);
+    // v1.6.4 - FIX BUG #1: Add click overlay that brings window to front on first click
+    // The overlay captures clicks until the window is focused, then becomes transparent to pointer events
+    this._createClickOverlay();
+  }
 
-    // Update TitlebarBuilder with iframe reference (needed for navigation/zoom)
-    this.titlebarBuilder.config.iframe = this.iframe;
+  /**
+   * Create a transparent click overlay for iframe click detection
+   * v1.6.4 - FIX BUG #1: Click to bring Quick Tab to front
+   * v1.6.4 - IMPROVED: Enhanced overlay positioning and z-index
+   * v1.6.4 - FIX BUG #2: Keep overlay disabled while window is focused
+   * v1.6.4 - FIX BUG #2: Skip initial overlay for transferred Quick Tabs
+   * v1.6.4-v2 - Refactored to extract helper methods for improved Code Health
+   * This overlay captures clicks on the iframe area and brings the window to front.
+   * After the window is focused, subsequent clicks pass through to the iframe.
+   * The overlay is re-enabled when the window loses focus (focusout or mouseleave).
+   * @private
+   */
+  _createClickOverlay() {
+    this.clickOverlay = this._createOverlayElement();
+    this._setupOverlayMousedownHandler();
+    this._setupOverlayPointerdownHandler();
+    this._setupOverlayFocusListeners();
+  }
 
-    // Setup iframe load listener to update title
-    this.setupIframeLoadHandler();
+  /**
+   * Create the overlay DOM element
+   * v1.6.4-v2 - Extracted from _createClickOverlay to reduce complexity
+   * @private
+   * @returns {HTMLElement} The overlay element
+   */
+  _createOverlayElement() {
+    // v1.6.4 - FIX BUG #2: Transferred Quick Tabs start with overlay disabled
+    const initialPointerEvents = this.skipInitialOverlay ? 'none' : 'auto';
 
-    // Add to document
-    document.body.appendChild(this.container);
-
-    // v1.5.9.10 - Mark as rendered
-    this.rendered = true;
-
-    // Fix Quick Tab flash by moving into place after a frame
-    requestAnimationFrame(() => {
-      this.container.style.left = `${targetLeft}px`;
-      this.container.style.top = `${targetTop}px`;
-      this.container.style.visibility = 'visible';
-      this.container.style.opacity = '1';
+    return createElement('div', {
+      className: 'quick-tab-click-overlay',
+      style: {
+        position: 'absolute',
+        top: '40px', // Below titlebar
+        left: '0',
+        right: '0',
+        bottom: '0',
+        zIndex: String(MAX_OVERLAY_Z_INDEX),
+        cursor: 'pointer',
+        backgroundColor: 'transparent',
+        pointerEvents: initialPointerEvents
+      }
     });
+  }
 
-    // v1.6.0 Phase 2.9 Task 3 - Use DragController facade pattern
-    this.dragController = new DragController(titlebar, {
-      onDragStart: (x, y) => {
-        console.log('[QuickTabWindow] Drag started:', this.id, x, y);
-        this.isDragging = true;
-        this.onFocus(this.id);
-      },
-      onDrag: (newX, newY) => {
-        // Update position
-        this.left = newX;
-        this.top = newY;
-        this.container.style.left = `${newX}px`;
-        this.container.style.top = `${newY}px`;
+  /**
+   * Setup mousedown handler for overlay click-to-front behavior
+   * v1.6.4-v2 - Extracted from _createClickOverlay to reduce complexity
+   * @private
+   */
+  _setupOverlayMousedownHandler() {
+    this.clickOverlay.addEventListener('mousedown', e => {
+      console.log('[QuickTabWindow] Click overlay mousedown - bringing to front:', this.id);
+      this._bringToFront();
+      this.clickOverlay.style.pointerEvents = 'none';
+      this._dispatchSyntheticMousedown(e);
+    });
+  }
 
-        // Call position change callback (throttled by DragController's RAF)
-        if (this.onPositionChange) {
-          this.onPositionChange(this.id, newX, newY);
-        }
-      },
-      onDragEnd: (finalX, finalY) => {
-        console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
-        this.isDragging = false;
+  /**
+   * Setup pointerdown handler for touch device support
+   * v1.6.4-v2 - Extracted from _createClickOverlay to reduce complexity
+   * @private
+   */
+  _setupOverlayPointerdownHandler() {
+    this.clickOverlay.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') {
+        console.log('[QuickTabWindow] Click overlay touch - bringing to front:', this.id);
+        this._bringToFront();
+        this.clickOverlay.style.pointerEvents = 'none';
+      }
+    });
+  }
 
-        // Final save on drag end
-        if (this.onPositionChangeEnd) {
-          this.onPositionChangeEnd(this.id, finalX, finalY);
-        }
-      },
-      onDragCancel: (lastX, lastY) => {
-        // CRITICAL FOR ISSUE #51: Emergency save position when drag is interrupted
-        console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
-        this.isDragging = false;
-
-        // Emergency save position before tab loses focus
-        if (this.onPositionChangeEnd) {
-          this.onPositionChangeEnd(this.id, lastX, lastY);
-        }
+  /**
+   * Setup focusout and mouseleave listeners to re-enable overlay
+   * v1.6.4-v2 - Extracted from _createClickOverlay to reduce complexity
+   * @private
+   */
+  _setupOverlayFocusListeners() {
+    this.container.addEventListener('focusout', e => {
+      if (this._shouldReenableOverlay(e.relatedTarget)) {
+        console.log('[QuickTabWindow] Focus left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
       }
     });
 
-    // v1.6.0 Phase 2.4 - Use ResizeController facade pattern
+    this.container.addEventListener('mouseleave', () => {
+      if (this._isOverlayValid()) {
+        console.log('[QuickTabWindow] Mouse left container - re-enabling click overlay:', this.id);
+        this.clickOverlay.style.pointerEvents = 'auto';
+      }
+    });
+  }
+
+  /**
+   * Check if overlay should be re-enabled on focusout
+   * v1.6.4-v2 - Extracted complex conditional from line 689 for Code Health
+   * @private
+   * @param {EventTarget|null} relatedTarget - The element receiving focus
+   * @returns {boolean} True if overlay should be re-enabled
+   */
+  _shouldReenableOverlay(relatedTarget) {
+    const isOverlayValid = this._isOverlayValid();
+    const isFocusLeavingContainer = !this.container.contains(relatedTarget);
+    return isOverlayValid && isFocusLeavingContainer;
+  }
+
+  /**
+   * Check if overlay is in a valid state for operations
+   * v1.6.4-v2 - Extracted for reuse in overlay event handlers
+   * @private
+   * @returns {boolean} True if overlay exists and window is not destroyed
+   */
+  _isOverlayValid() {
+    return Boolean(this.clickOverlay && !this.destroyed);
+  }
+
+  /**
+   * Bring window to front by calling onFocus callback
+   * v1.6.4-v2 - Extracted from mousedown/pointerdown handlers
+   * @private
+   */
+  _bringToFront() {
+    if (typeof this.onFocus === 'function') {
+      this.onFocus(this.id);
+    }
+  }
+
+  /**
+   * Dispatch synthetic mousedown to element below overlay
+   * v1.6.4-v2 - Extracted from mousedown handler to reduce complexity
+   * @private
+   * @param {MouseEvent} originalEvent - The original mousedown event
+   */
+  _dispatchSyntheticMousedown(originalEvent) {
+    const x = originalEvent.clientX;
+    const y = originalEvent.clientY;
+
+    // Use setTimeout to allow pointer-events change to take effect
+    setTimeout(() => {
+      const elementBelow = document.elementFromPoint(x, y);
+      if (elementBelow && elementBelow !== this.clickOverlay) {
+        const syntheticEvent = new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          clientX: x,
+          clientY: y,
+          button: originalEvent.button,
+          buttons: originalEvent.buttons,
+          ctrlKey: originalEvent.ctrlKey,
+          shiftKey: originalEvent.shiftKey,
+          altKey: originalEvent.altKey,
+          metaKey: originalEvent.metaKey
+        });
+        elementBelow.dispatchEvent(syntheticEvent);
+      }
+    }, 0);
+  }
+
+  /**
+   * Apply anti-flash positioning after a frame
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   * @param {{ left: number, top: number }} dimensions
+   */
+  _setupAntiFlashPositioning(dimensions) {
+    requestAnimationFrame(() => {
+      this.container.style.left = `${dimensions.left}px`;
+      this.container.style.top = `${dimensions.top}px`;
+      this.container.style.visibility = 'visible';
+      this.container.style.opacity = '1';
+
+      console.log('[QuickTabWindow] DOM dimensions AFTER position correction (final):', {
+        id: this.id,
+        'container.style.left': this.container.style.left,
+        'container.style.top': this.container.style.top,
+        'container.style.width': this.container.style.width,
+        'container.style.height': this.container.style.height
+      });
+    });
+  }
+
+  /**
+   * Setup DragController with callbacks
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   * @param {HTMLElement} titlebar - The titlebar element for drag handling
+   */
+  _setupDragController(titlebar) {
+    console.log('[QuickTabWindow] Wiring DragController callbacks:', {
+      id: this.id,
+      hasOnFocus: typeof this.onFocus === 'function',
+      hasOnPositionChange: typeof this.onPositionChange === 'function',
+      hasOnPositionChangeEnd: typeof this.onPositionChangeEnd === 'function'
+    });
+
+    this.dragController = new DragController(titlebar, {
+      onDragStart: (x, y) => this._handleDragStart(x, y),
+      onDrag: (newX, newY) => this._handleDrag(newX, newY),
+      onDragEnd: (finalX, finalY) => this._handleDragEnd(finalX, finalY),
+      onDragCancel: (lastX, lastY) => this._handleDragCancel(lastX, lastY)
+    });
+  }
+
+  /**
+   * Handle drag start event
+   * v1.6.3.4-v11 - Extracted from render() callback
+   * @private
+   */
+  _handleDragStart(x, y) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag start ignored - window destroyed:', this.id);
+      return;
+    }
+    console.log('[QuickTabWindow] Drag started:', this.id, x, y);
+    this.isDragging = true;
+    if (this.onFocus) {
+      console.log('[QuickTabWindow] Bringing to front via onFocus callback:', this.id);
+      this.onFocus(this.id);
+    } else {
+      console.warn('[QuickTabWindow] onFocus callback not wired for drag:', this.id);
+    }
+  }
+
+  /**
+   * Handle drag event (position update)
+   * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
+   * @private
+   */
+  _handleDrag(newX, newY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      return;
+    }
+    this.left = newX;
+    this.top = newY;
+    if (this.container) {
+      this.container.style.left = `${newX}px`;
+      this.container.style.top = `${newY}px`;
+    }
+
+    if (this.onPositionChange) {
+      this.onPositionChange(this.id, newX, newY);
+    }
+  }
+
+  /**
+   * Handle drag end event
+   * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
+   * @private
+   */
+  _handleDragEnd(finalX, finalY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag end ignored - window destroyed:', this.id);
+      return;
+    }
+    console.log('[QuickTabWindow] Drag ended:', this.id, finalX, finalY);
+    this.isDragging = false;
+
+    if (this.onPositionChangeEnd) {
+      console.log('[QuickTabWindow] Calling onPositionChangeEnd callback:', this.id);
+      this.onPositionChangeEnd(this.id, finalX, finalY);
+    } else {
+      console.warn('[QuickTabWindow] onPositionChangeEnd callback not wired:', this.id);
+    }
+  }
+
+  /**
+   * Handle drag cancel event (emergency save)
+   * v1.6.3.4-v11 - Extracted from render() callback
+   * v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag
+   * @private
+   */
+  _handleDragCancel(lastX, lastY) {
+    // v1.6.3.10-v10 - FIX Issue 5.2: Check destroyed flag before processing
+    if (this.destroyed) {
+      console.warn('[QuickTabWindow] Drag cancel ignored - window destroyed:', this.id);
+      return;
+    }
+    console.log('[QuickTabWindow] Drag cancelled:', this.id, lastX, lastY);
+    this.isDragging = false;
+
+    if (this.onPositionChangeEnd) {
+      this.onPositionChangeEnd(this.id, lastX, lastY);
+    }
+  }
+
+  /**
+   * Setup ResizeController
+   * v1.6.3.4-v11 - Extracted from render() to reduce complexity
+   * @private
+   */
+  _setupResizeController() {
+    console.log('[QuickTabWindow] Wiring ResizeController callbacks:', {
+      id: this.id,
+      hasOnSizeChange: typeof this.onSizeChange === 'function',
+      hasOnSizeChangeEnd: typeof this.onSizeChangeEnd === 'function'
+    });
+
     this.resizeController = new ResizeController(this, {
       minWidth: 400,
       minHeight: 300
     });
     this.resizeController.attachHandles();
-
-    this.setupFocusHandlers();
-
-    console.log('[QuickTabWindow] Rendered:', this.id);
-    return this.container;
   }
 
   // v1.6.0 Phase 2.9 Task 4 - createFavicon() moved to TitlebarBuilder
@@ -295,24 +936,301 @@ export class QuickTabWindow {
 
   /**
    * Setup focus handlers
+   * v1.6.4 - FIX BUG #2: Use capture phase AND transparent overlay for iframe clicks
+   * The mousedown event on container can be intercepted by iframe content in cross-origin scenarios.
+   * Using capture: true helps, but for cross-origin iframes we need an additional overlay approach.
+   * The overlay captures the first click to bring the window to front, then allows interaction.
    */
   setupFocusHandlers() {
-    this.container.addEventListener('mousedown', () => {
-      this.onFocus(this.id);
+    // Use capture phase to intercept before iframe steals the event
+    this.container.addEventListener(
+      'mousedown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
+
+    // Also bring to front on any pointer event (for touch devices and better coverage)
+    this.container.addEventListener(
+      'pointerdown',
+      () => {
+        this.onFocus(this.id);
+      },
+      { capture: true }
+    );
+
+    // v1.6.4 - FIX BUG #2: Add focus event on iframe to detect when user clicks inside
+    // When iframe gets focus, it means user clicked inside it - bring window to front
+    if (this.iframe) {
+      this.iframe.addEventListener('focus', () => {
+        console.log('[QuickTabWindow] Iframe focused - bringing to front:', this.id);
+        this.onFocus(this.id);
+      });
+
+      // v1.6.4 - FIX Code Review: Use flag to prevent duplicate load listeners
+      // This ensures the load event handler only adds mousedown listener once
+      if (!this._iframeLoadListenerAdded) {
+        this._iframeLoadListenerAdded = true;
+        this.iframe.addEventListener('load', () => {
+          // After iframe loads, add a listener for when it becomes active
+          try {
+            // Try to detect focus inside iframe for same-origin content
+            const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+            // v1.6.4 - FIX Code Review: Use WeakSet instead of polluting DOM
+            if (iframeDoc && !_iframeDocsWithFocusListeners.has(iframeDoc)) {
+              _iframeDocsWithFocusListeners.add(iframeDoc);
+              iframeDoc.addEventListener(
+                'mousedown',
+                () => {
+                  this.onFocus(this.id);
+                },
+                { capture: true }
+              );
+            }
+          } catch (_e) {
+            // Cross-origin - cannot access iframe content, which is expected
+            // The focus event handler above will still work for cross-origin
+          }
+        });
+      }
+    }
+  }
+
+  /**
+   * Pause any playing media (video/audio) in the iframe
+   * v1.6.3.2 - Feature: Video Pause on Minimize
+   * v1.6.3.4-v11 - Refactored to extract helpers for improved code health
+   *
+   * Attempts to pause media using:
+   * 1. Direct DOM access for same-origin iframes
+   * 2. postMessage API for YouTube embeds (cross-origin)
+   *
+   * @private
+   */
+  _pauseMediaInIframe() {
+    if (!this.iframe) {
+      return;
+    }
+
+    // Try same-origin approach first
+    if (this._pauseSameOriginMedia()) {
+      return;
+    }
+
+    // Fall back to postMessage for cross-origin (YouTube)
+    this._pauseYouTubeViaPostMessage();
+  }
+
+  /**
+   * Attempt to pause media via direct DOM access (same-origin only)
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * @private
+   * @returns {boolean} True if same-origin access succeeded, false otherwise
+   */
+  _pauseSameOriginMedia() {
+    try {
+      const iframeDoc = this.iframe.contentDocument || this.iframe.contentWindow?.document;
+      if (!iframeDoc) {
+        return false;
+      }
+
+      this._pauseVideoElements(iframeDoc);
+      this._pauseAudioElements(iframeDoc);
+      return true;
+    } catch (_e) {
+      console.log('[QuickTabWindow] Cross-origin iframe, trying postMessage:', this.id);
+      return false;
+    }
+  }
+
+  /**
+   * Pause all video elements in a document
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe()
+   * @private
+   * @param {Document} doc - The document to search for videos
+   */
+  _pauseVideoElements(doc) {
+    const videos = doc.querySelectorAll('video');
+    videos.forEach(video => {
+      if (!video.paused) {
+        video.pause();
+        console.log('[QuickTabWindow] Paused video element:', this.id);
+      }
     });
   }
 
   /**
-   * Minimize the Quick Tab window
+   * Pause all audio elements in a document
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe()
+   * @private
+   * @param {Document} doc - The document to search for audio
    */
-  minimize() {
-    this.minimized = true;
-    this.container.style.display = 'none';
+  _pauseAudioElements(doc) {
+    const audios = doc.querySelectorAll('audio');
+    audios.forEach(audio => {
+      if (!audio.paused) {
+        audio.pause();
+        console.log('[QuickTabWindow] Paused audio element:', this.id);
+      }
+    });
+  }
 
-    // Enhanced logging for console log export (Issue #1)
-    console.log(
-      `[Quick Tab] Minimized - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+  /**
+   * Pause YouTube video via postMessage API (cross-origin)
+   * v1.6.3.4-v11 - Extracted from _pauseMediaInIframe() to reduce complexity
+   * Reference: https://developers.google.com/youtube/iframe_api_reference
+   * @private
+   */
+  _pauseYouTubeViaPostMessage() {
+    try {
+      if (!this.url.includes('youtube.com') && !this.url.includes('youtu.be')) {
+        return;
+      }
+
+      const pauseCommand = JSON.stringify({
+        event: 'command',
+        func: 'pauseVideo',
+        args: []
+      });
+      this.iframe.contentWindow?.postMessage(pauseCommand, '*');
+      console.log('[QuickTabWindow] Sent YouTube pause command via postMessage:', this.id);
+    } catch (e) {
+      console.warn('[QuickTabWindow] Failed to send pause command:', this.id, e.message);
+    }
+  }
+
+  /**
+   * Minimize the Quick Tab window
+   * v1.6.3.4-v7 - FIX Issues #1, #2, #7: Properly remove DOM and cleanup event listeners
+   * v1.6.3.2 - Feature: Pause media before removing DOM
+   * v1.6.3.5-v11 - FIX Issues #3, #4, #5:
+   *   - Issue #3: Call controller cleanup() BEFORE destroy to properly remove listeners
+   *   - Issue #4: Set isMinimizing flag for operation-specific callback suppression
+   *   - Issue #5: Enhanced logging throughout minimize operation
+   *
+   * This method now:
+   * 1. Sets isMinimizing flag (for callback suppression)
+   * 2. Pauses any playing media (video/audio)
+   * 3. Calls cleanup() on controllers (removes event listeners)
+   * 4. Destroys controllers (prevents ghost events)
+   * 5. Removes container from DOM (prevents duplicate windows)
+   * 6. Clears references and sets rendered=false
+   * 7. Clears isMinimizing flag
+   * 8. Calls onMinimize callback
+   */
+  /**
+   * Cleanup a single controller (drag or resize)
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * @private
+   */
+  _cleanupController(controller, controllerName) {
+    if (!controller) return;
+    if (controller.cleanup) {
+      controller.cleanup();
+      console.log(`[QuickTabWindow][minimize] Called ${controllerName}.cleanup():`, this.id);
+    }
+    if (controller.destroy) {
+      controller.destroy();
+    } else if (controller.detachAll) {
+      controller.detachAll();
+    }
+    console.log(`[QuickTabWindow][minimize] Destroyed ${controllerName}:`, this.id);
+  }
+
+  /**
+   * Remove container from DOM with fallback
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * @private
+   */
+  _removeContainerFromDOM() {
+    if (this.container && this.container.parentNode) {
+      this.container.remove();
+      console.log('[QuickTabWindow][minimize] Removed DOM element:', this.id);
+      return;
+    }
+    // Fallback DOM query when container reference is lost
+    const element = document.querySelector(
+      `.quick-tab-window[data-quicktab-id="${CSS.escape(this.id)}"]`
     );
+    if (element) {
+      console.warn('[QuickTabWindow][minimize] Container reference lost, using fallback:', this.id);
+      element.remove();
+    } else {
+      console.log(
+        '[QuickTabWindow][minimize] No container or fallback DOM element found:',
+        this.id
+      );
+    }
+  }
+
+  /**
+   * Clear all DOM references after minimize
+   * v1.6.3.10-v8 - FIX Code Health: Extracted to reduce minimize() complexity
+   * v1.6.3.12 - Removed Solo/Mute button references
+   * @private
+   */
+  _clearDOMReferences() {
+    this.container = null;
+    this.iframe = null;
+    this.titlebarBuilder = null;
+    this.rendered = false;
+  }
+
+  minimize() {
+    // v1.6.3.10-v10 - FIX Issue 7.1: Validate ownership before minimize
+    // This ensures titlebar minimize button respects ownership rules
+    if (this.originTabId !== null && this.originTabId !== undefined) {
+      if (this.currentTabId !== null && this.originTabId !== this.currentTabId) {
+        console.warn('[QuickTabWindow][minimize] BLOCKED - not owned by current tab:', {
+          id: this.id,
+          originTabId: this.originTabId,
+          currentTabId: this.currentTabId
+        });
+        return;
+      }
+    }
+
+    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
+    this.isMinimizing = true;
+    this.minimized = true;
+
+    console.log('[QuickTabWindow][minimize] ENTRY:', {
+      id: this.id,
+      url: this.url,
+      title: this.title,
+      position: { left: this.left, top: this.top },
+      size: { width: this.width, height: this.height }
+    });
+
+    // Pause media before removing DOM
+    this._pauseMediaInIframe();
+
+    // v1.6.3.10-v8 - FIX Code Health: Use extracted helper for controller cleanup
+    this._cleanupController(this.dragController, 'dragController');
+    this.dragController = null;
+    this._cleanupController(this.resizeController, 'resizeController');
+    this.resizeController = null;
+
+    console.log('[QuickTabWindow][minimize] Controllers destroyed:', { id: this.id });
+
+    // v1.6.3.10-v8 - FIX Code Health: Use extracted helper for DOM removal
+    this._removeContainerFromDOM();
+    this._clearDOMReferences();
+
+    console.log('[QuickTabWindow][minimize] Container cleared:', {
+      id: this.id,
+      hasControllers: { drag: !!this.dragController, resize: !!this.resizeController }
+    });
+
+    // Clear operation flag
+    this.isMinimizing = false;
+
+    console.log('[QuickTabWindow][minimize] EXIT:', {
+      id: this.id,
+      minimized: this.minimized,
+      rendered: this.rendered
+    });
 
     this.onMinimize(this.id);
   }
@@ -320,21 +1238,83 @@ export class QuickTabWindow {
   /**
    * Restore minimized Quick Tab window
    * v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's in the same place
+   * v1.6.3.4-v7 - FIX Issues #1, #6: Recreate DOM via render() since minimize() removes it
+   * v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call render() here!
+   *   UICoordinator is the single rendering authority. restore() only updates instance state.
+   *   UICoordinator.update() will detect the state change and call render() exactly once.
+   * v1.6.3.4-v8 - FIX Issue #7: Log explicit warning when container is null (expected behavior)
+   * v1.6.3.4-v10 - FIX Issue #1: REMOVE ALL DOM manipulation from restore()
+   *   UICoordinator is the SOLE rendering authority. restore() ONLY updates instance state.
+   *   Removed the `if (this.container) { ... }` block that was directly manipulating DOM.
+   * v1.6.3.5-v11 - FIX Issue #4, #5:
+   *   - Issue #4: Set isRestoring flag for operation-specific callback suppression
+   *   - Issue #5: Enhanced logging throughout restore operation
+   *
+   * This method now:
+   * 1. Sets isRestoring flag (for callback suppression)
+   * 2. Clears minimized flag
+   * 3. Logs dimensions for debugging (but does NOT manipulate DOM)
+   * 4. Clears isRestoring flag
+   * 5. Calls onFocus() callback to notify state change
    */
   restore() {
+    // v1.6.3.5-v11 - FIX Issue #4: Set operation flag for callback suppression
+    this.isRestoring = true;
     this.minimized = false;
-    this.container.style.display = 'flex';
 
-    // v1.5.9.8 - FIX: Explicitly re-apply position to ensure it's restored to the same place
-    this.container.style.left = `${this.left}px`;
-    this.container.style.top = `${this.top}px`;
-    this.container.style.width = `${this.width}px`;
-    this.container.style.height = `${this.height}px`;
+    console.log('[QuickTabWindow][restore] ENTRY:', {
+      id: this.id,
+      position: { left: this.left, top: this.top },
+      size: { width: this.width, height: this.height },
+      hasContainer: !!this.container,
+      rendered: this.rendered,
+      zIndex: this.zIndex
+    });
 
-    // Enhanced logging for console log export (Issue #1)
+    // v1.6.3.2 - FIX Issue #1 CRITICAL: Do NOT call render() here!
+    // UICoordinator is the single rendering authority.
+    // This method ONLY updates instance state; UICoordinator.update() handles DOM creation.
+    // The duplicate window bug was caused by BOTH restore() AND update() calling render().
+
+    // v1.6.3.4-v10 - FIX Issue #1: REMOVED ALL DOM MANIPULATION
+    // Previously, this method would update container.style if this.container existed.
+    // This caused a race condition where whether container exists depends on minimize/restore timing.
+    // When DOM was removed during minimize but instance still held stale container reference,
+    // restore() would manipulate a detached element instead of deferring to UICoordinator.
+    // Now UICoordinator is the SOLE authority for DOM manipulation.
+    console.log('[QuickTabWindow][restore] Container state:', {
+      id: this.id,
+      hasContainer: !!this.container,
+      containerAttached: !!this.container?.parentNode
+    });
+    console.log('[QuickTabWindow][restore] Dimensions to be used by UICoordinator:', {
+      left: this.left,
+      top: this.top,
+      width: this.width,
+      height: this.height
+    });
+
+    // v1.6.3.5-v11 - FIX Issue #4: Clear operation flag
+    this.isRestoring = false;
+
     console.log(
-      `[Quick Tab] Restored - URL: ${this.url}, Title: ${this.title}, ID: ${this.id}, Position: (${this.left}, ${this.top}), Size: ${this.width}x${this.height}`
+      '[QuickTabWindow][restore] EXIT (state updated, render deferred to UICoordinator):',
+      {
+        id: this.id,
+        minimized: this.minimized,
+        isRestoring: this.isRestoring
+      }
     );
+
+    // v1.6.3.5-v12 - FIX Issue #3: Log restore completion with full instance state
+    console.log('[QuickTabWindow][restore] Restore completed - instance state:', {
+      id: this.id,
+      minimized: this.minimized,
+      hasContainer: !!this.container,
+      isRendered: this.isRendered(),
+      hasDragController: !!this.dragController,
+      hasResizeController: !!this.resizeController
+    });
 
     this.onFocus(this.id);
   }
@@ -343,21 +1323,80 @@ export class QuickTabWindow {
 
   /**
    * Update z-index for stacking
+   * v1.6.3.4-v5 - FIX Bug #4: Add null/undefined safety check for newZIndex
+   * v1.6.3.5-v11 - FIX Issue #8, #9:
+   *   - Issue #8: Defensive check for container existence and DOM attachment
+   *   - Issue #9: Comprehensive z-index operation logging
    */
   updateZIndex(newZIndex) {
-    this.zIndex = newZIndex;
-    if (this.container) {
-      this.container.style.zIndex = newZIndex.toString();
+    const oldZIndex = this.zIndex;
+
+    // v1.6.3.5-v11 - FIX Issue #9: Log entry with parameters
+    console.log('[QuickTabWindow][updateZIndex] ENTRY:', {
+      id: this.id,
+      oldZIndex,
+      newZIndex,
+      hasContainer: !!this.container,
+      containerAttached: !!this.container?.parentNode
+    });
+
+    // v1.6.3.4-v5 - FIX Bug #4: Guard against null/undefined to prevent TypeError
+    if (newZIndex === undefined || newZIndex === null) {
+      console.warn('[QuickTabWindow][updateZIndex] Called with null/undefined, skipping:', {
+        id: this.id,
+        oldZIndex
+      });
+      return;
     }
+
+    this.zIndex = newZIndex;
+
+    // v1.6.3.5-v11 - FIX Issue #8: Defensive container check
+    if (!this.container) {
+      console.warn(
+        '[QuickTabWindow][updateZIndex] No container - z-index stored but not applied to DOM:',
+        {
+          id: this.id,
+          newZIndex
+        }
+      );
+      return;
+    }
+
+    // v1.6.3.5-v11 - FIX Issue #8: Verify container is attached to DOM
+    if (!this.container.parentNode) {
+      console.warn('[QuickTabWindow][updateZIndex] Container not attached to DOM:', {
+        id: this.id,
+        newZIndex
+      });
+      // Still update the style in case container is re-attached later
+    }
+
+    this.container.style.zIndex = newZIndex.toString();
+
+    // v1.6.3.5-v11 - FIX Issue #9: Log completion and verify update
+    console.log('[QuickTabWindow][updateZIndex] EXIT:', {
+      id: this.id,
+      oldZIndex,
+      newZIndex,
+      domZIndex: this.container.style.zIndex,
+      verified: this.container.style.zIndex === newZIndex.toString()
+    });
   }
 
   /**
-   * Setup iframe load handler to update title
+   * Setup iframe load handler to update title and URL
    * v1.6.0 Phase 2.4 - Extracted helper to reduce nesting
+   * v1.6.3.12-v13 - FIX Bug #1: Also send URL updates to background when iframe navigates
+   * v1.6.4-v2 - FIX Bug #1 & #4: Track title changes and notify background of state changes
    */
   setupIframeLoadHandler() {
     this.iframe.addEventListener('load', () => {
+      // v1.6.4-v2 - FIX Bug #1 & #4: Capture previous title before update
+      const previousTitle = this.title;
       this._updateTitleFromIframe();
+      // v1.6.4-v2 - FIX Bug #1 & #4: Notify background of URL or title changes for Manager update
+      this._notifyBackgroundOfStateChange(previousTitle);
     });
   }
 
@@ -423,166 +1462,165 @@ export class QuickTabWindow {
   }
 
   /**
-   * v1.5.9.13 - Check if current tab is in solo list
-   */
-  isCurrentTabSoloed() {
-    return (
-      this.soloedOnTabs &&
-      this.soloedOnTabs.length > 0 &&
-      window.quickTabsManager &&
-      window.quickTabsManager.currentTabId &&
-      this.soloedOnTabs.includes(window.quickTabsManager.currentTabId)
-    );
-  }
-
-  /**
-   * v1.5.9.13 - Check if current tab is in mute list
-   */
-  isCurrentTabMuted() {
-    return (
-      this.mutedOnTabs &&
-      this.mutedOnTabs.length > 0 &&
-      window.quickTabsManager &&
-      window.quickTabsManager.currentTabId &&
-      this.mutedOnTabs.includes(window.quickTabsManager.currentTabId)
-    );
-  }
-
-  /**
-   * v1.5.9.13 - Toggle solo state for current tab
-   */
-  toggleSolo(soloBtn) {
-    const currentTabId = this._validateCurrentTabId('solo');
-    if (!currentTabId) return;
-
-    if (this.isCurrentTabSoloed()) {
-      this._unsoloCurrentTab(soloBtn, currentTabId);
-    } else {
-      this._soloCurrentTab(soloBtn, currentTabId);
-    }
-
-    // Notify parent manager
-    if (this.onSolo) {
-      this.onSolo(this.id, this.soloedOnTabs);
-    }
-  }
-
-  /**
-   * v1.5.9.13 - Toggle mute state for current tab
-   */
-  toggleMute(muteBtn) {
-    const currentTabId = this._validateCurrentTabId('mute');
-    if (!currentTabId) return;
-
-    if (this.isCurrentTabMuted()) {
-      this._unmuteCurrentTab(muteBtn, currentTabId);
-    } else {
-      this._muteCurrentTab(muteBtn, currentTabId);
-    }
-
-    // Notify parent manager
-    if (this.onMute) {
-      this.onMute(this.id, this.mutedOnTabs);
-    }
-  }
-
-  /**
-   * Validate current tab ID availability
+   * Notify background of URL or title change when iframe navigates or loads
+   * v1.6.3.12-v13 - FIX Bug #1: Send UPDATE_QUICK_TAB message to background
+   * when iframe URL changes so Manager displays the current URL
+   * v1.6.4-v2 - FIX Bug #1 & #4: Also notify when title changes (even if URL unchanged)
    * @private
-   * @param {string} action - Action name for logging ('solo' or 'mute')
+   * @param {string} previousTitle - The title before _updateTitleFromIframe() was called
+   */
+  async _notifyBackgroundOfStateChange(previousTitle) {
+    // Get the current iframe URL
+    const newUrl = this._tryGetIframeUrl();
+    if (!newUrl) {
+      return; // Cannot determine URL, skip update
+    }
+
+    // Get the new title (already updated by _updateTitleFromIframe)
+    const newTitle = this.title;
+
+    // Check what changed
+    const urlChanged = newUrl !== this.url;
+    const titleChanged = newTitle !== previousTitle;
+
+    // v1.6.4-v2 - FIX Bug #1 & #4: Skip only if BOTH URL and title are unchanged
+    if (!urlChanged && !titleChanged) {
+      console.debug('[QuickTabWindow] STATE_UNCHANGED: No changes to notify background:', {
+        id: this.id,
+        url: newUrl,
+        title: newTitle
+      });
+      return;
+    }
+
+    console.log('[QuickTabWindow] STATE_CHANGED: Notifying background:', {
+      id: this.id,
+      urlChanged,
+      titleChanged,
+      oldUrl: this.url,
+      newUrl,
+      oldTitle: previousTitle,
+      newTitle,
+      originTabId: this.originTabId
+    });
+
+    // Update local URL state (title already updated by _updateTitleFromIframe)
+    if (urlChanged) {
+      this.url = newUrl;
+    }
+
+    try {
+      // Send UPDATE_QUICK_TAB message to background
+      await browser.runtime.sendMessage({
+        type: 'UPDATE_QUICK_TAB',
+        quickTabId: this.id,
+        updates: {
+          url: newUrl,
+          title: newTitle,
+          lastUpdate: Date.now()
+        },
+        originTabId: this.originTabId,
+        source: 'QuickTabWindow.iframeLoad',
+        timestamp: Date.now()
+      });
+
+      console.log('[QuickTabWindow] STATE_CHANGED: Background notified successfully:', {
+        id: this.id,
+        urlChanged,
+        titleChanged
+      });
+    } catch (err) {
+      // Background may not be available - this is non-critical
+      console.debug('[QuickTabWindow] STATE_CHANGED: Could not notify background:', {
+        id: this.id,
+        error: err.message
+      });
+    }
+  }
+
+  /**
+   * Try to get the current iframe URL
+   * v1.6.3.12-v13 - FIX Bug #1: Helper to safely get iframe URL
+   * v1.6.4-v2 - Refactored to reduce complexity (CC=10 to <9)
+   * @private
+   * @returns {string|null} The iframe URL or null if unavailable
+   */
+  _tryGetIframeUrl() {
+    // Try direct src attribute first (always available for cross-origin)
+    const srcUrl = this._getIframeSrcAttribute();
+    if (srcUrl) {
+      return srcUrl;
+    }
+    // Try contentWindow.location for same-origin iframes
+    return this._getIframeContentWindowUrl();
+  }
+
+  /**
+   * Get URL from iframe src attribute
+   * v1.6.4-v2 - Extracted from _tryGetIframeUrl to reduce complexity
+   * @private
+   * @returns {string|null} The src attribute value or null
+   */
+  _getIframeSrcAttribute() {
+    return this.iframe?.src || null;
+  }
+
+  /**
+   * Get URL from iframe contentWindow.location (same-origin only)
+   * v1.6.4-v2 - Extracted from _tryGetIframeUrl to reduce complexity
+   * @private
+   * @returns {string|null} The contentWindow location href or null
+   */
+  _getIframeContentWindowUrl() {
+    try {
+      return this.iframe?.contentWindow?.location?.href || null;
+    } catch (_e) {
+      // SecurityError thrown for cross-origin iframes - fall back to src
+      return this._getIframeSrcAttribute();
+    }
+  }
+
+  /**
+   * Get the current tab ID, preferring instance property over global fallback
+   * v1.6.3.5-v5 - FIX Issue #2: Helper for decoupled currentTabId access
+   * @private
    * @returns {number|null} Current tab ID or null if unavailable
    */
-  _validateCurrentTabId(action) {
-    console.log(
-      `[QuickTabWindow] toggle${action.charAt(0).toUpperCase() + action.slice(1)} called for:`,
-      this.id
-    );
-
-    if (!window.quickTabsManager || !window.quickTabsManager.currentTabId) {
-      console.warn(`[QuickTabWindow] Cannot toggle ${action} - no current tab ID`);
-      return null;
+  _getCurrentTabId() {
+    // Prefer instance property (set via constructor options or setCurrentTabId)
+    if (this.currentTabId !== null && this.currentTabId !== undefined) {
+      return this.currentTabId;
     }
-
-    return window.quickTabsManager.currentTabId;
+    // Fallback to global for backward compatibility (with deprecation warning)
+    if (window.quickTabsManager?.currentTabId) {
+      console.warn(
+        '[QuickTabWindow] Using global quickTabsManager.currentTabId fallback. Pass currentTabId in constructor options instead.'
+      );
+      return window.quickTabsManager.currentTabId;
+    }
+    return null;
   }
 
   /**
-   * Un-solo current tab
-   * @private
+   * Set the current tab ID (for updating after construction)
+   * v1.6.3.5-v5 - FIX Issue #2: Allow updating currentTabId without global access
+   * @param {number} tabId - The new current tab ID
    */
-  _unsoloCurrentTab(soloBtn, currentTabId) {
-    this.soloedOnTabs = this.soloedOnTabs.filter(id => id !== currentTabId);
-    soloBtn.textContent = '⭕';
-    soloBtn.title = 'Solo (show only on this tab)';
-    soloBtn.style.background = 'transparent';
-
-    if (this.soloedOnTabs.length === 0) {
-      console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
-    }
+  setCurrentTabId(tabId) {
+    this.currentTabId = tabId;
   }
 
   /**
-   * Solo current tab
-   * @private
-   */
-  _soloCurrentTab(soloBtn, currentTabId) {
-    this.soloedOnTabs = [currentTabId];
-    this.mutedOnTabs = []; // Clear mute state (mutually exclusive)
-    soloBtn.textContent = '🎯';
-    soloBtn.title = 'Un-solo (show on all tabs)';
-    soloBtn.style.background = '#444';
-
-    // Update mute button if it exists
-    if (this.muteButton) {
-      this.muteButton.textContent = '🔊';
-      this.muteButton.title = 'Mute (hide on this tab)';
-      this.muteButton.style.background = 'transparent';
-    }
-
-    console.log('[QuickTabWindow] Soloed - only visible on this tab');
-  }
-
-  /**
-   * Unmute current tab
-   * @private
-   */
-  _unmuteCurrentTab(muteBtn, currentTabId) {
-    this.mutedOnTabs = this.mutedOnTabs.filter(id => id !== currentTabId);
-    muteBtn.textContent = '🔊';
-    muteBtn.title = 'Mute (hide on this tab)';
-    muteBtn.style.background = 'transparent';
-    console.log('[QuickTabWindow] Unmuted on this tab');
-  }
-
-  /**
-   * Mute current tab
-   * @private
-   */
-  _muteCurrentTab(muteBtn, currentTabId) {
-    if (!this.mutedOnTabs.includes(currentTabId)) {
-      this.mutedOnTabs.push(currentTabId);
-    }
-    this.soloedOnTabs = []; // Clear solo state (mutually exclusive)
-    muteBtn.textContent = '🔇';
-    muteBtn.title = 'Unmute (show on this tab)';
-    muteBtn.style.background = '#c44';
-
-    // Update solo button if it exists
-    if (this.soloButton) {
-      this.soloButton.textContent = '⭕';
-      this.soloButton.title = 'Solo (show only on this tab)';
-      this.soloButton.style.background = 'transparent';
-    }
-
-    console.log('[QuickTabWindow] Muted on this tab');
-  }
-
-  /**
-   * Set position of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * Set position of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handlePositionChange/handlePositionChangeEnd through QuickTabsManager instead.
    * @param {number} left - X position
    * @param {number} top - Y position
    */
   setPosition(left, top) {
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: setPosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.'
+    );
     this.left = left;
     this.top = top;
     if (this.container) {
@@ -592,11 +1630,16 @@ export class QuickTabWindow {
   }
 
   /**
-   * Set size of Quick Tab window (v1.5.8.13 - for sync from other tabs)
+   * Set size of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handleSizeChange/handleSizeChangeEnd through QuickTabsManager instead.
    * @param {number} width - Width in pixels
    * @param {number} height - Height in pixels
    */
   setSize(width, height) {
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: setSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.'
+    );
     this.width = width;
     this.height = height;
     if (this.container) {
@@ -606,42 +1649,232 @@ export class QuickTabWindow {
   }
 
   /**
+   * Update position of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handlePositionChange/handlePositionChangeEnd through QuickTabsManager instead.
+   * Note: The timestamp tracking (lastPositionUpdate) was removed in v1.6.3.5-v5 as dead code.
+   *
+   * @param {number} left - X position in pixels
+   * @param {number} top - Y position in pixels
+   */
+  updatePosition(left, top) {
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: updatePosition() bypasses UpdateHandler. Use QuickTabsManager.handlePositionChange() instead.'
+    );
+    this.setPosition(left, top);
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastPositionUpdate timestamp tracking (dead code)
+  }
+
+  /**
+   * Update size of Quick Tab window
+   * @deprecated v1.6.3.5-v5 - FIX Issue #1: This method bypasses UpdateHandler.
+   * Use handleSizeChange/handleSizeChangeEnd through QuickTabsManager instead.
+   * Note: The timestamp tracking (lastSizeUpdate) was removed in v1.6.3.5-v5 as dead code.
+   *
+   * @param {number} width - Width in pixels
+   * @param {number} height - Height in pixels
+   */
+  updateSize(width, height) {
+    console.warn(
+      '[QuickTabWindow] DEPRECATED: updateSize() bypasses UpdateHandler. Use QuickTabsManager.handleSizeChange() instead.'
+    );
+    this.setSize(width, height);
+    // v1.6.3.5-v5 - FIX Issue #6: Removed lastSizeUpdate timestamp tracking (dead code)
+  }
+
+  /**
    * v1.5.9.10 - Check if Quick Tab is rendered on the page
+   * v1.6.3.4-v11 - FIX Issue #6: Ensure strict boolean return (not truthy object)
+   *   The && chain was returning the last truthy value (parentNode object)
+   *   instead of a boolean, causing conditional logic to incorrectly treat
+   *   destroyed windows as "attached" when the result was an empty object.
    * @returns {boolean} True if rendered and attached to DOM
    */
   isRendered() {
-    return this.rendered && this.container && this.container.parentNode;
+    return Boolean(this.rendered && this.container && this.container.parentNode);
+  }
+
+  /**
+   * Check if Quick Tab is active (in Map and rendered/can be rendered)
+   * v1.6.3.10-v10 - FIX Issue 4.2: Check both Map presence AND rendered state
+   * This distinguishes between:
+   * - Active: In Map AND either rendered or can be rendered (not minimized or about to be restored)
+   * - Minimized: In Map but container is null (waiting for restore)
+   * - Destroyed: Not in Map
+   * @returns {boolean} True if Quick Tab is active and can accept operations
+   */
+  isActive() {
+    // If destroyed, definitely not active
+    if (this.destroyed) {
+      return false;
+    }
+    // If minimized, not currently active (but exists)
+    if (this.minimized) {
+      return false;
+    }
+    // If rendered with valid container, active
+    return this.isRendered();
+  }
+
+  /**
+   * Log warning if rendered flag and container state are out of sync
+   * v1.6.3.5-v12 - FIX Issue E: Helper to detect and log state desync at key lifecycle points
+   * v1.6.4-v2 - Extracted complex conditionals into predicate helpers for Code Health
+   * @param {string} operation - Name of the current operation for logging context
+   * @private
+   */
+  _logIfStateDesync(operation) {
+    if (this._isRenderedButDetached()) {
+      console.warn('[QuickTabWindow] State desync detected:', {
+        id: this.id,
+        operation,
+        rendered: this.rendered,
+        hasContainer: !!this.container,
+        containerAttached: !!this.container?.parentNode
+      });
+    }
+    if (this._isUnrenderedButAttached()) {
+      console.warn('[QuickTabWindow] State desync detected:', {
+        id: this.id,
+        operation,
+        rendered: this.rendered,
+        hasContainer: true,
+        containerAttached: true
+      });
+    }
+  }
+
+  /**
+   * Check if window is marked as rendered but container is missing or detached
+   * v1.6.4-v2 - Extracted from _logIfStateDesync to simplify complex conditional
+   * @private
+   * @returns {boolean} True if rendered flag is true but DOM is invalid
+   */
+  _isRenderedButDetached() {
+    const isMarkedAsRendered = this.rendered;
+    const isContainerMissing = !this.container;
+    const isContainerDetached = !this.container?.parentNode;
+    return isMarkedAsRendered && (isContainerMissing || isContainerDetached);
+  }
+
+  /**
+   * Check if window is marked as not rendered but container exists and is attached
+   * v1.6.4-v2 - Extracted from _logIfStateDesync to simplify complex conditional
+   * @private
+   * @returns {boolean} True if rendered flag is false but DOM exists
+   */
+  _isUnrenderedButAttached() {
+    const isMarkedAsNotRendered = !this.rendered;
+    const hasValidContainer = Boolean(this.container && this.container.parentNode);
+    return isMarkedAsNotRendered && hasValidContainer;
+  }
+
+  /**
+   * Update debug ID display dynamically
+   * v1.6.3.4-v9 - FIX Issue #4: Update already-rendered Quick Tab titlebars when settings change
+   * @param {boolean} showDebugId - Whether to show debug ID in titlebar
+   */
+  updateDebugIdDisplay(showDebugId) {
+    // Update instance property
+    this.showDebugId = showDebugId;
+
+    // Delegate to TitlebarBuilder if available
+    if (this.titlebarBuilder) {
+      this.titlebarBuilder.updateDebugIdDisplay(showDebugId);
+    } else {
+      console.log('[QuickTabWindow] No titlebarBuilder available for debug ID update:', this.id);
+    }
   }
 
   /**
    * Destroy the Quick Tab window
+   * v1.6.3.2 - FIX Issue #5: Ensure all event listeners are removed BEFORE DOM removal
+   *   Order is critical: cleanup controllers → remove handlers → remove DOM → clear references
+   * v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists before calling, with logging
+   * v1.6.3.12-v7 - FIX Area C: Enhanced listener cleanup logging
    */
   destroy() {
-    // v1.6.0 Phase 2.9 - Cleanup drag controller
+    console.log('[QuickTabWindow] Destroying:', this.id);
+
+    // v1.6.3.2 - FIX Issue #5: Set destroyed flag early to prevent new events
+    this.destroyed = true;
+
+    // v1.6.3.12-v7 - FIX Area C: Track cleaned up listeners
+    let cleanedListenerCount = 0;
+
+    // v1.6.0 Phase 2.9 - Cleanup drag controller FIRST (removes drag event listeners)
     if (this.dragController) {
       this.dragController.destroy();
       this.dragController = null;
+      cleanedListenerCount += 3; // Approx listeners: mousedown, mousemove, mouseup
+      console.log('[QuickTabWindow] Cleaned up drag controller');
     }
 
-    // v1.6.0 Phase 2.4 - Cleanup resize controller
+    // v1.6.0 Phase 2.4 - Cleanup resize controller (removes resize handles and listeners)
     if (this.resizeController) {
       this.resizeController.detachAll();
       this.resizeController = null;
+      cleanedListenerCount += 4; // Approx listeners per handle
+      console.log('[QuickTabWindow] Cleaned up resize controller');
     }
 
+    // v1.6.3.2 - FIX Issue #5: Remove focus handler before DOM removal
+    // Note: The mousedown handler for focus is added via addEventListener but not tracked
+    // This is acceptable since removing the container also removes its listeners
+
+    // v1.6.3.2 - FIX Issue #5: Clear titlebar builder references
+    if (this.titlebarBuilder) {
+      this.titlebarBuilder = null;
+    }
+
+    // v1.6.3.12-v7 - FIX Issue #24/#28: Clear state sync tracking
+    this._lastSyncedState = null;
+    this._pendingStateSync = false;
+    this._lifecycleHandlerBound = false;
+
+    // v1.6.3.2 - FIX Issue #5: Now remove DOM AFTER all event handlers are cleaned up
     if (this.container) {
       this.container.remove();
       this.container = null;
       this.iframe = null;
+      // v1.6.4 - FIX BUG #1: Cleanup click overlay reference
+      this.clickOverlay = null;
       this.rendered = false; // v1.5.9.10 - Reset rendering state
+      console.log('[QuickTabWindow] Removed DOM element');
     }
-    this.onDestroy(this.id);
+
+    // v1.6.3.12-v7 - FIX Area C: Log listener cleanup summary
+    console.log('[LISTENER_CLEANUP] QuickTabWindow destroy complete:', {
+      quickTabId: this.id,
+      estimatedListenersRemoved: cleanedListenerCount,
+      controllersDestroyed: 2
+    });
+
+    // v1.6.3.4-v3 - FIX Issue #4: Verify onDestroy callback exists and is a function
+    console.log('[QuickTabWindow] Checking onDestroy callback:', {
+      id: this.id,
+      hasOnDestroy: typeof this.onDestroy === 'function',
+      callbackType: typeof this.onDestroy
+    });
+
+    if (typeof this.onDestroy === 'function') {
+      try {
+        this.onDestroy(this.id);
+        console.log('[QuickTabWindow] onDestroy callback executed successfully:', this.id);
+      } catch (err) {
+        console.error('[QuickTabWindow] onDestroy callback failed:', this.id, err.message);
+      }
+    } else {
+      console.warn('[QuickTabWindow] onDestroy callback not wired or not a function:', this.id);
+    }
+
     console.log('[QuickTabWindow] Destroyed:', this.id);
   }
 
   /**
    * Get current state for persistence
    * v1.5.9.13 - Updated to include soloedOnTabs and mutedOnTabs
+   * v1.6.3.12 - Removed soloedOnTabs/mutedOnTabs (Solo/Mute removed)
    */
   getState() {
     return {
@@ -654,9 +1887,7 @@ export class QuickTabWindow {
       title: this.title,
       cookieStoreId: this.cookieStoreId,
       minimized: this.minimized,
-      zIndex: this.zIndex,
-      soloedOnTabs: this.soloedOnTabs, // v1.5.9.13
-      mutedOnTabs: this.mutedOnTabs // v1.5.9.13
+      zIndex: this.zIndex
     };
   }
 }

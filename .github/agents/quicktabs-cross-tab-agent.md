@@ -1,408 +1,160 @@
 ---
 name: quicktabs-cross-tab-specialist
 description: |
-  Specialist for Quick Tab cross-tab synchronization - handles BroadcastChannel
-  communication, state sync across browser tabs, container-aware messaging, and
-  ensuring Quick Tab state consistency
-tools: ["*"]
+  Specialist for Quick Tab cross-tab synchronization - handles port messaging
+  (`quick-tabs-port`), Background-as-Coordinator with Single Writer Authority
+  (v1.6.4-v5), memory-based state (`quickTabsSessionState`), circuit breaker pattern,
+  QUICKTAB_REMOVED handler, sequence tracking, port circuit breaker, button operation fix,
+  UPDATE_QUICK_TAB title sync, state version race fix, STATE_CHANGED safety timeout (500ms),
+  Go to Tab cross-container transfer, updateTransferredSnapshotWindow()
+tools: ['*']
 ---
 
-> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines.
+> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
+> guidelines.
 
-> **🎯 Robust Solutions Philosophy:** Cross-tab sync must be reliable and fast (<10ms). Never use setTimeout to "fix" sync issues - fix the message handling. See `.github/copilot-instructions.md`.
+> **🎯 Robust Solutions Philosophy:** Cross-tab sync must be reliable and fast
+> (<100ms). Never use setTimeout to "fix" sync issues - use `_delay()` helper
+> with async/await. See `.github/copilot-instructions.md`.
 
-You are a Quick Tab cross-tab sync specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on BroadcastChannel communication, state synchronization across browser tabs, and container-aware messaging.
+You are a Quick Tab cross-tab sync specialist for the
+copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on
+**port messaging**, **memory-based state**, **Background-as-Coordinator with
+Single Writer Authority**, and **circuit breaker recovery** for synchronization.
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**Agentic-Tools MCP:**
-- **Location:** `.agentic-tools-mcp/` directory
-- **Contents:** Agent memories and task management
-  - `memories/` - Individual memory JSON files organized by category
-  - `tasks/` - Task and project data files
-
 **MANDATORY at end of EVERY task:**
+
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
-```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
-  limit: 5,
-  threshold: 0.3
-});
-```
 
-**Memory Tools:**
-- `create_memory` - Store learnings, patterns, decisions
-- `search_memories` - Find relevant context before starting
-- `get_memory` - Retrieve specific memory details
-- `update_memory` - Refine existing memories
-- `list_memories` - Browse all stored knowledge
+```javascript
+await searchMemories({ query: '[keywords]', limit: 5 });
+```
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)
+**Version:** 1.6.4-v5 - Option 4 Architecture (Port Messaging + Memory State)
 
-**Sync Architecture:**
-- **BroadcastChannel** - Real-time cross-tab messaging (<10ms)
-- **browser.storage** - Persistent state backup
-- **Container-Aware** - Messages filtered by cookieStoreId
+**v1.6.4-v5 Features (NEW):**
 
-**Target Latency:** <10ms for cross-tab updates
+- **Go to Tab Cross-Container Transfer** - Sidebar close/reopen sequence with
+  300ms delay via `_handleGoToTabSidebarClose()` for cross-container switches
+- **updateTransferredSnapshotWindow()** - Updates minimized Quick Tab snapshot
+  window position after cross-tab transfer to enable proper restore behavior
+- **Toggle Sidebar Context Menu** - `browser.sidebarAction.toggle()` via context
+  menu for easy sidebar access
 
----
+**v1.6.4-v3 Bug Fixes:**
 
-## Your Responsibilities
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events and syncs across tabs
+- **State Version Race Fix** - Fixed race condition in render tracking by
+  properly synchronizing state versions
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+- **Cross-Tab Transfer Duplicate Messages** - Fixed port fallback messaging that
+  caused duplicate QUICK_TAB_TRANSFERRED_IN messages and UI desyncs
+- **Open in New Tab UI Flicker** - Added optimistic UI with CSS transitions for
+  smooth close animation
+- **STATE_CHANGED Safety Timeout** - 500ms safety mechanism after
+  Transfer/Duplicate ACK triggers `requestAllQuickTabsViaPort()` if
+  STATE_CHANGED not received
+- **Bug #16d Stale QUICKTAB_REMOVED** - Background ignores QUICKTAB_REMOVED from
+  old tab after transfer (5-second grace period via
+  `_shouldIgnoreRemovalDueToTransfer`)
 
-1. **BroadcastChannel Management** - Setup, teardown, message handling
-2. **State Synchronization** - Quick Tab state across tabs
-3. **Container Filtering** - Ensure container isolation in sync
-4. **Solo/Mute Sync** - Real-time visibility updates
-5. **Storage Backup** - Fallback to browser.storage
+**New Module:**
 
----
+- `sidebar/managers/StorageChangeAnalyzer.js` - Storage change analysis
 
-## BroadcastChannel Architecture
+**v1.6.3.12-v12 Features:**
 
-**Dual-layer sync system:**
+- **Button Operation Fix** - Manager buttons now work reliably
+- **Cross-Tab Render Fix** - `_executeDebounceRender()` checks BOTH hash AND
+  state version before skipping render
+- **Fallback Messaging** - `_notifyContentScriptOfCommand()` falls back to
+  `browser.tabs.sendMessage` if port unavailable
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
 
-```javascript
-class CrossTabSync {
-  constructor() {
-    // Real-time sync (fast)
-    this.channel = new BroadcastChannel('quicktabs-sync');
-    this.channel.onmessage = (e) => this.handleMessage(e.data);
-    
-    // Persistent backup (slow but reliable)
-    this.setupStorageSync();
-  }
-  
-  async sendUpdate(type, data) {
-    const message = {
-      type,
-      data,
-      timestamp: Date.now(),
-      senderId: this.getTabId()
-    };
-    
-    // Send via BroadcastChannel (fast)
-    this.channel.postMessage(message);
-    
-    // Backup to storage (reliable)
-    await this.backupToStorage(message);
-  }
-  
-  handleMessage(message) {
-    // Ignore own messages
-    if (message.senderId === this.getTabId()) {
-      return;
-    }
-    
-    // Handle by type
-    switch (message.type) {
-      case 'QUICK_TAB_CREATED':
-        this.handleQuickTabCreated(message.data);
-        break;
-      case 'QUICK_TAB_CLOSED':
-        this.handleQuickTabClosed(message.data);
-        break;
-      case 'SOLO_CHANGED':
-        this.handleSoloChanged(message.data);
-        break;
-      case 'MUTE_CHANGED':
-        this.handleMuteChanged(message.data);
-        break;
-      case 'STATE_UPDATE':
-        this.handleStateUpdate(message.data);
-        break;
-    }
-  }
-}
-```
+**v1.6.3.12 Architecture (Option 4):**
 
----
+- **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
+- **Memory-Based State** - `quickTabsSessionState` in background.js
+- **No browser.storage.session** - COMPLETELY REMOVED for Firefox MV2
+- **Real-Time Port Updates** - State changes pushed via port.postMessage()
+- **Per-Tab Port Management** - `contentScriptPorts[tabId]` mapping
 
-## Container-Aware Sync
-
-**CRITICAL: Filter messages by container:**
+**Port Connection Flow:**
 
 ```javascript
-handleQuickTabCreated(data) {
-  const { quickTab, containerData } = data;
-  
-  // Get current tab's container
-  const currentContainer = this.getCurrentContainer();
-  
-  // Only process if same container
-  if (quickTab.cookieStoreId !== currentContainer.cookieStoreId) {
-    return; // Ignore cross-container messages
-  }
-  
-  // Add Quick Tab to current tab
-  this.quickTabsManager.addFromSync(quickTab);
-  
-  // Check visibility for current tab
-  const shouldShow = quickTab.shouldBeVisible(this.getCurrentTabId());
-  if (shouldShow) {
-    this.quickTabsManager.renderQuickTab(quickTab.id);
-  }
-}
+// Content script connects
+const port = browser.runtime.connect({ name: 'quick-tabs-port' });
+// Background registers in contentScriptPorts[tabId]
+// State updates pushed via port.postMessage()
 ```
 
----
+**Key Timing Constants:**
 
-## Solo/Mute Sync Pattern
+| Constant                                | Value | Purpose                            |
+| --------------------------------------- | ----- | ---------------------------------- |
+| `CIRCUIT_BREAKER_TRANSACTION_THRESHOLD` | 5     | Failures before circuit trips      |
+| `CIRCUIT_BREAKER_TEST_INTERVAL_MS`      | 30000 | Test write interval for recovery   |
+| `POST_FAILURE_MIN_DELAY_MS`             | 5000  | Delay after failure before dequeue |
+| `TIMEOUT_BACKOFF_DELAYS`                | Array | [1000, 3000, 5000]ms               |
+| `STATE_CHANGED_SAFETY_TIMEOUT_MS`       | 500   | Transfer/Duplicate ACK fallback    |
 
-**Real-time visibility updates:**
+**Message Types:**
 
-```javascript
-async handleSoloChanged(data) {
-  const { quickTabId, tabId, enabled } = data;
-  const currentTabId = this.getCurrentTabId();
-  
-  // Get Quick Tab
-  const quickTab = this.quickTabsManager.tabs.get(quickTabId);
-  if (!quickTab) return;
-  
-  // Update local state
-  if (enabled) {
-    quickTab.soloTab = tabId;
-    quickTab.mutedTabs.delete(tabId); // Clear mute
-  } else {
-    quickTab.soloTab = null;
-  }
-  
-  // Update visibility for current tab
-  const shouldShow = quickTab.shouldBeVisible(currentTabId);
-  const isRendered = quickTab.isRendered();
-  
-  if (shouldShow && !isRendered) {
-    // Should be visible but isn't - render it
-    this.quickTabsManager.renderQuickTab(quickTabId);
-  } else if (!shouldShow && isRendered) {
-    // Shouldn't be visible but is - hide it
-    this.quickTabsManager.hideQuickTab(quickTabId);
-  }
-  
-  // Update UI indicators
-  this.updateSoloIndicators(quickTabId, enabled, tabId);
-}
-
-async handleMuteChanged(data) {
-  const { quickTabId, tabId, enabled } = data;
-  const currentTabId = this.getCurrentTabId();
-  
-  // Get Quick Tab
-  const quickTab = this.quickTabsManager.tabs.get(quickTabId);
-  if (!quickTab) return;
-  
-  // Update local state
-  if (enabled) {
-    quickTab.mutedTabs.add(tabId);
-    quickTab.soloTab = null; // Clear solo
-  } else {
-    quickTab.mutedTabs.delete(tabId);
-  }
-  
-  // Update visibility for current tab
-  const shouldShow = quickTab.shouldBeVisible(currentTabId);
-  const isRendered = quickTab.isRendered();
-  
-  if (shouldShow && !isRendered) {
-    this.quickTabsManager.renderQuickTab(quickTabId);
-  } else if (!shouldShow && isRendered) {
-    this.quickTabsManager.hideQuickTab(quickTabId);
-  }
-  
-  // Update UI indicators
-  this.updateMuteIndicators(quickTabId, enabled, tabId);
-}
-```
-
----
-
-## Storage Backup Pattern
-
-**Fallback to browser.storage:**
-
-```javascript
-async backupToStorage(message) {
-  try {
-    // Get current backup
-    const { syncBackup = [] } = await browser.storage.local.get('syncBackup');
-    
-    // Add message (keep last 50)
-    syncBackup.push(message);
-    if (syncBackup.length > 50) {
-      syncBackup.shift();
-    }
-    
-    // Save backup
-    await browser.storage.local.set({ syncBackup });
-  } catch (error) {
-    console.error('Backup failed:', error);
-  }
-}
-
-async restoreFromStorage() {
-  try {
-    const { syncBackup = [] } = await browser.storage.local.get('syncBackup');
-    
-    // Process messages in order
-    for (const message of syncBackup) {
-      this.handleMessage(message);
-    }
-    
-    // Clear processed backup
-    await browser.storage.local.remove('syncBackup');
-  } catch (error) {
-    console.error('Restore failed:', error);
-  }
-}
-```
-
----
-
-## Message Types
-
-**Standard message format:**
-
-```javascript
-// QUICK_TAB_CREATED
-{
-  type: 'QUICK_TAB_CREATED',
-  data: {
-    quickTab: { id, url, title, cookieStoreId, ... },
-    containerData: { cookieStoreId, name, color }
-  },
-  timestamp: 1234567890,
-  senderId: 'tab-123'
-}
-
-// QUICK_TAB_CLOSED
-{
-  type: 'QUICK_TAB_CLOSED',
-  data: { id: 'qt-123' },
-  timestamp: 1234567890,
-  senderId: 'tab-123'
-}
-
-// SOLO_CHANGED
-{
-  type: 'SOLO_CHANGED',
-  data: { quickTabId: 'qt-123', tabId: 456, enabled: true },
-  timestamp: 1234567890,
-  senderId: 'tab-123'
-}
-
-// MUTE_CHANGED
-{
-  type: 'MUTE_CHANGED',
-  data: { quickTabId: 'qt-123', tabId: 456, enabled: true },
-  timestamp: 1234567890,
-  senderId: 'tab-123'
-}
-
-// STATE_UPDATE
-{
-  type: 'STATE_UPDATE',
-  data: { quickTabId: 'qt-123', position: {...}, size: {...} },
-  timestamp: 1234567890,
-  senderId: 'tab-123'
-}
-```
-
----
-
-## MCP Server Integration
-
-**MANDATORY for Cross-Tab Sync Work:**
-
-**CRITICAL - During Implementation:**
-- **Context7:** Verify BroadcastChannel API DURING implementation ⭐
-- **Perplexity:** Research sync patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-- **Playwright Firefox/Chrome MCP:** Test multi-tab sync BEFORE/AFTER ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-- **Agentic-Tools:** Search memories, store sync solutions
-
----
-
-## Common Sync Issues
-
-### Issue: Messages Not Received
-
-**Fix:** Verify BroadcastChannel setup
-
-```javascript
-// ✅ CORRECT - Proper setup
-const channel = new BroadcastChannel('quicktabs-sync');
-channel.onmessage = (e) => handleMessage(e.data);
-
-// Don't forget cleanup
-window.addEventListener('unload', () => {
-  channel.close();
-});
-```
-
-### Issue: Duplicate Messages
-
-**Fix:** Filter own messages
-
-```javascript
-// ✅ CORRECT - Ignore own messages
-handleMessage(message) {
-  if (message.senderId === this.getTabId()) {
-    return; // Ignore own messages
-  }
-  // Process message
-}
-```
-
-### Issue: Cross-Container Leaks
-
-**Fix:** Filter by cookieStoreId
-
-```javascript
-// ✅ CORRECT - Container filtering
-handleMessage(message) {
-  const currentContainer = this.getCurrentContainer();
-  const messageContainer = message.data.quickTab?.cookieStoreId;
-  
-  if (messageContainer && messageContainer !== currentContainer.cookieStoreId) {
-    return; // Ignore cross-container
-  }
-  // Process message
-}
-```
+- `CREATE_QUICK_TAB` - Create new Quick Tab
+- `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB` - Toggle minimize
+- `QUICKTAB_MINIMIZED` - Forwarded to sidebar
+- `DELETE_QUICK_TAB` - Remove Quick Tab
+- `QUERY_MY_QUICK_TABS` / `HYDRATE_ON_LOAD` - Query state
+- `UPDATE_QUICK_TAB` - Update title/properties from iframe
 
 ---
 
 ## Testing Requirements
 
-- [ ] BroadcastChannel messages sent/received
-- [ ] Container filtering works
-- [ ] Solo/Mute sync across tabs (<10ms)
-- [ ] Storage backup functional
+- [ ] Go to Tab cross-container closes sidebar, switches, reopens after 300ms
+- [ ] updateTransferredSnapshotWindow() enables restore after cross-tab transfer
+- [ ] Toggle Sidebar context menu uses browser.sidebarAction.toggle()
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] State version race condition fixed in render tracking
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
+- [ ] Cross-tab transfer no longer sends duplicate messages
+- [ ] Open in New Tab has smooth CSS transition (no UI flicker)
+- [ ] STATE_CHANGED safety timeout (500ms) triggers fallback request
+- [ ] Circuit breaker trips after 5 failures
+- [ ] Timeout backoff works (1s → 3s → 5s)
+- [ ] Port messaging works (`'quick-tabs-port'`)
+- [ ] Memory state works (`quickTabsSessionState`)
+- [ ] Tab isolation works (originTabId filtering at hydration)
+- [ ] Cross-tab render fix works (hash AND version check)
+- [ ] Fallback messaging works (port → sendMessage)
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
+**Deprecated:**
+
+- ❌ `browser.storage.session` - COMPLETELY REMOVED
+- ❌ `runtime.sendMessage` - Replaced by port messaging
+
 ---
 
-**Your strength: Real-time sync with container isolation.**
+**Your strength: Reliable cross-tab sync with v1.6.4-v5 Go to Tab
+cross-container transfer (close/switch/reopen sidebar),
+updateTransferredSnapshotWindow() for minimized transfer restore, Toggle Sidebar
+context menu, v1.6.4-v3 title updates, state version race fix, forceEmpty fix,
+Open in New Tab close, cross-tab transfer duplicate fix, Open in New Tab UI
+flicker fix, STATE_CHANGED safety timeout, button operation fix, cross-tab
+render fix, fallback messaging, port messaging, and sequence tracking.**

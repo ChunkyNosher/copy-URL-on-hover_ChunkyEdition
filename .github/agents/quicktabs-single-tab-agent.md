@@ -2,448 +2,118 @@
 name: quicktabs-single-tab-specialist
 description: |
   Specialist for individual Quick Tab instances - handles rendering, UI controls,
-  Solo/Mute buttons, drag/resize, navigation, container isolation, and all
-  single Quick Tab functionality
-tools: ["*"]
+  drag/resize, navigation, UICoordinator invariant checks, port messaging
+  (`quick-tabs-port`), per-tab scoping enforcement, v1.6.4-v2 Option 4 architecture,
+  memory-based state, QUICKTAB_REMOVED handler, UPDATE_QUICK_TAB title updates
+tools: ['*']
 ---
 
-> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines on documentation updates, issue creation, and MCP server usage.
+> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
+> guidelines.
 
-> **🎯 Robust Solutions Philosophy:** Each Quick Tab is isolated and container-aware. Never share state across containers. See `.github/copilot-instructions.md`.
+> **🎯 Robust Solutions Philosophy:** Each Quick Tab is self-contained. Focus on
+> proper state management and port communication. See
+> `.github/copilot-instructions.md`.
 
-You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You focus on individual Quick Tab instances - their UI, controls, Solo/Mute functionality, and container isolation.
+You are a Single Quick Tab specialist for the copy-URL-on-hover_ChunkyEdition
+Firefox/Zen Browser extension. You focus on individual Quick Tab instances -
+their UI, controls, originTabId tracking, UICoordinator invariants, port
+communication, and per-tab scoping enforcement.
 
 ## 🧠 Memory Persistence (CRITICAL)
 
-**Agentic-Tools MCP:**
-- **Location:** `.agentic-tools-mcp/` directory
-- **Contents:** Agent memories and task management
-  - `memories/` - Individual memory JSON files organized by category
-  - `tasks/` - Task and project data files
-
 **MANDATORY at end of EVERY task:**
+
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
-3. `git push`
-
-**Memory files live in ephemeral workspace - commit or lose forever.**
-
-### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
-```javascript
-const relevantMemories = await searchMemories({
-  workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
-  limit: 5,
-  threshold: 0.3
-});
-```
 
-**Memory Tools:**
-- `create_memory` - Store learnings, patterns, decisions
-- `search_memories` - Find relevant context before starting
-- `get_memory` - Retrieve specific memory details
-- `update_memory` - Refine existing memories
-- `list_memories` - Browse all stored knowledge
+```javascript
+await searchMemories({ query: '[keywords]', limit: 5 });
+```
 
 ---
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
-**Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
+**Version:** 1.6.4-v2 - Option 4 Architecture (Port Messaging + Memory State)
+
+**v1.6.4-v2 Bug Fixes (NEW):**
+
+- **Title Update from Iframe** - UPDATE_QUICK_TAB message updates title from
+  iframe load events
+- **State Version Race Fix** - Fixed race condition in render tracking
+- **forceEmpty Fix** - VisibilityHandler now correctly handles forceEmpty for
+  last Quick Tab close scenarios
+- **Open in New Tab Close** - Opening in new tab now closes Quick Tab via
+  `closeQuickTabViaPort()`
+
+**v1.6.3.12-v12 Features:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.12 Architecture (Option 4):**
+
+- **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
+- **Memory-Based State** - `quickTabsSessionState` in background.js
+- **No browser.storage.session** - Removed due to Firefox MV2 incompatibility
+- **Real-Time Port Updates** - State changes pushed via port.postMessage()
+- **Session-Only** - Quick Tabs cleared on browser restart
+
+**Content Script Port Flow:**
+
+```javascript
+// Content script connects on load
+const port = browser.runtime.connect({ name: 'quick-tabs-port' });
+port.postMessage({ type: 'HYDRATE_ON_LOAD' });
+// Background sends HYDRATE_ON_LOAD_RESPONSE with tab's Quick Tabs
+// Background sends QUICK_TABS_UPDATED on any state change
+```
 
 **Key Quick Tab Features:**
-- **Solo Mode (🎯)** - Show ONLY on specific browser tabs
-- **Mute Mode (🔇)** - Hide ONLY on specific browser tabs
-- **Container Isolation** - Respects Firefox Container boundaries
+
+- **Per-Tab Isolation** - Quick Tabs belong to originTabId
 - **Drag & Resize** - Pointer Events API (8-direction resize)
 - **Navigation Controls** - Back, Forward, Reload
-- **Minimize to Manager** - Minimize button
+- **Minimize to Manager** - `QuickTabWindow.minimize()` removes DOM
 
----
+**Message Types (Content Script):**
 
-## Your Responsibilities
+- `CREATE_QUICK_TAB` - Create new Quick Tab
+- `MINIMIZE_QUICK_TAB` / `RESTORE_QUICK_TAB` - Toggle minimize
+- `UPDATE_QUICK_TAB_POSITION` / `UPDATE_QUICK_TAB_SIZE` - Update geometry
+- `DELETE_QUICK_TAB` - Remove Quick Tab
+- `HYDRATE_ON_LOAD` - Get tab's Quick Tabs on page load
+- `UPDATE_QUICK_TAB` - Update title from iframe load
 
-1. **Quick Tab Rendering** - Create iframe with UI controls
-2. **Solo/Mute Controls** - Toggle buttons, mutual exclusivity
-3. **Drag & Resize** - Pointer Events API implementation
-4. **Navigation** - Back/Forward/Reload controls
-5. **Container Isolation** - Ensure cookieStoreId boundaries
-
----
-
-## Quick Tab Structure
-
-**Complete UI with all controls:**
-
-```html
-<div class="quick-tab" data-id="qt-123" data-container="firefox-default">
-  <!-- Title Bar -->
-  <div class="quick-tab-header">
-    <img class="quick-tab-favicon" src="...">
-    <span class="quick-tab-title">Page Title</span>
-    
-    <!-- Control Buttons -->
-    <div class="quick-tab-controls">
-      <button class="nav-back" title="Back">←</button>
-      <button class="nav-forward" title="Forward">→</button>
-      <button class="nav-reload" title="Reload">↻</button>
-      <button class="open-new-tab" title="Open in New Tab">🔗</button>
-      <button class="solo-toggle" title="Solo" data-active="false">🎯</button>
-      <button class="mute-toggle" title="Mute" data-active="false">🔇</button>
-      <button class="minimize" title="Minimize">−</button>
-      <button class="close" title="Close">✕</button>
-    </div>
-  </div>
-  
-  <!-- Content iframe -->
-  <iframe class="quick-tab-iframe" src="about:blank"></iframe>
-  
-  <!-- Resize Handles (8-direction) -->
-  <div class="resize-handle resize-n"></div>
-  <div class="resize-handle resize-ne"></div>
-  <div class="resize-handle resize-e"></div>
-  <div class="resize-handle resize-se"></div>
-  <div class="resize-handle resize-s"></div>
-  <div class="resize-handle resize-sw"></div>
-  <div class="resize-handle resize-w"></div>
-  <div class="resize-handle resize-nw"></div>
-</div>
-```
-
----
-
-## Solo/Mute Implementation
-
-**Key Rules:**
-1. Solo and Mute are **mutually exclusive**
-2. Solo = show ONLY on specific browser tab
-3. Mute = hide ONLY on specific browser tab
-4. Both use browser `tabId` (NOT Quick Tab ID)
-
-**Toggle Solo:**
-```javascript
-async toggleSolo(browserTabId) {
-  const quickTab = this.quickTabsManager.tabs.get(this.id);
-  
-  // Get current state
-  const isSolo = quickTab.soloTab === browserTabId;
-  
-  if (isSolo) {
-    // Disable Solo
-    quickTab.soloTab = null;
-    this.soloButton.dataset.active = 'false';
-    this.soloButton.textContent = '⭕';
-  } else {
-    // Enable Solo, disable Mute
-    quickTab.soloTab = browserTabId;
-    quickTab.mutedTabs.delete(browserTabId);
-    this.soloButton.dataset.active = 'true';
-    this.soloButton.textContent = '🎯';
-    this.muteButton.dataset.active = 'false';
-    this.muteButton.textContent = '🔊';
-  }
-  
-  // Save state
-  await this.quickTabsManager.saveState();
-  
-  // Emit event for manager
-  eventBus.emit('SOLO_CHANGED', {
-    quickTabId: this.id,
-    tabId: browserTabId,
-    enabled: !isSolo
-  });
-}
-```
-
-**Toggle Mute:**
-```javascript
-async toggleMute(browserTabId) {
-  const quickTab = this.quickTabsManager.tabs.get(this.id);
-  
-  // Get current state
-  const isMute = quickTab.mutedTabs.has(browserTabId);
-  
-  if (isMute) {
-    // Disable Mute
-    quickTab.mutedTabs.delete(browserTabId);
-    this.muteButton.dataset.active = 'false';
-    this.muteButton.textContent = '🔊';
-  } else {
-    // Enable Mute, disable Solo
-    quickTab.mutedTabs.add(browserTabId);
-    quickTab.soloTab = null;
-    this.muteButton.dataset.active = 'true';
-    this.muteButton.textContent = '🔇';
-    this.soloButton.dataset.active = 'false';
-    this.soloButton.textContent = '⭕';
-  }
-  
-  // Save state
-  await this.quickTabsManager.saveState();
-  
-  // Emit event for manager
-  eventBus.emit('MUTE_CHANGED', {
-    quickTabId: this.id,
-    tabId: browserTabId,
-    enabled: !isMute
-  });
-}
-```
-
----
-
-## Container Isolation Pattern
-
-**CRITICAL: Always use cookieStoreId for isolation**
-
-```javascript
-class QuickTab {
-  constructor(url, title, containerData) {
-    this.id = generateId();
-    this.url = url;
-    this.title = title;
-    
-    // Container isolation
-    this.cookieStoreId = containerData.cookieStoreId || 'firefox-default';
-    this.containerName = containerData.name || 'Default';
-    this.containerColor = containerData.color || '#808080';
-    
-    // Solo/Mute state (per browser tab ID)
-    this.soloTab = null; // Single browser tab ID
-    this.mutedTabs = new Set(); // Set of browser tab IDs
-  }
-  
-  shouldBeVisible(browserTabId) {
-    // Solo mode - show ONLY on this tab
-    if (this.soloTab !== null) {
-      return this.soloTab === browserTabId;
-    }
-    
-    // Mute mode - hide ONLY on this tab
-    if (this.mutedTabs.has(browserTabId)) {
-      return false;
-    }
-    
-    // Default - show everywhere
-    return true;
-  }
-}
-```
-
----
-
-## Drag & Resize with Pointer Events
-
-**Use Pointer Events API (no pointer escape):**
-
-```javascript
-setupDrag() {
-  this.header.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return; // Ignore buttons
-    
-    // Capture pointer
-    this.header.setPointerCapture(e.pointerId);
-    
-    this.isDragging = true;
-    this.dragStartX = e.clientX - this.element.offsetLeft;
-    this.dragStartY = e.clientY - this.element.offsetTop;
-  });
-  
-  this.header.addEventListener('pointermove', (e) => {
-    if (!this.isDragging) return;
-    
-    const newX = e.clientX - this.dragStartX;
-    const newY = e.clientY - this.dragStartY;
-    
-    this.element.style.left = `${newX}px`;
-    this.element.style.top = `${newY}px`;
-  });
-  
-  this.header.addEventListener('pointerup', (e) => {
-    if (this.isDragging) {
-      this.header.releasePointerCapture(e.pointerId);
-      this.isDragging = false;
-      this.savePosition();
-    }
-  });
-}
-
-setupResize() {
-  this.resizeHandles.forEach(handle => {
-    handle.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      
-      // Capture pointer
-      handle.setPointerCapture(e.pointerId);
-      
-      this.isResizing = true;
-      this.resizeDirection = handle.dataset.direction;
-      this.resizeStartX = e.clientX;
-      this.resizeStartY = e.clientY;
-      this.resizeStartWidth = this.element.offsetWidth;
-      this.resizeStartHeight = this.element.offsetHeight;
-      this.resizeStartLeft = this.element.offsetLeft;
-      this.resizeStartTop = this.element.offsetTop;
-    });
-  });
-  
-  document.addEventListener('pointermove', (e) => {
-    if (!this.isResizing) return;
-    
-    const deltaX = e.clientX - this.resizeStartX;
-    const deltaY = e.clientY - this.resizeStartY;
-    
-    this.applyResize(this.resizeDirection, deltaX, deltaY);
-  });
-  
-  document.addEventListener('pointerup', (e) => {
-    if (this.isResizing) {
-      this.isResizing = false;
-      this.saveSize();
-    }
-  });
-}
-```
-
----
-
-## Navigation Controls
-
-**Back/Forward/Reload:**
-
-```javascript
-setupNavigation() {
-  this.backButton.addEventListener('click', () => {
-    this.iframe.contentWindow.history.back();
-  });
-  
-  this.forwardButton.addEventListener('click', () => {
-    this.iframe.contentWindow.history.forward();
-  });
-  
-  this.reloadButton.addEventListener('click', () => {
-    this.iframe.contentWindow.location.reload();
-  });
-  
-  // Update button states
-  this.iframe.addEventListener('load', () => {
-    this.updateNavigationState();
-  });
-}
-
-updateNavigationState() {
-  // Enable/disable based on history
-  const canGoBack = this.iframe.contentWindow.history.length > 1;
-  this.backButton.disabled = !canGoBack;
-  
-  // Update title and favicon
-  this.updateTitle();
-  this.updateFavicon();
-}
-```
-
----
-
-## MCP Server Integration
-
-**MANDATORY for Single Quick Tab Work:**
-
-**CRITICAL - During Implementation:**
-- **Context7:** Verify WebExtensions APIs DURING implementation ⭐
-- **Perplexity:** Research drag/resize patterns (paste code) ⭐
-  - **LIMITATION:** Cannot read repo files - paste code into prompt
-- **ESLint:** Lint all changes ⭐
-- **CodeScene:** Check code health ⭐
-
-**CRITICAL - Testing:**
-- **Playwright Firefox/Chrome MCP:** Test BEFORE/AFTER changes ⭐
-- **Codecov:** Verify coverage ⭐
-
-**Every Task:**
-- **Agentic-Tools:** Search memories, store UI solutions
-
----
-
-## Common Quick Tab Issues
-
-### Issue: Solo/Mute Not Mutually Exclusive
-
-**Fix:** Clear opposite state when toggling
-
-```javascript
-// ✅ CORRECT - Mutual exclusivity enforced
-if (enabling === 'solo') {
-  quickTab.soloTab = tabId;
-  quickTab.mutedTabs.delete(tabId); // Clear mute
-} else if (enabling === 'mute') {
-  quickTab.mutedTabs.add(tabId);
-  quickTab.soloTab = null; // Clear solo
-}
-```
-
-### Issue: Quick Tab Visible in Wrong Container
-
-**Fix:** Always check cookieStoreId match
-
-```javascript
-// ✅ CORRECT - Container isolation
-async function shouldRenderQuickTab(quickTab, browserTab) {
-  const tabContainer = browserTab.cookieStoreId || 'firefox-default';
-  const qtContainer = quickTab.cookieStoreId || 'firefox-default';
-  
-  if (tabContainer !== qtContainer) {
-    return false; // Different containers
-  }
-  
-  return quickTab.shouldBeVisible(browserTab.id);
-}
-```
-
-### Issue: Drag Pointer Escapes Quick Tab
-
-**Fix:** Use setPointerCapture
-
-```javascript
-// ✅ CORRECT - Pointer captured
-element.addEventListener('pointerdown', (e) => {
-  element.setPointerCapture(e.pointerId);
-  // Start drag
-});
-
-element.addEventListener('pointerup', (e) => {
-  element.releasePointerCapture(e.pointerId);
-  // End drag
-});
-```
+**State Machine:** States: VISIBLE, MINIMIZING, MINIMIZED, RESTORING, DESTROYED
 
 ---
 
 ## Testing Requirements
 
-**For Every Quick Tab Change:**
-
-- [ ] Solo/Mute mutual exclusivity works
-- [ ] Container isolation respected
-- [ ] Drag works without pointer escape
-- [ ] Resize works in all 8 directions
-- [ ] Navigation controls functional
+- [ ] Title updates from iframe load via UPDATE_QUICK_TAB
+- [ ] forceEmpty works for last Quick Tab close
+- [ ] Open in New Tab closes Quick Tab via closeQuickTabViaPort()
+- [ ] Port messaging works (`'quick-tabs-port'`)
+- [ ] HYDRATE_ON_LOAD / HYDRATE_ON_LOAD_RESPONSE works
+- [ ] QUICK_TABS_UPDATED received and rendered
+- [ ] Per-tab scoping works (originTabId filtering)
+- [ ] Drag/resize updates sent via port
+- [ ] originTabId set correctly on creation
 - [ ] ESLint passes ⭐
 - [ ] Memory files committed 🧠
 
----
+**Deprecated:**
 
-## Before Every Commit Checklist
-
-- [ ] Solo/Mute tested
-- [ ] Container isolation verified
-- [ ] Drag/resize working
-- [ ] ESLint passed ⭐
-- [ ] Playwright tests pass
-- [ ] Memory files committed 🧠
+- ❌ Solo/Mute - Features removed in v1.6.3.11-v12
+- ❌ `storage.onChanged` - Replaced by port messaging
+- ❌ `runtime.sendMessage` - Replaced by port messaging
 
 ---
 
-**Your strength: Individual Quick Tab isolation and functionality.**
+**Your strength: Individual Quick Tab isolation with v1.6.4-v2 title updates,
+forceEmpty fix, Open in New Tab close, port messaging, memory-based state,
+per-tab scoping.**

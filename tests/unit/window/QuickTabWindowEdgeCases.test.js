@@ -6,8 +6,6 @@
  * Uncovered lines: 153-159 (onOpenInTab), 360-420 (iframe title update), 477 (console.log)
  */
 
-import { jest } from '@jest/globals';
-
 import { QuickTabWindow } from '../../../src/features/quick-tabs/window.js';
 
 describe('QuickTabWindow - Edge Cases', () => {
@@ -73,9 +71,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-1',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -101,9 +97,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-2',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -130,9 +124,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-3',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -162,9 +154,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-4',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -196,9 +186,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-5',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -232,9 +220,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-6',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -265,9 +251,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-7',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -308,9 +292,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-8',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -341,142 +323,7 @@ describe('QuickTabWindow - Edge Cases', () => {
     });
   });
 
-  describe('Solo/Mute Console Logging', () => {
-    test('should log when unsoloing (soloedOnTabs becomes empty)', async () => {
-      const consoleLogSpy = jest.spyOn(console, 'log');
-
-      quickTabWindow = new QuickTabWindow(
-        {
-          url: 'https://example.com',
-          id: 'qt-9',
-          cookieStoreId: 'firefox-default',
-          position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [123], // Start with one tab soloed
-          mutedOnTabs: []
-        },
-        container,
-        mockCallbacks
-      );
-
-      await quickTabWindow.render();
-
-      // Mock current tab ID
-      mockBrowser.tabs.query.mockResolvedValue([{ id: 123 }]);
-
-      // Find solo button - use getComputedStyle to get actual rendered element
-      const soloBtn =
-        quickTabWindow.container.querySelector('.solo-btn') ||
-        quickTabWindow.titlebar?.querySelector('.solo-btn');
-
-      // If button not found, manually test the logic
-      if (!soloBtn) {
-        // Directly test the unsolo logic
-        quickTabWindow.soloedOnTabs = [123]; // Ensure starting state
-
-        // Simulate unsolo by clearing the array
-        const originalLength = quickTabWindow.soloedOnTabs.length;
-        quickTabWindow.soloedOnTabs = quickTabWindow.soloedOnTabs.filter(id => id !== 123);
-
-        // The console.log happens when array becomes empty
-        if (originalLength > 0 && quickTabWindow.soloedOnTabs.length === 0) {
-          console.log('[QuickTabWindow] Un-soloed - now visible on all tabs');
-        }
-      } else {
-        // Click to unsolo (remove tab 123 from solo list)
-        await quickTabWindow.toggleSolo(soloBtn);
-      }
-
-      // Verify console log called
-      expect(consoleLogSpy).toHaveBeenCalledWith(
-        '[QuickTabWindow] Un-soloed - now visible on all tabs'
-      );
-
-      consoleLogSpy.mockRestore();
-    });
-
-    test('should not log when soloing (adding to soloedOnTabs)', async () => {
-      const consoleLogSpy = jest.spyOn(console, 'log');
-
-      quickTabWindow = new QuickTabWindow(
-        {
-          url: 'https://example.com',
-          id: 'qt-10',
-          cookieStoreId: 'firefox-default',
-          position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [], // Start with no tabs soloed
-          mutedOnTabs: []
-        },
-        container,
-        mockCallbacks
-      );
-
-      await quickTabWindow.render();
-
-      // Clear previous console.log calls from render
-      consoleLogSpy.mockClear();
-
-      // Mock current tab ID
-      mockBrowser.tabs.query.mockResolvedValue([{ id: 456 }]);
-
-      // Directly test solo logic (adding tab)
-      quickTabWindow.soloedOnTabs = [456]; // Solo current tab
-      quickTabWindow.mutedOnTabs = []; // Clear mute (mutually exclusive)
-
-      // The console.log only happens when becoming empty, not when adding
-      // So it should NOT be called here
-
-      // Verify unsolo message NOT logged (we're soloing, not unsoloing)
-      expect(consoleLogSpy).not.toHaveBeenCalledWith(
-        '[QuickTabWindow] Un-soloed - now visible on all tabs'
-      );
-
-      consoleLogSpy.mockRestore();
-    });
-
-    test('should handle solo toggle with multiple tabs in list', async () => {
-      const consoleLogSpy = jest.spyOn(console, 'log');
-
-      quickTabWindow = new QuickTabWindow(
-        {
-          url: 'https://example.com',
-          id: 'qt-11',
-          cookieStoreId: 'firefox-default',
-          position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [111, 222, 333], // Multiple tabs soloed
-          mutedOnTabs: []
-        },
-        container,
-        mockCallbacks
-      );
-
-      await quickTabWindow.render();
-
-      // Clear render logs
-      consoleLogSpy.mockClear();
-
-      // Mock current tab ID (one of the soloed tabs)
-      mockBrowser.tabs.query.mockResolvedValue([{ id: 222 }]);
-
-      // Simulate unsolo of one tab (remove 222, but 111 and 333 remain)
-      quickTabWindow.soloedOnTabs = quickTabWindow.soloedOnTabs.filter(id => id !== 222);
-
-      // Verify NO log because soloedOnTabs is NOT empty (still has 111 and 333)
-      expect(consoleLogSpy).not.toHaveBeenCalledWith(
-        '[QuickTabWindow] Un-soloed - now visible on all tabs'
-      );
-
-      // Verify list still has items
-      expect(quickTabWindow.soloedOnTabs.length).toBeGreaterThan(0);
-      expect(quickTabWindow.soloedOnTabs).toContain(111);
-      expect(quickTabWindow.soloedOnTabs).toContain(333);
-      expect(quickTabWindow.soloedOnTabs).not.toContain(222);
-
-      consoleLogSpy.mockRestore();
-    });
-  });
+  // v1.6.3.12 - Solo/Mute Console Logging tests removed (functionality removed)
 
   describe('Additional Edge Cases', () => {
     test('should handle concurrent iframe load events', async () => {
@@ -486,9 +333,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-12',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks
@@ -525,9 +370,7 @@ describe('QuickTabWindow - Edge Cases', () => {
           id: 'qt-13',
           cookieStoreId: 'firefox-default',
           position: { left: 100, top: 100 },
-          size: { width: 400, height: 300 },
-          soloedOnTabs: [],
-          mutedOnTabs: []
+          size: { width: 400, height: 300 }
         },
         container,
         mockCallbacks

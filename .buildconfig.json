@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Build configuration for copy-URL-on-hover_ChunkyEdition",
+  "bundleSizeLimits": {
+    "content.js": {
+      "maxBytes": 512000,
+      "description": "Content script bundle - max 500KB"
+    },
+    "background.js": {
+      "maxBytes": 307200,
+      "description": "Background script bundle - max 300KB"
+    },
+    "popup.js": {
+      "maxBytes": 102400,
+      "description": "Popup script - max 100KB"
+    }
+  },
+  "treeshake": {
+    "moduleSideEffects": false,
+    "propertyReadSideEffects": false,
+    "tryCatchDeoptimization": false
+  }
+}

@@ -2,7 +2,10 @@
 
 ## Overview
 
-This diagram shows the layered architecture of the copy-URL-on-hover extension following Domain-Driven Design and Clean Architecture principles. Dependencies flow downward (features → storage → domain), ensuring clean separation of concerns.
+This diagram shows the layered architecture of the copy-URL-on-hover extension
+following Domain-Driven Design and Clean Architecture principles. Dependencies
+flow downward (features → storage → domain), ensuring clean separation of
+concerns.
 
 ## Component Hierarchy
 
@@ -177,7 +180,8 @@ graph TD
    - Depends on: Domain layer only
    - Abstract storage operations
    - Handles format migration
-   - Classes: `StorageAdapter`, `SyncStorageAdapter`, `SessionStorageAdapter`, `FormatMigrator`
+   - Classes: `StorageAdapter`, `SyncStorageAdapter`, `SessionStorageAdapter`,
+     `FormatMigrator`
 
 3. **Features Layer** (Purple)
    - Depends on: Domain + Storage layers
@@ -189,7 +193,8 @@ graph TD
    - Depends on: All lower layers
    - User-facing components
    - Content script entry point
-   - Components: `QuickTabsManager` facade, `PanelManager`, `NotificationManager`
+   - Components: `QuickTabsManager` facade, `PanelManager`,
+     `NotificationManager`
 
 5. **Background Script** (Yellow)
    - Independent message routing
@@ -207,7 +212,8 @@ The **QuickTabsManager** acts as a facade that:
 
 ### Key Architectural Benefits
 
-1. **Testability**: Domain and storage layers are 100% unit testable (no browser APIs)
+1. **Testability**: Domain and storage layers are 100% unit testable (no browser
+   APIs)
 2. **Maintainability**: Each component has single responsibility
 3. **Extensibility**: Add new features by creating new handlers/coordinators
 4. **Isolation**: Container boundaries enforced at storage + broadcast layers
@@ -290,7 +296,8 @@ graph LR
 - Storage namespace (manual filtering by cookieStoreId)
 - State partition in StateManager
 
-This ensures Quick Tabs created in "Personal" container never appear in "Work" container.
+This ensures Quick Tabs created in "Personal" container never appear in "Work"
+container.
 
 ## Related Documentation
 

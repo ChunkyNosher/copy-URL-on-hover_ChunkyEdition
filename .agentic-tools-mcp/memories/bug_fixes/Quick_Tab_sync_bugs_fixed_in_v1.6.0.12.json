@@ -1,8 +1,0 @@
-{
-  "id": "14616e8e-678e-44af-9d3d-929eb1445299",
-  "title": "Quick Tab sync bugs fixed in v1.6.0.12",
-  "details": "Fixed three critical Quick Tab synchronization bugs in v1.6.0.12:\n\n1. **Storage Quota Errors (Issues #35, #51)**: \n   - Root Cause: Extension using browser.storage.sync with 100KB limit, causing QuotaExceededError\n   - Solution: Switched to browser.storage.local (much higher limits) in 15+ locations\n   - Files: SyncStorageAdapter.js, StorageManager.js, QuickTabHandler.js, background.js\n   - Impact: Quick Tabs can now be saved without quota errors\n\n2. **Panel Manager Double-Toggle (Ctrl+Alt+Z broken)**:\n   - Root Cause: Two message listeners both responding to TOGGLE_QUICK_TABS_PANEL (content.js and panel.js)\n   - Solution: Removed duplicate listener in panel.js setupMessageListener()\n   - Impact: Ctrl+Alt+Z keyboard shortcut now works correctly\n\n3. **Z-Index Not Syncing Across Tabs**:\n   - Root Cause: Z-index only updated in UI (QuickTabWindow), not saved to domain entity or storage\n   - Solution: Modified VisibilityHandler.handleFocus() to send UPDATE_QUICK_TAB_ZINDEX message to background\n   - Added handleZIndexUpdate() in QuickTabHandler and registered in MessageRouter\n   - Impact: Quick Tabs maintain proper stacking order when switching tabs\n\nAll fixes maintain backward compatibility and follow the domain-driven architecture pattern.",
-  "category": "bug_fixes",
-  "dateCreated": "2025-11-21T07:16:31.440Z",
-  "dateUpdated": "2025-11-21T07:16:31.440Z"
-}

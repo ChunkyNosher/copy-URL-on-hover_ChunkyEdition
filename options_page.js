@@ -9,6 +9,39 @@ const SETTINGS_KEY = 'quick_tab_settings';
 const STATE_KEY = 'quick_tabs_state_v2';
 const SESSION_KEY = 'quick_tabs_session';
 
+// v1.6.3.12-v11 - FIX Issue #10: Page visibility guard to prevent DOM updates after page unload
+// Track whether the page is still active to prevent reference errors on async callbacks
+let _isPageActive = true;
+
+/**
+ * Check if page is still active (not unloaded)
+ * v1.6.3.12-v11 - FIX Issue #10: Guard for async operations
+ * Note: Only checks _isPageActive flag (set false on unload) and document existence
+ * visibilityState check removed as 'hidden' can occur for legitimate reasons (tab unfocused)
+ * @returns {boolean} True if page is active and DOM operations are safe
+ */
+function isPageActive() {
+  // Safety check: ensure document exists and page hasn't been unloaded
+  return _isPageActive && typeof document !== 'undefined';
+}
+
+// Mark page as inactive on unload
+window.addEventListener('unload', () => {
+  _isPageActive = false;
+});
+
+/**
+ * Safely parse integer with fallback
+ * v1.6.4-v2 - Added for consistent value validation
+ * @param {string} value - Value to parse
+ * @param {number} fallback - Fallback value if parsing fails
+ * @returns {number} Parsed integer or fallback
+ */
+function safeParseInt(value, fallback) {
+  const parsed = parseInt(value, 10);
+  return isNaN(parsed) ? fallback : parsed;
+}
+
 // Default settings
 const DEFAULT_SETTINGS = {
   enableQuickTabs: true,
@@ -17,7 +50,11 @@ const DEFAULT_SETTINGS = {
   defaultHeight: 400,
   syncAcrossTabs: true,
   persistAcrossSessions: true,
-  enableDebugLogging: false
+  enableDebugLogging: false,
+  quickTabShowDebugId: false,
+  // v1.6.4-v2 - FEATURE: Live metrics settings
+  quickTabsMetricsEnabled: true,
+  quickTabsMetricsIntervalMs: 1000
 };
 
 // Load settings on page load
@@ -30,10 +67,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 /**
  * Load settings from storage and populate form
+ * v1.6.3.12-v11 - FIX Issue #10: Added page visibility guard
  */
 async function loadSettings() {
   try {
     const result = await browser.storage.sync.get(SETTINGS_KEY);
+
+    // v1.6.3.12-v11 - FIX Issue #10: Guard against DOM updates after page unload
+    if (!isPageActive()) {
+      console.log('[Options] loadSettings: Page no longer active, skipping DOM updates');
+      return;
+    }
+
     const settings = result[SETTINGS_KEY] || DEFAULT_SETTINGS;
 
     // Populate form fields
@@ -44,11 +89,21 @@ async function loadSettings() {
     document.getElementById('syncAcrossTabs').checked = settings.syncAcrossTabs;
     document.getElementById('persistAcrossSessions').checked = settings.persistAcrossSessions;
     document.getElementById('enableDebugLogging').checked = settings.enableDebugLogging;
+    document.getElementById('quickTabShowDebugId').checked = settings.quickTabShowDebugId ?? false;
+    // v1.6.4-v2 - FEATURE: Live metrics settings
+    document.getElementById('quickTabsMetricsEnabled').checked =
+      settings.quickTabsMetricsEnabled ?? true;
+    document.getElementById('quickTabsMetricsInterval').value = String(
+      settings.quickTabsMetricsIntervalMs ?? 1000
+    );
 
     console.log('Settings loaded:', settings);
   } catch (err) {
     console.error('Error loading settings:', err);
-    showStatus('Error loading settings', 'error');
+    // v1.6.3.12-v11 - FIX Issue #10: Guard status display as well
+    if (isPageActive()) {
+      showStatus('Error loading settings', 'error');
+    }
   }
 }
 
@@ -59,12 +114,19 @@ async function saveSettings() {
   try {
     const settings = {
       enableQuickTabs: document.getElementById('enableQuickTabs').checked,
-      maxQuickTabs: parseInt(document.getElementById('maxQuickTabs').value),
-      defaultWidth: parseInt(document.getElementById('defaultWidth').value),
-      defaultHeight: parseInt(document.getElementById('defaultHeight').value),
+      maxQuickTabs: safeParseInt(document.getElementById('maxQuickTabs').value, 5),
+      defaultWidth: safeParseInt(document.getElementById('defaultWidth').value, 600),
+      defaultHeight: safeParseInt(document.getElementById('defaultHeight').value, 400),
       syncAcrossTabs: document.getElementById('syncAcrossTabs').checked,
       persistAcrossSessions: document.getElementById('persistAcrossSessions').checked,
-      enableDebugLogging: document.getElementById('enableDebugLogging').checked
+      enableDebugLogging: document.getElementById('enableDebugLogging').checked,
+      quickTabShowDebugId: document.getElementById('quickTabShowDebugId').checked,
+      // v1.6.4-v2 - FEATURE: Live metrics settings
+      quickTabsMetricsEnabled: document.getElementById('quickTabsMetricsEnabled').checked,
+      quickTabsMetricsIntervalMs: safeParseInt(
+        document.getElementById('quickTabsMetricsInterval').value,
+        1000
+      )
     };
 
     await browser.storage.sync.set({ [SETTINGS_KEY]: settings });
@@ -91,12 +153,20 @@ async function saveSettings() {
 
 /**
  * Update storage information display
+ * v1.6.3.12-v11 - FIX Issue #10: Added page visibility guard
  */
 async function updateStorageInfo() {
   try {
-    // Try to load state from sync storage
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+
+    // v1.6.3.12-v11 - FIX Issue #10: Guard against DOM updates after page unload
+    if (!isPageActive()) {
+      console.log('[Options] updateStorageInfo: Page no longer active, skipping DOM updates');
+      return;
+    }
+
+    const state = localResult[STATE_KEY];
 
     if (!state || !state.tabs) {
       document.getElementById('currentTabCount').textContent = '0';
@@ -112,7 +182,10 @@ async function updateStorageInfo() {
     }
   } catch (err) {
     console.error('Error loading storage info:', err);
-    document.getElementById('currentTabCount').textContent = 'Error';
+    // v1.6.3.12-v11 - FIX Issue #10: Guard DOM update in error handler
+    if (isPageActive()) {
+      document.getElementById('currentTabCount').textContent = 'Error';
+    }
   }
 }
 
@@ -120,17 +193,19 @@ async function updateStorageInfo() {
  * Check if session storage is available
  */
 function checkSessionStorageAvailability() {
-  const hasSessionStorage =
+  // v1.6.3.12-v5 - storage.session does NOT exist in Firefox MV2
+  // Session-only behavior is achieved via explicit startup cleanup
+  const hasLocalStorage =
     typeof browser !== 'undefined' &&
     browser.storage &&
-    typeof browser.storage.session !== 'undefined';
+    typeof browser.storage.local !== 'undefined';
 
   const statusElement = document.getElementById('sessionStorageStatus');
-  if (hasSessionStorage) {
-    statusElement.textContent = '✓ Available (Firefox 115+)';
+  if (hasLocalStorage) {
+    statusElement.textContent = '✓ Available (storage.local - session-scoped via cleanup)';
     statusElement.style.color = '#155724';
   } else {
-    statusElement.textContent = '✗ Not Available (requires Firefox 115+)';
+    statusElement.textContent = '✗ Not Available';
     statusElement.style.color = '#856404';
   }
 }
@@ -139,20 +214,30 @@ function checkSessionStorageAvailability() {
  * Clear all Quick Tabs from storage
  */
 async function clearStorage() {
-  if (!confirm('Are you sure you want to clear all Quick Tabs? This action cannot be undone.')) {
+  if (
+    !confirm(
+      'Are you sure you want to clear all Quick Tabs? This will close all Quick Tab windows but preserve your settings and keyboard shortcuts. This action cannot be undone.'
+    )
+  ) {
     return;
   }
 
   try {
-    // Clear from sync storage
+    // Clear Quick Tabs state from LOCAL storage (where Quick Tabs are stored)
+    // This preserves settings (in sync storage) and console logs
+    await browser.storage.local.remove(STATE_KEY);
+
+    // Also clear from sync storage for backward compatibility
     await browser.storage.sync.remove(STATE_KEY);
 
-    // Clear from session storage if available
-    if (typeof browser.storage.session !== 'undefined') {
-      await browser.storage.session.remove(SESSION_KEY);
-    }
+    // Clear session key from local storage as well
+    // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+    await browser.storage.local.remove(SESSION_KEY);
 
-    showStatus('All Quick Tabs cleared successfully!', 'success');
+    showStatus(
+      'All Quick Tabs cleared! Your settings and keyboard shortcuts are preserved.',
+      'success'
+    );
     await updateStorageInfo();
 
     // Notify all tabs to close Quick Tabs
@@ -174,11 +259,20 @@ async function clearStorage() {
 
 /**
  * Show current state in debug output
+ * v1.6.3.12-v11 - FIX Issue #10: Added page visibility guard
  */
 async function showCurrentState() {
   try {
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+
+    // v1.6.3.12-v11 - FIX Issue #10: Guard against DOM updates after page unload
+    if (!isPageActive()) {
+      console.log('[Options] showCurrentState: Page no longer active, skipping DOM updates');
+      return;
+    }
+
+    const state = localResult[STATE_KEY];
 
     const debugOutput = document.getElementById('debugOutput');
     const debugContent = document.getElementById('debugContent');
@@ -187,17 +281,29 @@ async function showCurrentState() {
     debugOutput.style.display = 'block';
   } catch (err) {
     console.error('Error loading state:', err);
-    showStatus('Error loading state', 'error');
+    // v1.6.3.12-v11 - FIX Issue #10: Guard status display
+    if (isPageActive()) {
+      showStatus('Error loading state', 'error');
+    }
   }
 }
 
 /**
  * Export state as JSON file
+ * v1.6.3.12-v11 - FIX Issue #10: Added page visibility guard
  */
 async function exportState() {
   try {
-    const syncResult = await browser.storage.sync.get(STATE_KEY);
-    const state = syncResult[STATE_KEY];
+    // Query from LOCAL storage (where Quick Tabs are actually stored)
+    const localResult = await browser.storage.local.get(STATE_KEY);
+
+    // v1.6.3.12-v11 - FIX Issue #10: Guard against DOM updates after page unload
+    if (!isPageActive()) {
+      console.log('[Options] exportState: Page no longer active, skipping export');
+      return;
+    }
+
+    const state = localResult[STATE_KEY];
 
     const dataStr = JSON.stringify(state, null, 2);
     const dataBlob = new Blob([dataStr], { type: 'application/json' });
@@ -214,7 +320,10 @@ async function exportState() {
     showStatus('State exported successfully!', 'success');
   } catch (err) {
     console.error('Error exporting state:', err);
-    showStatus('Error exporting state', 'error');
+    // v1.6.3.12-v11 - FIX Issue #10: Guard status display
+    if (isPageActive()) {
+      showStatus('Error exporting state', 'error');
+    }
   }
 }
 

@@ -1,15 +1,17 @@
 /**
  * ==============================================================================
- * QUICK TABS CREATION FLOW TEST SUITE - v1.5.9.11
+ * QUICK TABS CREATION FLOW TEST SUITE - v1.6.3.8-v6
  * ==============================================================================
  * Tests for the Quick Tabs rendering bug fix
  *
  * This test suite validates:
  * 1. Direct local creation pattern (originating tab renders immediately)
- * 2. BroadcastChannel propagation to other tabs
+ * 2. Port-based messaging propagation to sidebar (BC removed)
  * 3. Message action name handling (both SYNC_QUICK_TAB_STATE variants)
  * 4. SaveId tracking prevents race conditions
- * 5. Proper separation of concerns (content/broadcast/background)
+ * 5. Proper separation of concerns (content/port/background)
+ *
+ * v1.6.3.8-v6 - BC REMOVED: Tests updated to use port-based messaging
  *
  * References:
  * - docs/manual/1.5.9 docs/quick-tabs-rendering-bug-analysis-v15910.md
@@ -19,22 +21,15 @@
  * ==============================================================================
  */
 
-describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
+describe('Quick Tabs Creation Flow - v1.6.3.8-v6 Fix', () => {
   let mockQuickTabsManager;
-  let mockBroadcastChannel;
   let mockBrowser;
 
   beforeEach(() => {
     // Reset all mocks
     jest.clearAllMocks();
 
-    // Mock BroadcastChannel
-    mockBroadcastChannel = {
-      postMessage: jest.fn(),
-      onmessage: null,
-      close: jest.fn()
-    };
-    global.BroadcastChannel = jest.fn(() => mockBroadcastChannel);
+    // v1.6.3.8-v6 - BC REMOVED: No longer mock BroadcastChannel
 
     // Mock browser APIs
     mockBrowser = {
@@ -229,9 +224,11 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
     });
   });
 
-  describe('Fix #3: BroadcastChannel Propagation', () => {
-    test('should broadcast CREATE message after local creation', () => {
-      const quickTabId = 'qt-broadcast-test';
+  // v1.6.3.8-v6 - BC REMOVED: BroadcastChannel propagation tests removed
+  // Port-based messaging and storage.onChanged are now primary mechanisms
+  describe('Fix #3: Port-based Messaging Propagation', () => {
+    test('should create Quick Tab via port-based messaging', () => {
+      const quickTabId = 'qt-port-test';
       const url = 'https://example.com';
 
       mockQuickTabsManager.createQuickTab({
@@ -243,57 +240,26 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
         height: 600
       });
 
-      // BroadcastChannel should be used to propagate
-      // (In actual implementation, this happens in QuickTabsManager)
-      expect(mockBroadcastChannel.postMessage).toHaveBeenCalledTimes(0); // Called by manager, not test
-
-      // Simulate broadcast
-      mockBroadcastChannel.postMessage({
-        type: 'CREATE',
-        data: {
-          id: quickTabId,
-          url,
-          left: 100,
-          top: 100,
-          width: 800,
-          height: 600
-        }
-      });
-
-      expect(mockBroadcastChannel.postMessage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          type: 'CREATE',
-          data: expect.objectContaining({
-            id: quickTabId,
-            url
-          })
-        })
-      );
+      // Port-based messaging should be used to propagate
+      // BC removed - no BroadcastChannel assertions
+      expect(mockQuickTabsManager.tabs.has(quickTabId)).toBe(true);
     });
 
-    test('should handle CREATE broadcast in other tabs', () => {
-      // Simulate receiving broadcast in another tab
-      const broadcastMessage = {
-        type: 'CREATE',
-        data: {
-          id: 'qt-from-other-tab',
-          url: 'https://example.com',
-          left: 100,
-          top: 100,
-          width: 800,
-          height: 600
-        }
+    test('should handle state update from storage.onChanged', () => {
+      // Simulate receiving state update via storage.onChanged
+      const stateUpdate = {
+        id: 'qt-from-storage',
+        url: 'https://example.com',
+        left: 100,
+        top: 100,
+        width: 800,
+        height: 600
       };
 
-      // Simulate broadcast handler
-      if (mockBroadcastChannel.onmessage) {
-        mockBroadcastChannel.onmessage({ data: broadcastMessage });
-      }
+      // In real implementation, storage.onChanged triggers state sync
+      mockQuickTabsManager.createQuickTab(stateUpdate);
 
-      // In real implementation, this would call createQuickTab
-      mockQuickTabsManager.createQuickTab(broadcastMessage.data);
-
-      expect(mockQuickTabsManager.tabs.has('qt-from-other-tab')).toBe(true);
+      expect(mockQuickTabsManager.tabs.has('qt-from-storage')).toBe(true);
     });
   });
 
@@ -372,11 +338,12 @@ describe('Quick Tabs Creation Flow - v1.5.9.11 Fix', () => {
       expect(tab.element.tagName).toBe('DIV');
     });
 
-    test('BroadcastChannel handles cross-tab sync', () => {
-      // BroadcastChannel constructor is called during manager initialization
-      // We're just verifying the mock is set up correctly
-      expect(mockBroadcastChannel.postMessage).toBeDefined();
-      expect(typeof mockBroadcastChannel.postMessage).toBe('function');
+    // v1.6.3.8-v6 - BC REMOVED: Port-based messaging is now primary
+    test('Port-based messaging handles cross-tab sync', () => {
+      // Port-based messaging is now primary for cross-tab sync
+      // We're just verifying the browser APIs are set up correctly
+      expect(mockBrowser.runtime.sendMessage).toBeDefined();
+      expect(typeof mockBrowser.runtime.sendMessage).toBe('function');
     });
 
     test('background script handles persistence', async () => {

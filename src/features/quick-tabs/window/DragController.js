@@ -9,6 +9,16 @@
  * and tracking actual pointer position. Extracted from QuickTabWindow.js as part
  * of v1.6.0 Phase 2.9 refactoring.
  *
+ * v1.6.3.2 - FIX Issue #5: Add destroyed flag to prevent ghost events after cleanup
+ * v1.6.3.5-v9 - FIX Diagnostic Issue #3: Add updateElement() method for DOM re-render recovery
+ * v1.6.3.5-v11 - FIX Critical Quick Tab Bugs:
+ *   - Issue #3: Add public cleanup() method for DOM event listener cleanup before minimize
+ *   - Issue #5: Add comprehensive callback logging in handlePointerUp()
+ * v1.6.3.12-v4 - FIX Issue #10: Add emergency save logging for rapid tab switch detection
+ *   - Log drag initiation with emergency save context
+ *   - Log tab switch detection during drag operations (pointercancel)
+ *   - Log emergency save completion verification
+ *
  * @see docs/misc/v1.6.0-REFACTORING-PHASE3.4-NEXT-STEPS.md
  */
 
@@ -30,6 +40,7 @@ export class DragController {
     this.onDragCancel = callbacks.onDragCancel || null;
 
     this.isDragging = false;
+    this.destroyed = false; // v1.6.3.2 - FIX Issue #5: Track destroyed state
     this.currentPointerId = null;
     this.offsetX = 0;
     this.offsetY = 0;
@@ -57,9 +68,14 @@ export class DragController {
 
   /**
    * Handle pointer down - start drag
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.12-v4 - FIX Issue #10: Add drag initiation logging with emergency save context
    * @param {PointerEvent} e
    */
   handlePointerDown(e) {
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
+    if (this.destroyed) return;
+
     // Don't drag if clicking on button or other interactive element
     if (e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') {
       return;
@@ -78,6 +94,17 @@ export class DragController {
     // Capture pointer events
     this.element.setPointerCapture(e.pointerId);
 
+    // v1.6.3.12-v4 - FIX Issue #10: Log drag initiation with emergency save context
+    console.log(
+      '[DRAG][INITIATED] Drag operation started, emergency save will trigger if tab switch detected',
+      {
+        initialPosition: { x: this.currentX, y: this.currentY },
+        pointerId: e.pointerId,
+        hasOnDragCancel: !!this.onDragCancel,
+        timestamp: new Date().toISOString()
+      }
+    );
+
     if (this.onDragStart) {
       this.onDragStart(this.currentX, this.currentY);
     }
@@ -86,15 +113,24 @@ export class DragController {
   /**
    * Handle pointer move - update position
    * Uses requestAnimationFrame to prevent slipping on high-refresh monitors
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
    * @param {PointerEvent} e
    */
   handlePointerMove(e) {
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
+    if (this.destroyed) return;
     if (!this.isDragging) return;
 
     // Use requestAnimationFrame to prevent excessive updates
     if (this.rafId) return;
 
     this.rafId = requestAnimationFrame(() => {
+      // v1.6.3.2 - FIX Issue #5: Double-check destroyed in RAF callback
+      if (this.destroyed) {
+        this.rafId = null;
+        return;
+      }
+
       const newX = e.clientX - this.offsetX;
       const newY = e.clientY - this.offsetY;
 
@@ -111,9 +147,13 @@ export class DragController {
 
   /**
    * Handle pointer up - end drag
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.5-v11 - FIX Issue #5: Add comprehensive callback logging
    * @param {PointerEvent} e
    */
   handlePointerUp(e) {
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
+    if (this.destroyed) return;
     if (!this.isDragging) return;
 
     this.isDragging = false;
@@ -133,18 +173,51 @@ export class DragController {
     const finalX = e.clientX - this.offsetX;
     const finalY = e.clientY - this.offsetY;
 
+    // v1.6.3.5-v11 - FIX Issue #5: Comprehensive callback logging
     if (this.onDragEnd) {
-      this.onDragEnd(finalX, finalY);
+      console.log('[DragController][handlePointerUp] BEFORE calling onDragEnd:', {
+        finalX,
+        finalY,
+        callbackType: typeof this.onDragEnd
+      });
+      try {
+        this.onDragEnd(finalX, finalY);
+        console.log('[DragController][handlePointerUp] AFTER onDragEnd - success');
+      } catch (err) {
+        console.error('[DragController][handlePointerUp] onDragEnd callback FAILED:', {
+          error: err.message,
+          stack: err.stack,
+          finalX,
+          finalY
+        });
+      }
+    } else {
+      console.warn('[DragController][handlePointerUp] No onDragEnd callback available');
     }
   }
 
   /**
    * Handle pointer cancel - CRITICAL FOR ISSUE #51
    * This fires when drag is interrupted (e.g., user switches tabs during drag)
+   * v1.6.3.2 - FIX Issue #5: Check destroyed flag to prevent ghost events
+   * v1.6.3.12-v4 - FIX Issue #10: Add emergency save logging for tab switch detection
    * @param {PointerEvent} _e
    */
   handlePointerCancel(_e) {
+    // v1.6.3.2 - FIX Issue #5: Prevent ghost events after destroy
+    if (this.destroyed) return;
     if (!this.isDragging) return;
+
+    // v1.6.3.12-v4 - FIX Issue #10: Log tab switch detection during drag (emergency save trigger)
+    console.log(
+      '[DRAG][EMERGENCY_SAVE] Tab switch detected during drag, triggering emergency save',
+      {
+        position: { x: this.currentX, y: this.currentY },
+        reason: 'pointercancel_event',
+        isDragging: this.isDragging,
+        timestamp: new Date().toISOString()
+      }
+    );
 
     this.isDragging = false;
 
@@ -156,7 +229,26 @@ export class DragController {
     // Call onDragCancel with last known position (or onDragEnd as fallback)
     const callback = this.onDragCancel || this.onDragEnd;
     if (callback) {
+      // v1.6.3.12-v4 - FIX Issue #10: Log before callback
+      console.log('[DRAG][EMERGENCY_SAVE] Invoking emergency save callback', {
+        callbackType: this.onDragCancel ? 'onDragCancel' : 'onDragEnd (fallback)',
+        position: { x: this.currentX, y: this.currentY }
+      });
+
       callback(this.currentX, this.currentY);
+
+      // v1.6.3.12-v4 - FIX Issue #10: Log after successful emergency save
+      console.log('[DRAG][EMERGENCY_SAVE_COMPLETE] Emergency save completed successfully', {
+        finalPosition: { x: this.currentX, y: this.currentY },
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      // v1.6.3.12-v4 - FIX Issue #10: Warning if no callback available
+      console.warn('[DRAG][EMERGENCY_SAVE_FAILED] No callback available for emergency save', {
+        hasOnDragCancel: !!this.onDragCancel,
+        hasOnDragEnd: !!this.onDragEnd,
+        position: { x: this.currentX, y: this.currentY }
+      });
     }
 
     this.currentPointerId = null;
@@ -164,12 +256,14 @@ export class DragController {
 
   /**
    * Detach drag listeners and cleanup
+   * v1.6.3.2 - FIX Issue #5: Set destroyed flag FIRST to prevent ghost events
+   * v1.6.3.5-v9 - Refactored: Use _removeListeners() for listener cleanup
    */
   destroy() {
-    this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);
-    this.element.removeEventListener('pointermove', this.boundHandlePointerMove);
-    this.element.removeEventListener('pointerup', this.boundHandlePointerUp);
-    this.element.removeEventListener('pointercancel', this.boundHandlePointerCancel);
+    // v1.6.3.2 - FIX Issue #5: Set destroyed flag FIRST
+    this.destroyed = true;
+
+    this._removeListeners();
 
     if (this.rafId) {
       cancelAnimationFrame(this.rafId);
@@ -178,5 +272,85 @@ export class DragController {
 
     this.isDragging = false;
     this.currentPointerId = null;
+  }
+
+  /**
+   * Public cleanup method for DOM event listener cleanup before minimize
+   * v1.6.3.5-v11 - FIX Issue #3: DOM event listeners not cleaned up on minimize
+   * Exposes _removeListeners() as a public method that can be called during minimize
+   * without fully destroying the controller
+   */
+  cleanup() {
+    if (this.destroyed) {
+      console.log('[DragController][cleanup] Already destroyed, skipping');
+      return;
+    }
+
+    this._removeListeners();
+
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+
+    this.isDragging = false;
+    console.log('[DragController][cleanup] Removed event listeners');
+  }
+
+  /**
+   * Remove all event listeners from current element
+   * v1.6.3.5-v9 - Extracted to reduce code duplication between destroy() and updateElement()
+   * @private
+   */
+  _removeListeners() {
+    if (!this.element) return;
+
+    this.element.removeEventListener('pointerdown', this.boundHandlePointerDown);
+    this.element.removeEventListener('pointermove', this.boundHandlePointerMove);
+    this.element.removeEventListener('pointerup', this.boundHandlePointerUp);
+    this.element.removeEventListener('pointercancel', this.boundHandlePointerCancel);
+  }
+
+  /**
+   * Update the element reference after DOM re-render (e.g., after restore)
+   * v1.6.3.5-v9 - FIX Diagnostic Issue #3: Position/size updates stop after restore
+   *
+   * After minimize/restore, the DOM is destroyed and recreated. The DragController
+   * holds a reference to the old (now detached) element. This method allows updating
+   * the element reference to the new DOM element so events fire correctly.
+   *
+   * @param {HTMLElement} newElement - The new DOM element to attach listeners to
+   * @returns {boolean} True if update succeeded, false if invalid element
+   */
+  updateElement(newElement) {
+    if (!newElement) {
+      console.warn('[DragController] updateElement called with null/undefined element');
+      return false;
+    }
+
+    // If destroyed, don't allow updates
+    if (this.destroyed) {
+      console.warn('[DragController] Cannot update element - controller is destroyed');
+      return false;
+    }
+
+    // Remove listeners from old element using shared method
+    this._removeListeners();
+    console.log('[DragController] Removed listeners from old element');
+
+    // Update element reference
+    this.element = newElement;
+
+    // Attach listeners to new element
+    this.attach();
+
+    console.log('[DragController] Updated element reference and reattached listeners:', {
+      hasElement: !!this.element,
+      elementTagName: this.element?.tagName,
+      isDragging: this.isDragging,
+      destroyed: this.destroyed
+    });
+
+    return true;
   }
 }

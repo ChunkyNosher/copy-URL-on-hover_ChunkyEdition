@@ -1,8 +1,0 @@
-{
-  "id": "b1cc9604-21e8-49d6-8701-b73908fecf2d",
-  "title": "Console Log Filtering Implementation",
-  "details": "Implemented dual-filter logging system for v1.6.0.8:\n- Live console filtering: Controls what appears in browser console in real-time using async category checks before console.log() calls\n- Export filtering: Filters logs during .txt export based on separate settings\n- 16 categories organized into 3 groups: User Actions (6), System Operations (7), Diagnostics (3)\n- Storage: browser.storage.local with cache for performance\n- UI: Collapsible accordion groups in popup Advanced tab using CSS checkbox pattern\n- Defaults: Noisy categories (hover, url-detection) disabled in live console; all enabled for export\n- Key files: src/utils/logger.js (new), src/utils/debug.js (modified), popup.html, popup.js",
-  "category": "implementation",
-  "dateCreated": "2025-11-21T01:41:11.121Z",
-  "dateUpdated": "2025-11-21T01:41:11.121Z"
-}

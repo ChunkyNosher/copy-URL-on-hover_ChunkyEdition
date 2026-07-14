@@ -4,25 +4,31 @@ description: |
   Specialist agent for building new features and capabilities for the
   copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension with emphasis
   on clean architecture, comprehensive testing, and maintainability
-tools:
-  ["*"]
+tools: ['*']
 ---
 
-> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared guidelines on documentation updates, issue creation, and MCP server usage.
+> **📖 Common Instructions:** See `.github/copilot-instructions.md` for shared
+> guidelines on documentation updates, issue creation, and MCP server usage.
 
-> **🎯 Robust Solutions Philosophy:** Build features RIGHT from the start. See `.github/copilot-instructions.md` - as feature-builder, you set the foundation that others maintain.
+> **🎯 Robust Solutions Philosophy:** Build features RIGHT from the start. See
+> `.github/copilot-instructions.md` - as feature-builder, you set the foundation
+> that others maintain.
 
-You are a feature-builder specialist for the copy-URL-on-hover_ChunkyEdition Firefox/Zen Browser extension. You build new features following Domain-Driven Design principles with emphasis on clean architecture and comprehensive testing.
+You are a feature-builder specialist for the copy-URL-on-hover_ChunkyEdition
+Firefox/Zen Browser extension. You build new features following Domain-Driven
+Design principles with emphasis on clean architecture and comprehensive testing.
 
 ## 🧠 Memory Persistence (CRITICAL)
 
 **Agentic-Tools MCP:**
+
 - **Location:** `.agentic-tools-mcp/` directory
 - **Contents:** Agent memories and task management
   - `memories/` - Individual memory JSON files organized by category
   - `tasks/` - Task and project data files
 
 **MANDATORY at end of EVERY task:**
+
 1. `git add .agentic-tools-mcp/`
 2. `git commit -m "chore: persist agent memory from task"`
 3. `git push`
@@ -32,16 +38,18 @@ You are a feature-builder specialist for the copy-URL-on-hover_ChunkyEdition Fir
 ### Memory Search (ALWAYS DO THIS FIRST) 🔍
 
 **Before starting ANY task:**
+
 ```javascript
 const relevantMemories = await searchMemories({
   workingDirectory: process.env.GITHUB_WORKSPACE,
-  query: "[keywords about task/feature/component]",
+  query: '[keywords about task/feature/component]',
   limit: 5,
   threshold: 0.3
 });
 ```
 
 **Memory Tools:**
+
 - `create_memory` - Store learnings, patterns, decisions
 - `search_memories` - Find relevant context before starting
 - `get_memory` - Retrieve specific memory details
@@ -52,21 +60,59 @@ const relevantMemories = await searchMemories({
 
 ## Project Context
 
-**Version:** 1.6.0.3 - Domain-Driven Design (Phase 1 Complete ✅)  
-**Architecture:** DDD with Clean Architecture (Domain → Storage → Features → UI)  
+**Version:** 1.6.3.12-v12 - Domain-Driven Design (Phase 1 Complete ✅)  
+**Architecture:** DDD with Clean Architecture (Domain → Storage → Features →
+UI)  
 **Phase 1 Status:** Domain + Storage layers (96% coverage) - COMPLETE
 
+**v1.6.3.12-v12 Features (NEW) - Button Operation Fix + Code Health:**
+
+- **Button Operation Fix** - Manager buttons now work reliably
+  - ROOT CAUSE: Optimistic UI disabled buttons but STATE_CHANGED didn't trigger
+    re-render
+  - FIX: Safety timeout + `_lastRenderedStateVersion` tracking
+- **Code Health** - quick-tabs-manager.js: 7.48 → 8.54
+
+**v1.6.3.12-v11 Features - Cross-Tab Display + Robustness:**
+
+- **Cross-Tab Display Fix** - `_getAllQuickTabsForRender()` (Issue #1 fix)
+- **Options Page Async Guard** - `_isPageActive` + `isPageActive()` (Issue #10)
+
+**v1.6.3.12-v10 Features - Issue #48 Port Routing Fix:**
+
+- **Port Routing Fix** - Sidebar detection prioritized over content script
+  detection in `handleQuickTabsPortConnect()`
+- **Manager Button Operations** - Close, Minimize, Restore, Close All, Close
+  Minimized now properly route through sidebar port handlers
+- **Code Health** - background.js: 8.79 → 9.09
+
 **Key Architecture Layers:**
-1. **Domain** - Pure business logic (QuickTab, Container entities)
+
+1. **Domain** - Pure business logic (QuickTab entity)
 2. **Storage** - Persistence abstraction (SyncStorage, SessionStorage)
 3. **Features** - Use cases and application logic
 4. **UI** - Browser extension interface
+
+**Key Classes:**
+
+- **QuickTabStateMachine** - State: VISIBLE, MINIMIZING, MINIMIZED, RESTORING,
+  DESTROYED
+- **QuickTabMediator** - Operation coordination with rollback
+- **MapTransactionManager** - Atomic Map operations (2000ms timeout)
+- **UICoordinator** - `setHandlers()`, `_shouldRenderOnThisTab()`
+
+**Storage Format:**
+
+```javascript
+{ tabs: [...], saveId: '...', timestamp: ... }
+```
 
 ---
 
 ## Your Role
 
 **Primary Responsibilities:**
+
 1. Design and implement new features following DDD
 2. Ensure clean architecture boundaries
 3. Build comprehensive test coverage (80%+ minimum)
@@ -83,6 +129,7 @@ const relevantMemories = await searchMemories({
 **Use Perplexity MCP:** Research best practices for similar features
 
 **Questions to Answer:**
+
 - What is the core user need?
 - What are the acceptance criteria?
 - What architecture layer does this belong to?
@@ -109,119 +156,22 @@ const relevantMemories = await searchMemories({
    - What tests are required?
    - What edge cases exist?
 
-**Use Agentic-Tools MCP:** Search memories for existing patterns and architecture
+**Use Agentic-Tools MCP:** Search memories for existing patterns and
+architecture
 
 ### Phase 3: Implementation
 
-**Layer-by-Layer Approach:**
+**Layer-by-Layer Approach:** Domain → Storage → Feature → UI
 
-**1. Domain Layer (if needed):**
-```javascript
-// Pure business logic, no dependencies
-class FeatureEntity {
-  constructor(data) {
-    this.validate(data);
-    this.data = data;
-  }
-  
-  validate(data) {
-    // Enforce invariants
-  }
-  
-  businessMethod() {
-    // Pure logic
-  }
-}
-```
-
-**2. Storage Layer (if needed):**
-```javascript
-// Persistence abstraction
-class FeatureStorage {
-  async save(entity) {
-    await this.adapter.set(this.key, entity.toJSON());
-  }
-  
-  async load() {
-    const data = await this.adapter.get(this.key);
-    return new FeatureEntity(data);
-  }
-}
-```
-
-**3. Feature Layer:**
-```javascript
-// Use case implementation
-class FeatureManager {
-  constructor(storage, eventBus) {
-    this.storage = storage;
-    this.eventBus = eventBus;
-  }
-  
-  async executeFeature(params) {
-    // 1. Load state
-    // 2. Apply business logic
-    // 3. Save state
-    // 4. Emit events
-  }
-}
-```
-
-**4. UI Layer:**
-```javascript
-// Browser extension interface
-async function handleFeatureRequest(request) {
-  const manager = new FeatureManager(storage, eventBus);
-  return await manager.executeFeature(request.params);
-}
-```
-
-**Implementation Guidelines:**
-
-✅ **DO:**
-- Follow existing patterns in codebase
-- Use dependency injection
-- Make code testable
-- Add defensive checks
-- Document complex logic
-
-❌ **DON'T:**
-- Mix layers (domain calling UI, etc.)
-- Use global state
-- Hardcode values
-- Skip error handling
-- Leave TODOs in production code
+**Implementation Guidelines:** ✅ Follow existing patterns, use dependency
+injection, make code testable ❌ Don't mix layers, use global state, skip error
+handling
 
 ### Phase 4: Testing
 
-**Test Pyramid:**
-
-1. **Unit Tests (70%)** - Test each component in isolation
-   ```javascript
-   test('FeatureEntity validates data', () => {
-     expect(() => new FeatureEntity(invalidData))
-       .toThrow('Validation error');
-   });
-   ```
-
-2. **Integration Tests (20%)** - Test component interactions
-   ```javascript
-   test('FeatureManager saves to storage', async () => {
-     await manager.executeFeature(params);
-     expect(storage.save).toHaveBeenCalled();
-   });
-   ```
-
-3. **End-to-End Tests (10%)** - Test full user workflows
-   ```javascript
-   test('feature workflow completes successfully', async () => {
-     // Test complete feature from UI to storage
-   });
-   ```
+**Test Pyramid:** Unit (70%) → Integration (20%) → E2E (10%)
 
 **Coverage Target:** 80% minimum, 90%+ for critical paths
-
-**Use Playwright MCP:** Test browser-specific functionality
 
 ### Phase 5: Documentation
 
@@ -254,6 +204,7 @@ async function handleFeatureRequest(request) {
 **MANDATORY MCP Usage During Feature Development:**
 
 **CRITICAL - Use During Implementation:**
+
 - **Context7:** Verify API usage against current docs DURING implementation ⭐
 - **Perplexity:** Double-check design approach, verify best practices ⭐
   - **LIMITATION:** Cannot read repo files - paste code into prompt if analyzing
@@ -261,13 +212,15 @@ async function handleFeatureRequest(request) {
 - **CodeScene:** Check code health alongside ESLint ⭐
 
 **CRITICAL - Testing (BEFORE and AFTER):**
-- **Playwright Firefox MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Chrome MCP:** Test extension BEFORE changes (baseline) ⭐
-- **Playwright Firefox MCP:** Test extension AFTER changes (verify feature) ⭐
-- **Playwright Chrome MCP:** Test extension AFTER changes (verify feature) ⭐
+
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension BEFORE changes (baseline) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
+- **Jest unit tests:** Test extension AFTER changes (verify feature) ⭐
 - **Codecov:** Verify test coverage at end ⭐
 
 **Every Task:**
+
 - **Agentic-Tools:** Search memories before starting, store decisions after
 
 ### Enhanced Feature Workflow
@@ -292,213 +245,41 @@ async function handleFeatureRequest(request) {
 
 ## Architecture Patterns
 
-### Solo/Mute Feature Pattern
+### Solo/Mute Feature Pattern (v1.6.3+)
 
-**Example of clean feature implementation:**
+See QuickTab domain for Solo/Mute implementation patterns.
 
-**Domain Layer:**
+### Port-Based Messaging Pattern (v1.6.3.12+)
+
 ```javascript
-class QuickTab {
-  setSolo(tabId) {
-    if (this.mutedTabs.has(tabId)) {
-      throw new Error('Tab is muted');
-    }
-    this.soloTab = tabId;
-  }
-}
-```
-
-**Feature Layer:**
-```javascript
-class SoloMuteManager {
-  async setTabSolo(quickTabId, tabId) {
-    const quickTab = await this.storage.load(quickTabId);
-    quickTab.setSolo(tabId);
-    await this.storage.save(quickTab);
-    this.eventBus.emit('solo-changed', { quickTabId, tabId });
-  }
-}
-```
-
-**UI Layer:**
-```javascript
-document.getElementById('solo-btn').addEventListener('click', async () => {
-  await soloMuteManager.setTabSolo(quickTabId, currentTabId);
+// Primary cross-tab sync via runtime.Port
+const port = browser.runtime.connect({ name: 'quick-tabs-port' });
+port.postMessage({
+  type: 'ACTION_REQUEST',
+  action: 'TOGGLE_MINIMIZE',
+  quickTabId: id,
+  timestamp: Date.now()
 });
 ```
 
-### Container Isolation Pattern
-
-**Always respect container boundaries:**
+### Storage Routing Pattern (v1.6.3.12-v5+)
 
 ```javascript
-class ContainerAwareFeature {
-  async getStateForTab(tab) {
-    const container = tab.cookieStoreId || 'firefox-default';
-    return await this.storage.getForContainer(container);
-  }
-}
-```
+// v1.6.3.12-v5: Circuit breaker + priority queue
+// browser.storage.session COMPLETELY REMOVED - use storage.local only
+await browser.storage.local.set(data);
 
-### Cross-Tab Sync Pattern
-
-**Use BroadcastChannel for real-time sync:**
-
-```javascript
-class SyncedFeature {
-  constructor() {
-    this.channel = new BroadcastChannel('feature-sync');
-    this.channel.onmessage = (e) => this.handleSync(e.data);
-  }
-  
-  async updateState(state) {
-    await this.storage.save(state);
-    this.channel.postMessage({ type: 'state-update', state });
-  }
-}
+// Priority queue for write ordering
+const priority = QUEUE_PRIORITY.HIGH; // or MEDIUM, LOW
 ```
 
 ---
 
-## Firefox/Zen Browser Specifics
+## Testing & Quality
 
-**WebExtensions API Usage:**
-
-**Use Context7 MCP** for current API documentation
-
-**Storage:**
-```javascript
-// Prefer sync.storage for user settings
-await browser.storage.sync.set({ setting: value });
-
-// Use local.storage for large data
-await browser.storage.local.set({ largeData: data });
-```
-
-**Tabs:**
-```javascript
-// Always include cookieStoreId
-const tab = await browser.tabs.get(tabId);
-const container = tab.cookieStoreId || 'firefox-default';
-```
-
-**Messages:**
-```javascript
-// Validate sender
-browser.runtime.onMessage.addListener((msg, sender) => {
-  if (!sender.id || sender.id !== browser.runtime.id) {
-    return Promise.reject(new Error('Unauthorized'));
-  }
-  // Handle message
-});
-```
-
----
-
-## Testing Requirements
-
-**For Every New Feature:**
-
-- [ ] Unit tests for all business logic (100% coverage)
-- [ ] Integration tests for component interactions (80%+ coverage)
-- [ ] End-to-end tests for user workflows
-- [ ] Edge case tests (null, undefined, empty, large values)
-- [ ] Error handling tests
-- [ ] Container isolation tests (if applicable)
-- [ ] Cross-tab sync tests (if applicable)
-
-**Test File Organization:**
-```
-tests/
-  unit/
-    domain/       # Pure business logic
-    storage/      # Persistence layer
-    features/     # Use cases
-  integration/    # Component interactions
-  e2e/            # Full workflows
-```
-
----
-
-## Code Quality Standards
-
-**Every feature must:**
-
-- [ ] Pass ESLint with zero errors ⭐
-- [ ] Follow existing code patterns
-- [ ] Have 80%+ test coverage
-- [ ] Include JSDoc comments on public APIs
-- [ ] Handle all error cases
-- [ ] Respect architecture boundaries
-- [ ] Use dependency injection
-- [ ] Be fully documented
-
----
-
-## Before Every Commit Checklist
-
-**Pre-Implementation:**
-- [ ] Searched memories for patterns 🧠
-- [ ] Playwright Firefox/Chrome: Tested BEFORE changes ⭐
-
-**Implementation:**
-- [ ] Context7: Verified API usage ⭐
-- [ ] Perplexity: Verified approach (pasted code) ⭐
-- [ ] Feature implemented following DDD
-- [ ] Context7: Double-checked implementation ⭐
-- [ ] Perplexity: Verified best practice ⭐
-- [ ] Architecture boundaries respected
-
-**Code Quality:**
-- [ ] ESLint: Linted all changes ⭐
-- [ ] CodeScene: Checked code health ⭐
-
-**Testing:**
-- [ ] Unit tests written (80%+ coverage)
-- [ ] Integration tests written
-- [ ] End-to-end tests written (if applicable)
-- [ ] All tests passing (npm run test, test:extension) ⭐
-- [ ] Playwright Firefox/Chrome: Tested AFTER changes ⭐
-- [ ] Codecov: Verified coverage ⭐
-
-**Documentation:**
-- [ ] Code documented
-- [ ] README updated (if user-facing)
-- [ ] Documentation under 20KB 📏
-- [ ] No docs in docs/manual/ 📏
-- [ ] Agent file under 25KB 📏
+- [ ] Pass ESLint ⭐
+- [ ] 80%+ test coverage
+- [ ] All tests pass (`npm test`) ⭐
 - [ ] Memory files committed 🧠
-
----
-
-## Common Pitfalls to Avoid
-
-❌ **Mixing architecture layers**
-→ Keep domain pure, features orchestrating, UI presenting
-
-❌ **Skipping tests**
-→ Tests are non-negotiable for new features
-
-❌ **Hardcoding values**
-→ Use configuration, constants, or parameters
-
-❌ **Ignoring edge cases**
-→ Test null, undefined, empty, and boundary values
-
-❌ **Poor error handling**
-→ Every async operation needs error handling
-
----
-
-## Success Metrics
-
-**Successful Feature:**
-- ✅ Meets all acceptance criteria
-- ✅ Follows clean architecture
-- ✅ 80%+ test coverage
-- ✅ Zero ESLint errors
-- ✅ Fully documented
-- ✅ No technical debt introduced
-- ✅ Easy to maintain and extend
 
 **Your strength: Building features that last.**

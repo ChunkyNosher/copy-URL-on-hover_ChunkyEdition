@@ -14,17 +14,8 @@
     "paths": {
       "*": ["node_modules/*", "src/*"]
     },
-    "types": [
-      "webextension-polyfill"
-    ]
+    "types": ["webextension-polyfill"]
   },
-  "include": [
-    "src/**/*",
-    "tests/**/*",
-    "*.js"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist"
-  ]
+  "include": ["src/**/*", "tests/**/*", "*.js"],
+  "exclude": ["node_modules", "dist"]
 }

@@ -1,140 +1,327 @@
 /**
  * @fileoverview DestroyHandler - Handles Quick Tab destruction and cleanup
  * Extracted from QuickTabsManager Phase 2.1 refactoring
+ * v1.6.3 - Removed cross-tab sync (single-tab Quick Tabs only)
+ * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+ * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+ * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation and timeout
+ * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
+ * v1.6.3.2 - FIX Issue #6: Add batch mode flag to prevent storage write storm during closeAll
+ * v1.6.3.4 - FIX Issues #4, #6, #7: Add source tracking, consolidate all destroy logic
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add closeAll mutex to prevent duplicate executions
+ * v1.6.3.5-v11 - FIX Issue #6: Notify background of deletions for immediate Manager update
+ * v1.6.3.6-v5 - FIX Deletion Loop: Early return if ID already destroyed
+ * v1.6.3.7 - FIX Issue #3: Add initiateDestruction() for unified deletion path
+ * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for all destruction operations
  *
  * Responsibilities:
  * - Handle single Quick Tab destruction
  * - Close Quick Tabs via closeById (calls tab.destroy())
- * - Close all Quick Tabs via closeAll
+ * - Unified destruction via initiateDestruction() (cross-tab sync)
+ * - Close all Quick Tabs via closeAll (with mutex protection)
  * - Cleanup minimized manager references
  * - Reset z-index when all tabs closed
  * - Emit destruction events
+ * - Notify background of deletions for Manager sidebar update
+ * - Persist state to storage after destruction (debounced to prevent write storms)
+ * - Log all destroy operations with source indication
+ * - Prevent deletion loops via _destroyedIds tracking
+ * - Cross-tab ownership validation to prevent unauthorized deletions
  *
- * @version 1.6.0
- * @author refactor-specialist
+ * @version 1.6.3.10-v4
  */
+
+import { cleanupOrphanedQuickTabElements, removeQuickTabElement } from '@utils/dom.js';
+import { buildStateForStorage, persistStateToStorage } from '@utils/storage-utils.js';
+
+// v1.6.3.4-v5 - FIX Bug #8: Debounce delay for storage writes (ms)
+const STORAGE_DEBOUNCE_DELAY = 150;
+
+// v1.6.3.5-v6 - FIX Diagnostic Issue #3: Cooldown for closeAll mutex (ms)
+const CLOSE_ALL_COOLDOWN_MS = 2000;
 
 /**
  * DestroyHandler class
- * Manages Quick Tab destruction and cleanup operations
+ * Manages Quick Tab destruction and cleanup operations (local only, no cross-tab sync)
+ * v1.6.3.4 - Now persists state to storage after destruction
+ * v1.6.3.4-v5 - FIX Bug #7 & #8: Atomic closure with debounced storage writes
+ * v1.6.3.2 - FIX Issue #6: Batch mode to prevent storage write storm during closeAll
+ * v1.6.3.5-v6 - FIX Diagnostic Issue #3: closeAll mutex to prevent duplicate executions
  */
 export class DestroyHandler {
   /**
    * @param {Map} quickTabsMap - Map of Quick Tab instances
-   * @param {BroadcastManager} broadcastManager - Broadcast manager for cross-tab sync
    * @param {MinimizedManager} minimizedManager - Manager for minimized Quick Tabs
    * @param {EventEmitter} eventBus - Event bus for internal communication
    * @param {Object} currentZIndex - Reference object with value property for z-index
-   * @param {Function} generateSaveId - Function to generate saveId for transaction tracking
-   * @param {Function} releasePendingSave - Function to release pending saveId
    * @param {Object} Events - Events constants object
    * @param {number} baseZIndex - Base z-index value to reset to
+   * @param {number} currentTabId - Current browser tab ID (v1.6.3.10-v4)
    */
   constructor(
     quickTabsMap,
-    broadcastManager,
     minimizedManager,
     eventBus,
     currentZIndex,
-    generateSaveId,
-    releasePendingSave,
     Events,
-    baseZIndex
+    baseZIndex,
+    currentTabId = null
   ) {
     this.quickTabsMap = quickTabsMap;
-    this.broadcastManager = broadcastManager;
     this.minimizedManager = minimizedManager;
     this.eventBus = eventBus;
     this.currentZIndex = currentZIndex;
-    this.generateSaveId = generateSaveId;
-    this.releasePendingSave = releasePendingSave;
     this.Events = Events;
     this.baseZIndex = baseZIndex;
+    // v1.6.3.10-v4 - FIX Issue #16: Add currentTabId for cross-tab validation
+    this.currentTabId = currentTabId;
+
+    // v1.6.3.4-v5 - FIX Bug #8: Debounce timer for storage writes
+    this._storageDebounceTimer = null;
+
+    // v1.6.3.4-v5 - FIX Bug #7: Track destroyed IDs to prevent resurrection
+    this._destroyedIds = new Set();
+
+    // v1.6.3.4-v10 - FIX Issue #6: Replace boolean _batchMode with Set tracking specific operation IDs
+    // The boolean flag was vulnerable to timer interleaving: if a timer from an earlier
+    // minimize operation fires during closeAll(), it would incorrectly skip persist because
+    // _batchMode was true for the unrelated closeAll() operation.
+    // Now each operation checks if its specific ID is in the batch Set.
+    this._batchOperationIds = new Set();
+
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Mutex flag to prevent closeAll duplicate execution
+    this._closeAllInProgress = false;
+    this._closeAllCooldownTimer = null;
+  }
+
+  /**
+   * Check if a tabWindow is owned by the current tab
+   * v1.6.3.10-v4 - FIX Issue #16: Extracted for consistency with VisibilityHandler
+   * @private
+   * @param {Object} tabWindow - Quick Tab window instance
+   * @returns {boolean} True if owned by current tab or ownership is unset
+   */
+  _isOwnedByCurrentTab(tabWindow) {
+    // If originTabId is not set, consider it owned (backwards compatibility)
+    if (tabWindow.originTabId === null || tabWindow.originTabId === undefined) {
+      return true;
+    }
+    // If currentTabId is not set, skip validation (Manager context)
+    if (!this.currentTabId) {
+      return true;
+    }
+    // Check if originTabId matches current tab
+    return tabWindow.originTabId === this.currentTabId;
+  }
+
+  /**
+   * Validate cross-tab ownership for destruction operations
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation helper
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} operation - Operation name for logging
+   * @param {string} source - Source of action
+   * @returns {{ valid: boolean, tabWindow?: Object }}
+   */
+  _validateCrossTabOwnership(id, operation, source = 'unknown') {
+    const tabWindow = this.quickTabsMap.get(id);
+    if (!tabWindow) {
+      return { valid: true, tabWindow: null }; // Let caller handle missing tab
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #16: Use shared ownership check
+    if (!this._isOwnedByCurrentTab(tabWindow)) {
+      console.warn(
+        `[DestroyHandler] CROSS-TAB BLOCKED: Cannot ${operation} Quick Tab from different tab:`,
+        {
+          id,
+          originTabId: tabWindow.originTabId,
+          currentTabId: this.currentTabId,
+          source
+        }
+      );
+      return { valid: false, tabWindow };
+    }
+
+    return { valid: true, tabWindow };
   }
 
   /**
    * Handle Quick Tab destruction
-   * v1.5.8.13 - Broadcast close to other tabs
-   * v1.5.8.16 - Send to background to update storage and notify all tabs
+   * v1.6.3 - Local only (no storage persistence)
+   * v1.6.3.2 - FIX Bug #4: Emit state:deleted for panel sync
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.3.4-v5 - FIX Bug #7: Track destroyed IDs to prevent resurrection
+   * v1.6.3.2 - FIX Issue #6: Skip persistence when in batch mode (closeAll)
+   * v1.6.3.4 - FIX Issues #4, #6, #7: Add source parameter, enhanced logging
+   * v1.6.3.4-v10 - FIX Issue #6: Check batch Set membership instead of boolean flag
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
    *
    * @param {string} id - Quick Tab ID
-   * @returns {Promise<void>}
+   * @param {string} source - Source of action ('UI', 'Manager', 'automation', 'background')
    */
-  async handleDestroy(id) {
-    console.log('[DestroyHandler] Handling destroy for:', id);
+  handleDestroy(id, source = 'unknown') {
+    // v1.6.3.6-v5 - FIX Deletion Loop: Early return if already destroyed
+    // This prevents the loop: UICoordinator.destroy() → state:deleted → DestroyHandler → loop
+    if (this._destroyedIds.has(id)) {
+      console.log(`[DestroyHandler] SKIPPED: ID already destroyed (source: ${source}):`, id);
+      return;
+    }
 
-    // Get tab info and cleanup
-    const tabInfo = this._getTabInfoAndCleanup(id);
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for deletion
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'destroy', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't destroy - not owned by this tab
+    }
 
-    // Generate save ID for transaction tracking
-    const saveId = this.generateSaveId();
+    // v1.6.3.4 - FIX Issue #6: Log with source indication
+    console.log(`[DestroyHandler] Handling destroy for: ${id} (source: ${source})`);
 
-    // Broadcast and persist
-    this.broadcastManager.notifyClose(id);
-    await this._sendCloseToBackground(id, tabInfo, saveId);
+    // v1.6.3.4-v5 - FIX Bug #7: Mark as destroyed FIRST to prevent resurrection
+    this._destroyedIds.add(id);
 
-    // Emit destruction event
+    // Get tab info BEFORE deleting (needed for state:deleted event)
+    const tabWindow = this.quickTabsMap.get(id);
+
+    // v1.6.3.4 - FIX Issue #5: Log if tab not found in Map
+    if (!tabWindow) {
+      console.warn(`[DestroyHandler] Tab not found in Map (source: ${source}):`, id);
+    }
+
+    // v1.6.3.4-v5 - FIX Bug #7: Atomic cleanup - delete from ALL references
+    // v1.6.3.4 - FIX Issue #5: Log Map deletion
+    const wasInMap = this.quickTabsMap.delete(id);
+    console.log(`[DestroyHandler] Map.delete result (source: ${source}):`, { id, wasInMap });
+
+    this.minimizedManager.remove(id);
+
+    // v1.6.3.4-v5 - FIX Bug #7: Use shared utility for DOM cleanup
+    if (removeQuickTabElement(id)) {
+      console.log(`[DestroyHandler] Removed DOM element (source: ${source}):`, id);
+    }
+
+    // Emit destruction event (legacy)
     this._emitDestructionEvent(id);
+
+    // v1.6.3.2 - FIX Bug #4: Emit state:deleted for PanelContentManager to update
+    this._emitStateDeletedEvent(id, tabWindow, source);
 
     // Reset z-index if all tabs are closed
     this._resetZIndexIfEmpty();
-  }
 
-  /**
-   * Get tab info and perform cleanup
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @returns {Object} Tab info with url and cookieStoreId
-   */
-  _getTabInfoAndCleanup(id) {
-    const tabWindow = this.quickTabsMap.get(id);
-    const url = tabWindow && tabWindow.url ? tabWindow.url : null;
-    const cookieStoreId = tabWindow
-      ? tabWindow.cookieStoreId || 'firefox-default'
-      : 'firefox-default';
-
-    // Delete from map and minimized manager
-    this.quickTabsMap.delete(id);
-    this.minimizedManager.remove(id);
-
-    return { url, cookieStoreId };
-  }
-
-  /**
-   * Send close message to background
-   * @private
-   * @param {string} id - Quick Tab ID
-   * @param {Object} tabInfo - Tab info with url and cookieStoreId
-   * @param {string} saveId - Save ID for transaction tracking
-   * @returns {Promise<void>}
-   */
-  async _sendCloseToBackground(id, tabInfo, saveId) {
-    if (typeof browser !== 'undefined' && browser.runtime) {
-      try {
-        await browser.runtime.sendMessage({
-          action: 'CLOSE_QUICK_TAB',
-          id: id,
-          url: tabInfo.url,
-          cookieStoreId: tabInfo.cookieStoreId,
-          saveId: saveId
-        });
-      } catch (err) {
-        console.error('[DestroyHandler] Error closing Quick Tab in background:', err);
-        this.releasePendingSave(saveId);
-      }
-    } else {
-      this.releasePendingSave(saveId);
+    // v1.6.3.4-v10 - FIX Issue #6: Check if this specific ID is in batch mode (Set membership)
+    // This replaces the boolean _batchMode flag which was vulnerable to timer interleaving.
+    // Only skip persist if THIS specific ID was added to the batch Set by closeAll().
+    if (this._batchOperationIds.has(id)) {
+      console.log(
+        `[DestroyHandler] Batch mode - skipping individual persist (source: ${source}):`,
+        {
+          id,
+          batchSetSize: this._batchOperationIds.size
+        }
+      );
+      return;
     }
+
+    // v1.6.3.4-v5 - FIX Bug #8: Debounced persist to prevent write storms
+    this._debouncedPersistToStorage();
+
+    console.log(`[DestroyHandler] Destroy complete (source: ${source}):`, id);
   }
 
   /**
-   * Emit destruction event
+   * Check if a Quick Tab ID was recently destroyed
+   * v1.6.3.4-v5 - FIX Bug #7: Used to prevent resurrection during DOM scans
+   * @param {string} id - Quick Tab ID
+   * @returns {boolean} True if recently destroyed
+   */
+  wasRecentlyDestroyed(id) {
+    return this._destroyedIds.has(id);
+  }
+
+  /**
+   * Clear destroyed IDs tracking (call periodically to prevent memory leak)
+   * v1.6.3.4-v5 - FIX Bug #7: Cleanup destroyed IDs set
+   */
+  clearDestroyedTracking() {
+    this._destroyedIds.clear();
+  }
+
+  /**
+   * Emit destruction event (legacy)
    * @private
    * @param {string} id - Quick Tab ID
    */
   _emitDestructionEvent(id) {
     if (this.eventBus && this.Events) {
       this.eventBus.emit(this.Events.QUICK_TAB_CLOSED, { id });
+    }
+  }
+
+  /**
+   * Emit state:deleted event for panel sync
+   * v1.6.3.2 - FIX Bug #4: Panel listens for this event to update its display
+   * v1.6.3.4 - FIX Issue #6: Add source to event data
+   * v1.6.3.5-v11 - FIX Issue #6: Also notify background for Manager sidebar update
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {Object} tabWindow - Quick Tab window instance (may be undefined)
+   * @param {string} source - Source of action ('UI', 'Manager', etc.)
+   */
+  _emitStateDeletedEvent(id, tabWindow, source = 'unknown') {
+    if (!this.eventBus) return;
+
+    // Build quickTabData - only include url/title if tabWindow exists
+    const quickTabData = tabWindow
+      ? { id, url: tabWindow.url, title: tabWindow.title, source }
+      : { id, source };
+
+    this.eventBus.emit('state:deleted', { id, quickTab: quickTabData, source });
+    console.log(`[DestroyHandler] Emitted state:deleted (source: ${source}):`, id);
+
+    // v1.6.3.5-v11 - FIX Issue #6: Notify background about deletion for Manager update
+    // This ensures the Manager sidebar gets immediate notification, not just via storage.onChanged
+    this._notifyBackgroundOfDeletion(id, source).catch(err => {
+      console.warn(
+        `[DestroyHandler] Failed to notify background (source: ${source}):`,
+        err.message
+      );
+    });
+  }
+
+  /**
+   * Notify background about Quick Tab deletion
+   * v1.6.3.5-v11 - FIX Issue #6: Send message to background for immediate Manager update
+   * v1.6.3.11-v12 - FIX Issue #3 & #5: Send QUICKTAB_REMOVED message for sidebar update
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action
+   * @returns {Promise<void>}
+   */
+  async _notifyBackgroundOfDeletion(id, source) {
+    try {
+      // v1.6.3.11-v12 - FIX Issue #3: Send QUICKTAB_REMOVED message for sidebar
+      console.log('[DestroyHandler] [REMOVE_MESSAGE] Sending QUICKTAB_REMOVED:', {
+        id,
+        source,
+        originTabId: this.currentTabId
+      });
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_REMOVED',
+        quickTabId: id,
+        originTabId: this.currentTabId,
+        source: source || 'DestroyHandler',
+        timestamp: Date.now()
+      });
+
+      console.log('[DestroyHandler] [REMOVE_MESSAGE] Sent successfully:', { id });
+    } catch (err) {
+      // Background may not be available - this is expected in some edge cases
+      console.debug('[DestroyHandler] [REMOVE_MESSAGE] Could not send:', {
+        id,
+        error: err.message
+      });
     }
   }
 
@@ -150,25 +337,240 @@ export class DestroyHandler {
   }
 
   /**
-   * Close Quick Tab by ID (calls tab.destroy() method)
-   *
-   * @param {string} id - Quick Tab ID
+   * Debounced persist to storage
+   * v1.6.3.4-v5 - FIX Bug #8: Prevents storage write storms (8 writes in 38ms)
+   * v1.6.3.12-v5 - FIX Issue #2: Set forceEmpty=true when quickTabsMap is empty
+   *   When debounced persist fires after closing tabs and map becomes empty (0 tabs),
+   *   we must pass forceEmpty=true to allow the empty state to persist.
+   *   Otherwise, storage validation rejects "Empty write rejected, forceEmpty required".
+   * @private
    */
-  closeById(id) {
-    const tabWindow = this.quickTabsMap.get(id);
-    if (tabWindow && tabWindow.destroy) {
-      tabWindow.destroy();
+  _debouncedPersistToStorage() {
+    // Clear existing timer
+    if (this._storageDebounceTimer) {
+      clearTimeout(this._storageDebounceTimer);
+    }
+
+    // Set new debounced timer
+    this._storageDebounceTimer = setTimeout(() => {
+      this._storageDebounceTimer = null;
+      // v1.6.3.12-v5 - FIX Issue #2: Set forceEmpty=true when quickTabsMap is empty
+      // This ensures empty state persists when last Quick Tab is closed
+      const forceEmpty = this.quickTabsMap.size === 0;
+      console.log('[DestroyHandler] [CLOSE_ALL_PERSIST] Debounced persist triggered', {
+        tabCount: this.quickTabsMap.size,
+        forceEmpty
+      });
+      this._persistToStorage(forceEmpty);
+    }, STORAGE_DEBOUNCE_DELAY);
+  }
+
+  /**
+   * Persist current state to browser.storage.local
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after destroy
+   * v1.6.3.4-v2 - FIX Bug #1: Proper async handling with validation
+   * v1.6.3.10-v7 - FIX Diagnostic Issue #10: Added forceEmpty parameter for closeAll
+   * Uses shared buildStateForStorage and persistStateToStorage utilities
+   * @private
+   * @param {boolean} forceEmpty - Whether to force empty state write (for closeAll)
+   * @returns {Promise<void>}
+   */
+  async _persistToStorage(forceEmpty = false) {
+    const state = buildStateForStorage(this.quickTabsMap, this.minimizedManager);
+
+    // v1.6.3.4-v2 - FIX Bug #1: Handle null state from validation failure
+    if (!state) {
+      console.error('[DestroyHandler] Failed to build state for storage');
+      return;
+    }
+
+    // v1.6.3.10-v7 - FIX Diagnostic Issue #10: Log forceEmpty state
+    console.debug('[DestroyHandler] Persisting state with', state.tabs?.length || 0, 'tabs', {
+      forceEmpty
+    });
+    const success = await persistStateToStorage(state, '[DestroyHandler]', forceEmpty);
+    if (!success) {
+      console.error('[DestroyHandler] Storage persist failed or timed out');
     }
   }
 
   /**
-   * Close all Quick Tabs
-   * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
+   * Close Quick Tab by ID (calls tab.destroy() method)
+   * v1.6.3.4 - FIX Issue #6: Add source parameter for logging
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
+   *
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of action ('UI', 'Manager', etc.)
    */
-  closeAll() {
-    console.log('[DestroyHandler] Closing all Quick Tabs');
+  closeById(id, source = 'Manager') {
+    console.log(`[DestroyHandler] closeById called (source: ${source}):`, id);
 
-    // Destroy all tabs
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation for close
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'close', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't close - not owned by this tab
+    }
+
+    const tabWindow = this.quickTabsMap.get(id);
+    if (tabWindow && tabWindow.destroy) {
+      tabWindow.destroy();
+    } else {
+      // v1.6.3.4 - FIX Issue #5: Tab not found, but still clean up Map/storage
+      console.warn(`[DestroyHandler] Tab not found for closeById (source: ${source}):`, id);
+      // Still call handleDestroy to clean up any orphaned state
+      this.handleDestroy(id, source);
+    }
+  }
+
+  /**
+   * Unified entry point for Quick Tab destruction
+   * v1.6.3.7 - FIX Issue #3: Unify UI and Manager deletion paths
+   * v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
+   *
+   * This method provides a single authoritative deletion path that both UI button
+   * and Manager close button should use. It ensures:
+   * 1. Local cleanup via handleDestroy()
+   * 2. Background notification for cross-tab sync (with broadcast flag)
+   * 3. Storage persistence
+   *
+   * @param {string} id - Quick Tab ID to destroy
+   * @param {string} source - Source of action ('UI', 'Manager', 'background', etc.)
+   * @param {boolean} broadcast - Whether to broadcast deletion to other tabs (default: true)
+   * @returns {Promise<void>}
+   */
+  async initiateDestruction(id, source = 'unknown', broadcast = true) {
+    console.log(
+      `[DestroyHandler] initiateDestruction (source: ${source}, broadcast: ${broadcast}):`,
+      id
+    );
+
+    // v1.6.3.7 - Check if already destroyed to prevent duplicate processing
+    if (this._destroyedIds.has(id)) {
+      console.log('[DestroyHandler] initiateDestruction SKIPPED - already destroyed:', id);
+      return;
+    }
+
+    // v1.6.3.10-v4 - FIX Issue #16: Cross-tab ownership validation
+    const ownershipValidation = this._validateCrossTabOwnership(id, 'initiateDestruction', source);
+    if (!ownershipValidation.valid) {
+      return; // Don't destroy - not owned by this tab
+    }
+
+    // Step 1: Local cleanup - handleDestroy handles Map, minimizedManager, DOM, and events
+    // Note: handleDestroy also calls _notifyBackgroundOfDeletion and _debouncedPersistToStorage
+    this.handleDestroy(id, source);
+
+    // Step 2: If broadcast flag is true, explicitly request cross-tab broadcast
+    // This is redundant with handleDestroy's _notifyBackgroundOfDeletion, but ensures
+    // the broadcast flag is honored for cases where we need to suppress cross-tab sync
+    if (broadcast) {
+      await this._requestCrossTabBroadcast(id, source);
+    }
+
+    console.log(`[DestroyHandler] initiateDestruction complete (source: ${source}):`, id);
+  }
+
+  /**
+   * Request cross-tab broadcast of deletion via background script
+   * v1.6.3.7 - FIX Issue #3: Explicit cross-tab broadcast request
+   * v1.6.3.11-v12 - FIX Issue #3: Use QUICKTAB_REMOVED message type
+   * @private
+   * @param {string} id - Quick Tab ID
+   * @param {string} source - Source of deletion
+   * @returns {Promise<void>}
+   */
+  async _requestCrossTabBroadcast(id, source) {
+    try {
+      console.log('[DestroyHandler] [BROADCAST] Requesting cross-tab broadcast:', {
+        id,
+        source,
+        originTabId: this.currentTabId
+      });
+
+      await browser.runtime.sendMessage({
+        type: 'QUICKTAB_REMOVED',
+        quickTabId: id,
+        originTabId: this.currentTabId,
+        source: source || 'DestroyHandler',
+        requestBroadcast: true, // Explicit flag to request cross-tab broadcast
+        timestamp: Date.now()
+      });
+
+      console.log('[DestroyHandler] [BROADCAST] Request sent successfully:', { id });
+    } catch (err) {
+      // Background may not be available
+      console.debug('[DestroyHandler] [BROADCAST] Could not request:', { id, error: err.message });
+    }
+  }
+
+  /**
+   * Schedule mutex release after cooldown
+   * v1.6.3.5-v6 - Extracted to improve readability (per code review)
+   * @private
+   */
+  _scheduleMutexRelease() {
+    if (this._closeAllCooldownTimer) {
+      clearTimeout(this._closeAllCooldownTimer);
+    }
+    this._closeAllCooldownTimer = setTimeout(() => {
+      this._closeAllInProgress = false;
+      this._closeAllCooldownTimer = null;
+      console.log(
+        `[DestroyHandler] closeAll mutex released after ${CLOSE_ALL_COOLDOWN_MS}ms cooldown`
+      );
+    }, CLOSE_ALL_COOLDOWN_MS);
+  }
+
+  /**
+   * Close all Quick Tabs
+   * v1.6.3.4 - FIX Bug #1: Persist to storage after close all
+   * v1.6.3.4-v4 - FIX Issue #3: Emit state:cleared event for UICoordinator reconciliation
+   * v1.6.3.4-v5 - FIX Bug #7: Track all destroyed IDs atomically, use shared cleanup utility
+   * v1.6.3.2 - FIX Issue #6: Use batch mode to prevent storage write storm (6+ writes in 24ms)
+   * v1.6.3.4 - FIX Issue #7: Enhanced logging throughout closeAll
+   * v1.6.3.4-v10 - FIX Issue #6: Use Set of operation IDs instead of boolean flag
+   *   The boolean was vulnerable to timer interleaving from earlier operations.
+   *   Now each ID is tracked individually in _batchOperationIds Set.
+   * v1.6.3.5-v6 - FIX Diagnostic Issue #3: Add mutex to prevent duplicate executions
+   *   Problem: closeAll() was executing 2-3 times per button click
+   *   Fix: Add _closeAllInProgress flag with 2000ms cooldown
+   * Calls destroy() on each tab, clears map, clears minimized manager, resets z-index
+   *
+   * @param {string} source - Source of action ('UI', 'Manager', etc.)
+   */
+  closeAll(source = 'Manager') {
+    // v1.6.3.5-v6 - FIX Diagnostic Issue #3: Check mutex to prevent duplicate execution
+    if (this._closeAllInProgress) {
+      console.warn(`[DestroyHandler] closeAll BLOCKED (mutex held, source: ${source})`);
+      return;
+    }
+
+    // v1.6.3.5-v6 - Acquire mutex
+    this._closeAllInProgress = true;
+    console.log(`[DestroyHandler] Closing all Quick Tabs (source: ${source}) - mutex acquired`);
+
+    // v1.6.3.5-v6 - Schedule mutex release with cooldown (extracted per code review)
+    this._scheduleMutexRelease();
+
+    const count = this.quickTabsMap.size;
+
+    // v1.6.3.4-v10 - FIX Issue #6: Add all IDs to batch Set BEFORE destroy loop
+    // This ensures handleDestroy() checks for membership correctly
+    for (const id of this.quickTabsMap.keys()) {
+      this._batchOperationIds.add(id);
+    }
+    console.log(`[DestroyHandler] Added ${count} IDs to batch Set (source: ${source}):`, {
+      batchSetSize: this._batchOperationIds.size,
+      ids: Array.from(this._batchOperationIds)
+    });
+
+    // v1.6.3.4-v5 - FIX Bug #7: Track all IDs being destroyed
+    for (const id of this.quickTabsMap.keys()) {
+      this._destroyedIds.add(id);
+      console.log(`[DestroyHandler] Marked for destruction (source: ${source}):`, id);
+    }
+
+    // Destroy all tabs - each destroy() call will skip storage persist due to batch Set
     for (const tabWindow of this.quickTabsMap.values()) {
       if (tabWindow.destroy) {
         tabWindow.destroy();
@@ -177,7 +579,36 @@ export class DestroyHandler {
 
     // Clear everything
     this.quickTabsMap.clear();
+    console.log(`[DestroyHandler] Map cleared (source: ${source})`);
+
     this.minimizedManager.clear();
+    console.log(`[DestroyHandler] MinimizedManager cleared (source: ${source})`);
+
     this.currentZIndex.value = this.baseZIndex;
+
+    // v1.6.3.4-v5 - FIX Bug #7: Use shared utility to clean up ALL .quick-tab-window elements
+    const removedCount = cleanupOrphanedQuickTabElements(null);
+    if (removedCount > 0) {
+      console.log(`[DestroyHandler] Removed ${removedCount} DOM element(s) (source: ${source})`);
+    }
+
+    // v1.6.3.4-v4 - FIX Issue #3: Emit state:cleared for UICoordinator to reconcile
+    // This removes any orphaned windows that may exist in renderedTabs but not StateManager
+    if (this.eventBus) {
+      this.eventBus.emit('state:cleared', { count, source });
+      console.log(`[DestroyHandler] Emitted state:cleared (source: ${source}):`, count);
+    }
+
+    // v1.6.3.4-v10 - FIX Issue #6: Clear batch Set after all cleanup is complete
+    this._batchOperationIds.clear();
+    console.log(`[DestroyHandler] Cleared batch Set after closeAll (source: ${source})`);
+
+    // v1.6.3.2 - FIX Issue #6: Single atomic storage write after all cleanup
+    // This replaces 6+ individual writes with 1 write
+    // v1.6.3.10-v7 - FIX Diagnostic Issue #10: Set forceEmpty=true to persist empty state
+    console.log(
+      `[DestroyHandler] closeAll complete (source: ${source}) - performing single atomic storage write with forceEmpty=true`
+    );
+    this._persistToStorage(true); // forceEmpty=true ensures empty state is persisted
   }
 }

@@ -1,8 +1,0 @@
-{
-  "id": "80309009-e3bf-494d-8069-832fb678ad33",
-  "title": "Category-Based Logging Architecture",
-  "details": "Design decisions for logger.js:\n1. Category IDs use kebab-case (e.g., 'url-detection', 'quick-tab-manager') for consistency\n2. Each category has display name with emoji for visual identification\n3. Async-first API: All filter checks are async to support browser.storage.local reads\n4. Caching strategy: Settings loaded once and cached in memory, cleared on settings change via message passing\n5. Independent filters: Live console and export have separate settings for maximum flexibility\n6. Fail-safe defaults: Unknown categories default to enabled to prevent silent failures\n7. Performance: Filter check before console.log() prevents unnecessary logging overhead",
-  "category": "architecture",
-  "dateCreated": "2025-11-21T01:41:11.122Z",
-  "dateUpdated": "2025-11-21T01:41:11.122Z"
-}

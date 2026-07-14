@@ -1,18 +1,24 @@
 /**
  * StateManager - Manages local in-memory Quick Tab state
  * Phase 2.1: Extracted from QuickTabsManager
+ * v1.6.3 - Simplified for single-tab Quick Tabs (no cross-tab sync or storage persistence)
+ * v1.6.3.1 - Added persistToStorage() for sidebar/manager sync
+ * v1.6.3.5-v5 - FIX Issue #3: Use persistStateToStorage instead of direct browser.storage.local.set
  *
  * Responsibilities:
  * - Maintain Map of QuickTab instances
  * - Add/update/delete Quick Tabs
  * - Query Quick Tabs by ID or criteria
- * - Hydrate state from storage
  * - Track current tab ID for visibility filtering
+ * - Assign global slots to Quick Tabs
+ * - Persist state to browser.storage.local via storage-utils (single pipeline)
  *
  * Uses:
  * - QuickTab domain entities (not QuickTabWindow UI components)
  * - Map for O(1) lookups
  */
+
+import { persistStateToStorage, generateSaveId } from '@utils/storage-utils.js';
 
 import { QuickTab } from '@domain/QuickTab.js';
 
@@ -29,7 +35,86 @@ export class StateManager {
   }
 
   /**
+   * Persist current state to browser.storage.local
+   * v1.6.3.1 - New method for sidebar/manager sync
+   * v1.6.3.5-v5 - FIX Issue #3: Route through persistStateToStorage instead of direct write
+   *   This consolidates all persistence through one pipeline with consistent transaction
+   *   tracking, validation, and queuing - preventing parallel persistence conflicts.
+   * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging with timing, source, and state snapshot
+   * v1.6.3.5-v10 - FIX Issue #4: Add forceEmpty parameter for intentional empty writes
+   *
+   * Writes unified format (v1.6.2.2+):
+   * { tabs: [...], saveId: '...', timestamp: ..., transactionId: ... }
+   *
+   * @param {string} [source='unknown'] - Source of persist operation for logging
+   * @param {boolean} [forceEmpty=false] - Allow empty (0 tabs) writes (for Close All)
+   */
+  async persistToStorage(source = 'unknown', forceEmpty = false) {
+    const startTime = Date.now();
+
+    try {
+      const tabs = this.getAll().map(qt => qt.serialize());
+      const state = {
+        tabs: tabs,
+        timestamp: Date.now(),
+        saveId: generateSaveId()
+      };
+
+      // v1.6.3.5-v7 - FIX Issue #5: Comprehensive logging before persist
+      console.log('[StateManager] persistToStorage() starting:', {
+        source,
+        tabCount: tabs.length,
+        saveId: state.saveId,
+        minimizedCount: tabs.filter(t => t.minimized).length,
+        activeCount: tabs.filter(t => !t.minimized).length,
+        tabIds: tabs.map(t => t.id).slice(0, 5), // First 5 IDs for debugging
+        timestamp: state.timestamp,
+        forceEmpty // v1.6.3.5-v10
+      });
+
+      // v1.6.3.5-v5 - FIX Issue #3: Use centralized persistStateToStorage instead of direct write
+      // This ensures all storage writes have transaction IDs, respect FIFO queue,
+      // use hash deduplication, and validate ownership.
+      // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty to allow intentional empty writes
+      const success = await persistStateToStorage(state, '[StateManager]', forceEmpty);
+
+      const duration = Date.now() - startTime;
+
+      if (success) {
+        console.log(`[StateManager] Persisted ${tabs.length} Quick Tabs to storage:`, {
+          source,
+          saveId: state.saveId,
+          durationMs: duration,
+          success: true
+        });
+      } else {
+        console.warn('[StateManager] Storage persist returned false:', {
+          source,
+          saveId: state.saveId,
+          durationMs: duration,
+          success: false,
+          reason: 'may have been skipped/blocked'
+        });
+      }
+
+      return success;
+    } catch (err) {
+      const duration = Date.now() - startTime;
+      console.error('[StateManager] Failed to persist to storage:', {
+        source,
+        durationMs: duration,
+        error: err.message,
+        stack: err.stack
+      });
+      return false;
+    }
+  }
+
+  /**
    * Add Quick Tab to state
+   * v1.6.3 - Assign global slot if not already assigned
+   * v1.6.3.1 - Persist to storage for cross-context sync
+   *
    * @param {QuickTab} quickTab - QuickTab domain entity
    */
   add(quickTab) {
@@ -37,10 +122,22 @@ export class StateManager {
       throw new Error('StateManager.add() requires QuickTab instance');
     }
 
-    this.quickTabs.set(quickTab.id, quickTab);
-    this.eventBus?.emit('state:added', quickTab);
+    // Assign global slot if not already assigned
+    if (quickTab.slot === null || quickTab.slot === undefined) {
+      quickTab.slot = this.assignGlobalSlot();
+      console.log(`[StateManager] Assigned slot ${quickTab.slot} to Quick Tab: ${quickTab.id}`);
+    }
 
-    console.log(`[StateManager] Added Quick Tab: ${quickTab.id}`);
+    this.quickTabs.set(quickTab.id, quickTab);
+
+    this.eventBus?.emit('state:added', { quickTab });
+
+    console.log(`[StateManager] Added Quick Tab: ${quickTab.id} (slot: ${quickTab.slot})`);
+
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    this.persistToStorage().catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
@@ -63,6 +160,8 @@ export class StateManager {
 
   /**
    * Update Quick Tab
+   * v1.6.3.1 - Persist to storage for cross-context sync
+   *
    * @param {QuickTab} quickTab - Updated QuickTab domain entity
    */
   update(quickTab) {
@@ -76,13 +175,20 @@ export class StateManager {
     }
 
     this.quickTabs.set(quickTab.id, quickTab);
-    this.eventBus?.emit('state:updated', quickTab);
+    this.eventBus?.emit('state:updated', { quickTab });
 
     console.log(`[StateManager] Updated Quick Tab: ${quickTab.id}`);
+
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    this.persistToStorage().catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
    * Delete Quick Tab from state
+   * v1.6.3.1 - Persist to storage for cross-context sync
+   *
    * @param {string} id - Quick Tab ID
    * @returns {boolean} - True if deleted
    */
@@ -91,8 +197,13 @@ export class StateManager {
     const deleted = this.quickTabs.delete(id);
 
     if (deleted) {
-      this.eventBus?.emit('state:deleted', quickTab);
+      this.eventBus?.emit('state:deleted', { id, quickTab });
       console.log(`[StateManager] Deleted Quick Tab: ${id}`);
+
+      // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+      this.persistToStorage().catch(() => {
+        /* errors logged in persistToStorage */
+      });
     }
 
     return deleted;
@@ -128,66 +239,52 @@ export class StateManager {
   }
 
   /**
-   * Get Quick Tabs for specific container
-   * @param {string} cookieStoreId - Container ID
-   * @returns {Array<QuickTab>} - Array of Quick Tabs for container
+   * Get Quick Tab by slot number
+   *
+   * @param {number} slot - Slot number to find
+   * @returns {QuickTab|undefined} - Quick Tab with matching slot or undefined
    */
-  getByContainer(cookieStoreId) {
-    return this.getAll().filter(qt => qt.belongsToContainer(cookieStoreId));
+  getBySlot(slot) {
+    for (const qt of this.quickTabs.values()) {
+      if (qt.slot === slot) {
+        return qt;
+      }
+    }
+    return undefined;
   }
 
   /**
-   * Hydrate state from array of QuickTab entities
-   * v1.6.1 - CRITICAL FIX: Track additions, updates, and deletions to emit proper events
-   * This ensures UI coordinator knows about deletions and removes Quick Tabs that no longer exist
-   * @param {Array<QuickTab>} quickTabs - Array of QuickTab domain entities
+   * Assign global slot to a new Quick Tab
+   *
+   * Scans all existing Quick Tabs and returns the lowest available slot number.
+   * Slot numbers start at 1 and are never reused until the Quick Tab is deleted.
+   *
+   * @returns {number} - Next available slot number (1, 2, 3, ...)
    */
-  hydrate(quickTabs) {
-    if (!Array.isArray(quickTabs)) {
-      throw new Error('StateManager.hydrate() requires array of QuickTab instances');
-    }
+  assignGlobalSlot() {
+    const occupiedSlots = new Set();
 
-    // Track existing IDs to detect deletions
-    const existingIds = new Set(this.quickTabs.keys());
-    const incomingIds = new Set();
-
-    // Process incoming Quick Tabs (adds and updates)
-    for (const qt of quickTabs) {
-      if (!(qt instanceof QuickTab)) {
-        console.warn('[StateManager] Skipping non-QuickTab instance during hydration');
-        continue;
-      }
-
-      incomingIds.add(qt.id);
-
-      if (existingIds.has(qt.id)) {
-        // Existing Quick Tab - update it
-        this.quickTabs.set(qt.id, qt);
-        this.eventBus?.emit('state:updated', { quickTab: qt });
-      } else {
-        // New Quick Tab - add it
-        this.quickTabs.set(qt.id, qt);
-        this.eventBus?.emit('state:added', { quickTab: qt });
+    // Collect all occupied slots
+    for (const qt of this.quickTabs.values()) {
+      if (qt.slot !== null && qt.slot !== undefined) {
+        occupiedSlots.add(qt.slot);
       }
     }
 
-    // Detect deletions (existed before but not in incoming data)
-    for (const existingId of existingIds) {
-      if (!incomingIds.has(existingId)) {
-        // Quick Tab was deleted
-        const deletedQuickTab = this.quickTabs.get(existingId);
-        this.quickTabs.delete(existingId);
-        this.eventBus?.emit('state:deleted', { id: existingId, quickTab: deletedQuickTab });
-        console.log(`[StateManager] Detected deleted Quick Tab: ${existingId}`);
-      }
+    // Find first available slot (starting from 1)
+    let slot = 1;
+    while (occupiedSlots.has(slot)) {
+      slot++;
     }
 
-    this.eventBus?.emit('state:hydrated', { count: quickTabs.length });
-    console.log(`[StateManager] Hydrated ${quickTabs.length} Quick Tabs (${incomingIds.size - existingIds.size} added, ${existingIds.size - incomingIds.size} deleted)`);
+    console.log(`[StateManager] Assigned global slot: ${slot}`);
+    return slot;
   }
 
   /**
    * Clear all Quick Tabs
+   * v1.6.3.1 - Persist to storage for cross-context sync
+   * v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty=true to allow empty write
    */
   clear() {
     const count = this.quickTabs.size;
@@ -196,6 +293,12 @@ export class StateManager {
 
     this.eventBus?.emit('state:cleared', { count });
     console.log(`[StateManager] Cleared ${count} Quick Tabs`);
+
+    // v1.6.3.1 - Persist to storage for sidebar/manager sync (fire-and-forget for UI responsiveness)
+    // v1.6.3.5-v10 - FIX Issue #4: Pass forceEmpty=true since this is an intentional "Close All" action
+    this.persistToStorage('clear', true /* forceEmpty */).catch(() => {
+      /* errors logged in persistToStorage */
+    });
   }
 
   /**
@@ -226,12 +329,15 @@ export class StateManager {
 
   /**
    * Update Quick Tab z-index
+   * v1.6.3.5-v7 - FIX Issue #8: Add storage persistence after z-index updates
    * @param {string} id - Quick Tab ID
    * @param {number} zIndex - New z-index
    */
   updateZIndex(id, zIndex) {
+    const startTime = Date.now();
     const quickTab = this.quickTabs.get(id);
     if (quickTab) {
+      const oldZIndex = quickTab.zIndex;
       quickTab.updateZIndex(zIndex);
       this.quickTabs.set(id, quickTab);
 
@@ -239,42 +345,40 @@ export class StateManager {
       if (zIndex > this.currentZIndex) {
         this.currentZIndex = zIndex;
       }
+
+      // v1.6.3.5-v7 - FIX Issue #5: Comprehensive logging for state transitions
+      console.log('[StateManager] Z-index updated:', {
+        id,
+        oldZIndex,
+        newZIndex: zIndex,
+        currentHighest: this.currentZIndex,
+        durationMs: Date.now() - startTime
+      });
+
+      // v1.6.3.5-v7 - FIX Issue #8: Persist to storage after z-index update
+      this.persistToStorage('z-index-update').catch(() => {
+        /* errors logged in persistToStorage */
+      });
     }
   }
 
   /**
    * Bring Quick Tab to front
+   * v1.6.3.5-v7 - FIX Issue #5: Add comprehensive logging
    * @param {string} id - Quick Tab ID
    */
   bringToFront(id) {
+    const startTime = Date.now();
+    console.log('[StateManager] bringToFront() called:', { id, currentZIndex: this.currentZIndex });
+
     const nextZIndex = this.getNextZIndex();
     this.updateZIndex(id, nextZIndex);
     this.eventBus?.emit('state:z-index-changed', { id, zIndex: nextZIndex });
-  }
 
-  /**
-   * Clean up dead tab IDs from solo/mute arrays
-   * @param {Array<number>} activeTabIds - Array of currently active tab IDs
-   */
-  cleanupDeadTabs(activeTabIds) {
-    let cleaned = 0;
-
-    for (const quickTab of this.quickTabs.values()) {
-      const before =
-        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
-      quickTab.cleanupDeadTabs(activeTabIds);
-      const after =
-        quickTab.visibility.soloedOnTabs.length + quickTab.visibility.mutedOnTabs.length;
-
-      if (before !== after) {
-        this.quickTabs.set(quickTab.id, quickTab);
-        cleaned++;
-      }
-    }
-
-    if (cleaned > 0) {
-      console.log(`[StateManager] Cleaned dead tabs from ${cleaned} Quick Tabs`);
-      this.eventBus?.emit('state:cleaned', { count: cleaned });
-    }
+    console.log('[StateManager] bringToFront() complete:', {
+      id,
+      newZIndex: nextZIndex,
+      durationMs: Date.now() - startTime
+    });
   }
 }

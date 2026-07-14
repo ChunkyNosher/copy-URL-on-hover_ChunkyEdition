@@ -50,16 +50,25 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
 
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(true);
-      expect(manager.minimizedTabs.get('test-tab-1')).toBe(mockTabWindow);
+      // v1.6.3.4-v4 - Now stores snapshot, not direct reference
+      expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow);
     });
 
-    test('should log addition', () => {
+    test('should log addition with snapshot', () => {
       manager.add('test-tab-1', mockTabWindow);
 
-      expect(console.log).toHaveBeenCalledWith(
-        '[MinimizedManager] Added minimized tab:',
-        'test-tab-1'
-      );
+      // v1.6.3.4-v4 - Updated: Logs include snapshot details
+      // v1.6.3.12 - Updated: Logs now include savedOriginTabId
+      // v1.6.3.6-v8 - Updated: New log format with SNAPSHOT_CAPTURED prefix and wasRecoveredFromIdPattern
+      // v1.6.3.10-v4 - Updated: Include savedOriginContainerId for Firefox Multi-Account Container isolation
+      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] 📸 SNAPSHOT_CAPTURED:', {
+        id: 'test-tab-1',
+        savedPosition: { left: 100, top: 200 },
+        savedSize: { width: 800, height: 600 },
+        savedOriginTabId: undefined,
+        savedOriginContainerId: null,
+        wasRecoveredFromIdPattern: false
+      });
     });
 
     test('should allow adding multiple tabs', () => {
@@ -80,8 +89,9 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow2);
 
       expect(manager.minimizedTabs.size).toBe(1);
-      expect(manager.minimizedTabs.get('test-tab-1')).toBe(mockTabWindow2);
-      expect(manager.minimizedTabs.get('test-tab-1').width).toBe(1000);
+      // v1.6.3.4-v4 - Now stores snapshot, not direct reference
+      expect(manager.minimizedTabs.get('test-tab-1').window).toBe(mockTabWindow2);
+      expect(manager.minimizedTabs.get('test-tab-1').window.width).toBe(1000);
     });
   });
 
@@ -129,37 +139,56 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', mockTabWindow);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
-      expect(mockTabWindow.restore).toHaveBeenCalled();
+      // v1.6.3.2 - restore() only applies snapshot and returns data, does NOT call tabWindow.restore()
+      // UICoordinator is now the single rendering authority and will call restore() then render()
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(mockTabWindow);
+      expect(result.position).toEqual({ left: 100, top: 200 });
+      expect(result.size).toEqual({ width: 800, height: 600 });
+      // v1.6.3.2 - tabWindow.restore() is NO LONGER called here (fixes Issue #1 duplicate window)
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
-    test('should remove tab from minimizedTabs after restoration', () => {
+    test('should move tab to pendingClear (clear-on-first-use) after restore (v1.6.3.5)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
+      // v1.6.3.5 - restore() moves snapshot to pendingClear immediately (clear-on-first-use pattern)
       expect(manager.minimizedTabs.has('test-tab-1')).toBe(false);
+      expect(manager.pendingClearSnapshots.has('test-tab-1')).toBe(true);
+
+      // After clearSnapshot(), it should be removed from pendingClear
+      manager.clearSnapshot('test-tab-1');
+      expect(manager.pendingClearSnapshots.has('test-tab-1')).toBe(false);
     });
 
-    test('should preserve position state before restoring', () => {
+    test('should apply snapshot to instance properties (v1.6.3.2)', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // Verify position was applied to container after restore
-      expect(mockTabWindow.container.style.left).toBe('100px');
-      expect(mockTabWindow.container.style.top).toBe('200px');
-      expect(mockTabWindow.container.style.width).toBe('800px');
-      expect(mockTabWindow.container.style.height).toBe('600px');
+      // v1.6.3.2 - Verify snapshot was applied to instance properties
+      // UICoordinator will call tabWindow.restore() then render() using these values
+      expect(mockTabWindow.left).toBe(100);
+      expect(mockTabWindow.top).toBe(200);
+      expect(mockTabWindow.width).toBe(800);
+      expect(mockTabWindow.height).toBe(600);
+      // v1.6.3.2 - tabWindow.restore() is NO LONGER called by MinimizedManager
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
     test('should log restoration with position details', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Restored tab with position:', {
-        id: 'test-tab-1',
-        left: 100,
-        top: 200
-      });
+      // v1.6.3.5 - Updated log message to reflect snapshot is moved to pendingClear (clear-on-first-use)
+      expect(console.log).toHaveBeenCalledWith(
+        '[MinimizedManager] Snapshot applied:',
+        expect.objectContaining({
+          id: 'test-tab-1',
+          position: { left: 100, top: 200 },
+          size: { width: 800, height: 600 }
+        })
+      );
     });
 
     test('should return false for non-existent tab', () => {
@@ -174,6 +203,20 @@ describe('MinimizedManager', () => {
       expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
+    test('should reject duplicate restore attempts within lock period (v1.6.3.5)', () => {
+      manager.add('test-tab-1', mockTabWindow);
+
+      // First restore should succeed
+      const result1 = manager.restore('test-tab-1');
+      expect(result1).toBeTruthy();
+      expect(result1.duplicate).toBeUndefined();
+
+      // Second immediate restore should be marked as duplicate
+      const result2 = manager.restore('test-tab-1');
+      expect(result2).toBeTruthy();
+      expect(result2.duplicate).toBe(true);
+    });
+
     test('should handle tab without container', () => {
       const tabWithoutContainer = {
         ...mockTabWindow,
@@ -183,22 +226,23 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-1', tabWithoutContainer);
       const result = manager.restore('test-tab-1');
 
-      expect(result).toBe(true);
-      expect(tabWithoutContainer.restore).toHaveBeenCalled();
-      // Should not throw when trying to set styles on null container
+      // v1.6.3.2 - restore() only applies snapshot, does NOT call tabWindow.restore()
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(tabWithoutContainer);
+      // v1.6.3.2 - tabWindow.restore() is NO LONGER called here
+      expect(tabWithoutContainer.restore).not.toHaveBeenCalled();
     });
 
-    test('should preserve exact position even if restore changes it', () => {
-      // Mock restore to change position (defensive behavior test)
-      mockTabWindow.restore = jest.fn(() => {
-        mockTabWindow.container.style.left = '999px'; // Wrong position
-      });
-
+    test('should apply correct snapshot before caller invokes restore (v1.6.3.2)', () => {
+      // v1.6.3.2 - MinimizedManager only applies snapshot, caller (UICoordinator) calls restore
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
 
-      // Should force correct position after restore
-      expect(mockTabWindow.container.style.left).toBe('100px'); // Correct position
+      // v1.6.3.2 - Snapshot should be applied to instance
+      expect(mockTabWindow.left).toBe(100);
+      expect(mockTabWindow.top).toBe(200);
+      // v1.6.3.2 - restore() not called by MinimizedManager
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
   });
 
@@ -271,11 +315,13 @@ describe('MinimizedManager', () => {
       expect(manager.getCount()).toBe(1);
     });
 
-    test('should decrease count when tab restored', () => {
+    test('should decrease count when tab restored and clearSnapshot called', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.add('test-tab-2', mockTabWindow);
 
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - restore() no longer removes from minimizedTabs, clearSnapshot() does
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.getCount()).toBe(1);
     });
@@ -299,9 +345,11 @@ describe('MinimizedManager', () => {
       expect(manager.isMinimized('test-tab-1')).toBe(false);
     });
 
-    test('should return false after tab restored', () => {
+    test('should return false after tab restored and clearSnapshot called', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - restore() keeps snapshot in minimizedTabs until clearSnapshot() is called
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
     });
@@ -323,7 +371,16 @@ describe('MinimizedManager', () => {
     test('should log clearing', () => {
       manager.clear();
 
-      expect(console.log).toHaveBeenCalledWith('[MinimizedManager] Cleared all minimized tabs');
+      // v1.6.3.5-v8 - Updated log message to include detailed clear counts
+      expect(console.log).toHaveBeenCalledWith(
+        '[MinimizedManager] clear() complete:',
+        expect.objectContaining({
+          minimizedCleared: expect.any(Number),
+          pendingCleared: expect.any(Number),
+          restoreLocksCleared: expect.any(Number),
+          clearedIds: expect.any(Array)
+        })
+      );
     });
 
     test('should handle clearing when already empty', () => {
@@ -345,11 +402,16 @@ describe('MinimizedManager', () => {
     test('should handle multiple minimize/restore cycles', () => {
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - clearSnapshot() must be called after restore() to complete cycle
+      manager.clearSnapshot('test-tab-1');
       manager.add('test-tab-1', mockTabWindow);
       manager.restore('test-tab-1');
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
-      expect(mockTabWindow.restore).toHaveBeenCalledTimes(2);
+      // v1.6.3.2 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      // The caller (UICoordinator) is responsible for calling it
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
     });
 
     test('should maintain separate state for different tabs', () => {
@@ -366,10 +428,13 @@ describe('MinimizedManager', () => {
       manager.add('test-tab-2', mockTabWindow2);
 
       manager.restore('test-tab-1');
+      // v1.6.3.4-v3 - clearSnapshot() must be called after restore() to remove from minimizedTabs
+      manager.clearSnapshot('test-tab-1');
 
       expect(manager.isMinimized('test-tab-1')).toBe(false);
       expect(manager.isMinimized('test-tab-2')).toBe(true);
-      expect(mockTabWindow.restore).toHaveBeenCalled();
+      // v1.6.3.2 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      expect(mockTabWindow.restore).not.toHaveBeenCalled();
       expect(mockTabWindow2.restore).not.toHaveBeenCalled();
     });
 
@@ -399,32 +464,40 @@ describe('MinimizedManager', () => {
       manager.add('minimal', minimalTab);
       const result = manager.restore('minimal');
 
-      expect(result).toBe(true);
-      expect(minimalTab.restore).toHaveBeenCalled();
-      // Should use undefined for missing properties
-      expect(minimalTab.container.style.left).toBe('undefinedpx');
+      // v1.6.3.2 - restore() only applies snapshot, does NOT call tabWindow.restore()
+      expect(result).toBeTruthy();
+      expect(result.window).toBe(minimalTab);
+      // v1.6.3.2 - MinimizedManager.restore() no longer calls tabWindow.restore()
+      expect(minimalTab.restore).not.toHaveBeenCalled();
+      // v1.6.3.4-v7 - Snapshot applies to instance properties (with defaults)
+      expect(minimalTab.left).toBe(100);
+      expect(minimalTab.top).toBe(100);
     });
 
     test('should handle null tab window in add', () => {
+      // v1.6.3.4-v4 - Updated: null tab window is now rejected
       manager.add('null-tab', null);
 
-      expect(manager.isMinimized('null-tab')).toBe(true);
-      expect(manager.getCount()).toBe(1);
+      expect(manager.isMinimized('null-tab')).toBe(false); // Not added
+      expect(manager.getCount()).toBe(0);
     });
 
     test('should handle undefined tab window in add', () => {
+      // v1.6.3.4-v4 - Updated: undefined tab window is now rejected
       manager.add('undefined-tab', undefined);
 
-      expect(manager.isMinimized('undefined-tab')).toBe(true);
-      expect(manager.getCount()).toBe(1);
+      expect(manager.isMinimized('undefined-tab')).toBe(false); // Not added
+      expect(manager.getCount()).toBe(0);
     });
 
     test('should handle restoring null tab window', () => {
+      // v1.6.3.4-v4 - Updated: Since null tab window is rejected in add,
+      // restore won't find it and returns false
       manager.add('null-tab', null);
 
       const result = manager.restore('null-tab');
 
-      expect(result).toBe(false); // tabWindow is null, so returns false
+      expect(result).toBe(false); // tabWindow was never added
     });
   });
 });

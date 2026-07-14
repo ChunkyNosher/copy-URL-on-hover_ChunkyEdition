@@ -2,7 +2,7 @@
 
 /**
  * Verification script for test bridge implementation
- * 
+ *
  * Checks that all required components are in place according to the gap analysis
  * document: docs/manual/v1.6.0/copilot-testing-readiness-gap-analysis-revised.md
  */
@@ -28,7 +28,14 @@ if (fs.existsSync(testBridgePath)) {
 
 // Check 2: Test utilities exist
 console.log('2. Checking test utilities...');
-const testUtilsPath = path.join(__dirname, '..', 'tests', 'extension', 'helpers', 'extension-test-utils.js');
+const testUtilsPath = path.join(
+  __dirname,
+  '..',
+  'tests',
+  'extension',
+  'helpers',
+  'extension-test-utils.js'
+);
 if (fs.existsSync(testUtilsPath)) {
   console.log('   ✓ tests/extension/helpers/extension-test-utils.js exists');
   checks.push(true);
@@ -151,11 +158,11 @@ if (fs.existsSync(testBridgePath)) {
     'waitForQuickTabCount',
     'clearAllQuickTabs'
   ];
-  
-  const missingMethods = requiredMethods.filter(method => 
-    !testBridgeContent.includes(`async ${method}`)
+
+  const missingMethods = requiredMethods.filter(
+    method => !testBridgeContent.includes(`async ${method}`)
   );
-  
+
   if (missingMethods.length === 0) {
     console.log('   ✓ All required API methods present');
     checks.push(true);

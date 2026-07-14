@@ -1,8 +1,0 @@
-{
-  "id": "c607c432-ac22-4870-becc-7905b37e5595",
-  "title": "v1.6.0.11 Filter Integration Architecture",
-  "details": "## Console Filter Settings Integration (v1.6.0.11)\n\n**Root Cause Identified:**\n- Filter settings were stored separately (liveConsoleCategoriesEnabled, exportLogCategoriesEnabled)\n- Main \"Save Settings\" button didn't include filter settings\n- Users expected filters to save with main button, but had to use separate \"Save Live Filters\" button\n\n**Architectural Solution:**\n- Created `gatherFilterSettings()` function to collect filter checkboxes\n- Modified `saveSettings()` to be async and save both main settings + filters\n- Integrated `refreshLiveConsoleFiltersInAllTabs()` notification into save flow\n- Removed separate save/reset filter buttons (158 lines removed)\n\n**Key Functions:**\n```javascript\nfunction gatherFilterSettings() {\n  // Collects live and export filter checkbox states\n  return { liveSettings, exportSettings };\n}\n\nasync function saveSettings() {\n  const settings = gatherSettingsFromForm();\n  const { liveSettings, exportSettings } = gatherFilterSettings();\n  \n  await browserAPI.storage.local.set(settings);\n  await browserAPI.storage.local.set({\n    liveConsoleCategoriesEnabled: liveSettings,\n    exportLogCategoriesEnabled: exportSettings\n  });\n  \n  await refreshLiveConsoleFiltersInAllTabs();\n}\n```\n\n**Benefits:**\n- Single \"Save Settings\" button for everything\n- Filters work immediately after saving\n- Reset button also resets filters\n- Cleaner, more maintainable code (-76 lines net)",
-  "category": "architecture",
-  "dateCreated": "2025-11-21T05:30:23.079Z",
-  "dateUpdated": "2025-11-21T05:30:23.079Z"
-}

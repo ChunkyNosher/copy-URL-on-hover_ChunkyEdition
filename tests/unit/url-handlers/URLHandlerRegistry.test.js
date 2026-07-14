@@ -5,8 +5,6 @@
  * Target: Bring url-handlers from 0% to 50%+
  */
 
-import { jest } from '@jest/globals';
-
 import { URLHandlerRegistry } from '../../../src/features/url-handlers/index.js';
 
 describe('URLHandlerRegistry', () => {

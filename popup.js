@@ -471,7 +471,6 @@ const DEFAULT_SETTINGS = {
   quickTabCustomY: 100,
   quickTabCloseOnOpen: false,
   quickTabEnableResize: true,
-  quickTabUpdateRate: 360, // Position updates per second (Hz) for dragging
 
   showNotification: true,
   notifDisplayMode: 'tooltip',
@@ -572,7 +571,6 @@ function loadSettings() {
     document.getElementById('quickTabCustomY').value = items.quickTabCustomY;
     document.getElementById('quickTabCloseOnOpen').checked = items.quickTabCloseOnOpen;
     document.getElementById('quickTabEnableResize').checked = items.quickTabEnableResize;
-    document.getElementById('quickTabUpdateRate').value = items.quickTabUpdateRate || 360;
     toggleCustomPosition(items.quickTabPosition);
 
     document.getElementById('showNotification').checked = items.showNotification;
@@ -683,7 +681,6 @@ function gatherSettingsFromForm() {
     quickTabCustomY: safeParseInt(document.getElementById('quickTabCustomY').value, 100),
     quickTabCloseOnOpen: document.getElementById('quickTabCloseOnOpen').checked,
     quickTabEnableResize: document.getElementById('quickTabEnableResize').checked,
-    quickTabUpdateRate: safeParseInt(document.getElementById('quickTabUpdateRate').value, 360),
 
     showNotification: document.getElementById('showNotification').checked,
     notifDisplayMode: document.getElementById('notifDisplayMode').value || 'tooltip',
@@ -800,6 +797,8 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 
 // Clear Quick Tab storage button
+// v1.6.3 - FIX: Clear from storage.local (primary storage since v1.6.0.12)
+// Also notify background to reset globalQuickTabState cache
 document.getElementById('clearStorageBtn').addEventListener('click', async () => {
   if (
     confirm(
@@ -807,14 +806,18 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     )
   ) {
     try {
-      // Only clear Quick Tab state, preserve all settings
+      // v1.6.3 - FIX: Clear from local storage (where Quick Tabs are actually stored since v1.6.0.12)
+      await browserAPI.storage.local.remove('quick_tabs_state_v2');
+
+      // v1.6.3 - Backward compatibility: also clear from sync storage (legacy location)
       await browserAPI.storage.sync.remove('quick_tabs_state_v2');
 
-      // Clear session storage if available
-      // eslint-disable-next-line max-depth
-      if (typeof browserAPI.storage.session !== 'undefined') {
-        await browserAPI.storage.session.remove('quick_tabs_session');
-      }
+      // Clear session key from local storage as well
+      // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
+      await browserAPI.storage.local.remove('quick_tabs_session');
+
+      // v1.6.3 - FIX: Notify background to reset globalQuickTabState cache
+      await browserAPI.runtime.sendMessage({ action: 'RESET_GLOBAL_QUICK_TAB_STATE' });
 
       showStatus('✓ Quick Tab storage cleared! Settings preserved.');
 
@@ -875,8 +878,122 @@ function handleTabSwitch(event) {
   }
 }
 
-// Tab switching logic
-document.addEventListener('DOMContentLoaded', () => {
+/**
+ * Setup two-way sync between color text input and color picker
+ * @param {HTMLInputElement} textInput - Text input element
+ * @param {HTMLInputElement} pickerInput - Color picker element
+ */
+function setupColorInputSync(textInput, pickerInput) {
+  // When text input changes, update picker
+  textInput.addEventListener('input', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  textInput.addEventListener('blur', () => {
+    const color = validateHexColor(textInput.value);
+    textInput.value = color;
+    pickerInput.value = color;
+  });
+
+  // When picker changes, update text input
+  pickerInput.addEventListener('input', () => {
+    const color = pickerInput.value.toUpperCase();
+    textInput.value = color;
+  });
+}
+
+/**
+ * Handle export logs button click
+ */
+async function handleExportAllLogs() {
+  const manifest = browserAPI.runtime.getManifest();
+  await exportAllLogs(manifest.version);
+}
+
+/**
+ * Handle clear logs button click
+ */
+async function handleClearLogHistory() {
+  const response = await browserAPI.runtime.sendMessage({
+    action: 'CLEAR_CONSOLE_LOGS'
+  });
+
+  const clearedTabs = response?.clearedTabs || 0;
+  const backgroundEntries = response?.clearedBackgroundEntries || 0;
+
+  const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
+  showStatus(
+    `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
+    true
+  );
+}
+
+/**
+ * Setup button with async handler that shows loading/success/error states
+ * @param {string} buttonId - Button element ID
+ * @param {Function} handler - Async handler function
+ * @param {Object} options - Configuration options
+ */
+function setupButtonHandler(buttonId, handler, options = {}) {
+  const button = document.getElementById(buttonId);
+  if (!button) return;
+
+  const {
+    loadingText = '⏳ Loading...',
+    successText = '✓ Success!',
+    errorText = '✗ Failed',
+    successDuration = 2000,
+    errorDuration = 3000
+  } = options;
+
+  button.addEventListener('click', async () => {
+    const originalText = button.textContent;
+    const originalBg = button.style.backgroundColor;
+
+    try {
+      // Show loading state
+      button.disabled = true;
+      button.textContent = loadingText;
+
+      // Execute handler
+      await handler();
+
+      // Show success state
+      button.textContent = successText;
+      button.classList.add('success');
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('success');
+        button.disabled = false;
+      }, successDuration);
+    } catch (error) {
+      // Show error state
+      button.textContent = errorText;
+      button.classList.add('error');
+
+      // Show error message in status
+      showStatus(`${originalText} failed: ${error.message}`, false);
+
+      // Reset after duration
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.style.backgroundColor = originalBg;
+        button.classList.remove('error');
+        button.disabled = false;
+      }, errorDuration);
+    }
+  });
+}
+
+/**
+ * Initialize UI components on DOMContentLoaded
+ */
+function initializePopupUI() {
   // Settings tab switching
   document.querySelectorAll('.tab-button').forEach(tab => {
     tab.addEventListener('click', handleTabSwitch);
@@ -889,32 +1006,6 @@ document.addEventListener('DOMContentLoaded', () => {
     footerElement.textContent = `${manifest.name} v${manifest.version}`;
   }
 
-  /**
-   * Setup two-way sync between color text input and color picker
-   * @param {HTMLInputElement} textInput - Text input element
-   * @param {HTMLInputElement} pickerInput - Color picker element
-   */
-  function setupColorInputSync(textInput, pickerInput) {
-    // When text input changes, update picker
-    textInput.addEventListener('input', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    textInput.addEventListener('blur', () => {
-      const color = validateHexColor(textInput.value);
-      textInput.value = color;
-      pickerInput.value = color;
-    });
-
-    // When picker changes, update text input
-    pickerInput.addEventListener('input', () => {
-      const color = pickerInput.value.toUpperCase();
-      textInput.value = color;
-    });
-  }
-
   // Add color input event listeners to sync text and picker inputs
   COLOR_INPUTS.forEach(({ textId, pickerId }) => {
     const textInput = document.getElementById(textId);
@@ -925,115 +1016,27 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // ==================== EXPORT LOGS BUTTON ====================
-  /**
-   * Handle export logs button click
-   */
-  async function handleExportAllLogs() {
-    const manifest = browserAPI.runtime.getManifest();
-    await exportAllLogs(manifest.version);
-  }
-
-  /**
-   * Handle clear logs button click
-   */
-  async function handleClearLogHistory() {
-    const response = await browserAPI.runtime.sendMessage({
-      action: 'CLEAR_CONSOLE_LOGS'
-    });
-
-    const clearedTabs = response?.clearedTabs || 0;
-    const backgroundEntries = response?.clearedBackgroundEntries || 0;
-
-    const tabSummary = clearedTabs ? ` (${clearedTabs} tab${clearedTabs === 1 ? '' : 's'})` : '';
-    showStatus(
-      `Cleared ${backgroundEntries} background log entries${tabSummary}. Next export will only include new activity.`,
-      true
-    );
-  }
-
-  /**
-   * Setup button with async handler that shows loading/success/error states
-   * @param {string} buttonId - Button element ID
-   * @param {Function} handler - Async handler function
-   * @param {Object} options - Configuration options
-   */
-  function setupButtonHandler(buttonId, handler, options = {}) {
-    const button = document.getElementById(buttonId);
-    if (!button) return;
-
-    const {
-      loadingText = '⏳ Loading...',
-      successText = '✓ Success!',
-      errorText = '✗ Failed',
-      successDuration = 2000,
-      errorDuration = 3000
-    } = options;
-
-    button.addEventListener('click', async () => {
-      const originalText = button.textContent;
-      const originalBg = button.style.backgroundColor;
-
-      try {
-        // Show loading state
-        button.disabled = true;
-        button.textContent = loadingText;
-
-        // Execute handler
-        await handler();
-
-        // Show success state
-        button.textContent = successText;
-        button.classList.add('success');
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('success');
-          button.disabled = false;
-        }, successDuration);
-      } catch (error) {
-        // Show error state
-        button.textContent = errorText;
-        button.classList.add('error');
-
-        // Show error message in status
-        showStatus(`${originalText} failed: ${error.message}`, false);
-
-        // Reset after duration
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.style.backgroundColor = originalBg;
-          button.classList.remove('error');
-          button.disabled = false;
-        }, errorDuration);
-      }
-    });
-  }
-
   // Export logs button event listener
   setupButtonHandler('exportLogsBtn', handleExportAllLogs, {
     loadingText: '⏳ Exporting...',
     successText: '✓ Logs Exported!',
     errorText: '✗ Export Failed'
   });
-  // ==================== END EXPORT LOGS BUTTON ====================
 
-  // ==================== CLEAR LOGS BUTTON ====================
+  // Clear logs button
   setupButtonHandler('clearLogsBtn', handleClearLogHistory, {
     loadingText: '⏳ Clearing...',
     successText: '✓ Logs Cleared',
     errorText: '✗ Clear Failed'
   });
-  // ==================== END CLEAR LOGS BUTTON ====================
 
-  // ==================== COLLAPSIBLE FILTER GROUPS ====================
-  // v1.6.0.11 - Removed separate save/reset buttons; filters now save with main "Save Settings"
+  // Initialize collapsible filter groups
   initCollapsibleGroups();
   loadFilterSettings();
-  // ==================== END COLLAPSIBLE FILTER GROUPS ====================
-});
+}
+
+// Tab switching logic
+document.addEventListener('DOMContentLoaded', initializePopupUI);
 
 // ==================== FILTER SETTINGS FUNCTIONS ====================
 
@@ -1093,16 +1096,16 @@ function updateGroupCounter(groupElement) {
   // Get filter type from button (more reliable than checkbox)
   const btn = groupElement.querySelector('.group-btn');
   if (!btn) return;
-  
+
   const filter = btn.dataset.filter;
   const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
   const counter = groupElement.querySelector('.group-counter');
-  
+
   if (!counter) return;
-  
+
   const total = checkboxes.length;
   const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-  
+
   counter.textContent = `${checked}/${total}`;
 }
 
@@ -1114,24 +1117,24 @@ function updateButtonColors(groupElement) {
   // Get filter type from button (more reliable than checkbox)
   const btn = groupElement.querySelector('.group-btn');
   if (!btn) return;
-  
+
   const filter = btn.dataset.filter;
   const checkboxes = groupElement.querySelectorAll(`.category-checkbox[data-filter="${filter}"]`);
   const selectAllBtn = groupElement.querySelector('[data-action="select-all"]');
   const deselectAllBtn = groupElement.querySelector('[data-action="deselect-all"]');
-  
+
   if (!selectAllBtn || !deselectAllBtn) return;
-  
+
   const total = checkboxes.length;
   const checked = Array.from(checkboxes).filter(cb => cb.checked).length;
-  
+
   // Update Select All button - green when all selected
   if (checked === total) {
     selectAllBtn.classList.add('all-selected');
   } else {
     selectAllBtn.classList.remove('all-selected');
   }
-  
+
   // Update Deselect All button - red when none selected
   if (checked === 0) {
     deselectAllBtn.classList.add('all-deselected');
@@ -1174,13 +1177,13 @@ function initCollapsibleGroups() {
       } else if (action === 'deselect-all') {
         checkboxes.forEach(cb => (cb.checked = false));
       }
-      
+
       // v1.6.0.12 - Update counter and button colors immediately
       updateGroupCounter(groupElement);
       updateButtonColors(groupElement);
     });
   });
-  
+
   // v1.6.0.12 - Add change listeners to all checkboxes for live updates
   document.querySelectorAll('.category-checkbox').forEach(checkbox => {
     checkbox.addEventListener('change', () => {
@@ -1215,7 +1218,7 @@ async function loadFilterSettings() {
       const category = cb.dataset.category;
       cb.checked = exportSettings[category] === true;
     });
-    
+
     // v1.6.0.12 - Update all counters and button colors after loading
     updateAllGroupStates();
   } catch (error) {

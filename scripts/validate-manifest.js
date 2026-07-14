@@ -66,7 +66,9 @@ try {
 
   if (hasErrors) {
     console.error('\n❌ Manifest validation failed!');
-    console.error('   Run "npm run fix-manifest" to correct paths.');
+    console.error(
+      '   Ensure manifest path normalization is applied via Vite static copy transform.'
+    );
     process.exit(1);
   }
 
