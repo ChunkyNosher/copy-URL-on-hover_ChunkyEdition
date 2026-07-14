@@ -5160,8 +5160,6 @@ let _testHandleClearAllQuickTabs;
 // v1.6.3.11-v12 - Removed _testHandleToggleSolo and _testHandleToggleMute (Solo/Mute feature removed)
 let _testHandleGetVisibilityState;
 let _testHandleGetManagerState;
-let _testHandleSetManagerPosition;
-let _testHandleSetManagerSize;
 let _testHandleCloseAllMinimized;
 let _testHandleGetContainerInfo;
 let _testHandleCreateQuickTabInContainer;
@@ -5327,13 +5325,11 @@ if (IS_TEST_MODE) {
   };
 
   /**
-   * Handle TEST_GET_MANAGER_STATE message (deprecated)
+   * Handle TEST_GET_MANAGER_STATE — minimized Quick Tabs summary for sidebar-era Manager tests
    * @private
    */
   _testHandleGetManagerState = sendResponse => {
-    console.log(
-      '[Test Bridge Handler] TEST_GET_MANAGER_STATE (deprecated - floating panel removed)'
-    );
+    console.log('[Test Bridge Handler] TEST_GET_MANAGER_STATE');
     try {
       const manager = _requireQuickTabsManager();
       const minimizedTabs = manager.minimizedManager?.getAll() || [];
@@ -5342,46 +5338,14 @@ if (IS_TEST_MODE) {
         success: true,
         data: {
           visible: false,
-          position: null,
-          size: null,
           minimizedTabs: minimizedTabs.map(tab => ({ id: tab.id, url: tab.url, title: tab.title })),
-          minimizedCount: minimizedTabs.length,
-          deprecationNotice:
-            'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
+          minimizedCount: minimizedTabs.length
         }
       });
     } catch (error) {
       console.error('[Test Bridge Handler] TEST_GET_MANAGER_STATE error:', error);
       sendResponse({ success: false, error: error.message });
     }
-  };
-
-  /**
-   * Handle TEST_SET_MANAGER_POSITION message (deprecated)
-   * @private
-   */
-  _testHandleSetManagerPosition = sendResponse => {
-    console.log(
-      '[Test Bridge Handler] TEST_SET_MANAGER_POSITION (deprecated - floating panel removed)'
-    );
-    sendResponse({
-      success: false,
-      error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
-    });
-  };
-
-  /**
-   * Handle TEST_SET_MANAGER_SIZE message (deprecated)
-   * @private
-   */
-  _testHandleSetManagerSize = sendResponse => {
-    console.log(
-      '[Test Bridge Handler] TEST_SET_MANAGER_SIZE (deprecated - floating panel removed)'
-    );
-    sendResponse({
-      success: false,
-      error: 'Floating panel removed in v1.6.3.4. Use sidebar Quick Tabs Manager instead.'
-    });
   };
 
   /**
@@ -5978,14 +5942,6 @@ if (IS_TEST_MODE) {
     },
     TEST_GET_MANAGER_STATE: (message, sendResponse) => {
       _testHandleGetManagerState(sendResponse);
-      return true;
-    },
-    TEST_SET_MANAGER_POSITION: (message, sendResponse) => {
-      _testHandleSetManagerPosition(sendResponse);
-      return true;
-    },
-    TEST_SET_MANAGER_SIZE: (message, sendResponse) => {
-      _testHandleSetManagerSize(sendResponse);
       return true;
     },
     TEST_CLOSE_ALL_MINIMIZED: (message, sendResponse) => {

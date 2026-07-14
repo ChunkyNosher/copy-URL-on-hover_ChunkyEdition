@@ -88,46 +88,6 @@ export async function closeQuickTab(page, slotNumber) {
 }
 
 /**
- * Set Quick Tab to Solo mode
- * @param {Page} page - Playwright page object
- * @param {number} slotNumber - Slot number
- * @param {number} tabId - Tab ID to solo on
- */
-export async function setSoloMode(page, slotNumber, tabId) {
-  await page.evaluate(
-    ({ slot, tab }) => {
-      if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
-        return window.__COPILOT_TEST_BRIDGE__.setSoloMode(slot, tab);
-      }
-      throw new Error('Test Bridge API not available');
-    },
-    { slot: slotNumber, tab: tabId }
-  );
-
-  await page.waitForTimeout(100);
-}
-
-/**
- * Set Quick Tab to Mute mode
- * @param {Page} page - Playwright page object
- * @param {number} slotNumber - Slot number
- * @param {number} tabId - Tab ID to mute on
- */
-export async function setMuteMode(page, slotNumber, tabId) {
-  await page.evaluate(
-    ({ slot, tab }) => {
-      if (typeof window.__COPILOT_TEST_BRIDGE__ !== 'undefined') {
-        return window.__COPILOT_TEST_BRIDGE__.setMuteMode(slot, tab);
-      }
-      throw new Error('Test Bridge API not available');
-    },
-    { slot: slotNumber, tab: tabId }
-  );
-
-  await page.waitForTimeout(100);
-}
-
-/**
  * Verify Quick Tab visibility on current page
  * @param {Page} page - Playwright page object
  * @param {number} slotNumber - Slot number

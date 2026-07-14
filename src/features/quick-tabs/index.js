@@ -1813,34 +1813,6 @@ class QuickTabsManager {
   }
 
   // ============================================================================
-  // LEGACY METHODS (kept for backward compatibility)
-  // ============================================================================
-
-  /**
-   * Update Quick Tab position (legacy)
-   * @deprecated v1.6.3.5-v5 - FIX Issue #5: This method bypasses UpdateHandler validation.
-   * Use handlePositionChange/handlePositionChangeEnd instead.
-   */
-  updateQuickTabPosition(id, left, top) {
-    console.warn(
-      '[QuickTabsManager] DEPRECATED: updateQuickTabPosition() bypasses UpdateHandler. Use handlePositionChange/handlePositionChangeEnd instead.'
-    );
-    return this.handlePositionChange(id, left, top);
-  }
-
-  /**
-   * Update Quick Tab size (legacy)
-   * @deprecated v1.6.3.5-v5 - FIX Issue #5: This method bypasses UpdateHandler validation.
-   * Use handleSizeChange/handleSizeChangeEnd instead.
-   */
-  updateQuickTabSize(id, width, height) {
-    console.warn(
-      '[QuickTabsManager] DEPRECATED: updateQuickTabSize() bypasses UpdateHandler. Use handleSizeChange/handleSizeChangeEnd instead.'
-    );
-    return this.handleSizeChange(id, width, height);
-  }
-
-  // ============================================================================
   // LIFECYCLE METHODS
   // ============================================================================
 

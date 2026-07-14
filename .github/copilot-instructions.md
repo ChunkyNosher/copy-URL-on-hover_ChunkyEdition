@@ -14,16 +14,13 @@
   OF TRUTH)
 - Sidebar Quick Tabs Manager (Ctrl+Alt+Z or Alt+Shift+Z)
 - **Port Messaging** - `'quick-tabs-port'` for all Quick Tabs communication
-- **Tab Isolation** - Filter by `originTabId` at hydration time
+- **Tab Isolation** - Filter by `originTabId` at hydration time (tab-scoped QTs)
 - **Container Isolation** - `originContainerId` field for Firefox Containers
 - **Container Filter** - Filter Quick Tabs by container in Manager (v1.6.4-v4)
 - **Context Menu** - Right-click context menu for bulk Quick Tab operations
-- **Ephemeral Storage** - Quick Tabs stored in-memory, NOT persisted to disk
-- **Session-Only Quick Tabs** - Browser restart clears all Quick Tabs
-  automatically
-
-- **Clean URL Copying** - Strips 90+ tracking parameters from copied URLs
-- **Dark Mode First UI** - Complete UI overhaul with dark-mode-first design
+- **Session-like Quick Tabs** - `storage.local` + startup cleanup; browser restart clears QTs
+- **Clean URL Copying** - Strips tracking parameters from copied URLs
+- **Dark Mode First UI** - Dark-mode-first design for Manager / Quick Tab chrome
 
 **v1.6.4-v7 Features (CURRENT):**
 
@@ -67,8 +64,11 @@
 **Core:** QuickTabStateMachine, QuickTabMediator, TabStateManager,
 MessageBuilder, StructuredLogger, MessageRouter
 
-**Deprecated:** `setPosition()`, `setSize()`, BroadcastChannel, storage.session,
-runtime.sendMessage for Quick Tabs, Solo/Mute
+**Deprecated / removed:** BroadcastChannel, Solo/Mute, floating Manager panel,
+`src/storage/*` adapters, `options_page` / `storage.sync` settings path.
+Content scripts must not write canonical Quick Tab state — background owns it.
+`storage.session` is not used in content scripts; mid-session QT state uses
+background memory + `storage.local` (+ optional future background-only session).
 
 ---
 
@@ -204,18 +204,15 @@ const quickTabsSessionState = {
 
 ## 🔧 Storage & State
 
-**v1.6.3.12 In-Memory State:** Quick Tabs stored in background script memory
-(not persisted to disk)
+**Canonical persistence:** `src/utils/storage-utils.js` + background →
+`browser.storage.local` (`quick_tabs_state_v2`). No `src/storage/` adapters.
 
-**State Object:** `quickTabsSessionState` with `quickTabsByTab`,
-`contentScriptPorts`, `sidebarPort`, `sessionId`, `sessionStartTime`,
-`minimizedSnapshots`
+**In-memory session:** background `quickTabsSessionState` is the realtime source
+of truth; ports broadcast `STATE_CHANGED`. Startup cleanup clears QT keys so
+behavior is session-like without content-script `storage.session`.
 
-**Key Exports:** `STATE_KEY`, `logStorageRead()`, `logStorageWrite()`,
-`canCurrentTabModifyQuickTab()`, `validateOwnershipForWrite()`
-
-**Sync Mechanism:** Port messaging is PRIMARY; `storage.onChanged` with
-`'local'` area is FALLBACK (Firefox MV2 has no `browser.storage.session`)
+**Sync Mechanism:** Port messaging is PRIMARY; `storage.onChanged` (`local`) is
+hydration/fallback — not a realtime bus.
 
 ---
 

@@ -353,60 +353,6 @@ const TestBridge = {
   },
 
   /**
-   * Set manager panel position (for testing)
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate
-   * @returns {Promise<Object>} Operation result
-   */
-  async setManagerPosition(x, y) {
-    console.log('[Test Bridge] setManagerPosition:', x, y);
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
-        throw new Error('No active tab found');
-      }
-
-      const response = await browser.tabs.sendMessage(tabs[0].id, {
-        type: 'TEST_SET_MANAGER_POSITION',
-        data: { x, y }
-      });
-
-      console.log('[Test Bridge] setManagerPosition response:', response);
-      return response;
-    } catch (error) {
-      console.error('[Test Bridge] setManagerPosition error:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Set manager panel size (for testing)
-   * @param {number} width - Panel width
-   * @param {number} height - Panel height
-   * @returns {Promise<Object>} Operation result
-   */
-  async setManagerSize(width, height) {
-    console.log('[Test Bridge] setManagerSize:', width, height);
-    try {
-      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length === 0) {
-        throw new Error('No active tab found');
-      }
-
-      const response = await browser.tabs.sendMessage(tabs[0].id, {
-        type: 'TEST_SET_MANAGER_SIZE',
-        data: { width, height }
-      });
-
-      console.log('[Test Bridge] setManagerSize response:', response);
-      return response;
-    } catch (error) {
-      console.error('[Test Bridge] setManagerSize error:', error);
-      throw error;
-    }
-  },
-
-  /**
    * Close all minimized Quick Tabs
    * @returns {Promise<Object>} Operation result with count
    */

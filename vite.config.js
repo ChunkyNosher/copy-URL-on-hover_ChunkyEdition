@@ -17,11 +17,9 @@ const buildConfig = JSON.parse(fs.readFileSync(buildConfigPath, 'utf-8'));
 
 const aliases = {
   '@domain': path.resolve(__dirname, 'src/domain'),
-  '@storage': path.resolve(__dirname, 'src/storage'),
   '@features': path.resolve(__dirname, 'src/features'),
   '@utils': path.resolve(__dirname, 'src/utils'),
-  '@core': path.resolve(__dirname, 'src/core'),
-  '@ui': path.resolve(__dirname, 'src/ui')
+  '@core': path.resolve(__dirname, 'src/core')
 };
 
 function getStaticCopyTargets() {
@@ -41,8 +39,6 @@ function getStaticCopyTargets() {
     },
     { src: 'popup.html', dest: '.' },
     { src: 'popup.js', dest: '.' },
-    { src: 'options_page.html', dest: '.' },
-    { src: 'options_page.js', dest: '.' },
     { src: 'icons/**/*', dest: 'icons' },
     { src: 'sidebar/**/*', dest: 'sidebar' }
   ];

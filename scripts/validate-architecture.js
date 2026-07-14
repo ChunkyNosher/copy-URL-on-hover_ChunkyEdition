@@ -7,7 +7,7 @@ const srcDir = path.join(__dirname, '..', 'src');
 
 const rules = [
   {
-    name: 'Domain layer has no external dependencies',
+    name: 'Domain layer has no feature dependencies',
     check: () => {
       const domainDir = path.join(srcDir, 'domain');
       if (!fs.existsSync(domainDir)) {
@@ -18,17 +18,10 @@ const rules = [
       for (const file of domainFiles) {
         const content = fs.readFileSync(file, 'utf-8');
 
-        // Check for imports from features or storage
         if (content.includes('@features/') || content.includes('../features/')) {
           return {
             pass: false,
             message: `${file} imports from features layer`
-          };
-        }
-        if (content.includes('@storage/') || content.includes('../storage/')) {
-          return {
-            pass: false,
-            message: `${file} imports from storage layer`
           };
         }
       }
@@ -37,58 +30,45 @@ const rules = [
   },
 
   {
-    name: 'Storage layer does not depend on features',
+    name: 'Orphan storage adapter layer is not present',
     check: () => {
       const storageDir = path.join(srcDir, 'storage');
       if (!fs.existsSync(storageDir)) {
-        return { pass: true, message: 'Storage layer not yet created' };
+        return { pass: true, message: 'src/storage removed (canonical path is utils/storage-utils.js)' };
       }
 
       const storageFiles = getAllJsFiles(storageDir);
-      for (const file of storageFiles) {
-        const content = fs.readFileSync(file, 'utf-8');
-
-        if (content.includes('@features/') || content.includes('../features/')) {
-          return {
-            pass: false,
-            message: `${file} imports from features layer`
-          };
-        }
+      if (storageFiles.length > 0) {
+        return {
+          pass: false,
+          message: `src/storage still contains modules: ${storageFiles.map(f => path.basename(f)).join(', ')}`
+        };
       }
-      return { pass: true };
+      return { pass: true, message: 'src/storage directory empty' };
     }
   },
 
   {
-    name: 'Facades exist in correct location (when refactored)',
+    name: 'Quick Tabs facade exists',
     check: () => {
-      const quickTabsDir = path.join(srcDir, 'features/quick-tabs');
-
-      // If the old index.js still exists, this is OK - we're in migration
-      const oldIndexPath = path.join(quickTabsDir, 'index.js');
-      if (fs.existsSync(oldIndexPath)) {
-        return { pass: true, message: 'Old structure still in place (migration pending)' };
-      }
-
-      // If we're past migration, QuickTabsManager.js must exist
-      const facadePath = path.join(quickTabsDir, 'QuickTabsManager.js');
-      if (!fs.existsSync(facadePath)) {
-        return { pass: false, message: 'QuickTabsManager facade not found after migration' };
+      const quickTabsIndex = path.join(srcDir, 'features/quick-tabs/index.js');
+      if (!fs.existsSync(quickTabsIndex)) {
+        return { pass: false, message: 'src/features/quick-tabs/index.js not found' };
       }
       return { pass: true };
     }
   },
 
   {
-    name: 'All managers are in managers/ directory (when created)',
+    name: 'Quick Tabs managers directory has expected modules',
     check: () => {
       const managersDir = path.join(srcDir, 'features/quick-tabs/managers');
       if (!fs.existsSync(managersDir)) {
         return { pass: true, message: 'Managers not yet created' };
       }
 
-      // v1.6.3.8-v6 - BC REMOVED: BroadcastManager.js no longer required
-      const requiredManagers = ['StorageManager.js', 'StateManager.js'];
+      // BroadcastManager and StorageManager were removed; StateManager + EventManager remain
+      const requiredManagers = ['StateManager.js', 'EventManager.js'];
       for (const manager of requiredManagers) {
         if (!fs.existsSync(path.join(managersDir, manager))) {
           return {
@@ -122,8 +102,7 @@ function getAllJsFiles(dir) {
   return files;
 }
 
-// Run validation
-console.log('🔍 Validating architecture...\n');
+console.log('Validating architecture...\n');
 
 let passed = 0;
 let failed = 0;
@@ -131,24 +110,24 @@ let failed = 0;
 for (const rule of rules) {
   const result = rule.check();
   if (!result.pass) {
-    console.error(`❌ ${rule.name}`);
+    console.error(`FAIL ${rule.name}`);
     console.error(`   ${result.message}`);
     failed++;
     continue;
   }
 
-  console.log(`✅ ${rule.name}`);
+  console.log(`PASS ${rule.name}`);
   if (result.message) {
-    console.log(`   ℹ️  ${result.message}`);
+    console.log(`   ${result.message}`);
   }
   passed++;
 }
 
-console.log(`\n📊 Results: ${passed} passed, ${failed} failed\n`);
+console.log(`\nResults: ${passed} passed, ${failed} failed\n`);
 
 if (failed > 0) {
-  console.error('⚠️  Architecture validation failed. Please fix the issues above.');
+  console.error('Architecture validation failed. Please fix the issues above.');
   process.exit(1);
 }
 
-console.log('✅ Architecture validation passed!');
+console.log('Architecture validation passed!');

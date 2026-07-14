@@ -723,7 +723,20 @@ export class MessageRouter {
    */
   createListener() {
     return (message, sender, sendResponse) => {
-      this.route(message, sender, sendResponse);
+      // Always settle sendResponse — unrecovered route() rejections hang callers
+      // (e.g. Export/Clear logs). See PR #414.
+      Promise.resolve(this.route(message, sender, sendResponse)).catch(err => {
+        console.error('[MessageRouter] Unhandled route error:', err);
+        try {
+          sendResponse({
+            success: false,
+            error: err?.message || String(err),
+            code: 'ROUTE_ERROR'
+          });
+        } catch (sendErr) {
+          console.error('[MessageRouter] Failed to send ROUTE_ERROR response:', sendErr);
+        }
+      });
       return true; // Keep channel open for async responses
     };
   }

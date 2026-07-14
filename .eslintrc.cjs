@@ -61,7 +61,7 @@ module.exports = {
       {
         groups: [
           ['builtin', 'external'], // Node built-ins and npm packages first
-          ['internal'], // @domain, @storage aliases
+          ['internal'], // @domain, @features, @utils, @core aliases
           ['parent', 'sibling'], // Relative imports
           ['index', 'object']
         ],
@@ -72,12 +72,15 @@ module.exports = {
             position: 'before'
           },
           {
-            pattern: '@storage/**',
-            group: 'internal',
-            position: 'before'
+            pattern: '@features/**',
+            group: 'internal'
           },
           {
-            pattern: '@features/**',
+            pattern: '@utils/**',
+            group: 'internal'
+          },
+          {
+            pattern: '@core/**',
             group: 'internal'
           }
         ],
@@ -90,27 +93,16 @@ module.exports = {
       }
     ],
 
-    // NEW: Architecture boundaries
+    // Architecture boundaries
     'import/no-restricted-paths': [
       'error',
       {
         zones: [
-          // Domain layer cannot import from features or storage
+          // Domain layer cannot import from features
           {
             target: './src/domain',
             from: './src/features',
             message: 'Domain layer must not depend on features'
-          },
-          {
-            target: './src/domain',
-            from: './src/storage',
-            message: 'Domain layer must not depend on storage infrastructure'
-          },
-          // Storage layer cannot import from features
-          {
-            target: './src/storage',
-            from: './src/features',
-            message: 'Storage layer must not depend on features'
           }
         ]
       }

@@ -442,29 +442,6 @@ export class CreateHandler {
   }
 
   /**
-   * Determine the source of the origin container ID for logging
-   * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
-   * v1.6.3.12-v2 - FIX Issue #2: Updated priority order to match _getOriginContainerId
-   * @private
-   * @param {string|null} originContainerId - Resolved container ID
-   * @param {Object} options - Creation options
-   * @returns {string} Source name for logging
-   * @deprecated v1.6.3.12-v3 - Replaced by _getContainerIdSourceV3 which queries Identity system.
-   *   This method only checks constructor/options values which may be stale.
-   *   The V3 version adds getWritingContainerId() as a priority source.
-   *   Kept for backward compatibility - safe to remove in v1.6.3.12+.
-   */
-  _getContainerIdSource(originContainerId, options) {
-    // v1.6.3.12-v3 - DEPRECATED: Replaced by _getContainerIdSourceV3
-    // This method is kept for potential external callers but is no longer used internally.
-    // The V3 version adds Identity system (getWritingContainerId) as a priority source.
-    if (originContainerId === options.originContainerId) return 'options.originContainerId';
-    if (originContainerId === this.cookieStoreId) return 'this.cookieStoreId (identity context)';
-    if (originContainerId === options.cookieStoreId) return 'options.cookieStoreId';
-    return 'defaults';
-  }
-
-  /**
    * Resolve origin container ID with fallback priority
    * v1.6.3.10-v4 - FIX Issue #13: Extract to reduce _buildVisibilityOptions complexity
    * v1.6.3.12-v2 - FIX Issue #2 (issue-logging-analysis): Changed priority - prefer this.cookieStoreId

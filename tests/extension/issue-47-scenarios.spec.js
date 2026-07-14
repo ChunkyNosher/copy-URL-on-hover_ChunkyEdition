@@ -658,51 +658,6 @@ test.describe('Scenario 12: Close Minimized Quick Tabs Only', () => {
 });
 
 /**
- * Test Suite: Issue #47 - Scenario 13
- * Solo/Mute Mutual Exclusion
- */
-test.describe('Scenario 13: Solo/Mute Mutual Exclusion', () => {
-  test('should enforce mutual exclusion between solo and mute modes', async ({ context }) => {
-    const page1 = await context.newPage();
-    await page1.goto('https://example.com');
-
-    const helper1 = new ExtensionTestHelper(page1);
-    await helper1.waitForTestBridge(15000);
-    await helper1.clearAllQuickTabs();
-
-    // Create Quick Tab
-    await helper1.createQuickTab('https://github.com');
-
-    const tabs = await helper1.getQuickTabs();
-    expect(tabs).toHaveLength(1);
-    const tabId = tabs[0].id;
-
-    // Toggle solo mode
-    const soloResult = await helper1.toggleSolo(tabId);
-    expect(soloResult.success).toBe(true);
-
-    // Get visibility state
-    const visState1 = await helper1.getVisibilityState();
-    expect(visState1.success).toBe(true);
-
-    // Toggle solo off
-    await helper1.toggleSolo(tabId);
-
-    // Toggle mute mode
-    const muteResult = await helper1.toggleMute(tabId);
-    expect(muteResult.success).toBe(true);
-
-    // Get visibility state
-    const visState2 = await helper1.getVisibilityState();
-    expect(visState2.success).toBe(true);
-
-    // Cleanup
-    await helper1.clearAllQuickTabs();
-    await page1.close();
-  });
-});
-
-/**
  * Test Suite: Issue #47 - Scenario 14
  * State Persistence Across Browser Restart (Storage-based test)
  */
@@ -731,37 +686,6 @@ test.describe('Scenario 14: State Persistence Across Browser Restart', () => {
 
     // Note: Cannot test actual browser restart in Playwright
     // This test verifies storage persistence as proxy
-
-    // Cleanup
-    await helper1.clearAllQuickTabs();
-    await page1.close();
-  });
-});
-
-/**
- * Test Suite: Issue #47 - Scenario 15
- * Manager Panel Position/Size Persistence
- */
-test.describe('Scenario 15: Manager Panel Position/Size Persistence', () => {
-  test('should persist manager panel position and size', async ({ context }) => {
-    const page1 = await context.newPage();
-    await page1.goto('https://example.com');
-
-    const helper1 = new ExtensionTestHelper(page1);
-    await helper1.waitForTestBridge(15000);
-    await helper1.clearAllQuickTabs();
-
-    // Set manager position
-    const posResult = await helper1.setManagerPosition(100, 200);
-    expect(posResult.success).toBe(true);
-
-    // Set manager size
-    const sizeResult = await helper1.setManagerSize(450, 600);
-    expect(sizeResult.success).toBe(true);
-
-    // Get manager state to verify
-    const managerState = await helper1.getManagerState();
-    expect(managerState.success).toBe(true);
 
     // Cleanup
     await helper1.clearAllQuickTabs();

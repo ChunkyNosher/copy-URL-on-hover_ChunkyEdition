@@ -35,7 +35,8 @@
 - **Multiple pages**: `context.newPage()` for new tabs
 - **Synchronization**: Verify Quick Tabs appear across tabs via
   storage.onChanged
-- **Solo/Mute**: Verify visibility control with soloedOnTabs/mutedOnTabs arrays
+- **Minimize / Restore**: Verify visibility toggles via Manager and content script
+- **Tab isolation**: QT DOM only on `originTabId`; Manager may list all
 
 ### ✅ Visual Testing
 

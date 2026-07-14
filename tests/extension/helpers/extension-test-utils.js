@@ -229,36 +229,6 @@ export class ExtensionTestHelper {
   // Added for Issue #47 autonomous testing
 
   /**
-   * Toggle solo mode for a Quick Tab
-   * @param {string} id - Quick Tab ID
-   * @param {number} tabId - Browser tab ID (optional)
-   * @returns {Promise<Object>} Operation result
-   */
-  async toggleSolo(id, tabId) {
-    return this.page.evaluate(
-      async ({ id, tabId }) => {
-        return window.__COPILOT_TEST_BRIDGE__.toggleSolo(id, tabId);
-      },
-      { id, tabId }
-    );
-  }
-
-  /**
-   * Toggle mute mode for a Quick Tab
-   * @param {string} id - Quick Tab ID
-   * @param {number} tabId - Browser tab ID (optional)
-   * @returns {Promise<Object>} Operation result
-   */
-  async toggleMute(id, tabId) {
-    return this.page.evaluate(
-      async ({ id, tabId }) => {
-        return window.__COPILOT_TEST_BRIDGE__.toggleMute(id, tabId);
-      },
-      { id, tabId }
-    );
-  }
-
-  /**
    * Get visibility state for all Quick Tabs on a specific tab
    * @param {number} tabId - Browser tab ID (optional)
    * @returns {Promise<Object>} Visibility state
@@ -280,36 +250,6 @@ export class ExtensionTestHelper {
     return this.page.evaluate(async () => {
       return window.__COPILOT_TEST_BRIDGE__.getManagerState();
     });
-  }
-
-  /**
-   * Set Manager Panel position
-   * @param {number} x - X coordinate
-   * @param {number} y - Y coordinate
-   * @returns {Promise<Object>} Operation result
-   */
-  async setManagerPosition(x, y) {
-    return this.page.evaluate(
-      async ({ x, y }) => {
-        return window.__COPILOT_TEST_BRIDGE__.setManagerPosition(x, y);
-      },
-      { x, y }
-    );
-  }
-
-  /**
-   * Set Manager Panel size
-   * @param {number} width - Width in pixels
-   * @param {number} height - Height in pixels
-   * @returns {Promise<Object>} Operation result
-   */
-  async setManagerSize(width, height) {
-    return this.page.evaluate(
-      async ({ width, height }) => {
-        return window.__COPILOT_TEST_BRIDGE__.setManagerSize(width, height);
-      },
-      { width, height }
-    );
   }
 
   /**

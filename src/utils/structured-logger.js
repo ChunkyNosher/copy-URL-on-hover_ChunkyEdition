@@ -340,21 +340,10 @@ export const retryLogger = new StructuredLogger(LOG_COMPONENT.RETRY);
 export const rateLimitLogger = new StructuredLogger(LOG_COMPONENT.RATE_LIMIT);
 
 /**
- * Storage adapter logger
- */
-export const storageAdapterLogger = new StructuredLogger(LOG_COMPONENT.STORAGE_ADAPTER);
-
-/**
  * Quick Tabs logger
  * v1.6.3.12 - Scenario-aware logging
  */
 export const quickTabsLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS);
-
-/**
- * Quick Tabs Mediator logger
- * v1.6.3.12 - State transition logging at mediator boundaries
- */
-export const quickTabsMediatorLogger = new StructuredLogger(LOG_COMPONENT.QUICK_TABS_MEDIATOR);
 
 /**
  * Quick Tabs State Machine logger

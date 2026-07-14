@@ -806,17 +806,11 @@ document.getElementById('clearStorageBtn').addEventListener('click', async () =>
     )
   ) {
     try {
-      // v1.6.3 - FIX: Clear from local storage (where Quick Tabs are actually stored since v1.6.0.12)
+      // Clear from local storage (where Quick Tabs are stored)
       await browserAPI.storage.local.remove('quick_tabs_state_v2');
-
-      // v1.6.3 - Backward compatibility: also clear from sync storage (legacy location)
-      await browserAPI.storage.sync.remove('quick_tabs_state_v2');
-
-      // Clear session key from local storage as well
-      // v1.6.3.12-v5 - FIX: Use storage.local exclusively (storage.session not available in Firefox MV2)
       await browserAPI.storage.local.remove('quick_tabs_session');
 
-      // v1.6.3 - FIX: Notify background to reset globalQuickTabState cache
+      // Notify background to reset globalQuickTabState cache
       await browserAPI.runtime.sendMessage({ action: 'RESET_GLOBAL_QUICK_TAB_STATE' });
 
       showStatus('✓ Quick Tab storage cleared! Settings preserved.');

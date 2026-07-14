@@ -8651,49 +8651,6 @@ async function _handleGoToTabGroup(tabId) {
 }
 
 /**
- * Release sidebar focus to allow tab switch to take effect
- * v1.6.4-v2 - Extracted from _handleGoToTabGroup to reduce complexity
- * v1.6.4-v2 - FIX: Sidebar stays closed after Go to Tab for cross-container support
- *   - Reopening sidebar would retain original container context, defeating the purpose
- *   - User can manually reopen sidebar when needed
- * v1.6.4-v3 - FIX BUG #1: Enhanced logging for cross-container switch
- *
- * @deprecated v1.6.4-v5 - No longer used. Smart Go to Tab now handles sidebar close
- * conditionally based on cross-container detection. Retained for reference.
- *
- * @private
- * @param {number} tabId - Tab ID for logging
- * @param {number|null} windowId - Window ID for logging
- * @param {boolean} isCrossContainerSwitch - Whether this is a cross-container switch
- */
-async function _releaseSidebarFocusForGoToTab(tabId, windowId, isCrossContainerSwitch = false) {
-  // Firefox sidebars aggressively retain focus even after browser.tabs.update() and blur() calls.
-  // The only reliable way to force focus to the main window is to close the sidebar.
-  // v1.6.4-v4 - FIX: Do NOT reopen sidebar - it would reopen in the original container context,
-  // which defeats the purpose of cross-container tab switching.
-  try {
-    // Close the sidebar - this forces focus to transfer to the main browser window
-    await browser.sidebarAction.close();
-    console.log('[Manager] GO_TO_TAB_SIDEBAR_CLOSED:', {
-      tabId,
-      windowId,
-      isCrossContainerSwitch,
-      note: isCrossContainerSwitch
-        ? 'Sidebar stays closed for cross-container focus transfer (Zen Browser compatibility)'
-        : 'Sidebar stays closed for reliable focus transfer'
-    });
-  } catch (sidebarErr) {
-    // If sidebarAction API fails, fall back to blur approach
-    console.warn('[Manager] GO_TO_TAB_SIDEBAR_CLOSE_FAILED:', {
-      error: sidebarErr.message,
-      fallback: 'blur',
-      isCrossContainerSwitch
-    });
-    _fallbackBlurForFocusRelease();
-  }
-}
-
-/**
  * Schedule sidebar reopen after delay (fire-and-forget)
  * v1.6.4-v4 - Extracted helper function
  * v1.6.4-v5 - Now used for cross-container Go to Tab in "All Containers" view
@@ -11016,18 +10973,6 @@ function _logOperationResult({
 }
 
 // ==================== END v1.6.3.12-v7 OPERATION HELPERS ====================
-
-/**
- * Go to the browser tab containing this Quick Tab (NEW FEATURE #3)
- * @deprecated v1.6.4-v5 - Use _handleGoToTabGroup() instead for container-aware switching
- * Retained for backwards compatibility with any code that may still call this function.
- */
-// eslint-disable-next-line no-unused-vars
-async function goToTab(tabId) {
-  console.warn('[Manager] DEPRECATED: goToTab() called - use _handleGoToTabGroup() instead');
-  // v1.6.4-v5 - FIX Bug #2: Delegate to container-aware function
-  await _handleGoToTabGroup(tabId);
-}
 
 /**
  * Minimize an active Quick Tab

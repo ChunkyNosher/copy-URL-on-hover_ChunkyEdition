@@ -10,16 +10,12 @@
     "webRequest",
     "webRequestBlocking",
     "<all_urls>",
-    "cookies",
     "downloads",
     "unlimitedStorage",
-    "sessions",
     "contextualIdentities",
-    "notifications",
-    "clipboardRead",
     "clipboardWrite",
-    "alarms",
-    "menus"
+    "menus",
+    "scripting"
   ],
 
   "commands": {
@@ -46,11 +42,6 @@
     "default_panel": "sidebar/settings.html",
     "default_title": "Copy URL Settings & Quick Tabs",
     "default_icon": "icons/icon.png"
-  },
-
-  "options_ui": {
-    "page": "options_page.html",
-    "open_in_tab": true
   },
 
   "background": {

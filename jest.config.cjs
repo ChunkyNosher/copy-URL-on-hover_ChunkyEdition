@@ -11,18 +11,16 @@ module.exports = {
   // Exclude playwright tests (they need a different environment)
   testPathIgnorePatterns: ['/node_modules/', '/tests/extension/', '/tests/e2e/'],
 
-  // Module aliasing (must match Rollup aliases)
+  // Module aliasing (must match Vite aliases)
   moduleNameMapper: {
     '^@domain/(.*)$': '<rootDir>/src/domain/$1',
-    '^@storage/(.*)$': '<rootDir>/src/storage/$1',
     '^@features/(.*)$': '<rootDir>/src/features/$1',
-    // v1.6.4 - Mock storage-utils.js to prevent actual storage operations in tests
+    // Mock storage-utils.js to prevent actual storage operations in tests
     '^@utils/storage-utils.js$': '<rootDir>/tests/__mocks__/storage-utils.js',
     '^@utils/(.*)$': '<rootDir>/src/utils/$1',
     '^@core/(.*)$': '<rootDir>/src/core/$1',
-    '^@ui/(.*)$': '<rootDir>/src/ui/$1',
     '^webextension-polyfill$': '<rootDir>/tests/__mocks__/webextension-polyfill.js',
-    // v1.6.2 - BroadcastManager removed, use mock for backward compatibility
+    // BroadcastManager removed from production; mock kept for legacy integration scenarios
     '.*/managers/BroadcastManager.js$': '<rootDir>/tests/mocks/BroadcastManagerMock.js'
   },
 
@@ -34,19 +32,9 @@ module.exports = {
   // Coverage configuration
   collectCoverage: false,
   collectCoverageFrom: [
-    // Domain layer - require 100% coverage
     'src/domain/**/*.js',
-
-    // Storage layer - require 90% coverage
-    'src/storage/**/*.js',
-
-    // Feature modules - require 80% coverage
     'src/features/**/*.js',
-
-    // Utils - require 90% coverage
     'src/utils/**/*.js',
-
-    // Core - require 85% coverage
     'src/core/**/*.js',
 
     // Exclusions
@@ -60,7 +48,6 @@ module.exports = {
 
   // Coverage thresholds by directory
   coverageThreshold: {
-    // Domain layer must have perfect coverage (pure logic)
     './src/domain/': {
       branches: 100,
       functions: 100,
@@ -68,15 +55,6 @@ module.exports = {
       statements: 100
     },
 
-    // Storage adapters (I/O) - allow some uncovered branches
-    './src/storage/': {
-      branches: 85,
-      functions: 90,
-      lines: 90,
-      statements: 90
-    },
-
-    // Feature modules (UI interaction) - realistic targets
     './src/features/': {
       branches: 75,
       functions: 80,
@@ -84,7 +62,6 @@ module.exports = {
       statements: 80
     },
 
-    // Global threshold
     global: {
       branches: 80,
       functions: 80,
